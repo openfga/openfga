@@ -1,0 +1,91 @@
+package queries
+
+import (
+	"context"
+	"testing"
+
+	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
+	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+func TestGetStores(t *testing.T) {
+	tracer := telemetry.NewNoopTracer()
+	ctx := context.Background()
+
+	backend, err := testutils.BuildAllBackends(tracer)
+	if err != nil {
+		t.Fatalf("Error building backend: %s", err)
+	}
+
+	fakeEncoder, err := encoder.NewTokenEncrypter("key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	getStoresQuery := NewListStoresQuery(backend.StoresBackend, fakeEncoder, logger.NewNoopLogger())
+	_, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
+	if actualError != nil {
+		t.Fatalf("Expected no error, but got %v", actualError)
+	}
+
+	createStoreQuery := commands.NewCreateStoreCommand(backend.StoresBackend, logger.NewNoopLogger())
+	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
+	if err != nil {
+		t.Fatalf("Error creating store 1: %v", err)
+	}
+
+	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
+	if err != nil {
+		t.Fatalf("Error creating store 2: %v", err)
+	}
+
+	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: "",
+	})
+	if actualError != nil {
+		t.Errorf("Expected no error, but got %v", actualError)
+	}
+
+	if len(listStoresResponse.Stores) != 1 {
+		t.Fatalf("Expected 1 store, got: %v", len(listStoresResponse.Stores))
+	}
+	if listStoresResponse.ContinuationToken == "" {
+		t.Fatal("Expected continuation token, got nothing")
+	}
+
+	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: listStoresResponse.ContinuationToken,
+	})
+	if actualError != nil {
+		t.Errorf("Expected no error, but got %v", actualError)
+	}
+
+	if len(secondListStoresResponse.Stores) != 1 {
+		t.Fatalf("Expected 1 store, got: %v", len(secondListStoresResponse.Stores))
+	}
+	if secondListStoresResponse.ContinuationToken == "" {
+		t.Fatal("Expected continuation token, got nothing")
+	}
+
+	thirdListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: secondListStoresResponse.ContinuationToken,
+	})
+	if actualError != nil {
+		t.Errorf("Expected no error, but got %v", actualError)
+	}
+	if len(thirdListStoresResponse.Stores) != 0 {
+		t.Fatalf("Expected 0 stores, got: %v", len(thirdListStoresResponse.Stores))
+	}
+	if thirdListStoresResponse.ContinuationToken != "" {
+		t.Fatalf("Expected empty continuation token, got %v", thirdListStoresResponse.ContinuationToken)
+	}
+
+}
