@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-errors/errors"
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
-	"github.com/go-errors/errors"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"

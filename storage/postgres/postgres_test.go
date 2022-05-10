@@ -9,6 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-errors/errors"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -16,13 +21,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/postgres/testutils"
-	"github.com/go-errors/errors"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/kelseyhightower/envconfig"
 	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/api/iterator"
 )
 
@@ -365,57 +365,66 @@ func TestTuplePaginationOptions(t *testing.T) {
 }
 
 func TestFindLatestAuthorizationModelID(t *testing.T) {
+	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
+		store := pkgTestutils.CreateRandomString(10)
+		_, err := postgres.FindLatestAuthorizationModelID(ctx, store)
+		if !errors.Is(err, storage.NotFound) {
+			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
+		}
+	})
 
-	store := pkgTestutils.CreateRandomString(10)
-	now := time.Now()
-	oldModelID, err := id.NewStringFromTime(now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, oldModelID, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
-					"viewer": {
-						Userset: &openfgav1pb.Userset_This{},
+	t.Run("find latests authorization model should succeed", func(t *testing.T) {
+		store := pkgTestutils.CreateRandomString(10)
+		now := time.Now()
+		oldModelID, err := id.NewStringFromTime(now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = postgres.WriteAuthorizationModel(context.Background(), store, oldModelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": {
+							Userset: &openfgapb.Userset_This{},
+						},
 					},
 				},
 			},
-		},
-	})
-	if err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
-	}
+		})
+		if err != nil {
+			t.Errorf("failed to write authorization model: %v", err)
+		}
 
-	newModelID, err := id.NewStringFromTime(now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, newModelID, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
-					"reader": {
-						Userset: &openfgav1pb.Userset_This{},
+		newModelID, err := id.NewStringFromTime(now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = postgres.WriteAuthorizationModel(context.Background(), store, newModelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": {
+							Userset: &openfgapb.Userset_This{},
+						},
 					},
 				},
 			},
-		},
+		})
+		if err != nil {
+			t.Errorf("failed to write authorization model: %v", err)
+		}
+
+		latestID, err := postgres.FindLatestAuthorizationModelID(context.Background(), store)
+		if err != nil {
+			t.Errorf("failed to read latest authorization model: %v", err)
+		}
+
+		if latestID != newModelID {
+			t.Errorf("got '%s', want '%s'", latestID, newModelID)
+		}
 	})
-	if err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
-	}
-
-	latestID, err := postgres.FindLatestAuthorizationModelID(context.Background(), store)
-	if err != nil {
-		t.Errorf("failed to read latest authorization model: %v", err)
-	}
-
-	if latestID != newModelID {
-		t.Errorf("got '%s', want '%s'", latestID, newModelID)
-	}
 }
 
 func TestWriteAndReadAuthorizationModel(t *testing.T) {
@@ -425,14 +434,14 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedModel := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	expectedModel := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"viewer": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
+						Userset: &openfgapb.Userset_This{
+							This: &openfgapb.DirectUserset{},
 						},
 					},
 				},
@@ -440,21 +449,21 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 		},
 	}
 
-	if err := postgres.WriteAuthorizationModel(context.Background(), store, modelID, expectedModel); err != nil {
+	if err := postgres.WriteAuthorizationModel(ctx, store, modelID, expectedModel); err != nil {
 		t.Errorf("failed to write authorization model: %v", err)
 	}
 
-	model, err := postgres.ReadAuthorizationModel(context.Background(), store, modelID)
+	model, err := postgres.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		t.Errorf("failed to read authorization model: %v", err)
 	}
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
-			openfgav1pb.TypeDefinition{},
-			openfgav1pb.Userset{},
-			openfgav1pb.Userset_This{},
-			openfgav1pb.DirectUserset{},
+			openfgapb.TypeDefinition{},
+			openfgapb.Userset{},
+			openfgapb.Userset_This{},
+			openfgapb.DirectUserset{},
 		),
 	}
 
@@ -469,49 +478,64 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 }
 
 func TestReadTypeDefinition(t *testing.T) {
+	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
+		store := pkgTestutils.CreateRandomString(10)
+		modelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	store := pkgTestutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedTypeDef := &openfgav1pb.TypeDefinition{
-		Type: "folder",
-		Relations: map[string]*openfgav1pb.Userset{
-			"viewer": {
-				Userset: &openfgav1pb.Userset_This{
-					This: &openfgav1pb.DirectUserset{},
+		_, err = postgres.ReadTypeDefinition(ctx, store, modelID, "folder")
+		if !errors.Is(err, storage.NotFound) {
+			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
+		}
+	})
+
+	t.Run("read type definition should succeed", func(t *testing.T) {
+		store := pkgTestutils.CreateRandomString(10)
+		modelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedTypeDef := &openfgapb.TypeDefinition{
+			Type: "folder",
+			Relations: map[string]*openfgapb.Userset{
+				"viewer": {
+					Userset: &openfgapb.Userset_This{
+						This: &openfgapb.DirectUserset{},
+					},
 				},
 			},
-		},
-	}
+		}
 
-	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			expectedTypeDef,
-		},
+		err = postgres.WriteAuthorizationModel(context.Background(), store, modelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				expectedTypeDef,
+			},
+		})
+		if err != nil {
+			t.Errorf("failed to write authorization model: %v", err)
+		}
+
+		typeDef, err := postgres.ReadTypeDefinition(context.Background(), store, modelID, "folder")
+		if err != nil {
+			t.Errorf("expected no error but got '%v'", err)
+		}
+
+		cmpOpts := []cmp.Option{
+			cmpopts.IgnoreUnexported(
+				openfgapb.TypeDefinition{},
+				openfgapb.Userset{},
+				openfgapb.Userset_This{},
+				openfgapb.DirectUserset{},
+			),
+		}
+
+		if diff := cmp.Diff(expectedTypeDef, typeDef, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-got +want):\n%s", diff)
+		}
 	})
-	if err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
-	}
 
-	typeDef, err := postgres.ReadTypeDefinition(context.Background(), store, modelID, "folder")
-	if err != nil {
-		t.Errorf("expected no error but got '%v'", err)
-	}
-
-	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgav1pb.TypeDefinition{},
-			openfgav1pb.Userset{},
-			openfgav1pb.Userset_This{},
-			openfgav1pb.DirectUserset{},
-		),
-	}
-
-	if diff := cmp.Diff(expectedTypeDef, typeDef, cmpOpts...); diff != "" {
-		t.Errorf("mismatch (-got +want):\n%s", diff)
-	}
 }
 
 func TestReadAuthorizationModels(t *testing.T) {
@@ -520,14 +544,14 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID1, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID1, &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"viewer": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
+						Userset: &openfgapb.Userset_This{
+							This: &openfgapb.DirectUserset{},
 						},
 					},
 				},
@@ -542,14 +566,14 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID2, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID2, &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"reader": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
+						Userset: &openfgapb.Userset_This{
+							This: &openfgapb.DirectUserset{},
 						},
 					},
 				},
@@ -595,7 +619,10 @@ func TestReadAuthorizationModels(t *testing.T) {
 func TestAssertion(t *testing.T) {
 	t.Run("writing and reading assertions succeeds", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
-		modelID := pkgTestutils.CreateRandomString(10)
+		modelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
 		assertions := []*openfga.Assertion{
 			{
 				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
@@ -607,13 +634,16 @@ func TestAssertion(t *testing.T) {
 			},
 		}
 
-		if err := postgres.WriteAssertions(ctx, store, modelID, assertions); err != nil {
+		err = postgres.WriteAssertions(ctx, store, modelID, assertions)
+		if err != nil {
 			t.Error(err)
 		}
+
 		gotAssertions, err := postgres.ReadAssertions(ctx, store, modelID)
 		if err != nil {
 			t.Error(err)
 		}
+
 		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
 		}
@@ -621,8 +651,14 @@ func TestAssertion(t *testing.T) {
 
 	t.Run("writing to one modelID and reading from other returns nothing", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
-		oldModelID := pkgTestutils.CreateRandomString(10)
-		newModelID := pkgTestutils.CreateRandomString(10)
+		oldModelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		newModelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
 		assertions := []*openfga.Assertion{
 			{
 				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
@@ -630,9 +666,11 @@ func TestAssertion(t *testing.T) {
 			},
 		}
 
-		if err := postgres.WriteAssertions(ctx, store, oldModelID, assertions); err != nil {
+		err = postgres.WriteAssertions(ctx, store, oldModelID, assertions)
+		if err != nil {
 			t.Error(err)
 		}
+
 		gotAssertions, err := postgres.ReadAssertions(ctx, store, newModelID)
 		if err != nil {
 			t.Error(err)

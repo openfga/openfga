@@ -4,17 +4,17 @@ import (
 	"context"
 	"time"
 
-	"github.com/openfga/openfga/pkg/id"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/storage"
+	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/openfga/openfga/pkg/id"
+	"github.com/openfga/openfga/pkg/logger"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -227,50 +227,44 @@ func (p *Postgres) MaxTuplesInWriteOperation() int {
 	return p.maxTuplesInWrite
 }
 
-func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1pb.AuthorizationModel, error) {
+func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
 
-	stmt := `SELECT type, relation, relation_definition FROM type_definition WHERE store = $1 AND authorization_model_id = $2`
-
-	rows, err := p.pool.Query(ctx, stmt, store, id)
+	stmt := "SELECT type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
+	rows, err := p.pool.Query(ctx, stmt, store, modelID)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
 
-	typeDefinitions := map[string]map[string]*openfgav1pb.Userset{}
+	var typeDefs []*openfgapb.TypeDefinition
 
 	for rows.Next() {
-		var typeName, relation, jsonRelationDefinition string
-		err := rows.Scan(&typeName, &relation, &jsonRelationDefinition)
+		var typeName string
+		var marshalledTypeDef []byte
+		err = rows.Scan(&typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handlePostgresError(err)
 		}
 
-		if _, ok := typeDefinitions[typeName]; !ok {
-			typeDefinitions[typeName] = map[string]*openfgav1pb.Userset{}
-		}
-
-		var userset openfgav1pb.Userset
-		if err := protojson.Unmarshal([]byte(jsonRelationDefinition), &userset); err != nil {
+		var typeDef openfgapb.TypeDefinition
+		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
 			return nil, err
 		}
 
-		typeDefinitions[typeName][relation] = &userset
+		typeDefs = append(typeDefs, &typeDef)
 	}
 
 	if err := rows.Err(); err != nil {
 		return nil, handlePostgresError(err)
 	}
 
-	if len(typeDefinitions) == 0 {
+	if len(typeDefs) == 0 {
 		return nil, storage.NotFound
 	}
 
-	model := &openfgav1pb.AuthorizationModel{
-		Id:              id,
-		TypeDefinitions: mapOfTypeDefinitionsToSlice(typeDefinitions),
-	}
-
-	return model, nil
+	return &openfgapb.AuthorizationModel{
+		Id:              modelID,
+		TypeDefinitions: typeDefs,
+	}, nil
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]string, []byte, error) {
@@ -308,17 +302,11 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
 
-	stmt := `SELECT authorization_model_id FROM type_definition WHERE store = $1 ORDER BY inserted_at DESC LIMIT 1`
-	row := p.pool.QueryRow(ctx, stmt, store)
-
 	var modelID string
-	err := row.Scan(&modelID)
+	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY inserted_at DESC LIMIT 1"
+	err := p.pool.QueryRow(ctx, stmt, store).Scan(&modelID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return "", storage.NotFound
-		}
-
-		return "", err
+		return "", handlePostgresError(err)
 	}
 
 	return modelID, nil
@@ -327,41 +315,21 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 func (p *Postgres) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
-) (*openfgav1pb.TypeDefinition, error) {
+) (*openfgapb.TypeDefinition, error) {
 
-	stmt := `SELECT relation, relation_definition FROM type_definition WHERE store = $1 AND authorization_model_id = $2 AND type = $3`
-
-	rows, err := p.pool.Query(ctx, stmt, store, modelID, objectType)
+	var marshalledTypeDef []byte
+	stmt := "SELECT type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2 AND type = $3"
+	err := p.pool.QueryRow(ctx, stmt, store, modelID, objectType).Scan(&marshalledTypeDef)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
 
-	definition := &openfgav1pb.TypeDefinition{
-		Type:      objectType,
-		Relations: map[string]*openfgav1pb.Userset{},
+	var typeDef openfgapb.TypeDefinition
+	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
+		return nil, err
 	}
 
-	for rows.Next() {
-
-		var relation, jsonRelationDefinition string
-		err := rows.Scan(&relation, &jsonRelationDefinition)
-		if err != nil {
-			return nil, handlePostgresError(err)
-		}
-
-		var userset openfgav1pb.Userset
-		if err := protojson.Unmarshal([]byte(jsonRelationDefinition), &userset); err != nil {
-			return nil, err
-		}
-
-		definition.Relations[relation] = &userset
-	}
-
-	if rows.Err() != nil {
-		return nil, handlePostgresError(rows.Err())
-	}
-
-	return definition, nil
+	return &typeDef, nil
 }
 
 func (p *Postgres) MaxTypesInTypeDefinition() int {
@@ -370,27 +338,24 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 
 func (p *Postgres) WriteAuthorizationModel(
 	ctx context.Context,
-	store, id string,
-	tds *openfgav1pb.TypeDefinitions,
+	store, modelID string,
+	tds *openfgapb.TypeDefinitions,
 ) error {
 
 	if len(tds.TypeDefinitions) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
-	stmt := `INSERT INTO type_definition (store, authorization_model_id, type, relation, relation_definition, inserted_at) VALUES ($1, $2, $3, $4, $5, NOW())`
+	stmt := `INSERT INTO authorization_model (store, authorization_model_id, type, type_definition, inserted_at) VALUES ($1, $2, $3, $4, NOW())`
 
 	inserts := &pgx.Batch{}
 	for _, typeDef := range tds.TypeDefinitions {
-
-		for relation, userset := range typeDef.Relations {
-			jsonUserset, err := protojson.Marshal(userset)
-			if err != nil {
-				return err
-			}
-
-			inserts.Queue(stmt, store, id, typeDef.Type, relation, jsonUserset)
+		marshalledTypeDef, err := proto.Marshal(typeDef)
+		if err != nil {
+			return err
 		}
+
+		inserts.Queue(stmt, store, modelID, typeDef.Type, marshalledTypeDef)
 	}
 
 	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
@@ -411,15 +376,13 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
 
-	batch := &pgx.Batch{}
-	for _, assertion := range assertions {
-		tk := assertion.GetTupleKey()
-		batch.Queue(`INSERT INTO assertion (store, authorization_model_id, object, relation, _user, expectation, inserted_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())`, store, modelID, tk.GetObject(), tk.GetRelation(), tk.GetUser(), assertion.GetExpectation())
+	marshalledAssertions, err := proto.Marshal(&openfga.Assertions{Assertions: assertions})
+	if err != nil {
+		return err
 	}
 
-	if err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
-		return tx.SendBatch(ctx, batch).Close()
-	}); err != nil {
+	_, err = p.pool.Exec(ctx, `INSERT INTO assertion (store, authorization_model_id, assertions) VALUES ($1, $2, $3)`, store, modelID, marshalledAssertions)
+	if err != nil {
 		return handlePostgresError(err)
 	}
 
@@ -430,29 +393,22 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAssertions")
 	defer span.End()
 
-	rows, err := p.pool.Query(ctx, `SELECT object, relation, _user, expectation FROM assertion WHERE store = $1 AND authorization_model_id = $2`, store, modelID)
+	var marshalledAssertions []byte
+	err := p.pool.QueryRow(ctx, `SELECT assertions FROM assertion WHERE store = $1 AND authorization_model_id = $2`, store, modelID).Scan(&marshalledAssertions)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return []*openfga.Assertion{}, nil
+		}
 		return nil, handlePostgresError(err)
 	}
 
-	var assertions []*openfga.Assertion
-	for rows.Next() {
-		var tk openfga.TupleKey
-		var expectation bool
-		if err := rows.Scan(&tk.Object, &tk.Relation, &tk.User, &expectation); err != nil {
-			return nil, handlePostgresError(err)
-		}
-		assertions = append(assertions, &openfga.Assertion{
-			TupleKey:    &tk,
-			Expectation: expectation,
-		})
+	var assertions openfga.Assertions
+	err = proto.Unmarshal(marshalledAssertions, &assertions)
+	if err != nil {
+		return nil, err
 	}
 
-	if rows.Err() != nil {
-		return nil, handlePostgresError(rows.Err())
-	}
-
-	return assertions, nil
+	return assertions.Assertions, nil
 }
 
 func (p *Postgres) ReadChanges(
@@ -483,7 +439,7 @@ func (p *Postgres) ReadChanges(
 
 		changes = append(changes, &openfga.TupleChange{
 			TupleKey: &openfga.TupleKey{
-				Object:   tuple.BuildObject(objectType, objectID),
+				Object:   tupleUtils.BuildObject(objectType, objectID),
 				Relation: relation,
 				User:     user,
 			},
@@ -497,18 +453,4 @@ func (p *Postgres) ReadChanges(
 	}
 
 	return changes, []byte(ulid), nil
-}
-
-func mapOfTypeDefinitionsToSlice(typeDefinitions map[string]map[string]*openfgav1pb.Userset) []*openfgav1pb.TypeDefinition {
-
-	t := make([]*openfgav1pb.TypeDefinition, 0, len(typeDefinitions))
-
-	for typeName, relations := range typeDefinitions {
-		t = append(t, &openfgav1pb.TypeDefinition{
-			Type:      typeName,
-			Relations: relations,
-		})
-	}
-
-	return t
 }

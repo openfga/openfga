@@ -24,25 +24,20 @@ CREATE INDEX IF NOT EXISTS partial_user_idx ON tuple (store, object_type, object
 CREATE INDEX IF NOT EXISTS partial_userset_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';
 CREATE UNIQUE INDEX IF NOT EXISTS ulid_idx ON tuple (ulid);
 
-CREATE TABLE IF NOT EXISTS type_definition (
+CREATE TABLE IF NOT EXISTS authorization_model (
 	store TEXT NOT NULL,
 	authorization_model_id TEXT NOT NULL,
 	type TEXT NOT NULL,
-	relation TEXT NOT NULL,
-	relation_definition JSONB NOT NULL,
+	type_definition BYTEA NOT NULL,
 	inserted_at TIMESTAMPTZ NOT NULL,
-	PRIMARY KEY (store, authorization_model_id, type, relation)
+	PRIMARY KEY (store, authorization_model_id, type)
 );
 
 CREATE TABLE IF NOT EXISTS assertion (
 	store TEXT NOT NULL,
 	authorization_model_id TEXT NOT NULL,
-	object TEXT NOT NULL,
-	relation TEXT NOT NULL,
-	_user TEXT NOT NULL,
-	expectation BOOLEAN NOT NULL,
-	inserted_at TIMESTAMPTZ NOT NULL,
-	PRIMARY KEY (store, authorization_model_id, object, relation, _user)
+	assertions BYTEA NOT NULL,
+	PRIMARY KEY (store, authorization_model_id)
 );
 
 CREATE TABLE IF NOT EXISTS changelog (

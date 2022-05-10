@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-errors/errors"
+	"github.com/jackc/pgx/v4"
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
-	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -78,8 +78,8 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tupl
 		res = append(res, tupleRecord.asTuple())
 	}
 
-	// Check if we are at the end of the table. If we are then we do not need to return a continuation token. This is why
-	// we have LIMIT+1 in the query.
+	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token. This is
+	// why we have LIMIT+1 in the query.
 	if _, err := t.next(); errors.Is(err, iterator.Done) {
 		return res, nil, nil
 	}
@@ -160,7 +160,7 @@ func buildReadChangesQuery(store, objectType string, opts storage.PaginationOpti
 }
 
 func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) string {
-	stmt := fmt.Sprintf("SELECT DISTINCT authorization_model_id, inserted_at FROM type_definition WHERE store = '%s'", store)
+	stmt := fmt.Sprintf("SELECT DISTINCT authorization_model_id, inserted_at FROM authorization_model WHERE store = '%s'", store)
 	if opts.From != "" {
 		stmt = fmt.Sprintf("%s AND inserted_at >= '%s'", stmt, opts.From)
 	}
