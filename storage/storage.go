@@ -123,8 +123,8 @@ type ChangelogBackend interface {
 
 type AllBackends struct {
 	TupleBackend              TupleBackend
-	ChangelogBackend          ChangelogBackend
 	AuthorizationModelBackend AuthorizationModelBackend
-	AssertionsBackend         AssertionsBackend
 	StoresBackend             StoresBackend
+	AssertionsBackend         AssertionsBackend
+	ChangelogBackend          ChangelogBackend
 }

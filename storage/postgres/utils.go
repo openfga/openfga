@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -99,6 +100,11 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
+type readChangesContToken struct {
+	Ulid       string
+	ObjectType string
+}
+
 func buildReadQuery(store string, tupleKey *openfga.TupleKey, opts storage.PaginationOptions) string {
 	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s'", store)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -143,20 +149,27 @@ func buildReadUsersetTuplesQuery(store string, tupleKey *openfga.TupleKey) strin
 	return stmt
 }
 
-func buildReadChangesQuery(store, objectType string, opts storage.PaginationOptions, horizonOffset time.Duration) string {
-	stmt := fmt.Sprintf("SELECT ulid, object_id, relation, _user, operation, inserted_at FROM changelog WHERE store = '%s'", store)
-	if objectType != "" {
-		stmt = fmt.Sprintf("%s AND object_type = '%s'", stmt, objectType)
+func buildReadChangesQuery(store, objectTypeFilter string, opts storage.PaginationOptions, horizonOffset time.Duration) (string, error) {
+	stmt := fmt.Sprintf("SELECT ulid, object_type, object_id, relation, _user, operation, inserted_at FROM changelog WHERE store = '%s'", store)
+	if objectTypeFilter != "" {
+		stmt = fmt.Sprintf("%s AND object_type = '%s'", stmt, objectTypeFilter)
 	}
 	stmt = fmt.Sprintf("%s AND inserted_at < NOW() - interval '%dms'", stmt, horizonOffset.Milliseconds())
 	if opts.From != "" {
-		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, opts.From) // > here as we always return a continuation token
+		var contToken readChangesContToken
+		if err := json.Unmarshal([]byte(opts.From), &contToken); err != nil {
+			return "", storage.InvalidContinuationToken
+		}
+		if contToken.ObjectType != objectTypeFilter {
+			return "", storage.MismatchObjectType
+		}
+		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, contToken.Ulid) // > here as we always return a continuation token
 	}
 	stmt = fmt.Sprintf("%s ORDER BY inserted_at ASC", stmt)
 	if opts.PageSize > 0 {
 		stmt = fmt.Sprintf("%s LIMIT %d", stmt, opts.PageSize) // + 1 is NOT used here as we always return a continuation token
 	}
-	return stmt
+	return stmt, nil
 }
 
 func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) string {

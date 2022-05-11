@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -50,13 +51,7 @@ func WithMaxTypesInTypeDefinition(maxTypes int) PostgresOption {
 	}
 }
 
-func New(
-	pool *pgxpool.Pool,
-	tracer trace.Tracer,
-	logger logger.Logger,
-	opts ...PostgresOption,
-) *Postgres {
-
+func New(pool *pgxpool.Pool, tracer trace.Tracer, logger logger.Logger, opts ...PostgresOption) *Postgres {
 	p := &Postgres{
 		pool:   pool,
 		tracer: tracer,
@@ -342,20 +337,20 @@ func (p *Postgres) WriteAuthorizationModel(
 	tds *openfgapb.TypeDefinitions,
 ) error {
 
-	if len(tds.TypeDefinitions) > p.MaxTypesInTypeDefinition() {
+	if len(tds.GetTypeDefinitions()) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
 	stmt := `INSERT INTO authorization_model (store, authorization_model_id, type, type_definition, inserted_at) VALUES ($1, $2, $3, $4, NOW())`
 
 	inserts := &pgx.Batch{}
-	for _, typeDef := range tds.TypeDefinitions {
+	for _, typeDef := range tds.GetTypeDefinitions() {
 		marshalledTypeDef, err := proto.Marshal(typeDef)
 		if err != nil {
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, typeDef.Type, marshalledTypeDef)
+		inserts.Queue(stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
 	}
 
 	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
@@ -413,12 +408,16 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 
 func (p *Postgres) ReadChanges(
 	ctx context.Context,
-	store, objectType string,
+	store, objectTypeFilter string,
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
 ) ([]*openfga.TupleChange, []byte, error) {
 
-	stmt := buildReadChangesQuery(store, objectType, opts, horizonOffset)
+	stmt, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	rows, err := p.pool.Query(ctx, stmt)
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
@@ -426,13 +425,12 @@ func (p *Postgres) ReadChanges(
 
 	var changes []*openfga.TupleChange
 	var ulid string
-
 	for rows.Next() {
-		var objectID, relation, user string
+		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
 
-		err = rows.Scan(&ulid, &objectID, &relation, &user, &operation, &insertedAt)
+		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
 		if err != nil {
 			return nil, nil, handlePostgresError(err)
 		}
@@ -452,5 +450,13 @@ func (p *Postgres) ReadChanges(
 		return nil, nil, storage.NotFound
 	}
 
-	return changes, []byte(ulid), nil
+	contToken, err := json.Marshal(readChangesContToken{
+		Ulid:       ulid,
+		ObjectType: objectTypeFilter,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return changes, contToken, nil
 }

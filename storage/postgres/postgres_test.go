@@ -1,4 +1,4 @@
-package postgres
+package postgres_test
 
 import (
 	"context"
@@ -20,6 +20,7 @@ import (
 	pkgTestutils "github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
+	"github.com/openfga/openfga/storage/postgres"
 	"github.com/openfga/openfga/storage/postgres/testutils"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -27,8 +28,8 @@ import (
 )
 
 var (
-	ctx      context.Context
-	postgres *Postgres
+	pool *pgxpool.Pool
+	pg   *postgres.Postgres
 )
 
 var (
@@ -40,18 +41,19 @@ var (
 )
 
 type testConfig struct {
-	PostgresURI string `envconfig:"POSTGRES_URI" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
+	PostgresURL string `envconfig:"POSTGRES_URI" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
 }
 
 func TestMain(m *testing.M) {
 	var config testConfig
-	if err := envconfig.Process("TEST_CONFIG", &config); err != nil {
+	err := envconfig.Process("TEST_CONFIG", &config)
+	if err != nil {
 		fmt.Printf("error reading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	ctx = context.Background()
-	pool, err := pgxpool.Connect(ctx, config.PostgresURI)
+	ctx := context.Background()
+	pool, err = pgxpool.Connect(ctx, config.PostgresURL)
 	if err != nil {
 		fmt.Printf("failed to create Postgres pool: %v\n", err)
 		os.Exit(1)
@@ -63,7 +65,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	postgres = New(pool, telemetry.NewNoopTracer(), logger.NewNoopLogger())
+	pg = postgres.New(pool, telemetry.NewNoopTracer(), logger.NewNoopLogger())
 
 	// Because we want different store names
 	rand.Seed(time.Now().UnixNano())
@@ -72,15 +74,17 @@ func TestMain(m *testing.M) {
 }
 
 func TestTupleWritingAndReading(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("inserting the same tuple twice fails and introduces no changes", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE)
-		if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk, tk}); err.Error() != expectedError.Error() {
+		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk, tk}); err.Error() != expectedError.Error() {
 			t.Errorf("got '%v', want '%v'", err, expectedError)
 		}
 		// Ensure that nothing got written
-		if _, err := postgres.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
 			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
@@ -107,14 +111,14 @@ func TestTupleWritingAndReading(t *testing.T) {
 		expectedError := storage.InvalidWriteInputError(tks[2], openfga.TupleOperation_WRITE)
 
 		// Write tks
-		if err := postgres.Write(ctx, store, nil, tks); err != nil {
+		if err := pg.Write(ctx, store, nil, tks); err != nil {
 			t.Error(err)
 		}
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		if err := postgres.Write(ctx, store, []*openfga.TupleKey{tks[0], tks[1]}, []*openfga.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
+		if err := pg.Write(ctx, store, []*openfga.TupleKey{tks[0], tks[1]}, []*openfga.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
 			t.Errorf("got '%v', want '%v'", err, expectedError)
 		}
-		tuples, _, err := postgres.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
+		tuples, _, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
 		if err != nil {
 			t.Error(err)
 		}
@@ -128,7 +132,7 @@ func TestTupleWritingAndReading(t *testing.T) {
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_DELETE)
 
-		if err := postgres.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
+		if err := pg.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
 			t.Errorf("got '%v', want '%v'", err, expectedError)
 		}
 	})
@@ -138,15 +142,15 @@ func TestTupleWritingAndReading(t *testing.T) {
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		// Write
-		if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
+		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
 			t.Error(err)
 		}
 		// Then delete
-		if err := postgres.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err != nil {
+		if err := pg.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err != nil {
 			t.Error(err)
 		}
 		// Ensure it is not there
-		if _, err := postgres.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
 			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
@@ -157,11 +161,11 @@ func TestTupleWritingAndReading(t *testing.T) {
 		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE)
 
 		// First write should succeed.
-		if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
+		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
 			t.Error(err)
 		}
 		// Second write of the same tuple should fail.
-		if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err.Error() != expectedError.Error() {
+		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err.Error() != expectedError.Error() {
 			t.Errorf("got '%v', want '%v'", err, expectedError)
 		}
 	})
@@ -170,10 +174,10 @@ func TestTupleWritingAndReading(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		tuple := &openfga.Tuple{Key: &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
 
-		if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tuple.Key}); err != nil {
+		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tuple.Key}); err != nil {
 			t.Error(err)
 		}
-		gotTuple, err := postgres.ReadUserTuple(ctx, store, tuple.Key)
+		gotTuple, err := pg.ReadUserTuple(ctx, store, tuple.Key)
 		if err != nil {
 			t.Error(err)
 		}
@@ -186,7 +190,7 @@ func TestTupleWritingAndReading(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		if _, err := postgres.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
 			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
@@ -211,10 +215,10 @@ func TestTupleWritingAndReading(t *testing.T) {
 			},
 		}
 
-		if err := postgres.Write(ctx, store, nil, tks); err != nil {
+		if err := pg.Write(ctx, store, nil, tks); err != nil {
 			t.Error(err)
 		}
-		gotTuples, err := postgres.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := pg.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
 			t.Error(err)
 		}
@@ -238,7 +242,7 @@ func TestTupleWritingAndReading(t *testing.T) {
 	t.Run("reading userset tuples that don't exist should an empty iterator", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 
-		gotTuples, err := postgres.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := pg.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
 			t.Error(err)
 		}
@@ -249,16 +253,17 @@ func TestTupleWritingAndReading(t *testing.T) {
 }
 
 func TestTuplePaginationOptions(t *testing.T) {
+	ctx := context.Background()
 	store := pkgTestutils.CreateRandomString(10)
 	tk0 := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 	tk1 := &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
 
-	if err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk0, tk1}); err != nil {
+	if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk0, tk1}); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("readPage pagination works properly", func(t *testing.T) {
-		tuples0, contToken0, err := postgres.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples0, contToken0, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Error(err)
 		}
@@ -272,7 +277,7 @@ func TestTuplePaginationOptions(t *testing.T) {
 			t.Errorf("got '%s', want empty", string(contToken0))
 		}
 
-		tuples1, contToken1, err := postgres.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuples1, contToken1, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -288,7 +293,7 @@ func TestTuplePaginationOptions(t *testing.T) {
 	})
 
 	t.Run("reading a page completely does not return a continuation token", func(t *testing.T) {
-		tuples, contToken, err := postgres.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
 		if err != nil {
 			t.Error(err)
 		}
@@ -301,7 +306,7 @@ func TestTuplePaginationOptions(t *testing.T) {
 	})
 
 	t.Run("reading a page partially returns a continuation token", func(t *testing.T) {
-		tuples, contToken, err := postgres.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Error(err)
 		}
@@ -314,9 +319,12 @@ func TestTuplePaginationOptions(t *testing.T) {
 	})
 
 	t.Run("readByStore pagination works properly", func(t *testing.T) {
-		tuple0, contToken0, err := postgres.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
+		tuple0, contToken0, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Error(err)
+		}
+		if len(tuple0) != 1 {
+			t.Fatalf("expected one tuple, got %d", len(tuple0))
 		}
 		if diff := cmp.Diff(tuple0[0].Key, tk0, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
@@ -325,9 +333,12 @@ func TestTuplePaginationOptions(t *testing.T) {
 			t.Error("got empty, want non-empty")
 		}
 
-		tuple1, contToken1, err := postgres.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuple1, contToken1, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		if err != nil {
 			t.Error(err)
+		}
+		if len(tuple1) != 1 {
+			t.Fatalf("expected one tuple, got %d", len(tuple1))
 		}
 		if diff := cmp.Diff(tuple1[0].Key, tk1, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
@@ -338,7 +349,7 @@ func TestTuplePaginationOptions(t *testing.T) {
 	})
 
 	t.Run("reading by store completely does not return a continuation token", func(t *testing.T) {
-		tuples, contToken, err := postgres.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 2})
 		if err != nil {
 			t.Error(err)
 		}
@@ -351,7 +362,7 @@ func TestTuplePaginationOptions(t *testing.T) {
 	})
 
 	t.Run("reading by store partially returns a continuation token", func(t *testing.T) {
-		tuples, contToken, err := postgres.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Error(err)
 		}
@@ -365,9 +376,11 @@ func TestTuplePaginationOptions(t *testing.T) {
 }
 
 func TestFindLatestAuthorizationModelID(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
-		_, err := postgres.FindLatestAuthorizationModelID(ctx, store)
+		_, err := pg.FindLatestAuthorizationModelID(ctx, store)
 		if !errors.Is(err, storage.NotFound) {
 			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
 		}
@@ -380,7 +393,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = postgres.WriteAuthorizationModel(context.Background(), store, oldModelID, &openfgapb.TypeDefinitions{
+		err = pg.WriteAuthorizationModel(ctx, store, oldModelID, &openfgapb.TypeDefinitions{
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -400,7 +413,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = postgres.WriteAuthorizationModel(context.Background(), store, newModelID, &openfgapb.TypeDefinitions{
+		err = pg.WriteAuthorizationModel(ctx, store, newModelID, &openfgapb.TypeDefinitions{
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -416,7 +429,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 			t.Errorf("failed to write authorization model: %v", err)
 		}
 
-		latestID, err := postgres.FindLatestAuthorizationModelID(context.Background(), store)
+		latestID, err := pg.FindLatestAuthorizationModelID(ctx, store)
 		if err != nil {
 			t.Errorf("failed to read latest authorization model: %v", err)
 		}
@@ -428,7 +441,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 }
 
 func TestWriteAndReadAuthorizationModel(t *testing.T) {
-
+	ctx := context.Background()
 	store := pkgTestutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	if err != nil {
@@ -449,11 +462,11 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 		},
 	}
 
-	if err := postgres.WriteAuthorizationModel(ctx, store, modelID, expectedModel); err != nil {
+	if err := pg.WriteAuthorizationModel(ctx, store, modelID, expectedModel); err != nil {
 		t.Errorf("failed to write authorization model: %v", err)
 	}
 
-	model, err := postgres.ReadAuthorizationModel(ctx, store, modelID)
+	model, err := pg.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		t.Errorf("failed to read authorization model: %v", err)
 	}
@@ -471,13 +484,15 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 		t.Errorf("mismatch (-got +want):\n%s", diff)
 	}
 
-	_, err = postgres.ReadAuthorizationModel(context.Background(), "undefined", modelID)
+	_, err = pg.ReadAuthorizationModel(ctx, "undefined", modelID)
 	if err != storage.NotFound {
 		t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
 	}
 }
 
 func TestReadTypeDefinition(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		modelID, err := id.NewString()
@@ -485,7 +500,7 @@ func TestReadTypeDefinition(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = postgres.ReadTypeDefinition(ctx, store, modelID, "folder")
+		_, err = pg.ReadTypeDefinition(ctx, store, modelID, "folder")
 		if !errors.Is(err, storage.NotFound) {
 			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
 		}
@@ -508,7 +523,7 @@ func TestReadTypeDefinition(t *testing.T) {
 			},
 		}
 
-		err = postgres.WriteAuthorizationModel(context.Background(), store, modelID, &openfgapb.TypeDefinitions{
+		err = pg.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				expectedTypeDef,
 			},
@@ -517,7 +532,7 @@ func TestReadTypeDefinition(t *testing.T) {
 			t.Errorf("failed to write authorization model: %v", err)
 		}
 
-		typeDef, err := postgres.ReadTypeDefinition(context.Background(), store, modelID, "folder")
+		typeDef, err := pg.ReadTypeDefinition(ctx, store, modelID, "folder")
 		if err != nil {
 			t.Errorf("expected no error but got '%v'", err)
 		}
@@ -539,12 +554,13 @@ func TestReadTypeDefinition(t *testing.T) {
 }
 
 func TestReadAuthorizationModels(t *testing.T) {
+	ctx := context.Background()
 	store := pkgTestutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID1, &openfgapb.TypeDefinitions{
+	err = pg.WriteAuthorizationModel(ctx, store, modelID1, &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -566,7 +582,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = postgres.WriteAuthorizationModel(context.Background(), store, modelID2, &openfgapb.TypeDefinitions{
+	err = pg.WriteAuthorizationModel(ctx, store, modelID2, &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -584,7 +600,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 		t.Errorf("failed to write authorization model: %v", err)
 	}
 
-	modelIDs, continuationToken, err := postgres.ReadAuthorizationModels(context.Background(), store, storage.PaginationOptions{
+	modelIDs, continuationToken, err := pg.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 1,
 	})
 	if err != nil {
@@ -599,7 +615,7 @@ func TestReadAuthorizationModels(t *testing.T) {
 		t.Error("expected non-empty continuation token")
 	}
 
-	modelIDs, continuationToken, err = postgres.ReadAuthorizationModels(context.Background(), store, storage.PaginationOptions{
+	modelIDs, continuationToken, err = pg.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 2,
 		From:     string(continuationToken),
 	})
@@ -617,6 +633,8 @@ func TestReadAuthorizationModels(t *testing.T) {
 }
 
 func TestAssertion(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("writing and reading assertions succeeds", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		modelID, err := id.NewString()
@@ -634,12 +652,12 @@ func TestAssertion(t *testing.T) {
 			},
 		}
 
-		err = postgres.WriteAssertions(ctx, store, modelID, assertions)
+		err = pg.WriteAssertions(ctx, store, modelID, assertions)
 		if err != nil {
 			t.Error(err)
 		}
 
-		gotAssertions, err := postgres.ReadAssertions(ctx, store, modelID)
+		gotAssertions, err := pg.ReadAssertions(ctx, store, modelID)
 		if err != nil {
 			t.Error(err)
 		}
@@ -666,12 +684,12 @@ func TestAssertion(t *testing.T) {
 			},
 		}
 
-		err = postgres.WriteAssertions(ctx, store, oldModelID, assertions)
+		err = pg.WriteAssertions(ctx, store, oldModelID, assertions)
 		if err != nil {
 			t.Error(err)
 		}
 
-		gotAssertions, err := postgres.ReadAssertions(ctx, store, newModelID)
+		gotAssertions, err := pg.ReadAssertions(ctx, store, newModelID)
 		if err != nil {
 			t.Error(err)
 		}
@@ -682,6 +700,7 @@ func TestAssertion(t *testing.T) {
 }
 
 func TestReadChanges(t *testing.T) {
+	ctx := context.Background()
 
 	t.Run("read changes with continuation token", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
@@ -697,20 +716,12 @@ func TestReadChanges(t *testing.T) {
 			User:     "bill",
 		}
 
-		err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Errorf("failed to write tuples: %v", err)
 		}
 
-		changes, continuationToken, err := postgres.ReadChanges(
-			context.Background(),
-			store,
-			"folder",
-			storage.PaginationOptions{
-				PageSize: 1,
-			},
-			0,
-		)
+		changes, continuationToken, err := pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: 1}, 0)
 		if err != nil {
 			t.Errorf("expected no error but got '%v'", err)
 		}
@@ -730,14 +741,10 @@ func TestReadChanges(t *testing.T) {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
 		}
 
-		changes, continuationToken, err = postgres.ReadChanges(
-			context.Background(),
-			store,
-			"folder",
-			storage.PaginationOptions{
-				PageSize: 2,
-				From:     string(continuationToken),
-			},
+		changes, continuationToken, err = pg.ReadChanges(ctx, store, "", storage.PaginationOptions{
+			PageSize: 2,
+			From:     string(continuationToken),
+		},
 			0,
 		)
 		if err != nil {
@@ -762,7 +769,7 @@ func TestReadChanges(t *testing.T) {
 	t.Run("read changes with no changes should return not found", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 
-		_, _, err := postgres.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		_, _, err := pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
 		if !errors.Is(err, storage.NotFound) {
 			t.Errorf("expected '%v', got '%v'", storage.NotFound, err)
 		}
@@ -782,12 +789,12 @@ func TestReadChanges(t *testing.T) {
 			User:     "bill",
 		}
 
-		err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, _, err = postgres.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
+		_, _, err = pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
 		if !errors.Is(err, storage.NotFound) {
 			t.Errorf("expected '%v', got '%v'", storage.NotFound, err)
 		}
@@ -807,12 +814,12 @@ func TestReadChanges(t *testing.T) {
 			User:     "bill",
 		}
 
-		err := postgres.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		changes, continuationToken, err := postgres.ReadChanges(ctx, store, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		changes, continuationToken, err := pg.ReadChanges(ctx, store, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
 		if err != nil {
 			t.Errorf("expected no error but got '%v'", err)
 		}
