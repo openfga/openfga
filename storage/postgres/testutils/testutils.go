@@ -7,8 +7,16 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
+var dropTablesString = `
+DROP TABLE IF EXISTS tuple;
+DROP TABLE IF EXISTS authorization_model;
+DROP TABLE IF EXISTS store;
+DROP TABLE IF EXISTS assertion;
+DROP TABLE IF EXISTS changelog;
+`
+
 var createTablesString = `
-CREATE TABLE IF NOT EXISTS tuple (
+CREATE TABLE tuple (
 	store TEXT NOT NULL,
 	object_type TEXT NOT NULL,
 	object_id TEXT NOT NULL,
@@ -20,11 +28,11 @@ CREATE TABLE IF NOT EXISTS tuple (
 	PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
 
-CREATE INDEX IF NOT EXISTS partial_user_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user';
-CREATE INDEX IF NOT EXISTS partial_userset_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';
-CREATE UNIQUE INDEX IF NOT EXISTS ulid_idx ON tuple (ulid);
+CREATE INDEX partial_user_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user';
+CREATE INDEX partial_userset_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';
+CREATE UNIQUE INDEX ulid_idx ON tuple (ulid);
 
-CREATE TABLE IF NOT EXISTS authorization_model (
+CREATE TABLE authorization_model (
 	store TEXT NOT NULL,
 	authorization_model_id TEXT NOT NULL,
 	type TEXT NOT NULL,
@@ -33,14 +41,24 @@ CREATE TABLE IF NOT EXISTS authorization_model (
 	PRIMARY KEY (store, authorization_model_id, type)
 );
 
-CREATE TABLE IF NOT EXISTS assertion (
+CREATE TABLE store (
+	row_id BIGSERIAL NOT NULL,
+	id TEXT NOT NULL,
+	name TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL,
+	updated_at TIMESTAMPTZ,
+	deleted_at TIMESTAMPTZ,
+	PRIMARY KEY (id, row_id)
+);
+
+CREATE TABLE assertion (
 	store TEXT NOT NULL,
 	authorization_model_id TEXT NOT NULL,
 	assertions BYTEA NOT NULL,
 	PRIMARY KEY (store, authorization_model_id)
 );
 
-CREATE TABLE IF NOT EXISTS changelog (
+CREATE TABLE changelog (
 	store TEXT NOT NULL,
 	object_type TEXT NOT NULL,
 	object_id TEXT NOT NULL,
@@ -54,7 +72,11 @@ CREATE TABLE IF NOT EXISTS changelog (
 `
 
 func CreatePostgresTestTables(ctx context.Context, pool *pgxpool.Pool) error {
-	if _, err := pool.Exec(ctx, createTablesString); err != nil {
+	if _, err := pool.Exec(ctx, dropTablesString[1:]); err != nil {
+		return fmt.Errorf("error dropping Postgres tables: %w", err)
+	}
+
+	if _, err := pool.Exec(ctx, createTablesString[1:]); err != nil {
 		return fmt.Errorf("error creating Postgres tables: %w", err)
 	}
 	return nil

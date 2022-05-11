@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -176,6 +177,19 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 	}
 	stmt = fmt.Sprintf("%s ORDER BY inserted_at LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
 	return stmt
+}
+
+func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
+	stmt := "SELECT row_id, id, name, created_at, updated_at FROM store WHERE deleted_at IS NULL"
+	if opts.From != "" {
+		from, err := strconv.ParseInt(opts.From, 10, 64)
+		if err != nil {
+			return "", err
+		}
+		stmt = fmt.Sprintf("%s AND row_id >= %d", stmt, from)
+	}
+	stmt = fmt.Sprintf("%s ORDER BY row_id LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
+	return stmt, nil
 }
 
 func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {

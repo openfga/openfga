@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -34,6 +35,7 @@ type Postgres struct {
 
 var _ storage.TupleBackend = &Postgres{}
 var _ storage.AuthorizationModelBackend = &Postgres{}
+var _ storage.StoresBackend = &Postgres{}
 var _ storage.AssertionsBackend = &Postgres{}
 var _ storage.ChangelogBackend = &Postgres{}
 
@@ -360,6 +362,98 @@ func (p *Postgres) WriteAuthorizationModel(
 
 		return nil
 	})
+	if err != nil {
+		return handlePostgresError(err)
+	}
+
+	return nil
+}
+
+func (p *Postgres) CreateStore(ctx context.Context, store *openfga.Store) (*openfga.Store, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
+	defer span.End()
+
+	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())"
+	_, err := p.pool.Exec(ctx, stmt, store.Id, store.Name)
+	if err != nil {
+		return nil, handlePostgresError(err)
+	}
+
+	return store, nil
+}
+
+func (p *Postgres) GetStore(ctx context.Context, id string) (*openfga.Store, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.GetStore")
+	defer span.End()
+
+	row := p.pool.QueryRow(ctx, "SELECT id, name, created_at, updated_at FROM store WHERE id = $1 AND deleted_at IS NULL", id)
+
+	var storeId, name string
+	var createdAt, updatedAt time.Time
+	err := row.Scan(&storeId, &name, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.NotFound
+		}
+		return nil, handlePostgresError(err)
+	}
+
+	return &openfga.Store{
+		Id:        storeId,
+		Name:      name,
+		CreatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(updatedAt),
+	}, nil
+}
+
+func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfga.Store, []byte, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
+	defer span.End()
+
+	stmt, err := buildListStoresQuery(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rows, err := p.pool.Query(ctx, stmt)
+	if err != nil {
+		return nil, nil, handlePostgresError(err)
+	}
+
+	var stores []*openfga.Store
+	var rowId int64
+	for rows.Next() {
+		var storeId, name string
+		var createdAt, updatedAt time.Time
+		err := rows.Scan(&rowId, &storeId, &name, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, nil, handlePostgresError(err)
+		}
+
+		stores = append(stores, &openfga.Store{
+			Id:        storeId,
+			Name:      name,
+			CreatedAt: timestamppb.New(createdAt),
+			UpdatedAt: timestamppb.New(updatedAt),
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, nil, handlePostgresError(err)
+	}
+
+	if len(stores) > opts.PageSize {
+		return stores[:opts.PageSize], []byte(strconv.FormatInt(rowId, 10)), nil
+	}
+
+	return stores, nil, nil
+}
+
+func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
+	ctx, span := p.tracer.Start(ctx, "postgres.DeleteStore")
+	defer span.End()
+
+	_, err := p.pool.Exec(ctx, "UPDATE store SET deleted_at = NOW() WHERE id = $1", id)
 	if err != nil {
 		return handlePostgresError(err)
 	}

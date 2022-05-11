@@ -25,6 +25,7 @@ import (
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/api/iterator"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -630,6 +631,108 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if len(continuationToken) != 0 {
 		t.Errorf("expected empty continuation token but got '%v'", string(continuationToken))
 	}
+}
+
+func TestStore(t *testing.T) {
+	ctx := context.Background()
+
+	// Create some stores
+	numStores := 10
+	var stores []*openfga.Store
+	for i := 0; i < numStores; i++ {
+		store := &openfga.Store{
+			Id:        pkgTestutils.CreateRandomString(10),
+			Name:      pkgTestutils.CreateRandomString(10),
+			CreatedAt: timestamppb.New(time.Now()),
+			UpdatedAt: nil,
+			DeletedAt: nil,
+		}
+
+		_, err := pg.CreateStore(ctx, store)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		stores = append(stores, store)
+	}
+
+	t.Run("list stores succeeds", func(t *testing.T) {
+		gotStores, ct, err := pg.ListStores(ctx, storage.PaginationOptions{PageSize: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(gotStores) != 1 {
+			t.Fatalf("expected one store, got %d", len(gotStores))
+		}
+		if gotStores[0].Id != stores[0].Id || gotStores[0].Name != stores[0].Name {
+			t.Fatalf("got (%v), expected (%v)", gotStores[0], stores[0])
+		}
+		if len(ct) == 0 {
+			t.Fatal("expected a continuation token but did not get one")
+		}
+
+		gotStores, ct, err = pg.ListStores(ctx, storage.PaginationOptions{PageSize: numStores, From: string(ct)})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if gotStores[0].Id != stores[1].Id || gotStores[0].Name != stores[1].Name {
+			t.Fatalf("got (%v), expected (%v)", gotStores[0], stores[1])
+		}
+		if len(ct) != 0 {
+			t.Fatalf("did not expect a continuation token but got: %s", string(ct))
+		}
+	})
+
+	t.Run("get store succeeds", func(t *testing.T) {
+		store := stores[0]
+		gotStore, err := pg.GetStore(ctx, store.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if gotStore.Id != store.Id || gotStore.Name != store.Name {
+			t.Errorf("got '%v', expected '%v'", gotStore, store)
+		}
+	})
+
+	t.Run("get non-existant store returns not found", func(t *testing.T) {
+		_, err := pg.GetStore(ctx, "foo")
+		if !errors.Is(err, storage.NotFound) {
+			t.Errorf("got '%v', expected '%v'", err, storage.NotFound)
+		}
+	})
+
+	t.Run("delete store succeeds", func(t *testing.T) {
+		store := stores[1]
+		err := pg.DeleteStore(ctx, store.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should not be able to get the store now
+		_, err = pg.GetStore(ctx, store.Id)
+		if !errors.Is(err, storage.NotFound) {
+			t.Errorf("got '%v', expected '%v'", err, storage.NotFound)
+		}
+	})
+
+	t.Run("deleted store does not appear in list", func(t *testing.T) {
+		store := stores[2]
+		err := pg.DeleteStore(ctx, store.Id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Store id should not appear in the list of store ids
+		gotStores, _, err := pg.ListStores(ctx, storage.PaginationOptions{PageSize: storage.DefaultPageSize})
+		for _, s := range gotStores {
+			if s.Id == store.Id {
+				t.Errorf("deleted store '%s' appears in ListStores", s)
+			}
+		}
+	})
 }
 
 func TestAssertion(t *testing.T) {
