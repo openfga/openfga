@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-errors/errors"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -17,8 +19,6 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
-	"github.com/go-errors/errors"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rs/cors"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -333,6 +333,20 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1pb.CreateStoreRe
 	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated), s.logger)
 
 	return response, nil
+}
+
+func (s *Server) DeleteStore(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) (*openfgav1pb.DeleteStoreResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "deleteStore")
+	defer span.End()
+
+	cmd := commands.NewDeleteStoreCommand(s.storesBackend, s.logger)
+	err := cmd.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), s.logger)
+
+	return &openfgav1pb.DeleteStoreResponse{}, nil
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgav1pb.GetStoreRequest) (*openfgav1pb.GetStoreResponse, error) {

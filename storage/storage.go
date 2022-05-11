@@ -103,6 +103,8 @@ type AuthorizationModelBackend interface {
 type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfga.Store) (*openfga.Store, error)
 
+	DeleteStore(ctx context.Context, id string) error
+
 	GetStore(ctx context.Context, id string) (*openfga.Store, error)
 
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfga.Store, []byte, error)
