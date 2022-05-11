@@ -160,15 +160,15 @@ func (s *Server) Read(ctx context.Context, req *openfgav1pb.ReadRequest) (*openf
 	})
 }
 
-func (s *Server) ReadTuples(ctx context.Context, readTuplesRequest *openfgav1pb.ReadTuplesRequest) (*openfgav1pb.ReadTuplesResponse, error) {
+func (s *Server) ReadTuples(ctx context.Context, req *openfgav1pb.ReadTuplesRequest) (*openfgav1pb.ReadTuplesResponse, error) {
 
 	ctx, span := s.tracer.Start(ctx, "readTuples", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(readTuplesRequest.GetStoreId())},
+		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
 	defer span.End()
 
 	q := queries.NewReadTuplesQuery(s.tupleBackend, s.encoder, s.logger)
-	return q.Execute(ctx, readTuplesRequest)
+	return q.Execute(ctx, req)
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgav1pb.WriteRequest) (*openfgav1pb.WriteResponse, error) {
@@ -283,17 +283,24 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1pb.R
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1pb.WriteAssertionsRequest) (*openfgav1pb.WriteAssertionsResponse, error) {
+	store := req.GetStoreId()
 	ctx, span := s.tracer.Start(ctx, "writeAssertions", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
+		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
 	))
 	defer span.End()
-	authorizationModelId, err := s.resolveAuthorizationModelId(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+
+	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(authorizationModelId)})
+	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
+
 	c := commands.NewWriteAssertionsCommand(s.assertionsBackend, s.typeDefinitionReadBackend, s.logger)
-	return c.Execute(ctx, req)
+	return c.Execute(ctx, &openfgav1pb.WriteAssertionsRequest{
+		StoreId:              store,
+		AuthorizationModelId: modelID,
+		Assertions:           req.GetAssertions(),
+	})
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1pb.ReadAssertionsRequest) (*openfgav1pb.ReadAssertionsResponse, error) {
@@ -357,6 +364,20 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1pb.GetStoreRequest)
 
 	q := queries.NewGetStoreQuery(s.storesBackend, s.logger)
 	return q.Execute(ctx, req)
+}
+
+func (s *Server) DeleteStore(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) (*openfgav1pb.DeleteStoreResponse, error) {
+	ctx, span := s.tracer.Start(ctx, "deleteStore")
+	defer span.End()
+
+	cmd := commands.NewDeleteStoreCommand(s.storesBackend, s.logger)
+	err := cmd.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), s.logger)
+
+	return &openfgav1pb.DeleteStoreResponse{}, nil
 }
 
 func (s *Server) ListStores(ctx context.Context, req *openfgav1pb.ListStoresRequest) (*openfgav1pb.ListStoresResponse, error) {

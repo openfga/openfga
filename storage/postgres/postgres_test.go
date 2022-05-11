@@ -23,7 +23,7 @@ import (
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/openfga/openfga/storage/postgres/testutils"
 	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -394,13 +394,13 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = pg.WriteAuthorizationModel(ctx, store, oldModelID, &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+		err = pg.WriteAuthorizationModel(ctx, store, oldModelID, &openfgav1pb.TypeDefinitions{
+			TypeDefinitions: []*openfgav1pb.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1pb.Userset{
 						"viewer": {
-							Userset: &openfgapb.Userset_This{},
+							Userset: &openfgav1pb.Userset_This{},
 						},
 					},
 				},
@@ -414,13 +414,13 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = pg.WriteAuthorizationModel(ctx, store, newModelID, &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+		err = pg.WriteAuthorizationModel(ctx, store, newModelID, &openfgav1pb.TypeDefinitions{
+			TypeDefinitions: []*openfgav1pb.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1pb.Userset{
 						"reader": {
-							Userset: &openfgapb.Userset_This{},
+							Userset: &openfgav1pb.Userset_This{},
 						},
 					},
 				},
@@ -448,14 +448,14 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedModel := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+	expectedModel := &openfgav1pb.TypeDefinitions{
+		TypeDefinitions: []*openfgav1pb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1pb.Userset{
 					"viewer": {
-						Userset: &openfgapb.Userset_This{
-							This: &openfgapb.DirectUserset{},
+						Userset: &openfgav1pb.Userset_This{
+							This: &openfgav1pb.DirectUserset{},
 						},
 					},
 				},
@@ -474,10 +474,10 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
+			openfgav1pb.TypeDefinition{},
+			openfgav1pb.Userset{},
+			openfgav1pb.Userset_This{},
+			openfgav1pb.DirectUserset{},
 		),
 	}
 
@@ -513,19 +513,19 @@ func TestReadTypeDefinition(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expectedTypeDef := &openfgapb.TypeDefinition{
+		expectedTypeDef := &openfgav1pb.TypeDefinition{
 			Type: "folder",
-			Relations: map[string]*openfgapb.Userset{
+			Relations: map[string]*openfgav1pb.Userset{
 				"viewer": {
-					Userset: &openfgapb.Userset_This{
-						This: &openfgapb.DirectUserset{},
+					Userset: &openfgav1pb.Userset_This{
+						This: &openfgav1pb.DirectUserset{},
 					},
 				},
 			},
 		}
 
-		err = pg.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+		err = pg.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{
+			TypeDefinitions: []*openfgav1pb.TypeDefinition{
 				expectedTypeDef,
 			},
 		})
@@ -540,10 +540,10 @@ func TestReadTypeDefinition(t *testing.T) {
 
 		cmpOpts := []cmp.Option{
 			cmpopts.IgnoreUnexported(
-				openfgapb.TypeDefinition{},
-				openfgapb.Userset{},
-				openfgapb.Userset_This{},
-				openfgapb.DirectUserset{},
+				openfgav1pb.TypeDefinition{},
+				openfgav1pb.Userset{},
+				openfgav1pb.Userset_This{},
+				openfgav1pb.DirectUserset{},
 			),
 		}
 
@@ -561,14 +561,14 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = pg.WriteAuthorizationModel(ctx, store, modelID1, &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+	err = pg.WriteAuthorizationModel(ctx, store, modelID1, &openfgav1pb.TypeDefinitions{
+		TypeDefinitions: []*openfgav1pb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1pb.Userset{
 					"viewer": {
-						Userset: &openfgapb.Userset_This{
-							This: &openfgapb.DirectUserset{},
+						Userset: &openfgav1pb.Userset_This{
+							This: &openfgav1pb.DirectUserset{},
 						},
 					},
 				},
@@ -583,14 +583,14 @@ func TestReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = pg.WriteAuthorizationModel(ctx, store, modelID2, &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+	err = pg.WriteAuthorizationModel(ctx, store, modelID2, &openfgav1pb.TypeDefinitions{
+		TypeDefinitions: []*openfgav1pb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1pb.Userset{
 					"reader": {
-						Userset: &openfgapb.Userset_This{
-							This: &openfgapb.DirectUserset{},
+						Userset: &openfgav1pb.Userset_This{
+							This: &openfgav1pb.DirectUserset{},
 						},
 					},
 				},

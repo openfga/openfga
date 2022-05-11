@@ -11,10 +11,11 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -224,7 +225,7 @@ func (p *Postgres) MaxTuplesInWriteOperation() int {
 	return p.maxTuplesInWrite
 }
 
-func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
+func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1pb.AuthorizationModel, error) {
 
 	stmt := "SELECT type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
 	rows, err := p.pool.Query(ctx, stmt, store, modelID)
@@ -232,7 +233,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, handlePostgresError(err)
 	}
 
-	var typeDefs []*openfgapb.TypeDefinition
+	var typeDefs []*openfgav1pb.TypeDefinition
 
 	for rows.Next() {
 		var typeName string
@@ -242,7 +243,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 			return nil, handlePostgresError(err)
 		}
 
-		var typeDef openfgapb.TypeDefinition
+		var typeDef openfgav1pb.TypeDefinition
 		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
 			return nil, err
 		}
@@ -258,7 +259,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, storage.NotFound
 	}
 
-	return &openfgapb.AuthorizationModel{
+	return &openfgav1pb.AuthorizationModel{
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -312,7 +313,7 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 func (p *Postgres) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
-) (*openfgapb.TypeDefinition, error) {
+) (*openfgav1pb.TypeDefinition, error) {
 
 	var marshalledTypeDef []byte
 	stmt := "SELECT type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2 AND type = $3"
@@ -321,7 +322,7 @@ func (p *Postgres) ReadTypeDefinition(
 		return nil, handlePostgresError(err)
 	}
 
-	var typeDef openfgapb.TypeDefinition
+	var typeDef openfgav1pb.TypeDefinition
 	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
 		return nil, err
 	}
@@ -336,7 +337,7 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 func (p *Postgres) WriteAuthorizationModel(
 	ctx context.Context,
 	store, modelID string,
-	tds *openfgapb.TypeDefinitions,
+	tds *openfgav1pb.TypeDefinitions,
 ) error {
 
 	if len(tds.GetTypeDefinitions()) > p.MaxTypesInTypeDefinition() {
@@ -531,7 +532,7 @@ func (p *Postgres) ReadChanges(
 
 		changes = append(changes, &openfga.TupleChange{
 			TupleKey: &openfga.TupleKey{
-				Object:   tupleUtils.BuildObject(objectType, objectID),
+				Object:   tuple.BuildObject(objectType, objectID),
 				Relation: relation,
 				User:     user,
 			},

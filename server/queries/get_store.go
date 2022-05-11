@@ -3,10 +3,10 @@ package queries
 import (
 	"context"
 
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"github.com/go-errors/errors"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 

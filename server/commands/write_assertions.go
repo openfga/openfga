@@ -35,19 +35,19 @@ func NewWriteAssertionsCommand(
 
 func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1pb.WriteAssertionsRequest) (*openfgav1pb.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
-	authzModelId := req.GetAuthorizationModelId()
-	assertions := req.Params.GetAssertions()
-	dbCallsCounter := utils.NewDBCallCounter()
+	modelID := req.GetAuthorizationModelId()
+	assertions := req.GetAssertions()
 
+	dbCallsCounter := utils.NewDBCallCounter()
 	for _, assertion := range assertions {
-		if _, err := tupleUtils.ValidateTuple(ctx, w.typeDefinitionBackend, store, authzModelId, assertion.TupleKey, dbCallsCounter); err != nil {
+		if _, err := tupleUtils.ValidateTuple(ctx, w.typeDefinitionBackend, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
 	dbCallsCounter.AddWriteCall()
 	utils.LogDBStats(ctx, w.logger, "WriteAssertions", dbCallsCounter.GetReadCalls(), dbCallsCounter.GetWriteCalls())
 
-	err := w.assertionBackend.WriteAssertions(ctx, store, authzModelId, assertions)
+	err := w.assertionBackend.WriteAssertions(ctx, store, modelID, assertions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

@@ -30,12 +30,11 @@ func NewReadTuplesQuery(backend storage.TupleBackend, encoder encoder.Encoder, l
 
 // Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store
 func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgav1pb.ReadTuplesRequest) (*openfgav1pb.ReadTuplesResponse, error) {
-	params := req.GetParams()
-	decodedContToken, err := q.encoder.Decode(params.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
-	paginationOptions := storage.NewPaginationOptions(params.GetPageSize().GetValue(), string(decodedContToken))
+	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadTuples", 1, 0)
 
 	tuples, continuationToken, err := q.backend.ReadByStore(ctx, req.GetStoreId(), paginationOptions)

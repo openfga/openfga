@@ -3,10 +3,10 @@ package testutils
 import (
 	"math/rand"
 
-	"github.com/openfga/openfga/storage"
-	"github.com/openfga/openfga/storage/memory"
 	"github.com/go-errors/errors"
 	"github.com/kelseyhightower/envconfig"
+	"github.com/openfga/openfga/storage"
+	"github.com/openfga/openfga/storage/memory"
 	"go.opentelemetry.io/otel/trace"
 )
 

@@ -111,7 +111,7 @@ type StoresBackend interface {
 }
 
 type AssertionsBackend interface {
-	WriteAssertions(ctx context.Context, store, authzModelId string, assertions []*openfga.Assertion) error
+	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error
 	ReadAssertions(ctx context.Context, store, authzModelId string) ([]*openfga.Assertion, error)
 }
 

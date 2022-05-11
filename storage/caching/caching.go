@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karlseguin/ccache/v2"
 	"github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/storage"
-	"github.com/karlseguin/ccache/v2"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 

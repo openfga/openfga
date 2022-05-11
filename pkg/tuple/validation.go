@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/utils"
 	"github.com/openfga/openfga/storage"
-	"github.com/go-errors/errors"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )

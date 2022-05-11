@@ -601,26 +601,27 @@ func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *MemoryBackend) WriteAssertions(ctx context.Context, storeId, authzModelId string, assertions []*openfga.Assertion) error {
+func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAssertions")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	assertionsId := fmt.Sprintf("%s|%s", storeId, authzModelId)
+	assertionsId := fmt.Sprintf("%s|%s", store, modelID)
 	s.assertions[assertionsId] = assertions
+
 	return nil
 }
 
-func (s *MemoryBackend) ReadAssertions(ctx context.Context, storeId, authzModelId string) ([]*openfga.Assertion, error) {
+func (s *MemoryBackend) ReadAssertions(ctx context.Context, storeId, modelID string) ([]*openfga.Assertion, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadAssertions")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	assertionsId := fmt.Sprintf("%s|%s", storeId, authzModelId)
+	assertionsId := fmt.Sprintf("%s|%s", storeId, modelID)
 	assertions, ok := s.assertions[assertionsId]
 	if !ok {
 		return []*openfga.Assertion{}, nil

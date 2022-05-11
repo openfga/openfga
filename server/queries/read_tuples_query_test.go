@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/go-errors/errors"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -70,8 +70,9 @@ func TestReadTuplesQuery(t *testing.T) {
 		return
 	}
 	firstRequest := &openfgav1pb.ReadTuplesRequest{
-		StoreId: testStore,
-		Params:  &openfgav1pb.ReadTuplesRequestParams{PageSize: wrapperspb.Int32(1), ContinuationToken: ""},
+		StoreId:           testStore,
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: "",
 	}
 	firstResponse, err := readQuery.Execute(ctx, firstRequest)
 	if err != nil {
@@ -84,7 +85,7 @@ func TestReadTuplesQuery(t *testing.T) {
 		t.Error("Expected continuation token")
 	}
 
-	secondRequest := &openfgav1pb.ReadTuplesRequest{StoreId: testStore, Params: &openfgav1pb.ReadTuplesRequestParams{ContinuationToken: firstResponse.ContinuationToken}}
+	secondRequest := &openfgav1pb.ReadTuplesRequest{StoreId: testStore, ContinuationToken: firstResponse.ContinuationToken}
 	secondResponse, err := readQuery.Execute(ctx, secondRequest)
 	if err != nil {
 		t.Fatalf("Query.Execute(), err = %v, want nil", err)
@@ -128,8 +129,8 @@ func TestInvalidContinuationToken(t *testing.T) {
 
 	q := NewReadTuplesQuery(backend.TupleBackend, encoder, logger.NewNoopLogger())
 	if _, err := q.Execute(ctx, &openfgav1pb.ReadTuplesRequest{
-		StoreId: store,
-		Params:  &openfgav1pb.ReadTuplesRequestParams{ContinuationToken: "foo"},
+		StoreId:           store,
+		ContinuationToken: "foo",
 	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
 		t.Errorf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)
 	}
