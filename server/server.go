@@ -366,20 +366,6 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1pb.GetStoreRequest)
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) DeleteStore(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) (*openfgav1pb.DeleteStoreResponse, error) {
-	ctx, span := s.tracer.Start(ctx, "deleteStore")
-	defer span.End()
-
-	cmd := commands.NewDeleteStoreCommand(s.storesBackend, s.logger)
-	err := cmd.Execute(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), s.logger)
-
-	return &openfgav1pb.DeleteStoreResponse{}, nil
-}
-
 func (s *Server) ListStores(ctx context.Context, req *openfgav1pb.ListStoresRequest) (*openfgav1pb.ListStoresResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
