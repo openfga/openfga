@@ -1,0 +1,56 @@
+project_name: openfga
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - 
+    main: ./cmd/openfga
+    binary: bin/openfga
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+
+dockers:
+  -
+    goos: linux
+    goarch: amd64
+
+    dockerfile: Dockerfile.goreleaser
+
+    image_templates:
+      - "openfga/openfga:{{ .Tag }}"
+      - "openfga/openfga:v{{ .Version }}"
+      - "openfga/openfga:v{{ .Major }}"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}"
+      - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+
+release:
+  github:
+    owner: openfga
+    name: openfga
+
+archives:
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: i386
+      amd64: x86_64
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
