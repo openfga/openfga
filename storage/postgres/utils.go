@@ -142,9 +142,6 @@ func buildReadUsersetTuplesQuery(store string, tupleKey *openfga.TupleKey) strin
 	if tupleKey.GetRelation() != "" {
 		stmt = fmt.Sprintf("%s AND relation = '%s'", stmt, tupleKey.GetRelation())
 	}
-	if tupleKey.GetUser() != "" {
-		stmt = fmt.Sprintf("%s AND _user = '%s'", stmt, tupleKey.GetUser())
-	}
 	stmt = fmt.Sprintf("%s ORDER BY ulid", stmt)
 	return stmt
 }
