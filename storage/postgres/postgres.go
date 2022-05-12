@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -432,17 +431,17 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	}
 
 	var stores []*openfga.Store
-	var rowId int64
+	var id string
 	for rows.Next() {
-		var storeId, name string
+		var name string
 		var createdAt, updatedAt time.Time
-		err := rows.Scan(&rowId, &storeId, &name, &createdAt, &updatedAt)
+		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
 			return nil, nil, handlePostgresError(err)
 		}
 
 		stores = append(stores, &openfga.Store{
-			Id:        storeId,
+			Id:        id,
 			Name:      name,
 			CreatedAt: timestamppb.New(createdAt),
 			UpdatedAt: timestamppb.New(updatedAt),
@@ -454,7 +453,11 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	}
 
 	if len(stores) > opts.PageSize {
-		return stores[:opts.PageSize], []byte(strconv.FormatInt(rowId, 10)), nil
+		contToken, err := json.Marshal(newContToken(id, ""))
+		if err != nil {
+			return nil, nil, err
+		}
+		return stores[:opts.PageSize], contToken, nil
 	}
 
 	return stores, nil, nil
@@ -557,10 +560,7 @@ func (p *Postgres) ReadChanges(
 		return nil, nil, storage.NotFound
 	}
 
-	contToken, err := json.Marshal(readChangesContToken{
-		Ulid:       ulid,
-		ObjectType: objectTypeFilter,
-	})
+	contToken, err := json.Marshal(newContToken(ulid, objectTypeFilter))
 	if err != nil {
 		return nil, nil, err
 	}

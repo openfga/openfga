@@ -42,13 +42,11 @@ CREATE TABLE authorization_model (
 );
 
 CREATE TABLE store (
-	row_id BIGSERIAL NOT NULL,
-	id TEXT NOT NULL,
+	id TEXT PRIMARY KEY,
 	name TEXT NOT NULL,
 	created_at TIMESTAMPTZ NOT NULL,
 	updated_at TIMESTAMPTZ,
-	deleted_at TIMESTAMPTZ,
-	PRIMARY KEY (id, row_id)
+	deleted_at TIMESTAMPTZ
 );
 
 CREATE TABLE assertion (

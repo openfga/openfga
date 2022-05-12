@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -101,9 +100,16 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type readChangesContToken struct {
-	Ulid       string
-	ObjectType string
+type contToken struct {
+	Ulid       string `json:"ulid"`
+	ObjectType string `json:"objectType"`
+}
+
+func newContToken(ulid, objectType string) *contToken {
+	return &contToken{
+		Ulid:       ulid,
+		ObjectType: objectType,
+	}
 }
 
 func buildReadQuery(store string, tupleKey *openfga.TupleKey, opts storage.PaginationOptions) string {
@@ -147,6 +153,19 @@ func buildReadUsersetTuplesQuery(store string, tupleKey *openfga.TupleKey) strin
 	return stmt
 }
 
+func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
+	stmt := "SELECT id, name, created_at, updated_at FROM store WHERE deleted_at IS NULL"
+	if opts.From != "" {
+		var token contToken
+		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
+			return "", storage.InvalidContinuationToken
+		}
+		stmt = fmt.Sprintf("%s AND id >= '%s'", stmt, token.Ulid)
+	}
+	stmt = fmt.Sprintf("%s ORDER BY id LIMIT %d", stmt, opts.PageSize+1)
+	return stmt, nil
+}
+
 func buildReadChangesQuery(store, objectTypeFilter string, opts storage.PaginationOptions, horizonOffset time.Duration) (string, error) {
 	stmt := fmt.Sprintf("SELECT ulid, object_type, object_id, relation, _user, operation, inserted_at FROM changelog WHERE store = '%s'", store)
 	if objectTypeFilter != "" {
@@ -154,14 +173,14 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	}
 	stmt = fmt.Sprintf("%s AND inserted_at < NOW() - interval '%dms'", stmt, horizonOffset.Milliseconds())
 	if opts.From != "" {
-		var contToken readChangesContToken
-		if err := json.Unmarshal([]byte(opts.From), &contToken); err != nil {
+		var token contToken
+		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
 			return "", storage.InvalidContinuationToken
 		}
-		if contToken.ObjectType != objectTypeFilter {
+		if token.ObjectType != objectTypeFilter {
 			return "", storage.MismatchObjectType
 		}
-		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, contToken.Ulid) // > here as we always return a continuation token
+		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, token.Ulid) // > here as we always return a continuation token
 	}
 	stmt = fmt.Sprintf("%s ORDER BY inserted_at ASC", stmt)
 	if opts.PageSize > 0 {
@@ -177,19 +196,6 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 	}
 	stmt = fmt.Sprintf("%s ORDER BY inserted_at LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
 	return stmt
-}
-
-func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
-	stmt := "SELECT row_id, id, name, created_at, updated_at FROM store WHERE deleted_at IS NULL"
-	if opts.From != "" {
-		from, err := strconv.ParseInt(opts.From, 10, 64)
-		if err != nil {
-			return "", err
-		}
-		stmt = fmt.Sprintf("%s AND row_id >= %d", stmt, from)
-	}
-	stmt = fmt.Sprintf("%s ORDER BY row_id LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
-	return stmt, nil
 }
 
 func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {

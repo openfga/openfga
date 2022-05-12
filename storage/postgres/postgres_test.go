@@ -640,16 +640,20 @@ func TestStore(t *testing.T) {
 	numStores := 10
 	var stores []*openfga.Store
 	for i := 0; i < numStores; i++ {
+		id, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		store := &openfga.Store{
-			Id:        pkgTestutils.CreateRandomString(10),
+			Id:        id,
 			Name:      pkgTestutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),
 			UpdatedAt: nil,
 			DeletedAt: nil,
 		}
 
-		_, err := pg.CreateStore(ctx, store)
-		if err != nil {
+		if _, err := pg.CreateStore(ctx, store); err != nil {
 			t.Fatal(err)
 		}
 
