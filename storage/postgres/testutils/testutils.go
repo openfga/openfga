@@ -37,7 +37,6 @@ CREATE TABLE authorization_model (
 	authorization_model_id TEXT NOT NULL,
 	type TEXT NOT NULL,
 	type_definition BYTEA NOT NULL,
-	inserted_at TIMESTAMPTZ NOT NULL,
 	PRIMARY KEY (store, authorization_model_id, type)
 );
 

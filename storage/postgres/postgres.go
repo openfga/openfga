@@ -277,12 +277,10 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	}
 
 	var modelIDs []string
-	var insertedAt time.Time
+	var modelID string
 
 	for rows.Next() {
-		var modelID string
-
-		err := rows.Scan(&modelID, &insertedAt)
+		err := rows.Scan(&modelID)
 		if err != nil {
 			return nil, nil, handlePostgresError(err)
 		}
@@ -295,7 +293,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	}
 
 	if len(modelIDs) > opts.PageSize {
-		return modelIDs[:opts.PageSize], []byte(insertedAt.UTC().Format(time.RFC3339Nano)), nil
+		return modelIDs[:opts.PageSize], []byte(modelID), nil
 	}
 
 	return modelIDs, nil, nil
@@ -306,7 +304,7 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	defer span.End()
 
 	var modelID string
-	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY inserted_at DESC LIMIT 1"
+	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY authorization_model_id DESC LIMIT 1"
 	err := p.pool.QueryRow(ctx, stmt, store).Scan(&modelID)
 	if err != nil {
 		return "", handlePostgresError(err)
@@ -353,7 +351,7 @@ func (p *Postgres) WriteAuthorizationModel(
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
-	stmt := `INSERT INTO authorization_model (store, authorization_model_id, type, type_definition, inserted_at) VALUES ($1, $2, $3, $4, NOW())`
+	stmt := "INSERT INTO authorization_model (store, authorization_model_id, type, type_definition) VALUES ($1, $2, $3, $4)"
 
 	inserts := &pgx.Batch{}
 	for _, typeDef := range tds.GetTypeDefinitions() {
