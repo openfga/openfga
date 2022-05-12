@@ -3,7 +3,6 @@ package postgres_test
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"reflect"
 	"testing"
@@ -61,15 +60,12 @@ func TestMain(m *testing.M) {
 	}
 	defer pool.Close()
 
-	if err := testutils.CreatePostgresTestTables(ctx, pool); err != nil {
+	if err := testutils.RecreatePostgresTestTables(ctx, pool); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
 	pg = postgres.New(pool, telemetry.NewNoopTracer(), logger.NewNoopLogger())
-
-	// Because we want different store names
-	rand.Seed(time.Now().UnixNano())
 
 	os.Exit(m.Run())
 }
@@ -82,11 +78,11 @@ func TestTupleWritingAndReading(t *testing.T) {
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE)
 		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk, tk}); err.Error() != expectedError.Error() {
-			t.Errorf("got '%v', want '%v'", err, expectedError)
+			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 		// Ensure that nothing got written
 		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
+			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
 
@@ -113,18 +109,18 @@ func TestTupleWritingAndReading(t *testing.T) {
 
 		// Write tks
 		if err := pg.Write(ctx, store, nil, tks); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
 		if err := pg.Write(ctx, store, []*openfga.TupleKey{tks[0], tks[1]}, []*openfga.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
-			t.Errorf("got '%v', want '%v'", err, expectedError)
+			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 		tuples, _, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples) != len(tks) {
-			t.Errorf("got '%d', want '%d'", len(tuples), len(tks))
+			t.Fatalf("got '%d', want '%d'", len(tuples), len(tks))
 		}
 	})
 
@@ -134,7 +130,7 @@ func TestTupleWritingAndReading(t *testing.T) {
 		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_DELETE)
 
 		if err := pg.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
-			t.Errorf("got '%v', want '%v'", err, expectedError)
+			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 	})
 
@@ -144,15 +140,15 @@ func TestTupleWritingAndReading(t *testing.T) {
 
 		// Write
 		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// Then delete
 		if err := pg.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// Ensure it is not there
 		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
+			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
 
@@ -163,11 +159,11 @@ func TestTupleWritingAndReading(t *testing.T) {
 
 		// First write should succeed.
 		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		// Second write of the same tuple should fail.
 		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err.Error() != expectedError.Error() {
-			t.Errorf("got '%v', want '%v'", err, expectedError)
+			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 	})
 
@@ -176,14 +172,14 @@ func TestTupleWritingAndReading(t *testing.T) {
 		tuple := &openfga.Tuple{Key: &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
 
 		if err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tuple.Key}); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		gotTuple, err := pg.ReadUserTuple(ctx, store, tuple.Key)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if diff := cmp.Diff(gotTuple, tuple, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 	})
 
@@ -192,7 +188,7 @@ func TestTupleWritingAndReading(t *testing.T) {
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Errorf("got '%v', want '%v'", err, storage.NotFound)
+			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
 		}
 	})
 
@@ -217,26 +213,27 @@ func TestTupleWritingAndReading(t *testing.T) {
 		}
 
 		if err := pg.Write(ctx, store, nil, tks); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		gotTuples, err := pg.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
+		defer gotTuples.Stop()
 
 		// We should find the first two tupleKeys
 		for i := 0; i < 2; i++ {
 			gotTuple, err := gotTuples.Next()
 			if err != nil {
-				t.Error(err)
+				t.Fatal(err)
 			}
 			if diff := cmp.Diff(gotTuple.Key, tks[i], cmpOpts...); diff != "" {
-				t.Errorf("mismatch (-got +want):\n%s", diff)
+				t.Fatalf("mismatch (-got +want):\n%s", diff)
 			}
 		}
 		// Then the iterator should run out
 		if _, err := gotTuples.Next(); !errors.Is(err, iterator.Done) {
-			t.Errorf("got '%v', want '%v'", err, iterator.Done)
+			t.Fatalf("got '%v', want '%v'", err, iterator.Done)
 		}
 	})
 
@@ -245,16 +242,19 @@ func TestTupleWritingAndReading(t *testing.T) {
 
 		gotTuples, err := pg.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
+		defer gotTuples.Stop()
+
 		if _, err := gotTuples.Next(); !errors.Is(err, iterator.Done) {
-			t.Errorf("got '%v', want '%v'", err, iterator.Done)
+			t.Fatalf("got '%v', want '%v'", err, iterator.Done)
 		}
 	})
 }
 
 func TestTuplePaginationOptions(t *testing.T) {
 	ctx := context.Background()
+
 	store := pkgTestutils.CreateRandomString(10)
 	tk0 := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 	tk1 := &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
@@ -266,16 +266,16 @@ func TestTuplePaginationOptions(t *testing.T) {
 	t.Run("readPage pagination works properly", func(t *testing.T) {
 		tuples0, contToken0, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples0) != 1 {
-			t.Errorf("got '%d', want '1'", len(tuples0))
+			t.Fatalf("got '%d', want '1'", len(tuples0))
 		}
 		if diff := cmp.Diff(tuples0[0].Key, tk0, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 		if len(contToken0) == 0 {
-			t.Errorf("got '%s', want empty", string(contToken0))
+			t.Fatalf("got '%s', want empty", string(contToken0))
 		}
 
 		tuples1, contToken1, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
@@ -283,95 +283,95 @@ func TestTuplePaginationOptions(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(tuples1) != 1 {
-			t.Errorf("got '%d', want '1'", len(tuples0))
+			t.Fatalf("got '%d', want '1'", len(tuples0))
 		}
 		if diff := cmp.Diff(tuples1[0].Key, tk1, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 		if len(contToken1) != 0 {
-			t.Errorf("got '%s', want empty", string(contToken1))
+			t.Fatalf("got '%s', want empty", string(contToken1))
 		}
 	})
 
 	t.Run("reading a page completely does not return a continuation token", func(t *testing.T) {
 		tuples, contToken, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples) != 2 {
-			t.Errorf("got '%d', want '2'", len(tuples))
+			t.Fatalf("got '%d', want '2'", len(tuples))
 		}
 		if len(contToken) != 0 {
-			t.Errorf("got '%s', want empty", string(contToken))
+			t.Fatalf("got '%s', want empty", string(contToken))
 		}
 	})
 
 	t.Run("reading a page partially returns a continuation token", func(t *testing.T) {
 		tuples, contToken, err := pg.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples) != 1 {
-			t.Errorf("got '%d', want '1'", len(tuples))
+			t.Fatalf("got '%d', want '1'", len(tuples))
 		}
 		if len(contToken) == 0 {
-			t.Errorf("got '%s', want empty", string(contToken))
+			t.Fatalf("got '%s', want empty", string(contToken))
 		}
 	})
 
 	t.Run("readByStore pagination works properly", func(t *testing.T) {
 		tuple0, contToken0, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuple0) != 1 {
 			t.Fatalf("expected one tuple, got %d", len(tuple0))
 		}
 		if diff := cmp.Diff(tuple0[0].Key, tk0, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 		if len(contToken0) == 0 {
-			t.Error("got empty, want non-empty")
+			t.Fatal("got empty, want non-empty")
 		}
 
 		tuple1, contToken1, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuple1) != 1 {
 			t.Fatalf("expected one tuple, got %d", len(tuple1))
 		}
 		if diff := cmp.Diff(tuple1[0].Key, tk1, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 		if len(contToken1) != 0 {
-			t.Errorf("got '%s', want empty", string(contToken1))
+			t.Fatalf("got '%s', want empty", string(contToken1))
 		}
 	})
 
 	t.Run("reading by store completely does not return a continuation token", func(t *testing.T) {
 		tuples, contToken, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 2})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples) != 2 {
-			t.Errorf("got '%d', want '2'", len(tuples))
+			t.Fatalf("got '%d', want '2'", len(tuples))
 		}
 		if len(contToken) != 0 {
-			t.Errorf("got '%s', want empty", string(contToken))
+			t.Fatalf("got '%s', want empty", string(contToken))
 		}
 	})
 
 	t.Run("reading by store partially returns a continuation token", func(t *testing.T) {
 		tuples, contToken, err := pg.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(tuples) != 1 {
-			t.Errorf("got '%d', want '2'", len(tuples))
+			t.Fatalf("got '%d', want '2'", len(tuples))
 		}
 		if len(contToken) == 0 {
-			t.Errorf("got empty, want non-empty")
+			t.Fatalf("got empty, want non-empty")
 		}
 	})
 }
@@ -443,6 +443,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 
 func TestWriteAndReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
+
 	store := pkgTestutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	if err != nil {
@@ -556,6 +557,7 @@ func TestReadTypeDefinition(t *testing.T) {
 
 func TestReadAuthorizationModels(t *testing.T) {
 	ctx := context.Background()
+
 	store := pkgTestutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
 	if err != nil {
@@ -649,8 +651,6 @@ func TestStore(t *testing.T) {
 			Id:        id,
 			Name:      pkgTestutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),
-			UpdatedAt: nil,
-			DeletedAt: nil,
 		}
 
 		if _, err := pg.CreateStore(ctx, store); err != nil {
@@ -669,21 +669,16 @@ func TestStore(t *testing.T) {
 		if len(gotStores) != 1 {
 			t.Fatalf("expected one store, got %d", len(gotStores))
 		}
-		if gotStores[0].Id != stores[0].Id || gotStores[0].Name != stores[0].Name {
-			t.Fatalf("got (%v), expected (%v)", gotStores[0], stores[0])
-		}
 		if len(ct) == 0 {
 			t.Fatal("expected a continuation token but did not get one")
 		}
 
-		gotStores, ct, err = pg.ListStores(ctx, storage.PaginationOptions{PageSize: numStores, From: string(ct)})
+		_, ct, err = pg.ListStores(ctx, storage.PaginationOptions{PageSize: 100, From: string(ct)})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if gotStores[0].Id != stores[1].Id || gotStores[0].Name != stores[1].Name {
-			t.Fatalf("got (%v), expected (%v)", gotStores[0], stores[1])
-		}
+		// This will fail if there are actually over 101 stores in the DB at the time of running
 		if len(ct) != 0 {
 			t.Fatalf("did not expect a continuation token but got: %s", string(ct))
 		}
@@ -731,6 +726,10 @@ func TestStore(t *testing.T) {
 
 		// Store id should not appear in the list of store ids
 		gotStores, _, err := pg.ListStores(ctx, storage.PaginationOptions{PageSize: storage.DefaultPageSize})
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		for _, s := range gotStores {
 			if s.Id == store.Id {
 				t.Errorf("deleted store '%s' appears in ListStores", s)
@@ -761,16 +760,50 @@ func TestAssertion(t *testing.T) {
 
 		err = pg.WriteAssertions(ctx, store, modelID, assertions)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		gotAssertions, err := pg.ReadAssertions(ctx, store, modelID)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		}
+	})
+
+	t.Run("writing twice overwrites assertions", func(t *testing.T) {
+		store := pkgTestutils.CreateRandomString(10)
+		modelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assertions := []*openfga.Assertion{{TupleKey: &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
+
+		err = pg.WriteAssertions(ctx, store, modelID, []*openfga.Assertion{
+			{
+				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				Expectation: false,
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = pg.WriteAssertions(ctx, store, modelID, assertions)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		gotAssertions, err := pg.ReadAssertions(ctx, store, modelID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 	})
 
@@ -793,15 +826,15 @@ func TestAssertion(t *testing.T) {
 
 		err = pg.WriteAssertions(ctx, store, oldModelID, assertions)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 
 		gotAssertions, err := pg.ReadAssertions(ctx, store, newModelID)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 		if len(gotAssertions) != 0 {
-			t.Errorf("got assertions, but expected none: %v", gotAssertions)
+			t.Fatalf("got assertions, but expected none: %v", gotAssertions)
 		}
 	})
 }
@@ -825,12 +858,12 @@ func TestReadChanges(t *testing.T) {
 
 		err := pg.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
 		if err != nil {
-			t.Errorf("failed to write tuples: %v", err)
+			t.Fatal(err)
 		}
 
 		changes, continuationToken, err := pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: 1}, 0)
 		if err != nil {
-			t.Errorf("expected no error but got '%v'", err)
+			t.Fatalf("expected no error but got '%v'", err)
 		}
 
 		if string(continuationToken) == "" {

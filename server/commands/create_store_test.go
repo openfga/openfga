@@ -12,8 +12,6 @@ import (
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-const createStoreName = "openfgastore"
-
 func TestCreateStore(t *testing.T) {
 	type createStoreTestSettings struct {
 		_name    string
@@ -22,34 +20,35 @@ func TestCreateStore(t *testing.T) {
 		err      error
 	}
 
+	name := testutils.CreateRandomString(10)
+
 	var tests = []createStoreTestSettings{
 		{
 			_name: "CreateStoreSucceeds",
 			request: &openfgav1pb.CreateStoreRequest{
-				Name: createStoreName,
+				Name: name,
 			},
 			response: &openfgav1pb.CreateStoreResponse{
-				Name: createStoreName,
+				Name: name,
 			},
-			err: nil,
 		},
 	}
 
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.CreateStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.CreateStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			tracer := telemetry.NewNoopTracer()
-			storage, err := testutils.BuildAllBackends(tracer)
-			if err != nil {
-				t.Fatalf("Error building backend: %s", err)
-			}
-			ctx := context.Background()
 
-			logger := logger.NewNoopLogger()
-
-			actualResponse, actualError := NewCreateStoreCommand(storage.StoresBackend, logger).Execute(ctx, test.request)
+			actualResponse, actualError := NewCreateStoreCommand(backends.StoresBackend, logger).Execute(ctx, test.request)
 
 			if test.err != nil {
 				if actualError == nil {

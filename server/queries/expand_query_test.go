@@ -17,26 +17,22 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-const (
-	expandTestStore = "auth0"
-)
-
-func setUp(ctx context.Context, backend storage.TupleBackend, authModelBackend storage.AuthorizationModelBackend, typeDefinitions *openfgav1pb.TypeDefinitions, tuples []*openfga.TupleKey) (string, error) {
+func setUp(ctx context.Context, store string, backend storage.TupleBackend, authModelBackend storage.AuthorizationModelBackend, typeDefinitions *openfgav1pb.TypeDefinitions, tuples []*openfga.TupleKey) (string, error) {
 	modelID, err := id.NewString()
 	if err != nil {
 		return "", err
 	}
-	if err := authModelBackend.WriteAuthorizationModel(ctx, expandTestStore, modelID, typeDefinitions); err != nil {
+	if err := authModelBackend.WriteAuthorizationModel(ctx, store, modelID, typeDefinitions); err != nil {
 		return "", err
 	}
-	if err := backend.Write(ctx, expandTestStore, []*openfga.TupleKey{}, tuples); err != nil {
+	if err := backend.Write(ctx, store, []*openfga.TupleKey{}, tuples); err != nil {
 		return "", err
 	}
 	return modelID, nil
 }
 
 func TestExpandQuery(t *testing.T) {
-	for _, tc := range []struct {
+	tests := []struct {
 		name            string
 		typeDefinitions *openfgav1pb.TypeDefinitions
 		tuples          []*openfga.TupleKey
@@ -721,33 +717,39 @@ func TestExpandQuery(t *testing.T) {
 				},
 			},
 		},
-	} {
-		tracer := telemetry.NewNoopTracer()
-		backend, err := testutils.BuildAllBackends(tracer)
-		if err != nil {
-			t.Fatalf("Error building backend: %s", err)
-		}
-		ctx := context.Background()
-		modelID, err := setUp(ctx, backend.TupleBackend, backend.AuthorizationModelBackend, tc.typeDefinitions, tc.tuples)
-		if err != nil {
-			t.Fatal(err)
-		}
-		query := NewExpandQuery(backend.TupleBackend, backend.AuthorizationModelBackend, tracer, logger.NewNoopLogger())
-		tc.request.StoreId = expandTestStore
-		tc.request.AuthorizationModelId = modelID
-		got, err := query.Execute(ctx, tc.request)
-		if err != nil {
-			t.Errorf("%s: Execute() err = %v, want nil", tc.name, err)
-			continue
-		}
-		if diff := cmp.Diff(tc.expected, got, protocmp.Transform()); diff != "" {
-			t.Errorf("%s: Execute() (-want, +got):\n%s", tc.name, diff)
-		}
+	}
+
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := testutils.CreateRandomString(20)
+			modelID, err := setUp(ctx, store, backends.TupleBackend, backends.AuthorizationModelBackend, test.typeDefinitions, test.tuples)
+			if err != nil {
+				t.Fatal(err)
+			}
+			query := NewExpandQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
+			test.request.StoreId = store
+			test.request.AuthorizationModelId = modelID
+			got, err := query.Execute(ctx, test.request)
+			if err != nil {
+				t.Fatalf("%s: Execute() err = %v, want nil", test.name, err)
+			}
+			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
+				t.Fatalf("%s: Execute() (-want, +got):\n%s", test.name, diff)
+			}
+		})
 	}
 }
 
 func TestExpandQuery_Errors(t *testing.T) {
-	for _, tc := range []struct {
+	tests := []struct {
 		name            string
 		typeDefinitions *openfgav1pb.TypeDefinitions
 		tuples          []*openfga.TupleKey
@@ -828,24 +830,33 @@ func TestExpandQuery_Errors(t *testing.T) {
 				Relation: "baz",
 			}),
 		},
-	} {
-		ctx := context.Background()
-		tracer := telemetry.NewNoopTracer()
-		backend, err := testutils.BuildAllBackends(tracer)
-		if err != nil {
-			t.Fatalf("Error building backend: %s", err)
-		}
-		modelID, err := setUp(ctx, backend.TupleBackend, backend.AuthorizationModelBackend, tc.typeDefinitions, tc.tuples)
-		if err != nil {
-			t.Errorf("'%s': setUp() error was %s, want nil", tc.name, err)
-			continue
-		}
-		query := NewExpandQuery(backend.TupleBackend, backend.AuthorizationModelBackend, tracer, logger.NewNoopLogger())
-		tc.request.StoreId = expandTestStore
-		tc.request.AuthorizationModelId = modelID
-		_, err = query.Execute(ctx, tc.request)
-		if !errors.Is(err, tc.expected) {
-			t.Errorf("'%s': Execute(), err = %v, want %v", tc.name, err, tc.expected)
-		}
+	}
+
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := testutils.CreateRandomString(20)
+
+			modelID, err := setUp(ctx, store, backends.TupleBackend, backends.AuthorizationModelBackend, test.typeDefinitions, test.tuples)
+			if err != nil {
+				t.Fatalf("'%s': setUp() error was %s, want nil", test.name, err)
+			}
+
+			query := NewExpandQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
+			test.request.StoreId = store
+			test.request.AuthorizationModelId = modelID
+
+			_, err = query.Execute(ctx, test.request)
+			if !errors.Is(err, test.expected) {
+				t.Fatalf("'%s': Execute(), err = %v, want %v", test.name, err, test.expected)
+			}
+		})
 	}
 }

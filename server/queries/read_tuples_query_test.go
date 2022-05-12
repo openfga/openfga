@@ -16,20 +16,17 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-const (
-	testStore = "auth0"
-)
-
 func TestReadTuplesQuery(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	backend, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	encoder := encoder.NewNoopEncoder()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %v", err)
+		t.Fatal(err)
 	}
 
-	encoder := encoder.NewNoopEncoder()
-
+	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
@@ -43,11 +40,12 @@ func TestReadTuplesQuery(t *testing.T) {
 		},
 	}
 
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, testStore, modelID, backendState); err != nil {
+	err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, backendState)
+	if err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	readQuery := NewReadTuplesQuery(backend.TupleBackend, encoder, logger.NewNoopLogger())
+	cmd := NewReadTuplesQuery(backends.TupleBackend, encoder, logger)
 
 	writes := []*openfga.TupleKey{
 		{
@@ -66,15 +64,15 @@ func TestReadTuplesQuery(t *testing.T) {
 			User:     "github|jon.allie@auth0.com",
 		},
 	}
-	if err := backend.TupleBackend.Write(ctx, testStore, []*openfga.TupleKey{}, writes); err != nil {
+	if err := backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, writes); err != nil {
 		return
 	}
 	firstRequest := &openfgav1pb.ReadTuplesRequest{
-		StoreId:           testStore,
+		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
 	}
-	firstResponse, err := readQuery.Execute(ctx, firstRequest)
+	firstResponse, err := cmd.Execute(ctx, firstRequest)
 	if err != nil {
 		t.Errorf("Query.Execute(), err = %v, want nil", err)
 	}
@@ -85,8 +83,8 @@ func TestReadTuplesQuery(t *testing.T) {
 		t.Error("Expected continuation token")
 	}
 
-	secondRequest := &openfgav1pb.ReadTuplesRequest{StoreId: testStore, ContinuationToken: firstResponse.ContinuationToken}
-	secondResponse, err := readQuery.Execute(ctx, secondRequest)
+	secondRequest := &openfgav1pb.ReadTuplesRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
+	secondResponse, err := cmd.Execute(ctx, secondRequest)
 	if err != nil {
 		t.Fatalf("Query.Execute(), err = %v, want nil", err)
 	}
@@ -101,10 +99,12 @@ func TestReadTuplesQuery(t *testing.T) {
 func TestInvalidContinuationToken(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	backend, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %v", err)
+		t.Fatal(err)
 	}
+
 	encoder, err := encoder.NewTokenEncrypter("key")
 	if err != nil {
 		t.Fatalf("Error creating encoder: %v", err)
@@ -123,11 +123,11 @@ func TestInvalidContinuationToken(t *testing.T) {
 		},
 	}
 
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
+	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	q := NewReadTuplesQuery(backend.TupleBackend, encoder, logger.NewNoopLogger())
+	q := NewReadTuplesQuery(backends.TupleBackend, encoder, logger)
 	if _, err := q.Execute(ctx, &openfgav1pb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",

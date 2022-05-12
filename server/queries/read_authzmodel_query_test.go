@@ -10,36 +10,38 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/storage"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-type readAuthorizationModelQueryTest struct {
-	_name         string
-	request       *openfgav1pb.ReadAuthorizationModelRequest
-	expectedError error
-}
-
-var readAuthorizationModelQueriesTest = []readAuthorizationModelQueryTest{
-	{
-		_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
-		request: &openfgav1pb.ReadAuthorizationModelRequest{
-			StoreId: "auth0",
-			Id:      "123",
-		},
-		expectedError: serverErrors.AuthorizationModelNotFound("123"),
-	},
-}
-
 func TestReadAuthorizationModelQueryErrors(t *testing.T) {
+	type readAuthorizationModelQueryTest struct {
+		_name         string
+		request       *openfgav1pb.ReadAuthorizationModelRequest
+		expectedError error
+	}
+
+	var tests = []readAuthorizationModelQueryTest{
+		{
+			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
+			request: &openfgav1pb.ReadAuthorizationModelRequest{
+				StoreId: testutils.CreateRandomString(10),
+				Id:      "123",
+			},
+			expectedError: serverErrors.AuthorizationModelNotFound("123"),
+		},
+	}
+
+	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	for _, test := range readAuthorizationModelQueriesTest {
-		backend, err := testutils.BuildAllBackends(tracer)
-		if err != nil {
-			t.Fatalf("Error building backend: %s", err)
-		}
-		ctx := context.Background()
-		query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger.NewNoopLogger())
+	logger := logger.NewNoopLogger()
+
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range tests {
+		query := NewReadAuthorizationModelQuery(backends.AuthorizationModelBackend, logger)
 		if _, err := query.Execute(ctx, test.request); !errors.Is(test.expectedError, err) {
 			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
 			continue
@@ -47,14 +49,16 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T) {
 	}
 }
 
-func TestReadAuthorizationModelByIdAndOneTypeDefinition_ReturnsAuthorizationModel(t *testing.T) {
-	storeId := "auth0"
-	tracer := telemetry.NewNoopTracer()
+func TestReadAuthorizationModelByIdAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
-	backend, err := testutils.BuildAllBackends(tracer)
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+
+	backend, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
+
 	state := &openfgav1pb.TypeDefinitions{
 		TypeDefinitions: []*openfgav1pb.TypeDefinition{
 			{
@@ -67,16 +71,18 @@ func TestReadAuthorizationModelByIdAndOneTypeDefinition_ReturnsAuthorizationMode
 			},
 		},
 	}
+
+	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, storeId, modelID, state); err != nil {
+	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
-	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger.NewNoopLogger())
+	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
-		StoreId: storeId,
+		StoreId: store,
 		Id:      modelID,
 	})
 
@@ -92,30 +98,36 @@ func TestReadAuthorizationModelByIdAndOneTypeDefinition_ReturnsAuthorizationMode
 	}
 }
 
-func TestReadAuthorizationModelByIdAndTypeDefinitions_ReturnsError(t *testing.T) {
-	storeId := "auth0"
-	tracer := telemetry.NewNoopTracer()
+func TestReadAuthorizationModelByIdAndTypeDefinitionsReturnsError(t *testing.T) {
 	ctx := context.Background()
-	backend, err := testutils.BuildAllBackends(tracer)
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+
+	backend, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
+
 	emptyState := &openfgav1pb.TypeDefinitions{
 		TypeDefinitions: []*openfgav1pb.TypeDefinition{},
 	}
+
+	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, storeId, modelID, emptyState); err != nil {
+
+	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, emptyState); err != nil {
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
-	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger.NewNoopLogger())
-	_, actualError := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
-		StoreId: storeId,
+
+	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger)
+	_, err = query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
+		StoreId: store,
 		Id:      modelID,
 	})
-	if actualError == nil {
-		t.Fatalf("WriteAuthorizationModel err = nil, wanted %v", storage.NotFound)
+	if err.Error() != serverErrors.AuthorizationModelNotFound(modelID).Error() {
+		t.Fatalf("got '%v', wanted '%v'", err, serverErrors.AuthorizationModelNotFound(modelID))
 	}
 }

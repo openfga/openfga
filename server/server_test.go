@@ -13,18 +13,20 @@ import (
 )
 
 func TestResolveAuthorizationModel(t *testing.T) {
+	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	backends, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
+
 	s := Server{
 		authorizationModelBackend: backends.AuthorizationModelBackend,
 		tracer:                    tracer,
-		logger:                    logger.NewNoopLogger(),
+		logger:                    logger,
 		config:                    &Config{},
 	}
-	ctx := context.Background()
 
 	t.Run("no latest authorization model id found", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)

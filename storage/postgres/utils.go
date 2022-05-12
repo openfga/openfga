@@ -45,6 +45,7 @@ type tupleIterator struct {
 
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
+		t.Stop()
 		return nil, iterator.Done
 	}
 
@@ -64,7 +65,6 @@ func (t *tupleIterator) next() (*tupleRecord, error) {
 // continuation token exists it is the ulid of the last element of the returned array.
 func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
 	defer t.Stop()
-
 	var res []*openfga.Tuple
 	var lastUlid string
 	for i := 0; i < opts.PageSize; i++ {
@@ -208,8 +208,10 @@ func handlePostgresError(err error, args ...interface{}) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return openfgaerrors.ErrorWithStack(storage.NotFound)
 	} else if strings.Contains(err.Error(), "duplicate key value") {
-		if tk, ok := args[0].(*openfga.TupleKey); ok {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE))
+		if len(args) > 0 {
+			if tk, ok := args[0].(*openfga.TupleKey); ok {
+				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE))
+			}
 		}
 	}
 	return openfgaerrors.ErrorWithStack(err)

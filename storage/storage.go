@@ -27,8 +27,11 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
+// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
+// returns an iterator.Done error.
 type TupleIterator interface {
 	Next() (*openfga.Tuple, error)
+	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
 	Stop()
 }
 
@@ -39,9 +42,9 @@ type Deletes = []*openfga.TupleKey
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
-	// Read the set of tuples associated with `store` and `key`, which may be partially filled.
-	// A key must specify at least one of `Object` or `User` (or both), and may also
-	// optionally constrain by relation.
+	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
+	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
+	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfga.TupleKey) (TupleIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage

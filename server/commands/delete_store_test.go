@@ -11,16 +11,15 @@ import (
 )
 
 func TestDeleteStore(t *testing.T) {
+	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	storage, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-
-	createStoreCmd := NewCreateStoreCommand(storage.StoresBackend, logger)
+	createStoreCmd := NewCreateStoreCommand(backends.StoresBackend, logger)
 	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgav1pb.CreateStoreRequest{
 		Name: "acme",
 	})
@@ -39,18 +38,16 @@ func TestDeleteStore(t *testing.T) {
 			request: &openfgav1pb.DeleteStoreRequest{
 				StoreId: "unknownstore",
 			},
-			err: nil,
 		},
 		{
 			_name: "Execute Succeeds",
 			request: &openfgav1pb.DeleteStoreRequest{
 				StoreId: createStoreResponse.Id,
 			},
-			err: nil,
 		},
 	}
 
-	deleteCmd := NewDeleteStoreCommand(storage.StoresBackend, logger)
+	deleteCmd := NewDeleteStoreCommand(backends.StoresBackend, logger)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {

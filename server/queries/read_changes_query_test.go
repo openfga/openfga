@@ -9,12 +9,12 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -49,9 +49,9 @@ var tkYamil = &openfga.TupleKey{
 	User:     "yamil",
 }
 
-func newReadChangesRequest(objectType, contToken string, pageSize int32) *openfgav1pb.ReadChangesRequest {
+func newReadChangesRequest(store, objectType, contToken string, pageSize int32) *openfgav1pb.ReadChangesRequest {
 	return &openfgav1pb.ReadChangesRequest{
-		StoreId:           testStore,
+		StoreId:           store,
 		Type:              objectType,
 		ContinuationToken: contToken,
 		PageSize:          wrapperspb.Int32(pageSize),
@@ -59,7 +59,8 @@ func newReadChangesRequest(objectType, contToken string, pageSize int32) *openfg
 }
 
 func TestReadChanges(t *testing.T) {
-	ctx, backend, tracer, err := setup()
+	store := testutils.CreateRandomString(10)
+	ctx, backend, tracer, err := setup(store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +69,7 @@ func TestReadChanges(t *testing.T) {
 		testCases := []testCase{
 			{
 				_name:   "request with pageSize=1 returns 1 tuple and a token",
-				request: newReadChangesRequest("", "", 1),
+				request: newReadChangesRequest(store, "", "", 1),
 				expectedChanges: []*openfga.TupleChange{
 					{
 						TupleKey:  tkMaria,
@@ -81,7 +82,7 @@ func TestReadChanges(t *testing.T) {
 			},
 			{
 				_name:   "request with previous token returns all remaining changes",
-				request: newReadChangesRequest("", "", storage.DefaultPageSize),
+				request: newReadChangesRequest(store, "", "", storage.DefaultPageSize),
 				expectedChanges: []*openfga.TupleChange{
 					{
 						TupleKey:  tkCraig,
@@ -102,7 +103,7 @@ func TestReadChanges(t *testing.T) {
 			},
 			{
 				_name:                            "request with previous token returns no more changes",
-				request:                          newReadChangesRequest("", "", storage.DefaultPageSize),
+				request:                          newReadChangesRequest(store, "", "", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
@@ -110,7 +111,7 @@ func TestReadChanges(t *testing.T) {
 			},
 			{
 				_name:                            "request with invalid token returns invalid token error",
-				request:                          newReadChangesRequest("", "foo", storage.DefaultPageSize),
+				request:                          newReadChangesRequest(store, "", "foo", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
 				expectedError:                    serverErrors.InvalidContinuationToken,
@@ -130,14 +131,14 @@ func TestReadChanges(t *testing.T) {
 		testCases := []testCase{
 			{
 				_name:                        "if no tuples with type, return empty changes and no token",
-				request:                      newReadChangesRequest("type-not-found", "", 1),
+				request:                      newReadChangesRequest(store, "type-not-found", "", 1),
 				expectedChanges:              nil,
 				expectEmptyContinuationToken: true,
 				expectedError:                nil,
 			},
 			{
 				_name:   "if 1 tuple with 'org type', read changes with 'org' filter returns 1 change and a token",
-				request: newReadChangesRequest("org", "", storage.DefaultPageSize),
+				request: newReadChangesRequest(store, "org", "", storage.DefaultPageSize),
 				expectedChanges: []*openfga.TupleChange{{
 					TupleKey:  tkMariaOrg,
 					Operation: openfga.TupleOperation_WRITE,
@@ -147,7 +148,7 @@ func TestReadChanges(t *testing.T) {
 			},
 			{
 				_name:   "if 2 tuples with 'repo' type, read changes with 'repo' filter and page size of 1 returns 1 change and a token",
-				request: newReadChangesRequest("repo", "", 1),
+				request: newReadChangesRequest(store, "repo", "", 1),
 				expectedChanges: []*openfga.TupleChange{{
 					TupleKey:  tkMaria,
 					Operation: openfga.TupleOperation_WRITE,
@@ -157,7 +158,7 @@ func TestReadChanges(t *testing.T) {
 				saveContinuationTokenForNextTest: true,
 			}, {
 				_name:   "using the token from the previous test yields 1 change and a token",
-				request: newReadChangesRequest("repo", "", storage.DefaultPageSize),
+				request: newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges: []*openfga.TupleChange{{
 					TupleKey:  tkCraig,
 					Operation: openfga.TupleOperation_WRITE,
@@ -170,14 +171,14 @@ func TestReadChanges(t *testing.T) {
 				saveContinuationTokenForNextTest: true,
 			}, {
 				_name:                            "using the token from the previous test yields 0 changes and a token",
-				request:                          newReadChangesRequest("repo", "", storage.DefaultPageSize),
+				request:                          newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
 			}, {
 				_name:         "using the token from the previous test yields an error because the types in the token and the request don't match",
-				request:       newReadChangesRequest("does-not-match", "", storage.DefaultPageSize),
+				request:       newReadChangesRequest(store, "does-not-match", "", storage.DefaultPageSize),
 				expectedError: serverErrors.MismatchObjectType,
 			},
 		}
@@ -191,7 +192,7 @@ func TestReadChanges(t *testing.T) {
 			{
 				_name: "when the horizon offset is non-zero no tuples should be returned",
 				request: &openfgav1pb.ReadChangesRequest{
-					StoreId: testStore,
+					StoreId: store,
 				},
 				expectedChanges:              nil,
 				expectEmptyContinuationToken: true,
@@ -205,10 +206,11 @@ func TestReadChanges(t *testing.T) {
 }
 
 func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *ReadChangesQuery) {
-	var res *openfgav1pb.ReadChangesResponse
-	var actualError error
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfga.Tuple{}, openfga.TupleKey{}, openfga.TupleChange{})
 	ignoreTimestampOpts := cmpopts.IgnoreFields(openfga.TupleChange{}, "Timestamp")
+
+	var res *openfgav1pb.ReadChangesResponse
+	var err error
 	for i, test := range testCasesInOrder {
 		if i >= 1 {
 			previousTest := testCasesInOrder[i-1]
@@ -217,18 +219,18 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 				test.request.ContinuationToken = previousToken
 			}
 		}
-		res, actualError = readChangesQuery.Execute(ctx, test.request)
+		res, err = readChangesQuery.Execute(ctx, test.request)
 
-		if test.expectedError == nil && actualError != nil {
-			t.Errorf("[%s] Expected no error but got '%s'", test._name, actualError)
+		if test.expectedError == nil && err != nil {
+			t.Errorf("[%s] Expected no error but got '%s'", test._name, err)
 		}
 
-		if test.expectedError != nil && actualError == nil {
+		if test.expectedError != nil && err == nil {
 			t.Errorf("[%s] Expected an error '%s' but got nothing", test._name, test.expectedError)
 		}
 
-		if test.expectedError != nil && actualError != nil && !strings.Contains(test.expectedError.Error(), actualError.Error()) {
-			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, actualError)
+		if test.expectedError != nil && err != nil && !strings.Contains(test.expectedError.Error(), err.Error()) {
+			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
 		}
 
 		if res != nil {
@@ -246,18 +248,19 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 }
 
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T) {
-	ctx, backend, tracer, err := setup()
+	store := testutils.CreateRandomString(10)
+	ctx, backend, tracer, err := setup(store)
 	if err != nil {
 		t.Fatal(err)
 	}
 	readChangesQuery := NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 
-	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest("", "", storage.DefaultPageSize))
+	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest("", res1.GetContinuationToken(), storage.DefaultPageSize))
+	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", res1.GetContinuationToken(), storage.DefaultPageSize))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,18 +270,21 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T) {
 	}
 }
 
-func setup() (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
 	ctx := context.Background()
-	tracer := otel.Tracer("noop")
-	backend, err := testutils.BuildAllBackends(tracer)
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	writes := []*openfga.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	if err := backend.TupleBackend.Write(ctx, testStore, []*openfga.TupleKey{}, writes); err != nil {
+	err = backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, writes)
+	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	return ctx, backend.ChangelogBackend, tracer, nil
+	return ctx, backends.ChangelogBackend, tracer, nil
 }

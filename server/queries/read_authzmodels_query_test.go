@@ -17,7 +17,7 @@ import (
 )
 
 func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
-	testStore := "auth0"
+	store := testutils.CreateRandomString(20)
 	for _, tc := range []struct {
 		name                string
 		backendState        map[string]*openfgav1pb.TypeDefinitions
@@ -27,7 +27,7 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 		{
 			name: "empty",
 			request: &openfgav1pb.ReadAuthorizationModelsRequest{
-				StoreId: testStore,
+				StoreId: store,
 			},
 			expectedIdsReturned: 0,
 		},
@@ -39,14 +39,14 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 				},
 			},
 			request: &openfgav1pb.ReadAuthorizationModelsRequest{
-				StoreId: testStore,
+				StoreId: store,
 			},
 			expectedIdsReturned: 0,
 		},
 		{
 			name: "multiple type definitions",
 			backendState: map[string]*openfgav1pb.TypeDefinitions{
-				testStore: {
+				store: {
 					TypeDefinitions: []*openfgav1pb.TypeDefinition{
 						{
 							Type: "ns1",
@@ -55,7 +55,7 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 				},
 			},
 			request: &openfgav1pb.ReadAuthorizationModelsRequest{
-				StoreId: testStore,
+				StoreId: store,
 			},
 			expectedIdsReturned: 1,
 		},
@@ -63,9 +63,11 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			tracer := telemetry.NewNoopTracer()
-			backend, err := testutils.BuildAllBackends(tracer)
+			logger := logger.NewNoopLogger()
+
+			backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 			if err != nil {
-				t.Fatalf("Error building backend: %s", err)
+				t.Fatal(err)
 			}
 
 			if tc.backendState != nil {
@@ -74,7 +76,7 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
+					if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 						t.Fatalf("WriteAuthorizationModel(%s), err = %v, want nil", store, err)
 					}
 				}
@@ -82,14 +84,14 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 
 			encoder := encoder.NewNoopEncoder()
 
-			query := NewReadAuthorizationModelsQuery(backend.AuthorizationModelBackend, encoder, logger.NewNoopLogger())
+			query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
 			resp, err := query.Execute(ctx, tc.request)
 			if err != nil {
 				t.Fatalf("Query.Execute(), err = %v, want nil", err)
 			}
 
 			if tc.expectedIdsReturned != len(resp.GetAuthorizationModelIds()) {
-				t.Errorf("Expected ids %d length, got %d", tc.expectedIdsReturned, len(resp.GetAuthorizationModelIds()))
+				t.Errorf("expected %d, got %d", tc.expectedIdsReturned, len(resp.GetAuthorizationModelIds()))
 			}
 
 			if resp.ContinuationToken != "" {
@@ -102,9 +104,10 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	backend, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
 
 	backendState := &openfgav1pb.TypeDefinitions{
@@ -120,14 +123,14 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
+	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 	modelID2, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
+	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
 		t.Fatalf("Second WriteAuthorizationModel err = %v, want nil", err)
 	}
 
@@ -136,7 +139,7 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 		t.Fatalf("Error building encoder: %s", err)
 	}
 
-	query := NewReadAuthorizationModelsQuery(backend.AuthorizationModelBackend, encoder, logger.NewNoopLogger())
+	query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
 	firstRequest := &openfgav1pb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -204,9 +207,10 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 func testInvalidContinuationToken(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	backend, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
 
 	store := testutils.CreateRandomString(10)
@@ -222,7 +226,7 @@ func testInvalidContinuationToken(t *testing.T) {
 		},
 	}
 
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
+	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
 		t.Fatal(err)
 	}
 	encoder, err := encoder.NewTokenEncrypter("key")
@@ -230,9 +234,9 @@ func testInvalidContinuationToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	query := NewReadAuthorizationModelsQuery(backend.AuthorizationModelBackend, encoder, logger.NewNoopLogger())
+	query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
 	if _, err := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelsRequest{
-		StoreId:           testStore,
+		StoreId:           store,
 		ContinuationToken: "foo",
 	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
 		t.Fatalf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)

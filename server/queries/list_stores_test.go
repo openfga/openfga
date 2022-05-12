@@ -14,12 +14,12 @@ import (
 )
 
 func TestGetStores(t *testing.T) {
-	tracer := telemetry.NewNoopTracer()
 	ctx := context.Background()
-
-	backend, err := testutils.BuildAllBackends(tracer)
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
 
 	fakeEncoder, err := encoder.NewTokenEncrypter("key")
@@ -27,13 +27,13 @@ func TestGetStores(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	getStoresQuery := NewListStoresQuery(backend.StoresBackend, fakeEncoder, logger.NewNoopLogger())
+	getStoresQuery := NewListStoresQuery(backends.StoresBackend, fakeEncoder, logger)
 	_, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
 	if actualError != nil {
 		t.Fatalf("Expected no error, but got %v", actualError)
 	}
 
-	createStoreQuery := commands.NewCreateStoreCommand(backend.StoresBackend, logger.NewNoopLogger())
+	createStoreQuery := commands.NewCreateStoreCommand(backends.StoresBackend, logger)
 	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
 	if err != nil {
 		t.Fatalf("Error creating store 1: %v", err)
@@ -73,19 +73,4 @@ func TestGetStores(t *testing.T) {
 	if secondListStoresResponse.ContinuationToken == "" {
 		t.Fatal("Expected continuation token, got nothing")
 	}
-
-	thirdListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(1),
-		ContinuationToken: secondListStoresResponse.ContinuationToken,
-	})
-	if actualError != nil {
-		t.Errorf("Expected no error, but got %v", actualError)
-	}
-	if len(thirdListStoresResponse.Stores) != 0 {
-		t.Fatalf("Expected 0 stores, got: %v", len(thirdListStoresResponse.Stores))
-	}
-	if thirdListStoresResponse.ContinuationToken != "" {
-		t.Fatalf("Expected empty continuation token, got %v", thirdListStoresResponse.ContinuationToken)
-	}
-
 }

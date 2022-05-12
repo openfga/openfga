@@ -425,6 +425,11 @@ func (t *tupleKeyIterator) next() (*openfga.TupleKey, error) {
 	return r.GetKey(), nil
 }
 
+func (t *tupleKeyIterator) stop() {
+	// Close shouldn't error if called multiple times
+	t.tIterator.Stop()
+}
+
 func validateAndPreprocessTuples(keyToCheck *openfga.TupleKey, tupleKeys []*openfga.TupleKey) (*contextualTuples, error) {
 	if keyToCheck.GetUser() == "" || keyToCheck.GetRelation() == "" || keyToCheck.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput

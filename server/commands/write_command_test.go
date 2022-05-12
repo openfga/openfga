@@ -508,52 +508,55 @@ var writeCommandTests = []writeCommandTest{
 func TestWriteCommand(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	storage, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
 
 	for _, test := range writeCommandTests {
-		store := testutils.CreateRandomString(10)
-		modelID, err := id.NewString()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if test.typeDefinitions != nil {
-			if err := storage.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions}); err != nil {
-				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
+		t.Run(test._name, func(t *testing.T) {
+			store := testutils.CreateRandomString(10)
+			modelID, err := id.NewString()
+			if err != nil {
+				t.Fatal(err)
 			}
-		}
-
-		if test.tuples != nil {
-			if err := storage.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
-				t.Fatalf("error writing test tuples: %v", err)
+			if test.typeDefinitions != nil {
+				if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions}); err != nil {
+					t.Fatalf("%s: WriteAuthorizationModel: got '%v', want nil", test._name, err)
+				}
 			}
-		}
 
-		writeCommand := NewWriteCommand(storage.TupleBackend, storage.AuthorizationModelBackend, tracer, logger.NewNoopLogger())
-		test.request.StoreId = store
-		test.request.AuthorizationModelId = modelID
-		resp, gotErr := writeCommand.Execute(ctx, test.request)
-
-		if test.err != nil {
-			if gotErr == nil {
-				t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
+			if test.tuples != nil {
+				if err := backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
+					t.Fatalf("error writing test tuples: %v", err)
+				}
 			}
-			if !errors.Is(gotErr, test.err) {
-				t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, gotErr)
-			}
-		}
 
-		if test.err == nil && gotErr != nil {
-			t.Errorf("[%s] Did not expect an error but got one: %v", test._name, gotErr)
-		}
+			cmd := NewWriteCommand(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
+			test.request.StoreId = store
+			test.request.AuthorizationModelId = modelID
+			resp, gotErr := cmd.Execute(ctx, test.request)
 
-		if test.response != nil {
-			if resp == nil {
-				t.Error("Expected non nil response, got nil")
+			if test.err != nil {
+				if gotErr == nil {
+					t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
+				}
+				if !errors.Is(gotErr, test.err) {
+					t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, gotErr)
+				}
 			}
-		}
+
+			if test.err == nil && gotErr != nil {
+				t.Errorf("[%s] Did not expect an error but got one: %v", test._name, gotErr)
+			}
+
+			if test.response != nil {
+				if resp == nil {
+					t.Error("Expected non nil response, got nil")
+				}
+			}
+		})
 	}
 }
 
@@ -564,13 +567,18 @@ func TestValidateWriteTuples(t *testing.T) {
 		writes        []*openfga.TupleKey
 		expectedError error
 	}
+
+	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	storage, err := testutils.BuildAllBackends(tracer)
+	logger := logger.NewNoopLogger()
+
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
 	if err != nil {
-		t.Fatalf("Error building backend: %s", err)
+		t.Fatal(err)
 	}
-	items := make([]*openfga.TupleKey, storage.TupleBackend.MaxTuplesInWriteOperation()+1)
-	for i := 0; i < storage.TupleBackend.MaxTuplesInWriteOperation()+1; i++ {
+
+	items := make([]*openfga.TupleKey, backends.TupleBackend.MaxTuplesInWriteOperation()+1)
+	for i := 0; i < backends.TupleBackend.MaxTuplesInWriteOperation()+1; i++ {
 		items[i] = &openfga.TupleKey{
 			Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 			Relation: testutils.CreateRandomString(50),
@@ -578,7 +586,7 @@ func TestValidateWriteTuples(t *testing.T) {
 		}
 	}
 
-	writeCommand := NewWriteCommand(storage.TupleBackend, storage.AuthorizationModelBackend, tracer, logger.NewNoopLogger())
+	cmd := NewWriteCommand(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
 
 	tests := []test{
 		{
@@ -613,12 +621,12 @@ func TestValidateWriteTuples(t *testing.T) {
 			name:          "too many items writes and deletes",
 			deletes:       items[:5],
 			writes:        items[5:],
-			expectedError: serverErrors.ExceededEntityLimit("write operations", writeCommand.tupleBackend.MaxTuplesInWriteOperation()),
+			expectedError: serverErrors.ExceededEntityLimit("write operations", cmd.tupleBackend.MaxTuplesInWriteOperation()),
 		},
 	}
 
 	for _, test := range tests {
-		err := writeCommand.validateWriteTuples(test.deletes, test.writes)
+		err := cmd.validateWriteTuples(test.deletes, test.writes)
 		if !reflect.DeepEqual(err, test.expectedError) {
 			t.Errorf("%s: Expected error %v, got %v", test.name, test.expectedError, err)
 		}

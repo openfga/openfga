@@ -234,6 +234,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 		}(c)
 	}
 
+	// If any `break` was triggered, immediately release any possible resources held by the iterator.
+	iter.stop()
+
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
 		close(c)

@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/errors"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel"
 )
 
 func TestWriteAuthorizationModel(t *testing.T) {
@@ -540,6 +540,7 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		{
 			_name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
 			request: &openfgav1pb.WriteAuthorizationModelRequest{
+				StoreId: testutils.CreateRandomString(10),
 				TypeDefinitions: &openfgav1pb.TypeDefinitions{
 					TypeDefinitions: []*openfgav1pb.TypeDefinition{
 						{
@@ -594,41 +595,37 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 	}
 
-Tests:
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	for _, test := range tests {
-		tracer := otel.Tracer("noop")
-		storage, err := testutils.BuildAllBackends(tracer)
-		if err != nil {
-			t.Fatalf("Error building backend: %s", err)
-		}
-		ctx := context.Background()
+		t.Run(test._name, func(t *testing.T) {
+			cmd := NewWriteAuthorizationModelCommand(backends.AuthorizationModelBackend, logger)
+			actualResponse, actualError := cmd.Execute(ctx, test.request)
 
-		logger := logger.NewNoopLogger()
-
-		writeAuthzModelCommand := NewWriteAuthorizationModelCommand(storage.AuthorizationModelBackend, logger)
-		actualResponse, actualError := writeAuthzModelCommand.Execute(ctx, test.request)
-
-		if test.err != nil {
-			if actualError == nil {
-				t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
-				continue Tests
-			}
-			if test.err.Error() != actualError.Error() {
-				t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, actualError)
-				continue Tests
-			}
-		}
-
-		if test.response != nil {
-			if actualError != nil {
-				t.Errorf("[%s] Expected no error but got '%s'", test._name, actualError)
-				continue Tests
+			if test.err != nil {
+				if actualError == nil {
+					t.Fatalf("[%s] Expected error '%s', but got none", test._name, test.err)
+				}
+				if test.err.Error() != actualError.Error() {
+					t.Fatalf("[%s] Expected error '%s', actual '%s'", test._name, test.err, actualError)
+				}
 			}
 
-			if actualResponse == nil {
-				t.Error("Expected non nil response, got nil")
-				continue Tests
+			if test.response != nil {
+				if actualError != nil {
+					t.Fatalf("[%s] Expected no error but got '%s'", test._name, actualError)
+				}
+
+				if actualResponse == nil {
+					t.Fatalf("Expected non nil response, got nil")
+				}
 			}
-		}
+		})
 	}
 }

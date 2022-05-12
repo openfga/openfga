@@ -364,11 +364,7 @@ func (p *Postgres) WriteAuthorizationModel(
 	}
 
 	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
-		if err := tx.SendBatch(ctx, inserts).Close(); err != nil {
-			return err
-		}
-
-		return nil
+		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {
 		return handlePostgresError(err)
@@ -482,7 +478,8 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 		return err
 	}
 
-	_, err = p.pool.Exec(ctx, `INSERT INTO assertion (store, authorization_model_id, assertions) VALUES ($1, $2, $3)`, store, modelID, marshalledAssertions)
+	stmt := "INSERT INTO assertion (store, authorization_model_id, assertions) VALUES ($1, $2, $3) ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = $3"
+	_, err = p.pool.Exec(ctx, stmt, store, modelID, marshalledAssertions)
 	if err != nil {
 		return handlePostgresError(err)
 	}

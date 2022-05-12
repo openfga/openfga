@@ -1,9 +1,4 @@
-local_postgres ?= postgresql://localhost:5432
-postgres_test_table ?= dev-openfga
 basic_code_locations=./internal/...,./pkg/...,./server/...,./storage/...
-
-backends ?= TUPLE_BACKEND_URL=$(local_postgres) TUPLE_BACKEND_TYPE=postgres AUTHORIZATION_MODEL_BACKEND_URL=$(local_postgres) AUTHORIZATION_MODEL_BACKEND_TYPE=postgres SETTINGS_BACKEND_URL=$(local_postgres) SETTINGS_BACKEND_TYPE=postgres ASSERTIONS_BACKEND_URL=$(local_postgres) ASSERTIONS_BACKEND_TYPE=postgres CHANGELOG_BACKEND_URL=$(local_postgres) CHANGELOG_BACKEND_TYPE=postgres STORES_BACKEND_URL=$(local_postgres) STORES_BACKEND_TYPE=postgres
-test_backend ?= $(backends) TEST_CONFIG_BACKEND_TYPE=postgres TEST_CONFIG_BACKEND_URL=$(local_postgres) TUPLE_DATABASE_NAME=$(postgres_test_table) AUTHORIZATION_MODEL_DATABASE_NAME=$(postgres_test_table) SETTINGS_DATABASE_NAME=$(postgres_test_table) ASSERTIONS_DATABASE_NAME=$(postgres_test_table) CHANGELOG_DATABASE_NAME=$(postgres_test_table) STORES_DATABASE_NAME=$(postgres_test_table)
 
 .DEFAULT_GOAL := help
 
@@ -44,22 +39,22 @@ run-postgres: build ## Run the OpenFGA server with Postgres storage
 .PHONY: test
 test: test-unit test-functional ## Run tests (unit and functional) against the OpenFGA server
 
-.PHONY: test-unit
-test-unit: ## Run unit tests against the OpenFGA server
+.PHONY: test-unit-memory
+test-unit-memory: ## Run unit tests against the OpenFGA server using the in-memory datastore
 	go test $(gotest_extra_flags) -v \
 		-coverprofile=coverageunitmemory.out \
 		-covermode=atomic -race \
 		-coverpkg=$(basic_code_locations) \
-		`go list ./server/... | grep -v postgres` `go list ./internal/... | grep -v postgres` `go list ./storage/... | grep -v postgres`
+    	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v postgres`
 
-.PHONY: test-unit-ci
-test-unit-ci:  ## Run unit tests against the OpenFGA server in CI/CD environment
-	$(test_backend) go test $(gotest_extra_flags) -v \
+.PHONY: test-unit-postgres
+test-unit-postgres:  ## Run unit tests against the OpenFGA server using the Postgres datastore
+	TEST_CONFIG_BACKEND_TYPE=postgres go test $(gotest_extra_flags) -v \
 		-coverprofile=coverageunitpostgres.out \
 		-covermode=atomic -race \
 		-p 1 \
 		-coverpkg=$(basic_code_locations) \
-		`go list ./server/... | grep -v memory` `go list ./internal/... | grep -v memory` `go list ./storage/... | grep -v memory`
+    	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v memory`
 
 .PHONY: test-functional
 test-functional: ## Run functional tests against the OpenFGA server

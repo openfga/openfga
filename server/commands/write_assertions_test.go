@@ -11,8 +11,6 @@ import (
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-const writeTestStore = "auth0"
-
 func TestWriteAssertions(t *testing.T) {
 	type writeAssertionsTestSettings struct {
 		_name   string
@@ -20,8 +18,10 @@ func TestWriteAssertions(t *testing.T) {
 		err     error
 	}
 
+	store := testutils.CreateRandomString(10)
+
 	githubModelReq := &openfgav1pb.WriteAuthorizationModelRequest{
-		StoreId: writeTestStore,
+		StoreId: store,
 		TypeDefinitions: &openfgav1pb.TypeDefinitions{
 			TypeDefinitions: []*openfgav1pb.TypeDefinition{
 				{
@@ -38,7 +38,7 @@ func TestWriteAssertions(t *testing.T) {
 		{
 			_name: "writing assertions succeeds",
 			request: &openfgav1pb.WriteAssertionsRequest{
-				StoreId: writeTestStore,
+				StoreId: store,
 				Assertions: []*openfga.Assertion{{
 					TupleKey: &openfga.TupleKey{
 						Object:   "repo:test",
@@ -52,32 +52,41 @@ func TestWriteAssertions(t *testing.T) {
 		{
 			_name: "writing empty assertions succeeds",
 			request: &openfgav1pb.WriteAssertionsRequest{
-				StoreId: writeTestStore,
+				StoreId: store,
+				Assertions: []*openfga.Assertion{{
+					TupleKey: &openfga.TupleKey{
+						Object:   "repo:test",
+						Relation: "reader",
+						User:     "elbuo",
+					},
+					Expectation: false,
+				},
+				},
 			},
 		},
 	}
 
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	modelID, err := NewWriteAuthorizationModelCommand(backends.AuthorizationModelBackend, logger).Execute(ctx, githubModelReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	for _, test := range tests {
-		ctx := context.Background()
-		tracer := telemetry.NewNoopTracer()
-		logger := logger.NewNoopLogger()
-
 		t.Run(test._name, func(t *testing.T) {
-			storage, err := testutils.BuildAllBackends(tracer)
-			if err != nil {
-				t.Fatalf("Error building backend: %s", err)
-			}
-
-			modelID, err := NewWriteAuthorizationModelCommand(storage.AuthorizationModelBackend, logger).Execute(ctx, githubModelReq)
-			if err != nil {
-				t.Fatalf("Error storing model: %s", err)
-			}
-
-			cmd := NewWriteAssertionsCommand(storage.AssertionsBackend, storage.AuthorizationModelBackend, logger)
+			cmd := NewWriteAssertionsCommand(backends.AssertionsBackend, backends.AuthorizationModelBackend, logger)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
-			_, err = cmd.Execute(ctx, test.request)
+
+			_, err := cmd.Execute(ctx, test.request)
 			if err != test.err {
-				t.Fatalf("Expected error to be '%v', actual '%v'", test.err, err)
+				t.Fatalf("got '%v', expected '%v'", err, test.err)
 			}
 		})
 	}
