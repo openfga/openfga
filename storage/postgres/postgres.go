@@ -226,6 +226,8 @@ func (p *Postgres) MaxTuplesInWriteOperation() int {
 }
 
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1pb.AuthorizationModel, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
+	defer span.End()
 
 	stmt := "SELECT type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
 	rows, err := p.pool.Query(ctx, stmt, store, modelID)
@@ -266,6 +268,8 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]string, []byte, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
+	defer span.End()
 
 	stmt := buildReadAuthorizationModelsQuery(store, opts)
 	rows, err := p.pool.Query(ctx, stmt)
@@ -299,6 +303,8 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 }
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+	defer span.End()
 
 	var modelID string
 	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY inserted_at DESC LIMIT 1"
@@ -314,6 +320,8 @@ func (p *Postgres) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
 ) (*openfgav1pb.TypeDefinition, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadTypeDefinition")
+	defer span.End()
 
 	var marshalledTypeDef []byte
 	stmt := "SELECT type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2 AND type = $3"
@@ -339,6 +347,8 @@ func (p *Postgres) WriteAuthorizationModel(
 	store, modelID string,
 	tds *openfgav1pb.TypeDefinitions,
 ) error {
+	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
+	defer span.End()
 
 	if len(tds.GetTypeDefinitions()) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
@@ -507,6 +517,8 @@ func (p *Postgres) ReadChanges(
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
 ) ([]*openfga.TupleChange, []byte, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
+	defer span.End()
 
 	stmt, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
 	if err != nil {
