@@ -18,7 +18,7 @@ import (
 const (
 	checkTestStore          = "auth0"
 	defaultResolveNodeLimit = 25
-	gitHubTestDataFile      = "../../../testdata/github.json"
+	gitHubTestDataFile      = "../../testdata/github.json"
 )
 
 var gitHubTuples = []*openfga.TupleKey{
