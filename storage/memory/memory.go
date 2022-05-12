@@ -18,7 +18,6 @@ import (
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -51,7 +50,7 @@ func match(key *openfga.TupleKey, target *openfga.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfga.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, iterator.Done
+		return nil, storage.TupleIteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest

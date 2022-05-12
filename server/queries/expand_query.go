@@ -12,7 +12,6 @@ import (
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/api/iterator"
 )
 
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
@@ -97,7 +96,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == iterator.Done {
+			if err == storage.TupleIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
@@ -177,7 +176,7 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == iterator.Done {
+			if err == storage.TupleIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)

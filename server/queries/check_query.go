@@ -18,7 +18,6 @@ import (
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
-	"google.golang.org/api/iterator"
 )
 
 const AllUsers = "*"
@@ -193,7 +192,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	for {
 		usersetTuple, err := iter.next()
 		if err != nil {
-			if err == iterator.Done {
+			if err == storage.TupleIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -404,7 +403,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	for {
 		tuple, err := iter.next()
 		if err != nil {
-			if err == iterator.Done {
+			if err == storage.TupleIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)

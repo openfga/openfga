@@ -14,7 +14,6 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
-	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -46,7 +45,7 @@ type tupleIterator struct {
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
 		t.Stop()
-		return nil, iterator.Done
+		return nil, storage.TupleIteratorDone
 	}
 
 	var record tupleRecord
@@ -70,7 +69,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tupl
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == iterator.Done {
+			if err == storage.TupleIteratorDone {
 				return res, nil, nil
 			}
 			return nil, nil, err
@@ -81,7 +80,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tupl
 
 	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token. This is
 	// why we have LIMIT+1 in the query.
-	if _, err := t.next(); errors.Is(err, iterator.Done) {
+	if _, err := t.next(); errors.Is(err, storage.TupleIteratorDone) {
 		return res, nil, nil
 	}
 

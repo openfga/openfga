@@ -23,7 +23,6 @@ import (
 	"github.com/openfga/openfga/storage/postgres/testutils"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -232,8 +231,8 @@ func TestTupleWritingAndReading(t *testing.T) {
 			}
 		}
 		// Then the iterator should run out
-		if _, err := gotTuples.Next(); !errors.Is(err, iterator.Done) {
-			t.Fatalf("got '%v', want '%v'", err, iterator.Done)
+		if _, err := gotTuples.Next(); !errors.Is(err, storage.TupleIteratorDone) {
+			t.Fatalf("got '%v', want '%v'", err, storage.TupleIteratorDone)
 		}
 	})
 
@@ -246,8 +245,8 @@ func TestTupleWritingAndReading(t *testing.T) {
 		}
 		defer gotTuples.Stop()
 
-		if _, err := gotTuples.Next(); !errors.Is(err, iterator.Done) {
-			t.Fatalf("got '%v', want '%v'", err, iterator.Done)
+		if _, err := gotTuples.Next(); !errors.Is(err, storage.TupleIteratorDone) {
+			t.Fatalf("got '%v', want '%v'", err, storage.TupleIteratorDone)
 		}
 	})
 }

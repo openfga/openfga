@@ -4,11 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-errors/errors"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 const DefaultPageSize = 50
+
+var TupleIteratorDone = errors.New("no more tuples in iterator")
 
 type PaginationOptions struct {
 	PageSize int
@@ -28,7 +31,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 // TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an iterator.Done error.
+// returns an TupleIteratorDone error.
 type TupleIterator interface {
 	Next() (*openfga.Tuple, error)
 	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
