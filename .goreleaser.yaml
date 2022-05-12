@@ -28,6 +28,11 @@ dockers:
       - "openfga/openfga:v{{ .Major }}"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
+      - "ghcr.io/openfga/openfga:{{ .Tag }}"
+      - "ghcr.io/openfga/openfga:v{{ .Version }}"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}"
+      - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
 
 release:
   github:
