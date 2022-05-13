@@ -25,8 +25,8 @@ var (
 )
 
 type testConfig struct {
-	BackendType string `split_words:"true" default:"memory"`
-	PostgresURL string `envconfig:"POSTGRES_URL" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
+	BackendType        string `split_words:"true" default:"memory"`
+	PostgresConnString string `split_words:"true" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
 }
 
 func buildConfig() (*testConfig, error) {
@@ -56,7 +56,7 @@ func BuildAllBackends(ctx context.Context, tracer trace.Tracer, logger logger.Lo
 		backends.ChangelogBackend = memoryBackend
 	case "postgres":
 		if pool == nil {
-			pool, err = pgxpool.Connect(ctx, config.PostgresURL)
+			pool, err = pgxpool.Connect(ctx, config.PostgresConnString)
 			if err != nil {
 				return nil, err
 			}

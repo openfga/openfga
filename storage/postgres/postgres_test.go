@@ -40,7 +40,7 @@ var (
 )
 
 type testConfig struct {
-	PostgresURL string `envconfig:"POSTGRES_URI" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
+	PostgresConnString string `split_words:"true" default:"postgres://postgres:password@127.0.0.1:5432/postgres"`
 }
 
 func TestMain(m *testing.M) {
@@ -52,7 +52,7 @@ func TestMain(m *testing.M) {
 	}
 
 	ctx := context.Background()
-	pool, err = pgxpool.Connect(ctx, config.PostgresURL)
+	pool, err = pgxpool.Connect(ctx, config.PostgresConnString)
 	if err != nil {
 		fmt.Printf("failed to create Postgres pool: %v\n", err)
 		os.Exit(1)

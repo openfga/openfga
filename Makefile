@@ -1,5 +1,5 @@
 basic_code_locations=./internal/...,./pkg/...,./server/...,./storage/...
-
+postgres_test_backend ?= TEST_CONFIG_BACKEND_TYPE=postgres TEST_CONFIG_POSTGRES_CONN_STRING=postgres://postgres:password@127.0.0.1:5432/postgres
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -33,36 +33,28 @@ run: build ## Run the OpenFGA server with in-memory storage
 .PHONY: run-postgres
 run-postgres: build ## Run the OpenFGA server with Postgres storage
 	docker-compose down
-	docker-compose up --detach postgres
+	docker-compose up -d postgres
 	$(test_backend) make run
 
-.PHONY: test
-test: test-unit test-functional ## Run tests (unit and functional) against the OpenFGA server
+.PHONY: unit-test
+unit-test: unit-test-memory unit-test-postgres
 
-.PHONY: test-unit-memory
-test-unit-memory: ## Run unit tests against the OpenFGA server using the in-memory datastore
+.PHONY: unit-test-memory
+unit-test-memory: ## Run unit tests against the OpenFGA server using an in-memory datastore
 	go test $(gotest_extra_flags) -v \
 		-coverprofile=coverageunitmemory.out \
 		-covermode=atomic -race \
 		-coverpkg=$(basic_code_locations) \
     	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v postgres`
 
-.PHONY: test-unit-postgres
-test-unit-postgres:  ## Run unit tests against the OpenFGA server using the Postgres datastore
-	TEST_CONFIG_BACKEND_TYPE=postgres go test $(gotest_extra_flags) -v \
+.PHONY: unit-test-postgres
+unit-test-postgres:  ## Run unit tests against the OpenFGA server using a Postgres datastore
+	$(postgres_test_backend) go test $(gotest_extra_flags) -v \
 		-coverprofile=coverageunitpostgres.out \
 		-covermode=atomic -race \
 		-p 1 \
 		-coverpkg=$(basic_code_locations) \
     	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v memory`
-
-.PHONY: test-functional
-test-functional: ## Run functional tests against the OpenFGA server
-	go test $(gotest_extra_flags) \
-		-coverprofile=coveragefunctional.out \
-		-covermode=atomic -v --tags=functional \
-		-coverpkg=$(basic_code_locations) \
-		./server/...
 
 .PHONY: initialize-db
 initialize-db:

@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"golang.org/x/sync/errgroup"
 	"log"
 	"os/signal"
 	"syscall"
 
 	"github.com/openfga/openfga/server"
+	"golang.org/x/sync/errgroup"
 )
 
 func main() {

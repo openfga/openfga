@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openfga/openfga/server/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/openfga/openfga/server/errors"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/metadata"
 )

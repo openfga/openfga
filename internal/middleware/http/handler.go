@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openfga/openfga/server/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/openfga/openfga/server/errors"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 )
