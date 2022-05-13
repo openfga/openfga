@@ -1,8 +1,9 @@
 name: FOSSA
 on:
-  pull_request: { }
   push:
-    branches: [ "master" ]
+    branches:
+      - master
+      - main
 
 jobs:
   fossa:
@@ -12,6 +13,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Run FOSSA scan and upload build data
-        uses: fossa-contrib/fossa-action@v1
+        uses: fossas/fossa-action@main
         with:
-          fossa-api-key: ${{ secrets.FOSSA_API_KEY }}
+          api-key: ${{ secrets.FOSSA_API_KEY }}
