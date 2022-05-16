@@ -122,6 +122,6 @@ func (r *ResolutionMetadata) Fork() *ResolutionMetadata {
 }
 
 // LogDBStats will call the logger to log the number of reads and writes for the feature
-func LogDBStats(ctx context.Context, log logger.Logger, feature string, reads uint32, writes uint32) {
-	log.InfoWithContext(ctx, "db_stats", logger.String("feature", feature), logger.Uint32("reads", reads), logger.Uint32("writes", writes))
+func LogDBStats(ctx context.Context, log logger.Logger, method string, reads uint32, writes uint32) {
+	log.InfoWithContext(ctx, "db_stats", logger.String("method", method), logger.Uint32("reads", reads), logger.Uint32("writes", writes))
 }
