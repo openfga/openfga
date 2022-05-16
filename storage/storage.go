@@ -136,3 +136,11 @@ type AllBackends struct {
 	AssertionsBackend         AssertionsBackend
 	ChangelogBackend          ChangelogBackend
 }
+
+type OpenFGADatastore interface {
+	TupleBackend
+	AuthorizationModelBackend
+	StoresBackend
+	AssertionsBackend
+	ChangelogBackend
+}

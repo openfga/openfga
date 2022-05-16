@@ -3,37 +3,31 @@ services:
   postgres:
     image: postgres:14
     container_name: postgres
+    networks:
+      - default
     ports:
       - "5432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   openfga:
     build:
       context: ./
       dockerfile: ./Dockerfile
     container_name: openfga
+    networks:
+      - default
     ports:
       - "8080:8080"
     environment:
-      TUPLE_BACKEND_TYPE: postgres
-      TUPLE_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      TUPLE_DATABASE_NAME: postgres
-      AUTHORIZATION_MODEL_BACKEND_TYPE: postgres
-      AUTHORIZATION_MODEL_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      AUTHORIZATION_MODEL_DATABASE_NAME: postgres
-      SETTINGS_BACKEND_TYPE: postgres
-      SETTINGS_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      SETTINGS_DATABASE_NAME: postgres
-      ASSERTIONS_BACKEND_TYPE: postgres
-      ASSERTIONS_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      ASSERTIONS_DATABASE_NAME: postgres
-      CHANGELOG_BACKEND_TYPE: postgres
-      CHANGELOG_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      CHANGELOG_DATABASE_NAME: postgres
-      STORES_BACKEND_TYPE: postgres
-      STORES_BACKEND_URL: "postgres://postgres:password@127.0.0.1:5432/postgres"
-      STORES_DATABASE_NAME: postgres
-    links:
-      - postgres
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_CONNECTION_URI: "postgres://postgres:password@postgres:5432/postgres"
+    depends_on:
+      postgres:
+        condition: service_healthy

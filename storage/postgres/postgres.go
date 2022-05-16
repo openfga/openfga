@@ -33,11 +33,7 @@ type Postgres struct {
 	maxTypesInTypeDefinition int
 }
 
-var _ storage.TupleBackend = &Postgres{}
-var _ storage.AuthorizationModelBackend = &Postgres{}
-var _ storage.StoresBackend = &Postgres{}
-var _ storage.AssertionsBackend = &Postgres{}
-var _ storage.ChangelogBackend = &Postgres{}
+var _ storage.OpenFGADatastore = &Postgres{}
 
 type PostgresOption func(*Postgres)
 

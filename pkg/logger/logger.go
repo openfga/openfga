@@ -94,6 +94,16 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
+func NewZapLogger() (*ZapLogger, error) {
+	production, err := zap.NewProduction()
+	if err != nil {
+		return nil, err
+	}
+	return &ZapLogger{
+		production,
+	}, nil
+}
+
 func Error(err error) zap.Field {
 	return zap.Error(err)
 }

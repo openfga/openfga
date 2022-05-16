@@ -91,11 +91,7 @@ type AuthorizationModelEntry struct {
 	latest bool
 }
 
-var _ storage.AuthorizationModelBackend = (*MemoryBackend)(nil)
-var _ storage.TupleBackend = (*MemoryBackend)(nil)
-var _ storage.AssertionsBackend = (*MemoryBackend)(nil)
-var _ storage.StoresBackend = (*MemoryBackend)(nil)
-var _ storage.ChangelogBackend = (*MemoryBackend)(nil)
+var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
 // New creates a new empty MemoryBackend.
 func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationModel int) *MemoryBackend {
