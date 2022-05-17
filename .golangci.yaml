@@ -4,3 +4,4 @@ linters:
   enable:
     - gofmt
     - goimports
+    - stylecheck

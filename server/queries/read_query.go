@@ -78,21 +78,21 @@ func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, 
 	ctx, span := q.tracer.Start(ctx, "validateAndAuthenticateTupleset")
 	defer span.End()
 
-	objectType, objectId := tupleUtils.SplitObject(tupleKey.GetObject())
+	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType == "" {
 		return serverErrors.InvalidTupleSet
 	}
 
 	// at this point we "think" we have a type. before a backend query, we validate things we can check locally
-	if objectId == "" && tupleKey.GetUser() == "" {
-		return serverErrors.InvalidTuple("missing objectId and user", tupleKey)
+	if objectID == "" && tupleKey.GetUser() == "" {
+		return serverErrors.InvalidTuple("missing objectID and user", tupleKey)
 	}
 
 	rwCounter.AddReadCall()
 
 	ns, err := q.typeDefinitionReadBackend.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return serverErrors.TypeNotFound(objectType)
 		}
 		return serverErrors.HandleError("", err)

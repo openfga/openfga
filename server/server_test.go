@@ -32,7 +32,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
-		if _, err = s.resolveAuthorizationModelId(ctx, store, ""); !errors.Is(err, expectedError) {
+		if _, err = s.resolveAuthorizationModelID(ctx, store, ""); !errors.Is(err, expectedError) {
 			t.Errorf("Expected '%v' but got %v", expectedError, err)
 		}
 	})
@@ -48,7 +48,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if _, err = s.resolveAuthorizationModelId(ctx, store, wrongAzmID); !errors.Is(err, expectedError) {
+		if _, err = s.resolveAuthorizationModelID(ctx, store, wrongAzmID); !errors.Is(err, expectedError) {
 			t.Errorf("Expected '%v' but got %v", expectedError, err)
 		}
 	})
@@ -65,7 +65,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got, err := s.resolveAuthorizationModelId(ctx, store, resp.GetAuthorizationModelId())
+		got, err := s.resolveAuthorizationModelID(ctx, store, resp.GetAuthorizationModelId())
 		if err != nil {
 			t.Fatal(err)
 		}

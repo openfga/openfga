@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	userIdRegex   = regexp.MustCompile(`^[^:#\s]+$`)
+	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
 	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
 	userSetRegex  = regexp.MustCompile(`^[^:#\s]+:[^#\s]+#[^:#\s]+$`)
 	relationRegex = regexp.MustCompile(`^[^:#\s]+$`)
@@ -62,8 +62,8 @@ func SplitObjectRelation(objectRelation string) (string, string) {
 
 // GetType returns the type from a supplied Object identifier or an empty string if the object id does not contain a
 // type.
-func GetType(objectId string) string {
-	t, _ := SplitObject(objectId)
+func GetType(objectID string) string {
+	t, _ := SplitObject(objectID)
 	return t
 }
 
@@ -119,7 +119,7 @@ func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
 	}
-	if user == "*" || userIdRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
+	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
 	}
 

@@ -26,7 +26,7 @@ func (query *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *open
 	modelID := req.GetId()
 	azm, err := query.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 		return nil, serverErrors.HandleError("", err)

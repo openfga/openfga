@@ -10,14 +10,14 @@ import (
 )
 
 func TestHandlePostgresError(t *testing.T) {
-	t.Run("duplicate key value error with tuple key wraps InvalidWriteInput", func(t *testing.T) {
+	t.Run("duplicate key value error with tuple key wraps ErrInvalidWriteInput", func(t *testing.T) {
 		err := handlePostgresError(errors.New("duplicate key value"), &openfga.TupleKey{
 			Object:   "object",
 			Relation: "relation",
 			User:     "user",
 		})
-		if !errors.Is(err, storage.InvalidWriteInput) {
-			t.Fatalf("got '%v', expected wrapped '%v'", err, storage.InvalidWriteInput)
+		if !errors.Is(err, storage.ErrInvalidWriteInput) {
+			t.Fatalf("got '%v', expected wrapped '%v'", err, storage.ErrInvalidWriteInput)
 		}
 	})
 
@@ -30,11 +30,11 @@ func TestHandlePostgresError(t *testing.T) {
 		}
 	})
 
-	t.Run("pgx.ErrNoRows is converted to storage.NotFound error", func(t *testing.T) {
+	t.Run("pgx.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
 		err := handlePostgresError(pgx.ErrNoRows)
 
-		if !errors.Is(err, storage.NotFound) {
-			t.Fatalf("got '%v', expected '%v'", err, storage.NotFound)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got '%v', expected '%v'", err, storage.ErrNotFound)
 		}
 	})
 }

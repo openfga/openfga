@@ -106,7 +106,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateTuple(ctx, query.typeDefinitionReadBackend, rc.store, rc.authorizationModelId, rc.tk, rc.metadata)
+	userset, err := tupleUtils.ValidateTuple(ctx, query.typeDefinitionReadBackend, rc.store, rc.modelID, rc.tk, rc.metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
@@ -172,7 +172,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 
 		tk, err := rc.readUserTuple(ctx, query.tupleBackend)
 		if err != nil {
-			if errors.Is(err, storage.NotFound) {
+			if errors.Is(err, storage.ErrNotFound) {
 				c <- &chanResolveResult{err: nil, found: false}
 			} else {
 				c <- &chanResolveResult{err: err, found: false}
@@ -299,7 +299,7 @@ func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolution
 	for idx, userset := range nodes.Intersection.Child {
 		idx, userset := idx, userset
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.authorizationModelId, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, userset)
 			if err != nil {
@@ -363,7 +363,7 @@ func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionCo
 	for idx, set := range sets {
 		idx, set := idx, set
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.authorizationModelId, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, set)
 			if err != nil {

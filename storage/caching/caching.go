@@ -28,15 +28,15 @@ func NewTypeDefinitionCachingBackend(innerBackend storage.TypeDefinitionReadBack
 	}
 }
 
-func (cachingBackend *typeDefinitionContextCachingBackend) ReadTypeDefinition(ctx context.Context, store, configId, name string) (*openfgav1pb.TypeDefinition, error) {
-	cacheKey := strings.Join([]string{store, configId, name}, Separator)
+func (cachingBackend *typeDefinitionContextCachingBackend) ReadTypeDefinition(ctx context.Context, store, modelID, name string) (*openfgav1pb.TypeDefinition, error) {
+	cacheKey := strings.Join([]string{store, modelID, name}, Separator)
 	cachedEntry := cachingBackend.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
 		return cachedEntry.Value().(*openfgav1pb.TypeDefinition), nil
 	}
 
-	ns, err := cachingBackend.innerBackend.ReadTypeDefinition(ctx, store, configId, name)
+	ns, err := cachingBackend.innerBackend.ReadTypeDefinition(ctx, store, modelID, name)
 	if err != nil {
 		return nil, errors.ErrorWithStack(err)
 	}

@@ -16,7 +16,7 @@ func TestEncodedError(t *testing.T) {
 		message                string
 		expectedCode           int
 		expectedCodeString     string
-		expectedHttpStatusCode int
+		expectedHTTPStatusCode int
 		isValidEncodedError    bool
 	}
 	var tests = []encodedTests{
@@ -24,7 +24,7 @@ func TestEncodedError(t *testing.T) {
 			_name:                  "invalid error",
 			errorCode:              20,
 			message:                "error message",
-			expectedHttpStatusCode: http.StatusInternalServerError,
+			expectedHTTPStatusCode: http.StatusInternalServerError,
 			expectedCode:           20,
 			expectedCodeString:     "20",
 			isValidEncodedError:    false,
@@ -33,7 +33,7 @@ func TestEncodedError(t *testing.T) {
 			_name:                  "validation error",
 			errorCode:              int32(openfgav1pb.ErrorCode_validation_error),
 			message:                "error message",
-			expectedHttpStatusCode: http.StatusBadRequest,
+			expectedHTTPStatusCode: http.StatusBadRequest,
 			expectedCode:           2000,
 			expectedCodeString:     "validation_error",
 			isValidEncodedError:    true,
@@ -42,7 +42,7 @@ func TestEncodedError(t *testing.T) {
 			_name:                  "internal error",
 			errorCode:              int32(openfgav1pb.InternalErrorCode_internal_error),
 			message:                "error message",
-			expectedHttpStatusCode: http.StatusInternalServerError,
+			expectedHTTPStatusCode: http.StatusInternalServerError,
 			expectedCode:           4000,
 			expectedCodeString:     "internal_error",
 			isValidEncodedError:    true,
@@ -51,7 +51,7 @@ func TestEncodedError(t *testing.T) {
 			_name:                  "undefined endpoint",
 			errorCode:              int32(openfgav1pb.NotFoundErrorCode_undefined_endpoint),
 			message:                "error message",
-			expectedHttpStatusCode: http.StatusNotFound,
+			expectedHTTPStatusCode: http.StatusNotFound,
 			expectedCode:           5000,
 			expectedCodeString:     "undefined_endpoint",
 			isValidEncodedError:    true,
@@ -60,8 +60,8 @@ func TestEncodedError(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			actualError := NewEncodedError(test.errorCode, test.message)
-			if actualError.HTTPStatusCode != test.expectedHttpStatusCode {
-				t.Errorf("[%s]: http status code expect %d: actual %d", test._name, test.expectedHttpStatusCode, actualError.HTTPStatusCode)
+			if actualError.HTTPStatusCode != test.expectedHTTPStatusCode {
+				t.Errorf("[%s]: http status code expect %d: actual %d", test._name, test.expectedHTTPStatusCode, actualError.HTTPStatusCode)
 			}
 
 			if actualError.Code() != test.expectedCodeString {

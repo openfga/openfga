@@ -24,8 +24,8 @@ type svcConfig struct {
 	DatastoreEngine               string `default:"memory" split_words:"true" required:"true"`
 	DatastoreConnectionURI        string `split_words:"true"`
 	ServiceName                   string `default:"openfga" split_words:"true"`
-	HttpPort                      int    `default:"8080" split_words:"true"`
-	RpcPort                       int    `default:"8081" split_words:"true"`
+	HTTPPort                      int    `default:"8080" split_words:"true"`
+	RPCPort                       int    `default:"8081" split_words:"true"`
 	MaxTuplesPerWrite             int    `default:"100" split_words:"true"`
 	MaxTypesPerAuthorizationModel int    `default:"100" split_words:"true"`
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
@@ -84,8 +84,8 @@ func runServer(ctx context.Context) error {
 		TokenEncoder:              tokenEncoder,
 	}, &server.Config{
 		ServiceName:            config.ServiceName,
-		HttpPort:               config.HttpPort,
-		RpcPort:                config.RpcPort,
+		RPCPort:                config.RPCPort,
+		HTTPPort:               config.HTTPPort,
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		UnaryInterceptors:      nil,

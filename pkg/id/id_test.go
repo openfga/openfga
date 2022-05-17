@@ -15,10 +15,10 @@ func TestParse(t *testing.T) {
 	})
 
 	t.Run("error when trying to parse non-id", func(t *testing.T) {
-		badId := "foobar" // foobar is not an ulid, which is what ids are
-		_, err := Parse(badId)
+		badID := "foobar" // foobar is not an ulid, which is what ids are
+		_, err := Parse(badID)
 		if err == nil {
-			t.Errorf("was able to parse '%s' as an id", badId)
+			t.Errorf("was able to parse '%s' as an id", badID)
 		}
 	})
 }

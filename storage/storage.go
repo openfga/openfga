@@ -118,7 +118,7 @@ type StoresBackend interface {
 
 type AssertionsBackend interface {
 	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error
-	ReadAssertions(ctx context.Context, store, authzModelId string) ([]*openfga.Assertion, error)
+	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfga.Assertion, error)
 }
 
 type ChangelogBackend interface {
@@ -126,7 +126,7 @@ type ChangelogBackend interface {
 	// ReadChanges returns the writes and deletes that have occurred for tuples of a given object type within a store.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond and should be interpreted
 	// as a millisecond duration.
-	ReadChanges(ctx context.Context, storeId, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error)
 }
 
 type AllBackends struct {

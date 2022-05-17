@@ -7,7 +7,7 @@ import (
 func TestSplitObjectId(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		objectId     string
+		objectID     string
 		expectedType string
 		expectedOID  string
 	}{
@@ -16,41 +16,41 @@ func TestSplitObjectId(t *testing.T) {
 		},
 		{
 			name:         "type only",
-			objectId:     "foo:",
+			objectID:     "foo:",
 			expectedType: "foo",
 		},
 		{
 			name:        "no separator",
-			objectId:    "foo",
+			objectID:    "foo",
 			expectedOID: "foo",
 		},
 		{
 			name:         "missing type",
-			objectId:     ":foo",
+			objectID:     ":foo",
 			expectedType: "",
 			expectedOID:  "foo",
 		},
 		{
 			name:         "valid input",
-			objectId:     "foo:bar",
+			objectID:     "foo:bar",
 			expectedType: "foo",
 			expectedOID:  "bar",
 		},
 		{
 			name:         "separator in OID",
-			objectId:     "url:https://bar/baz",
+			objectID:     "url:https://bar/baz",
 			expectedType: "url",
 			expectedOID:  "https://bar/baz",
 		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			td, oid := SplitObject(tc.objectId)
+			td, oid := SplitObject(tc.objectID)
 			if td != tc.expectedType {
-				t.Errorf("SplitObject(%s) type was %s, want %s", tc.objectId, td, tc.expectedType)
+				t.Errorf("SplitObject(%s) type was %s, want %s", tc.objectID, td, tc.expectedType)
 			}
 			if oid != tc.expectedOID {
-				t.Errorf("SplitObject(%s) object id was %s, want %s", tc.objectId, oid, tc.expectedOID)
+				t.Errorf("SplitObject(%s) object id was %s, want %s", tc.objectID, oid, tc.expectedOID)
 			}
 		})
 	}

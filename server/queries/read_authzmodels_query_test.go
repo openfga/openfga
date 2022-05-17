@@ -151,7 +151,7 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	if len(firstResponse.AuthorizationModelIds) != 1 {
 		t.Fatal("Expected 1 configuration id")
 	}
-	firstConfigurationId := firstResponse.AuthorizationModelIds[0]
+	firstModelID := firstResponse.AuthorizationModelIds[0]
 
 	if firstResponse.ContinuationToken == "" {
 		t.Fatal("Expected continuation token")
@@ -168,9 +168,9 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	if len(secondResponse.AuthorizationModelIds) != 1 {
 		t.Fatal("Expected 1 configuration id")
 	}
-	secondConfigurationId := secondResponse.AuthorizationModelIds[0]
-	if firstConfigurationId == secondConfigurationId {
-		t.Fatalf("Expected first configuration Id %v to be different than second %v", firstConfigurationId, secondConfigurationId)
+	secondModelID := secondResponse.AuthorizationModelIds[0]
+	if firstModelID == secondModelID {
+		t.Fatalf("Expected first configuration Id %v to be different than second %v", firstModelID, secondModelID)
 	}
 	if secondResponse.ContinuationToken != "" {
 		t.Fatal("Expected empty continuation token")

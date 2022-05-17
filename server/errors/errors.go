@@ -59,8 +59,8 @@ func NewInternalError(public string, internal error) InternalError {
 	}
 }
 
-func AssertionsNotForAuthorizationModelFound(authzId string) error {
-	return status.Error(codes.Code(openfgav1pb.ErrorCode_authorization_model_assertions_not_found), fmt.Sprintf("No assertions found for authorization model '%s'", authzId))
+func AssertionsNotForAuthorizationModelFound(modelID string) error {
+	return status.Error(codes.Code(openfgav1pb.ErrorCode_authorization_model_assertions_not_found), fmt.Sprintf("No assertions found for authorization model '%s'", modelID))
 }
 
 func AuthorizationModelNotFound(modelID string) error {
@@ -126,11 +126,11 @@ func WriteFailedDueToInvalidInput(err error) error {
 
 // HandleError is used to hide internal errors from users. Use `public` to return an error message to the user.
 func HandleError(public string, err error) error {
-	if errors.Is(err, storage.InvalidContinuationToken) {
+	if errors.Is(err, storage.ErrInvalidContinuationToken) {
 		return InvalidContinuationToken
-	} else if errors.Is(err, storage.MismatchObjectType) {
+	} else if errors.Is(err, storage.ErrMismatchObjectType) {
 		return MismatchObjectType
-	} else if errors.Is(err, storage.Cancelled) {
+	} else if errors.Is(err, storage.ErrCancelled) {
 		return RequestCancelled
 	}
 	return NewInternalError(public, err)

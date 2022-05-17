@@ -28,7 +28,7 @@ func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizat
 
 	assertions, err := query.backend.ReadAssertions(ctx, store, authorizationModelID)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AssertionsNotForAuthorizationModelFound(authorizationModelID)
 		}
 		return nil, serverErrors.HandleError("", err)

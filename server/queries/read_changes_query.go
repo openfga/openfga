@@ -44,7 +44,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1pb.ReadCha
 
 	changes, contToken, err := q.changelogBackend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgav1pb.ReadChangesResponse{
 				ContinuationToken: req.GetContinuationToken(),
 			}, nil

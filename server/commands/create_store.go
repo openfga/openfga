@@ -28,13 +28,13 @@ func NewCreateStoreCommand(
 }
 
 func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1pb.CreateStoreRequest) (*openfgav1pb.CreateStoreResponse, error) {
-	storeId, err := id.NewString()
+	storeID, err := id.NewString()
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
 	store, err := s.storesBackend.CreateStore(ctx, &openfga.Store{
-		Id:   storeId,
+		Id:   storeID,
 		Name: req.Name,
 	})
 	if err != nil {

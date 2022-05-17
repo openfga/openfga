@@ -26,7 +26,7 @@ func (q *GetStoreQuery) Execute(ctx context.Context, req *openfgav1pb.GetStoreRe
 	storeID := req.GetStoreId()
 	store, err := q.storesBackend.GetStore(ctx, storeID)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.StoreIDNotFound
 		}
 		return nil, serverErrors.HandleError("", err)

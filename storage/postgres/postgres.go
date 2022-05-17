@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
@@ -108,7 +107,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	defer span.End()
 
 	if len(deletes)+len(writes) > p.MaxTuplesInWriteOperation() {
-		return storage.ExceededWriteBatchLimit
+		return storage.ErrExceededWriteBatchLimit
 	}
 
 	now := time.Now().UTC()
@@ -185,7 +184,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	row := p.pool.QueryRow(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
 		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), tupleUtils.User)
 	var record tupleRecord
-	if err := row.Scan(&record.objectType, &record.objectId, &record.relation, &record.user); err != nil {
+	if err := row.Scan(&record.objectType, &record.objectID, &record.relation, &record.user); err != nil {
 		return nil, handlePostgresError(err)
 	}
 
@@ -253,7 +252,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	if len(typeDefs) == 0 {
-		return nil, storage.NotFound
+		return nil, storage.ErrNotFound
 	}
 
 	return &openfgav1pb.AuthorizationModel{
@@ -388,18 +387,18 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfga.Store, err
 
 	row := p.pool.QueryRow(ctx, "SELECT id, name, created_at, updated_at FROM store WHERE id = $1 AND deleted_at IS NULL", id)
 
-	var storeId, name string
+	var storeID, name string
 	var createdAt, updatedAt time.Time
-	err := row.Scan(&storeId, &name, &createdAt, &updatedAt)
+	err := row.Scan(&storeID, &name, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, storage.NotFound
+			return nil, storage.ErrNotFound
 		}
 		return nil, handlePostgresError(err)
 	}
 
 	return &openfga.Store{
-		Id:        storeId,
+		Id:        storeID,
 		Name:      name,
 		CreatedAt: timestamppb.New(createdAt),
 		UpdatedAt: timestamppb.New(updatedAt),
@@ -538,7 +537,7 @@ func (p *Postgres) ReadChanges(
 
 		changes = append(changes, &openfga.TupleChange{
 			TupleKey: &openfga.TupleKey{
-				Object:   tuple.BuildObject(objectType, objectID),
+				Object:   tupleUtils.BuildObject(objectType, objectID),
 				Relation: relation,
 				User:     user,
 			},
@@ -548,7 +547,7 @@ func (p *Postgres) ReadChanges(
 	}
 
 	if len(changes) == 0 {
-		return nil, nil, storage.NotFound
+		return nil, nil, storage.ErrNotFound
 	}
 
 	contToken, err := json.Marshal(newContToken(ulid, objectTypeFilter))

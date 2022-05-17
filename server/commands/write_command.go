@@ -99,9 +99,9 @@ func (c *WriteCommand) validateWriteTuples(deletes []*openfga.TupleKey, writes [
 }
 
 func handleError(err error) error {
-	if errors.Is(err, storage.TransactionalWriteFailed) {
+	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 		return serverErrors.WriteFailedDueToInvalidInput(nil)
-	} else if errors.Is(err, storage.InvalidWriteInput) {
+	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
 

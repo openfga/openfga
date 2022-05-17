@@ -80,8 +80,8 @@ func TestTupleWritingAndReading(t *testing.T) {
 			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 		// Ensure that nothing got written
-		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -146,8 +146,8 @@ func TestTupleWritingAndReading(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Ensure it is not there
-		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -186,8 +186,8 @@ func TestTupleWritingAndReading(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.NotFound) {
-			t.Fatalf("got '%v', want '%v'", err, storage.NotFound)
+		if _, err := pg.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("got '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -381,8 +381,8 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 		_, err := pg.FindLatestAuthorizationModelID(ctx, store)
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -486,8 +486,8 @@ func TestWriteAndReadAuthorizationModel(t *testing.T) {
 	}
 
 	_, err = pg.ReadAuthorizationModel(ctx, "undefined", modelID)
-	if err != storage.NotFound {
-		t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
+	if err != storage.ErrNotFound {
+		t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
 	}
 }
 
@@ -502,8 +502,8 @@ func TestReadTypeDefinition(t *testing.T) {
 		}
 
 		_, err = pg.ReadTypeDefinition(ctx, store, modelID, "folder")
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("got error '%v', want '%v'", err, storage.NotFound)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -697,8 +697,8 @@ func TestStore(t *testing.T) {
 
 	t.Run("get non-existant store returns not found", func(t *testing.T) {
 		_, err := pg.GetStore(ctx, "foo")
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("got '%v', expected '%v'", err, storage.NotFound)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got '%v', expected '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -711,8 +711,8 @@ func TestStore(t *testing.T) {
 
 		// Should not be able to get the store now
 		_, err = pg.GetStore(ctx, store.Id)
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("got '%v', expected '%v'", err, storage.NotFound)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("got '%v', expected '%v'", err, storage.ErrNotFound)
 		}
 	})
 
@@ -909,8 +909,8 @@ func TestReadChanges(t *testing.T) {
 		store := pkgTestutils.CreateRandomString(10)
 
 		_, _, err := pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("expected '%v', got '%v'", storage.NotFound, err)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("expected '%v', got '%v'", storage.ErrNotFound, err)
 		}
 	})
 
@@ -934,8 +934,8 @@ func TestReadChanges(t *testing.T) {
 		}
 
 		_, _, err = pg.ReadChanges(ctx, store, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
-		if !errors.Is(err, storage.NotFound) {
-			t.Errorf("expected '%v', got '%v'", storage.NotFound, err)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Errorf("expected '%v', got '%v'", storage.ErrNotFound, err)
 		}
 	})
 

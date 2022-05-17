@@ -124,7 +124,7 @@ func TestReadQuery(t *testing.T) {
 				},
 			},
 			// output
-			err: serverErrors.InvalidTuple("missing objectId and user", &openfga.TupleKey{
+			err: serverErrors.InvalidTuple("missing objectID and user", &openfga.TupleKey{
 				Object:   "repo:",
 				Relation: "writer",
 			}),

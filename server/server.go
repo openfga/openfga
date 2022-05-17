@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	AuthorizationModelIdHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader = "openfga-authorization-model-id"
 )
 
 var (
@@ -76,8 +76,8 @@ type Dependencies struct {
 
 type Config struct {
 	ServiceName            string
-	RpcPort                int
-	HttpPort               int
+	RPCPort                int
+	HTTPPort               int
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
@@ -113,7 +113,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		encoder:                   tokenEncoder,
 		config:                    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
-			runtime.WithForwardResponseOption(httpmiddleware.HttpResponseModifier),
+			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
@@ -144,7 +144,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1pb.ReadRequest) (*openf
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1pb.WriteRequest) (*ope
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1pb.CheckRequest) (*ope
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1pb.ExpandRequest) (*o
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1pb.WriteAsse
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelId(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -308,11 +308,11 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1pb.ReadAssert
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
 	defer span.End()
-	authorizationModelId, err := s.resolveAuthorizationModelId(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(authorizationModelId)})
+	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 	q := queries.NewReadAssertionsQuery(s.assertionsBackend, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
@@ -376,7 +376,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1pb.ListStoresRequ
 
 // Run starts server execution, and blocks until complete, returning any serverErrors.
 func (s *Server) Run(ctx context.Context) error {
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RpcPort)
+	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -404,7 +404,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HttpPort),
+		Addr: fmt.Sprintf(":%d", s.config.HTTPPort),
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -445,27 +445,27 @@ func (s *Server) Run(ctx context.Context) error {
 // This allows caching of types. If the user inserts a new authorization model and doesn't
 // provide this field (which should be rate limited more aggressively) the in-flight requests won't be
 // affected and newer calls will use the updated authorization model.
-func (s *Server) resolveAuthorizationModelId(ctx context.Context, store, authorizationModelId string) (string, error) {
+func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
 	var err error
 
-	if authorizationModelId == "" {
-		authorizationModelId, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store)
+	if modelID == "" {
+		modelID, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store)
 		if err != nil {
-			if errors.Is(err, storage.NotFound) {
+			if errors.Is(err, storage.ErrNotFound) {
 				return "", serverErrors.LatestAuthorizationModelNotFound(store)
 			}
 			return "", serverErrors.HandleError("", err)
 		}
 	}
 
-	if _, err := s.authorizationModelBackend.ReadAuthorizationModel(ctx, store, authorizationModelId); err != nil {
-		if errors.Is(err, storage.NotFound) {
-			return "", serverErrors.AuthorizationModelNotFound(authorizationModelId)
+	if _, err := s.authorizationModelBackend.ReadAuthorizationModel(ctx, store, modelID); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return "", serverErrors.AuthorizationModelNotFound(modelID)
 		}
 		return "", serverErrors.HandleError("", err)
 	}
 
-	grpcutils.SetHeaderLogError(ctx, AuthorizationModelIdHeader, authorizationModelId, s.logger)
+	grpcutils.SetHeaderLogError(ctx, AuthorizationModelIDHeader, modelID, s.logger)
 
-	return authorizationModelId, nil
+	return modelID, nil
 }

@@ -19,8 +19,8 @@ import (
 // XHttpCode is used for overriding the standard HTTP code
 const XHttpCode = "x-http-code"
 
-// HttpResponseModifier is a helper function to override the HTTP status code
-func HttpResponseModifier(ctx context.Context, w http.ResponseWriter, p proto.Message) error {
+// HTTPResponseModifier is a helper function to override the HTTP status code
+func HTTPResponseModifier(ctx context.Context, w http.ResponseWriter, p proto.Message) error {
 	md, ok := runtime.ServerMetadataFromContext(ctx)
 	if !ok {
 		return nil

@@ -29,7 +29,7 @@ func NewDeleteStoreCommand(
 func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) error {
 	store, err := s.storesBackend.GetStore(ctx, req.StoreId)
 	if err != nil {
-		if errors.Is(err, storage.NotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil
 		}
 

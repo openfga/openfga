@@ -20,7 +20,7 @@ import (
 type tupleRecord struct {
 	store      string
 	objectType string
-	objectId   string
+	objectID   string
 	relation   string
 	user       string
 	ulid       string
@@ -30,7 +30,7 @@ type tupleRecord struct {
 func (t *tupleRecord) asTuple() *openfga.Tuple {
 	return &openfga.Tuple{
 		Key: &openfga.TupleKey{
-			Object:   tupleUtils.BuildObject(t.objectType, t.objectId),
+			Object:   tupleUtils.BuildObject(t.objectType, t.objectID),
 			Relation: t.relation,
 			User:     t.user,
 		},
@@ -49,7 +49,7 @@ func (t *tupleIterator) next() (*tupleRecord, error) {
 	}
 
 	var record tupleRecord
-	if err := t.rows.Scan(&record.store, &record.objectType, &record.objectId, &record.relation, &record.user, &record.ulid, &record.insertedAt); err != nil {
+	if err := t.rows.Scan(&record.store, &record.objectType, &record.objectID, &record.relation, &record.user, &record.ulid, &record.insertedAt); err != nil {
 		return nil, handlePostgresError(err)
 	}
 
@@ -157,7 +157,7 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
 	if opts.From != "" {
 		var token contToken
 		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
-			return "", storage.InvalidContinuationToken
+			return "", storage.ErrInvalidContinuationToken
 		}
 		stmt = fmt.Sprintf("%s AND id >= '%s'", stmt, token.Ulid)
 	}
@@ -174,10 +174,10 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	if opts.From != "" {
 		var token contToken
 		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
-			return "", storage.InvalidContinuationToken
+			return "", storage.ErrInvalidContinuationToken
 		}
 		if token.ObjectType != objectTypeFilter {
-			return "", storage.MismatchObjectType
+			return "", storage.ErrMismatchObjectType
 		}
 		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, token.Ulid) // > here as we always return a continuation token
 	}
@@ -205,7 +205,7 @@ func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {
 
 func handlePostgresError(err error, args ...interface{}) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return openfgaerrors.ErrorWithStack(storage.NotFound)
+		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
 	} else if strings.Contains(err.Error(), "duplicate key value") {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfga.TupleKey); ok {

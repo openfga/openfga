@@ -268,30 +268,30 @@ func (sc *circuitBreaker) IsOpen() bool {
 }
 
 type resolutionContext struct {
-	store                string
-	authorizationModelId string
-	users                *userSet
-	targetUser           string
-	tk                   *openfga.TupleKey
-	contextualTuples     *contextualTuples
-	tracer               resolutionTracer
-	metadata             *utils.ResolutionMetadata
-	internalCB           *circuitBreaker // Opens if the user is found, controlled internally. Primarily used for UNION.
-	externalCB           *circuitBreaker // Open is controlled from caller, Used for Difference and Intersection.
+	store            string
+	modelID          string
+	users            *userSet
+	targetUser       string
+	tk               *openfga.TupleKey
+	contextualTuples *contextualTuples
+	tracer           resolutionTracer
+	metadata         *utils.ResolutionMetadata
+	internalCB       *circuitBreaker // Opens if the user is found, controlled internally. Primarily used for UNION.
+	externalCB       *circuitBreaker // Open is controlled from caller, Used for Difference and Intersection.
 }
 
-func newResolutionContext(store, authorizationModelId string, tk *openfga.TupleKey, contextualTuples *contextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
+func newResolutionContext(store, modelID string, tk *openfga.TupleKey, contextualTuples *contextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
 	return &resolutionContext{
-		store:                store,
-		authorizationModelId: authorizationModelId,
-		users:                newUserSet(),
-		targetUser:           tk.GetUser(),
-		tk:                   tk,
-		contextualTuples:     contextualTuples,
-		tracer:               tracer,
-		metadata:             metadata,
-		internalCB:           &circuitBreaker{breakerState: false},
-		externalCB:           externalBreaker,
+		store:            store,
+		modelID:          modelID,
+		users:            newUserSet(),
+		targetUser:       tk.GetUser(),
+		tk:               tk,
+		contextualTuples: contextualTuples,
+		tracer:           tracer,
+		metadata:         metadata,
+		internalCB:       &circuitBreaker{breakerState: false},
+		externalCB:       externalBreaker,
 	}
 }
 
@@ -321,16 +321,16 @@ func (rc *resolutionContext) fork(tk *openfga.TupleKey, tracer resolutionTracer,
 	}
 
 	return &resolutionContext{
-		store:                rc.store,
-		authorizationModelId: rc.authorizationModelId,
-		users:                rc.users,
-		targetUser:           rc.targetUser,
-		tk:                   tk,
-		contextualTuples:     rc.contextualTuples,
-		tracer:               tracer,
-		metadata:             metadata,
-		internalCB:           rc.internalCB,
-		externalCB:           rc.externalCB,
+		store:            rc.store,
+		modelID:          rc.modelID,
+		users:            rc.users,
+		targetUser:       rc.targetUser,
+		tk:               tk,
+		contextualTuples: rc.contextualTuples,
+		tracer:           tracer,
+		metadata:         metadata,
+		internalCB:       rc.internalCB,
+		externalCB:       rc.externalCB,
 	}
 }
 
