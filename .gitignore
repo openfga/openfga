@@ -4,3 +4,4 @@ bin
 dist/
 
 coverage*.out
+*.swp
