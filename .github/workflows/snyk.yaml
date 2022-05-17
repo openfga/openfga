@@ -16,7 +16,7 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --org='auth0-fga' --all-projects
+          args: --org=auth0-fga --all-projects
           command: monitor
 
       - name: Run Snyk to test for vulnerabilities
@@ -24,5 +24,5 @@ jobs:
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
-          args: --org='auth0-fga' --all-projects
+          args: --org=auth0-fga --all-projects
           command: test
