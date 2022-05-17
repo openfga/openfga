@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -85,75 +84,90 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
-					"viewer": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
-						},
+	tds1 := []*openfgav1pb.TypeDefinition{
+		{
+			Type: "folder",
+			Relations: map[string]*openfgav1pb.Userset{
+				"viewer": {
+					Userset: &openfgav1pb.Userset_This{
+						This: &openfgav1pb.DirectUserset{},
 					},
 				},
 			},
 		},
-	})
+	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds1})
 	if err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
+		t.Fatalf("failed to write authorization model: %v", err)
 	}
 
 	modelID2, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
-					"reader": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
-						},
+	tds2 := []*openfgav1pb.TypeDefinition{
+		{
+			Type: "folder",
+			Relations: map[string]*openfgav1pb.Userset{
+				"reader": {
+					Userset: &openfgav1pb.Userset_This{
+						This: &openfgav1pb.DirectUserset{},
 					},
 				},
 			},
 		},
-	})
+	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds2})
 	if err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
+		t.Fatalf("failed to write authorization model: %v", err)
 	}
 
-	modelIDs, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
+	cmpOpts := []cmp.Option{
+		cmpopts.IgnoreUnexported(
+			openfgav1pb.TypeDefinition{},
+			openfgav1pb.Userset{},
+			openfgav1pb.Userset_This{},
+			openfgav1pb.DirectUserset{},
+		),
+	}
+
+	models, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 1,
 	})
 	if err != nil {
-		t.Errorf("expected no error but got '%v'", err)
+		t.Fatalf("expected no error but got '%v'", err)
 	}
-
-	if !reflect.DeepEqual(modelIDs, []string{modelID1}) {
-		t.Errorf("expected '%v' but got '%v", []string{modelID1}, modelIDs)
+	if len(models) != 1 {
+		t.Fatalf("expected 1, got %d", len(models))
 	}
-
+	if modelID2 != models[0].Id {
+		t.Fatalf("expected '%s', got '%s", modelID1, models[0].Id)
+	}
+	if diff := cmp.Diff(tds2, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-got +want):\n%s", diff)
+	}
 	if len(continuationToken) == 0 {
-		t.Error("expected non-empty continuation token")
+		t.Fatalf("expected non-empty continuation token")
 	}
 
-	modelIDs, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
+	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 2,
 		From:     string(continuationToken),
 	})
 	if err != nil {
-		t.Errorf("expected no error but got '%v'", err)
+		t.Fatalf("expected no error but got '%v'", err)
 	}
-
-	if !reflect.DeepEqual(modelIDs, []string{modelID2}) {
-		t.Errorf("expected '%v' but got '%v", []string{modelID2}, modelIDs)
+	if len(models) != 1 {
+		t.Fatalf("expected 1, got %d", len(models))
 	}
-
+	if modelID1 != models[0].Id {
+		t.Fatalf("expected '%s', got '%s", modelID1, models[0].Id)
+	}
+	if diff := cmp.Diff(tds1, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-got +want):\n%s", diff)
+	}
 	if len(continuationToken) != 0 {
-		t.Errorf("expected empty continuation token but got '%v'", string(continuationToken))
+		t.Fatalf("expected empty continuation token but got '%v'", string(continuationToken))
 	}
 }
 

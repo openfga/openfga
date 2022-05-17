@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -37,22 +39,24 @@ func TestMemdbStorage(t *testing.T) {
 	}))
 }
 
-func TestMemoryBackend_ReadAuthorizationModels(t *testing.T) {
+func TestReadAuthorizationModels(t *testing.T) {
+	ctx := context.Background()
+
 	store := testutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = memoryStorage.WriteAuthorizationModel(context.Background(), store, modelID1, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "github-repo",
-				Relations: map[string]*openfgav1pb.Userset{
-					"repo_admin": {},
-				},
+	tds1 := []*openfgav1pb.TypeDefinition{
+		{
+			Type: "github-repo",
+			Relations: map[string]*openfgav1pb.Userset{
+				"repo_admin": {},
 			},
 		},
-	})
+	}
+	err = memoryStorage.WriteAuthorizationModel(ctx, store, modelID1, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds1})
+
 	if err != nil {
 		t.Fatalf("Error writing type definition: %v", err)
 	}
@@ -61,60 +65,81 @@ func TestMemoryBackend_ReadAuthorizationModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = memoryStorage.WriteAuthorizationModel(context.Background(), store, modelID2, &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
-			{
-				Type: "github-org",
-				Relations: map[string]*openfgav1pb.Userset{
-					"org_owner": {},
-				},
+	tds2 := []*openfgav1pb.TypeDefinition{
+		{
+			Type: "github-org",
+			Relations: map[string]*openfgav1pb.Userset{
+				"org_owner": {},
 			},
 		},
-	})
+	}
+	err = memoryStorage.WriteAuthorizationModel(ctx, store, modelID2, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds2})
 	if err != nil {
 		t.Fatalf("Error writing type definition: %v", err)
 	}
 
-	// first page
-	typeDefinition, continuationToken, err := memoryStorage.ReadAuthorizationModels(context.Background(), store, storage.PaginationOptions{PageSize: 1})
-	if err != nil {
-		t.Fatalf("Error reading all type definition: %v", err)
+	cmpOpts := []cmp.Option{
+		cmpopts.IgnoreUnexported(
+			openfgav1pb.TypeDefinition{},
+			openfgav1pb.Userset{},
+			openfgav1pb.Userset_This{},
+			openfgav1pb.DirectUserset{},
+		),
 	}
-	if len(typeDefinition) != 1 {
-		t.Fatalf("Unexpected number of type definitions: got %v, expected %v", len(typeDefinition), 1)
+
+	// first page
+	models, continuationToken, err := memoryStorage.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{PageSize: 1})
+	if err != nil {
+		t.Fatalf("error reading models: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1, got %d", len(models))
+	}
+	if modelID2 != models[0].Id {
+		t.Fatalf("expected '%s', got '%s", modelID2, models[0].Id)
+	}
+	if diff := cmp.Diff(tds2, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-got +want):\n%s", diff)
 	}
 	if len(continuationToken) == 0 {
-		t.Fatal("Expected continuation token")
+		t.Fatal("expected continuation token")
 	}
 
 	// second page
-	typeDefinition, continuationToken, err = memoryStorage.ReadAuthorizationModels(context.Background(), store, storage.PaginationOptions{From: string(continuationToken)})
+	models, continuationToken, err = memoryStorage.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{PageSize: storage.DefaultPageSize, From: string(continuationToken)})
 	if err != nil {
-		t.Fatalf("Error reading all type definitions: %v", err)
+		t.Fatalf("error reading models: %v", err)
 	}
-	if len(typeDefinition) != 1 {
-		t.Fatalf("Unexpected number of type definitions: got %v, expected %v", len(typeDefinition), 1)
+	if len(models) != 1 {
+		t.Fatalf("expected 1, got %d", len(models))
 	}
-	if len(continuationToken) > 0 {
-		t.Fatal("Expected empty continuation token")
+	if modelID1 != models[0].Id {
+		t.Fatalf("expected '%s', got '%s", modelID1, models[0].Id)
+	}
+	if diff := cmp.Diff(tds1, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-got +want):\n%s", diff)
+	}
+	if len(continuationToken) != 0 {
+		t.Fatal("expected empty continuation token")
 	}
 }
 
-func TestMemoryBackend_GetStores(t *testing.T) {
+func TestGetStores(t *testing.T) {
+	ctx := context.Background()
 	// no stores
-	_, _, err := memoryStorage.ListStores(context.Background(), storage.PaginationOptions{})
+	_, _, err := memoryStorage.ListStores(ctx, storage.PaginationOptions{})
 	if err != nil {
 		t.Fatalf("Expected no error but got %v", err)
 	}
 	// write two stores
-	_, err = memoryStorage.CreateStore(context.Background(), &openfga.Store{
+	_, err = memoryStorage.CreateStore(ctx, &openfga.Store{
 		Id:   "001",
 		Name: "store1",
 	})
 	if err != nil {
 		t.Fatalf("Error writing first store: %v", err)
 	}
-	_, err = memoryStorage.CreateStore(context.Background(), &openfga.Store{
+	_, err = memoryStorage.CreateStore(ctx, &openfga.Store{
 		Id:   "002",
 		Name: "store2",
 	})
@@ -122,7 +147,7 @@ func TestMemoryBackend_GetStores(t *testing.T) {
 		t.Fatalf("Error writing second store: %v", err)
 	}
 	// read stores - first page
-	firstPageStores, firstContinuationToken, err := memoryStorage.ListStores(context.Background(), storage.PaginationOptions{
+	firstPageStores, firstContinuationToken, err := memoryStorage.ListStores(ctx, storage.PaginationOptions{
 		PageSize: 1,
 	})
 	if err != nil {
@@ -136,7 +161,7 @@ func TestMemoryBackend_GetStores(t *testing.T) {
 	}
 
 	// second page
-	secondPageStores, secondContinuationToken, err := memoryStorage.ListStores(context.Background(), storage.PaginationOptions{
+	secondPageStores, secondContinuationToken, err := memoryStorage.ListStores(ctx, storage.PaginationOptions{
 		PageSize: 1,
 		From:     string(firstContinuationToken),
 	})
@@ -151,7 +176,7 @@ func TestMemoryBackend_GetStores(t *testing.T) {
 	}
 
 	// third page - no more stores
-	thirdPageStores, lastToken, err := memoryStorage.ListStores(context.Background(), storage.PaginationOptions{
+	thirdPageStores, lastToken, err := memoryStorage.ListStores(ctx, storage.PaginationOptions{
 		From: string(secondContinuationToken),
 	})
 	if err != nil {

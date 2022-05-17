@@ -33,7 +33,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadAuthzModels", 1, 0)
 
-	authorizationModelIDs, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), paginationOptions)
+	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -43,8 +43,13 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.Id)
+	}
+
 	resp := &openfgav1pb.ReadAuthorizationModelsResponse{
-		AuthorizationModelIds: authorizationModelIDs,
+		AuthorizationModelIds: ids,
 		ContinuationToken:     encodedContToken,
 	}
 	return resp, nil

@@ -191,9 +191,9 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) string {
 	stmt := fmt.Sprintf("SELECT DISTINCT authorization_model_id FROM authorization_model WHERE store = '%s'", store)
 	if opts.From != "" {
-		stmt = fmt.Sprintf("%s AND authorization_model_id >= '%s'", stmt, opts.From)
+		stmt = fmt.Sprintf("%s AND authorization_model_id <= '%s'", stmt, opts.From)
 	}
-	stmt = fmt.Sprintf("%s ORDER BY authorization_model_id LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
+	stmt = fmt.Sprintf("%s ORDER BY authorization_model_id DESC LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
 	return stmt
 }
 

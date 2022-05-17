@@ -123,14 +123,14 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		t.Fatal(err)
 	}
 	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
-		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
+		t.Fatal(err)
 	}
 	modelID2, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
-		t.Fatalf("Second WriteAuthorizationModel err = %v, want nil", err)
+		t.Fatal(err)
 	}
 
 	encoder, err := encoder.NewTokenEncrypter("key")
@@ -148,7 +148,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		t.Fatalf("Query.Execute(), err = %v, want nil", err)
 	}
 	if len(firstResponse.AuthorizationModelIds) != 1 {
-		t.Fatal("Expected 1 configuration id")
+		t.Fatal("Expected 1 modelID")
 	}
 	firstModelID := firstResponse.AuthorizationModelIds[0]
 
@@ -165,7 +165,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		t.Fatalf("Query.Execute(), err = %v, want nil", err)
 	}
 	if len(secondResponse.AuthorizationModelIds) != 1 {
-		t.Fatal("Expected 1 configuration id")
+		t.Fatal("Expected 1 modelID")
 	}
 	secondModelID := secondResponse.AuthorizationModelIds[0]
 	if firstModelID == secondModelID {

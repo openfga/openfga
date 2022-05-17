@@ -292,7 +292,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}, nil
 }
 
-func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]string, []byte, error) {
+func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1pb.AuthorizationModel, []byte, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
@@ -318,11 +318,26 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		return nil, nil, handlePostgresError(err)
 	}
 
+	var contToken []byte
+	numModelIDs := len(modelIDs)
 	if len(modelIDs) > opts.PageSize {
-		return modelIDs[:opts.PageSize], []byte(modelID), nil
+		numModelIDs = opts.PageSize
+		contToken = []byte(modelID)
 	}
 
-	return modelIDs, nil, nil
+	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
+	// https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
+	models := make([]*openfgav1pb.AuthorizationModel, 0, numModelIDs)
+	// We use numModelIDs here to avoid retrieving possibly one extra model.
+	for i := 0; i < numModelIDs; i++ {
+		model, err := p.ReadAuthorizationModel(ctx, store, modelIDs[i])
+		if err != nil {
+			return nil, nil, err
+		}
+		models = append(models, model)
+	}
+
+	return models, contToken, nil
 }
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {

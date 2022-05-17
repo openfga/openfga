@@ -247,10 +247,10 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModel(
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]string, []byte, error) {
+func (m *MockAuthorizationModelReadBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -419,10 +419,10 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModel(ctx,
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]string, []byte, error) {
+func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -809,10 +809,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModel(ctx, store, i
 }
 
 // ReadAuthorizationModels mocks base method.
-func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]string, []byte, error) {
+func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAuthorizationModels", ctx, store, options)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([]*openfgav1.AuthorizationModel)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

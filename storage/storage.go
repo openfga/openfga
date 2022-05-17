@@ -79,7 +79,7 @@ type AuthorizationModelReadBackend interface {
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1pb.AuthorizationModel, error)
 
 	// ReadAuthorizationModels Read all type definitions ids for the supplied store.
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]string, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1pb.AuthorizationModel, []byte, error)
 
 	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
 }

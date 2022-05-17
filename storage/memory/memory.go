@@ -446,32 +446,25 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 
 // ReadAuthorizationModels See storage.AuthorizationModelBackend.ReadAuthorizationModels
 // options.From is expected to be a number
-func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]string, []byte, error) {
+func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1pb.AuthorizationModel, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var out, partition []string
+	models := make([]*openfgav1pb.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
-		out = append(out, entry.model.Id)
+		models = append(models, entry.model)
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		return out[i] > out[j]
+	sort.Slice(models, func(i, j int) bool {
+		return models[i].Id > models[j].Id
 	})
 
-	var pageSize int
 	var from int64
 	var continuationToken string
 	var err error
-
-	if options.PageSize > 0 {
-		pageSize = options.PageSize
-	} else {
-		pageSize = 50 // Default page size
-	}
 
 	if options.From == "" {
 		from = 0
@@ -482,10 +475,10 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		}
 	}
 
-	to := math.Min(float64(pageSize), float64(len(out)))
-	partition = out[from:uint(to)]
+	to := math.Min(float64(options.PageSize), float64(len(models)))
+	partition := models[from:uint(to)]
 
-	if len(out) <= pageSize {
+	if len(models) <= options.PageSize {
 		continuationToken = ""
 	} else {
 		continuationToken = strconv.FormatInt(from+1, 10)
