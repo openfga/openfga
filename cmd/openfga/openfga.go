@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
 
-	"github.com/go-errors/errors"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -34,55 +35,51 @@ type svcConfig struct {
 }
 
 func main() {
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := runServer(ctx); err != nil {
-		log.Fatal(err)
+	logger, err := logger.NewZapLogger()
+	if err != nil {
+		log.Fatalf("failed to initialize logger: %v", err)
 	}
 
-	log.Println("Server exiting")
-}
-
-func runServer(ctx context.Context) error {
 	var config svcConfig
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
-		return err
+		logger.Fatal("failed to process server config", zap.Error(err))
 	}
+
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
-	zapLogger, err := logger.NewZapLogger()
-	if err != nil {
-		return err
-	}
 
-	var backend storage.OpenFGADatastore
+	var datastore storage.OpenFGADatastore
 	switch config.DatastoreEngine {
 	case "memory":
-		backend = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
 		opts := []postgres.PostgresOption{
-			postgres.WithLogger(zapLogger),
+			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),
 		}
 
-		backend, err = postgres.NewPostgresDatastore(config.DatastoreConnectionURI, opts...)
+		datastore, err = postgres.NewPostgresDatastore(config.DatastoreConnectionURI, opts...)
 		if err != nil {
-			return err
+			logger.Fatal("failed to initialize postgres datastore", zap.Error(err))
 		}
 	default:
-		return errors.Errorf("Unsupported backend type: %s", config.DatastoreEngine)
+		logger.Fatal(fmt.Sprintf("storage engine '%s' is unsupported", config.DatastoreEngine))
 	}
+
 	openFgaServer, err := server.New(&server.Dependencies{
-		AuthorizationModelBackend: backend,
-		TypeDefinitionReadBackend: backend,
-		TupleBackend:              backend,
-		ChangelogBackend:          backend,
-		AssertionsBackend:         backend,
-		StoresBackend:             backend,
+		AuthorizationModelBackend: datastore,
+		TypeDefinitionReadBackend: datastore,
+		TupleBackend:              datastore,
+		ChangelogBackend:          datastore,
+		AssertionsBackend:         datastore,
+		StoresBackend:             datastore,
 		Tracer:                    tracer,
-		Logger:                    zapLogger,
+		Logger:                    logger,
 		Meter:                     meter,
 		TokenEncoder:              tokenEncoder,
 	}, &server.Config{
@@ -95,13 +92,28 @@ func runServer(ctx context.Context) error {
 		MuxOptions:             nil,
 	})
 	if err != nil {
-		return err
+		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
+
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
+		logger.Info("🚀 starting openfga server...")
+
 		return openFgaServer.Run(ctx)
 	})
 
-	return g.Wait()
+	if err := g.Wait(); err != nil {
+		logger.Error("failed to run openfga server", zap.Error(err))
+	}
+
+	if err := openFgaServer.Close(context.Background()); err != nil {
+		logger.Error("failed to gracefully shutdown openfga server", zap.Error(err))
+	}
+
+	if err := datastore.Close(context.Background()); err != nil {
+		logger.Error("failed to gracefully shutdown openfga datastore", zap.Error(err))
+	}
+
+	logger.Info("Server exiting. Goodbye 👋")
 }

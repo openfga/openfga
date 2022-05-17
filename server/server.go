@@ -374,6 +374,14 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1pb.ListStoresRequ
 	return q.Execute(ctx, req)
 }
 
+// Close gracefully stops this server, blocking any subsequent requests and waiting for
+// any existing ones to complete before returning.
+func (s *Server) Close(ctx context.Context) error {
+	s.GracefulStop()
+
+	return nil
+}
+
 // Run starts server execution, and blocks until complete, returning any serverErrors.
 func (s *Server) Run(ctx context.Context) error {
 	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
@@ -388,7 +396,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	s.logger.Info(fmt.Sprintf("GRPC Server listening on %s", rpcAddr))
+	s.logger.Info(fmt.Sprintf("gRPC server listening on '%s'...", rpcAddr))
 
 	muxOpts := []runtime.ServeMuxOption{}
 	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
@@ -419,11 +427,11 @@ func (s *Server) Run(ctx context.Context) error {
 	})
 
 	go func() {
-		s.logger.Info(fmt.Sprintf("HTTP Server listening on %s", httpServer.Addr))
+		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 		err := httpServer.ListenAndServe()
 
 		if err != http.ErrServerClosed {
-			s.logger.ErrorWithContext(ctx, "HTTP Server closed with unexpected error", logger.Error(err))
+			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
 		}
 	}()
 
@@ -434,7 +442,7 @@ func (s *Server) Run(ctx context.Context) error {
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		s.logger.ErrorWithContext(ctx, "HTTP Server shutdown failed", logger.Error(err))
+		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
 		return err
 	}
 

@@ -130,18 +130,12 @@ type ChangelogBackend interface {
 	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error)
 }
 
-type AllBackends struct {
-	TupleBackend              TupleBackend
-	AuthorizationModelBackend AuthorizationModelBackend
-	StoresBackend             StoresBackend
-	AssertionsBackend         AssertionsBackend
-	ChangelogBackend          ChangelogBackend
-}
-
 type OpenFGADatastore interface {
 	TupleBackend
 	AuthorizationModelBackend
 	StoresBackend
 	AssertionsBackend
 	ChangelogBackend
+
+	Close(ctx context.Context) error
 }

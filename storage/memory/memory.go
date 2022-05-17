@@ -107,6 +107,12 @@ func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationMo
 	}
 }
 
+// Close closes any open connections and cleans up residual resources
+// used by this storage adapter instance.
+func (s *MemoryBackend) Close(ctx context.Context) error {
+	return nil
+}
+
 // Read See storage.TupleBackend.Read
 func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfga.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := s.tracer.Start(ctx, "memory.Read")

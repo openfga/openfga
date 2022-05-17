@@ -101,6 +101,14 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	return p, nil
 }
 
+// Close closes any open connections and cleans up residual resources
+// used by this storage adapter instance.
+func (p *Postgres) Close(ctx context.Context) error {
+	p.pool.Close()
+
+	return nil
+}
+
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfga.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.Read")
 	defer span.End()

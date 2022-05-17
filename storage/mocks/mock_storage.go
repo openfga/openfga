@@ -660,6 +660,20 @@ func (m *MockOpenFGADatastore) EXPECT() *MockOpenFGADatastoreMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockOpenFGADatastore) Close(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockOpenFGADatastoreMockRecorder) Close(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close), ctx)
+}
+
 // CreateStore mocks base method.
 func (m *MockOpenFGADatastore) CreateStore(ctx context.Context, store *openfga.Store) (*openfga.Store, error) {
 	m.ctrl.T.Helper()
