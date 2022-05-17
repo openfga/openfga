@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -10,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"go.buf.build/openfga/go/openfga/api/openfga"
@@ -48,15 +50,44 @@ func WithMaxTypesInTypeDefinition(maxTypes int) PostgresOption {
 	}
 }
 
-func New(pool *pgxpool.Pool, tracer trace.Tracer, logger logger.Logger, opts ...PostgresOption) *Postgres {
+func WithLogger(l logger.Logger) PostgresOption {
+	return func(p *Postgres) {
+		p.logger = l
+	}
+}
+
+func WithTracer(t trace.Tracer) PostgresOption {
+	return func(p *Postgres) {
+		p.tracer = t
+	}
+}
+
+func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error) {
+
+	pgxConfig, err := pgxpool.ParseConfig(uri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config from uri: %v", err)
+	}
+
+	dbpool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to intialize postgres connection: %v", err)
+	}
+
 	p := &Postgres{
-		pool:   pool,
-		tracer: tracer,
-		logger: logger,
+		pool: dbpool,
 	}
 
 	for _, opt := range opts {
 		opt(p)
+	}
+
+	if p.logger == nil {
+		p.logger = logger.NewNoopLogger()
+	}
+
+	if p.tracer == nil {
+		p.tracer = telemetry.NewNoopTracer()
 	}
 
 	if p.maxTuplesInWrite == 0 {
@@ -67,7 +98,7 @@ func New(pool *pgxpool.Pool, tracer trace.Tracer, logger logger.Logger, opts ...
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
-	return p
+	return p, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfga.TupleKey) (storage.TupleIterator, error) {

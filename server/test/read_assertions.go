@@ -1,17 +1,19 @@
-package queries
+package test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAssertionQuery(t *testing.T) {
+func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readAssertionsQueryTest struct {
 		_name            string
 		request          *openfgav1pb.ReadAssertionsRequest
@@ -30,19 +32,18 @@ func TestReadAssertionQuery(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 
-			query := NewReadAssertionsQuery(backends.AssertionsBackend, logger)
+			query := queries.NewReadAssertionsQuery(datastore, logger)
 			test.request.StoreId = store
 			actualResponse, actualError := query.Execute(ctx, test.request.StoreId, test.request.AuthorizationModelId)
 

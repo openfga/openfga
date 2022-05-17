@@ -3,6 +3,7 @@ project_name: openfga
 before:
   hooks:
     - go mod tidy
+    - go generate ./...
 
 builds:
   - 

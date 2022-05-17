@@ -1,25 +1,25 @@
-package commands
+package test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestDeleteStore(t *testing.T) {
+func TestDeleteStore(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	createStoreCmd := NewCreateStoreCommand(backends.StoresBackend, logger)
+	datastore, err := dbTester.New()
+	require.NoError(err)
+
+	createStoreCmd := commands.NewCreateStoreCommand(datastore, logger)
 	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgav1pb.CreateStoreRequest{
 		Name: "acme",
 	})
@@ -47,7 +47,7 @@ func TestDeleteStore(t *testing.T) {
 		},
 	}
 
-	deleteCmd := NewDeleteStoreCommand(backends.StoresBackend, logger)
+	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {

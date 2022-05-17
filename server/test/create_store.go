@@ -1,4 +1,4 @@
-package commands
+package test
 
 import (
 	"context"
@@ -7,12 +7,14 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestCreateStore(t *testing.T) {
+func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type createStoreTestSettings struct {
 		_name    string
 		request  *openfgav1pb.CreateStoreRequest
@@ -37,18 +39,17 @@ func TestCreateStore(t *testing.T) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.CreateStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.CreateStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 
-			actualResponse, actualError := NewCreateStoreCommand(backends.StoresBackend, logger).Execute(ctx, test.request)
+			actualResponse, actualError := commands.NewCreateStoreCommand(datastore, logger).Execute(ctx, test.request)
 
 			if test.err != nil {
 				if actualError == nil {

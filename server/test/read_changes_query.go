@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -12,7 +12,9 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
+	teststorage "github.com/openfga/openfga/storage/test"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -58,9 +60,9 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 	}
 }
 
-func TestReadChanges(t *testing.T) {
+func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store)
+	ctx, backend, tracer, err := setup(store, dbTester)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +125,7 @@ func TestReadChanges(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		readChangesQuery := NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
+		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -183,7 +185,7 @@ func TestReadChanges(t *testing.T) {
 			},
 		}
 
-		readChangesQuery := NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -200,12 +202,12 @@ func TestReadChanges(t *testing.T) {
 			},
 		}
 
-		readChangesQuery := NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 2)
+		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
 
-func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *ReadChangesQuery) {
+func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *queries.ReadChangesQuery) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfga.Tuple{}, openfga.TupleKey{}, openfga.TupleChange{})
 	ignoreTimestampOpts := cmpopts.IgnoreFields(openfga.TupleChange{}, "Timestamp")
 
@@ -247,13 +249,13 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	}
 }
 
-func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T) {
+func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store)
+	ctx, backend, tracer, err := setup(store, dbTester)
 	if err != nil {
 		t.Fatal(err)
 	}
-	readChangesQuery := NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+	readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	if err != nil {
@@ -270,21 +272,20 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T) {
 	}
 }
 
-func setup(store string) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string, dbTester teststorage.DatastoreTester) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
-	logger := logger.NewNoopLogger()
 
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
+	datastore, err := dbTester.New()
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
 	writes := []*openfga.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	err = backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, writes)
+	err = datastore.Write(ctx, store, []*openfga.TupleKey{}, writes)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	return ctx, backends.ChangelogBackend, tracer, nil
+	return ctx, datastore, tracer, nil
 }

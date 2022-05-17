@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -8,23 +8,25 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadTuplesQuery(t *testing.T) {
+func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
+
 	encoder := encoder.NewNoopEncoder()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -40,12 +42,12 @@ func TestReadTuplesQuery(t *testing.T) {
 		},
 	}
 
-	err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, backendState)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, backendState)
 	if err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	cmd := NewReadTuplesQuery(backends.TupleBackend, encoder, logger)
+	cmd := queries.NewReadTuplesQuery(datastore, encoder, logger)
 
 	writes := []*openfga.TupleKey{
 		{
@@ -64,7 +66,7 @@ func TestReadTuplesQuery(t *testing.T) {
 			User:     "github|jon.allie@auth0.com",
 		},
 	}
-	if err := backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, writes); err != nil {
+	if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, writes); err != nil {
 		return
 	}
 	firstRequest := &openfgav1pb.ReadTuplesRequest{
@@ -96,14 +98,13 @@ func TestReadTuplesQuery(t *testing.T) {
 	}
 }
 
-func TestInvalidContinuationToken(t *testing.T) {
+func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	encoder, err := encoder.NewTokenEncrypter("key")
 	if err != nil {
@@ -123,11 +124,11 @@ func TestInvalidContinuationToken(t *testing.T) {
 		},
 	}
 
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	q := NewReadTuplesQuery(backends.TupleBackend, encoder, logger)
+	q := queries.NewReadTuplesQuery(datastore, encoder, logger)
 	if _, err := q.Execute(ctx, &openfgav1pb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",

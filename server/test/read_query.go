@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -10,11 +10,14 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadQuery(t *testing.T) {
+func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readQueryTest struct {
 		_name           string
 		typeDefinitions []*openfgav1pb.TypeDefinition
@@ -541,13 +544,13 @@ func TestReadQuery(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	encoder := encoder.NewNoopEncoder()
 
@@ -558,18 +561,18 @@ func TestReadQuery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+			err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
 			if err != nil {
 				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
 			}
 
 			if test.tuples != nil {
-				if err := backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
+				if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
 					t.Fatalf("[%s] failed to write test tuples: %v", test._name, err)
 				}
 			}
 
-			cmd := NewReadQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger, encoder)
+			cmd := queries.NewReadQuery(datastore, datastore, tracer, logger, encoder)
 			req := &openfgav1pb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,

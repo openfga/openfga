@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -7,13 +7,15 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAuthorizationModelQueryErrors(t *testing.T) {
+func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readAuthorizationModelQueryTest struct {
 		_name         string
 		request       *openfgav1pb.ReadAuthorizationModelRequest
@@ -31,17 +33,15 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
-		query := NewReadAuthorizationModelQuery(backends.AuthorizationModelBackend, logger)
+		query := queries.NewReadAuthorizationModelQuery(datastore, logger)
 		if _, err := query.Execute(ctx, test.request); !errors.Is(test.expectedError, err) {
 			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
 			continue
@@ -49,15 +49,14 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T) {
 	}
 }
 
-func TestReadAuthorizationModelByIdAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T) {
+func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester) {
+
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	backend, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	state := &openfgav1pb.TypeDefinitions{
 		TypeDefinitions: []*openfgav1pb.TypeDefinition{
@@ -77,10 +76,10 @@ func TestReadAuthorizationModelByIdAndOneTypeDefinitionReturnsAuthorizationModel
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
-	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger)
+	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
@@ -98,15 +97,13 @@ func TestReadAuthorizationModelByIdAndOneTypeDefinitionReturnsAuthorizationModel
 	}
 }
 
-func TestReadAuthorizationModelByIdAndTypeDefinitionsReturnsError(t *testing.T) {
+func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	backend, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	emptyState := &openfgav1pb.TypeDefinitions{
 		TypeDefinitions: []*openfgav1pb.TypeDefinition{},
@@ -118,11 +115,11 @@ func TestReadAuthorizationModelByIdAndTypeDefinitionsReturnsError(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	if err := backend.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, emptyState); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, emptyState); err != nil {
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	query := NewReadAuthorizationModelQuery(backend.AuthorizationModelBackend, logger)
+	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
 	_, err = query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,

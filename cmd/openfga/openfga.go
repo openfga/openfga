@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -63,11 +62,15 @@ func runServer(ctx context.Context) error {
 	case "memory":
 		backend = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
-		pool, err := pgxpool.Connect(context.Background(), config.DatastoreConnectionURI)
+		opts := []postgres.PostgresOption{
+			postgres.WithLogger(zapLogger),
+			postgres.WithTracer(tracer),
+		}
+
+		backend, err = postgres.NewPostgresDatastore(config.DatastoreConnectionURI, opts...)
 		if err != nil {
 			return err
 		}
-		backend = postgres.New(pool, tracer, zapLogger)
 	default:
 		return errors.Errorf("Unsupported backend type: %s", config.DatastoreEngine)
 	}

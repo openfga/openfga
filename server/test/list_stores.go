@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -6,34 +6,35 @@ import (
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestGetStores(t *testing.T) {
+func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	fakeEncoder, err := encoder.NewTokenEncrypter("key")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	getStoresQuery := NewListStoresQuery(backends.StoresBackend, fakeEncoder, logger)
+	getStoresQuery := queries.NewListStoresQuery(datastore, fakeEncoder, logger)
 	_, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
 	if actualError != nil {
 		t.Fatalf("Expected no error, but got %v", actualError)
 	}
 
-	createStoreQuery := commands.NewCreateStoreCommand(backends.StoresBackend, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
 	if err != nil {
 		t.Fatalf("Error creating store 1: %v", err)

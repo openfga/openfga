@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -10,6 +10,9 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -17,7 +20,7 @@ import (
 
 const (
 	defaultResolveNodeLimit = 25
-	gitHubTestDataFile      = "../../testdata/github.json"
+	gitHubTestDataFile      = "../testdata/github.json"
 )
 
 var gitHubTuples = []*openfga.TupleKey{
@@ -1506,7 +1509,7 @@ var checkQueryTests = []checkQueryTest{
 	},
 }
 
-func TestCheckQuery(t *testing.T) {
+func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		t.Fatal(err)
@@ -1516,13 +1519,13 @@ func TestCheckQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range checkQueryTests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1532,21 +1535,21 @@ func TestCheckQuery(t *testing.T) {
 				t.Fatal(err)
 			}
 			if test.useGitHubTypeDefinition {
-				err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions()})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions()})
 			} else {
-				err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
 			}
 			if err != nil {
 				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
 			}
 
 			if test.tuples != nil {
-				if err := backends.TupleBackend.Write(ctx, store, nil, test.tuples); err != nil {
+				if err := datastore.Write(ctx, store, nil, test.tuples); err != nil {
 					t.Fatalf("[%s] failed to write test tuples: %v", test._name, err)
 				}
 			}
 
-			cmd := NewCheckQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, telemetry.NewNoopMeter(), logger, test.resolveNodeLimit)
+			cmd := queries.NewCheckQuery(datastore, datastore, tracer, telemetry.NewNoopMeter(), logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			resp, gotErr := cmd.Execute(ctx, test.request)
@@ -1578,14 +1581,14 @@ func TestCheckQuery(t *testing.T) {
 	}
 }
 
-func TestCheckQueryAuthorizationModelsVersioning(t *testing.T) {
+func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	originalTD := []*openfgav1pb.TypeDefinition{{
 		Type: "repo",
@@ -1616,7 +1619,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, originalModelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: originalTD}); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, originalModelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: originalTD}); err != nil {
 		t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", originalTD, err)
 	}
 
@@ -1625,15 +1628,15 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, updatedModelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: updatedTD}); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, updatedModelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: updatedTD}); err != nil {
 		t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", updatedTD, err)
 	}
 
-	if err := backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, []*openfga.TupleKey{{Object: "repo:openfga", Relation: "owner", User: "yenkel"}}); err != nil {
+	if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, []*openfga.TupleKey{{Object: "repo:openfga", Relation: "owner", User: "yenkel"}}); err != nil {
 		t.Fatalf("failed to write test tuple: %v", err)
 	}
 
-	originalCheckQuery := NewCheckQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	originalCheckQuery := queries.NewCheckQuery(datastore, datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 	originalNSResponse, err := originalCheckQuery.Execute(ctx, &openfgav1pb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: originalModelID,
@@ -1647,11 +1650,11 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T) {
 		t.Fatalf("%s: NewCheckQuery: err was %v, want nil", updatedTD, err)
 	}
 
-	if originalNSResponse.Allowed != true {
+	if originalNSResponse.Allowed {
 		t.Errorf("[%s] Expected allowed '%t', actual '%t'", "originalNS", true, originalNSResponse.Allowed)
 	}
 
-	updatedCheckQuery := NewCheckQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	updatedCheckQuery := queries.NewCheckQuery(datastore, datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 	updatedNSResponse, err := updatedCheckQuery.Execute(ctx, &openfgav1pb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: updatedModelID,
@@ -1665,7 +1668,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T) {
 		t.Errorf("Unexpected error, got '%v' but expected nil", err)
 	}
 
-	if updatedNSResponse.Allowed != false {
+	if !updatedNSResponse.Allowed {
 		t.Errorf("[%s] Expected allowed '%t', actual '%t'", "updatedNS", false, updatedNSResponse.Allowed)
 	}
 }
@@ -1684,9 +1687,10 @@ var tuples = []*openfga.TupleKey{
 }
 
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var result *openfgav1pb.CheckResponse
+var result *openfgav1pb.CheckResponse //nolint
 
-func BenchmarkNoTrace(b *testing.B) {
+func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTester) {
+
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		b.Fatal(err)
@@ -1696,13 +1700,13 @@ func BenchmarkNoTrace(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	require := require.New(b)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		b.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 
@@ -1710,16 +1714,16 @@ func BenchmarkNoTrace(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, tuples)
+	err = datastore.Write(ctx, store, []*openfga.TupleKey{}, tuples)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	checkQuery := NewCheckQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := queries.NewCheckQuery(datastore, datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 
 	var r *openfgav1pb.CheckResponse
 
@@ -1739,7 +1743,7 @@ func BenchmarkNoTrace(b *testing.B) {
 	result = r
 }
 
-func BenchmarkWithTrace(b *testing.B) {
+func BenchmarkWithTrace(b *testing.B, dbTester teststorage.DatastoreTester) {
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		b.Fatal(err)
@@ -1749,13 +1753,13 @@ func BenchmarkWithTrace(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	require := require.New(b)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		b.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 
@@ -1763,16 +1767,16 @@ func BenchmarkWithTrace(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
 	if err != nil {
 		b.Fatal(err)
 	}
-	err = backends.TupleBackend.Write(ctx, store, []*openfga.TupleKey{}, tuples)
+	err = datastore.Write(ctx, store, []*openfga.TupleKey{}, tuples)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	checkQuery := NewCheckQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := queries.NewCheckQuery(datastore, datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 
 	var r *openfgav1pb.CheckResponse
 

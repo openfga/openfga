@@ -1,5 +1,3 @@
-basic_code_locations=./internal/...,./pkg/...,./server/...,./storage/...
-postgres_test_backend ?= TEST_CONFIG_BACKEND_TYPE=postgres TEST_CONFIG_POSTGRES_CONN_STRING=postgres://postgres:password@127.0.0.1:5432/postgres
 .DEFAULT_GOAL := help
 
 .PHONY: help
@@ -23,7 +21,7 @@ clean: ## Clean files
 	rm ./bin/openfga
 
 .PHONY: build
-build:  ## Build/compile the OpenFGA service
+build: ## Build/compile the OpenFGA service
 	go build -o ./bin/openfga ./cmd/openfga
 
 .PHONY: run
@@ -36,27 +34,19 @@ run-postgres: build ## Run the OpenFGA server with Postgres storage
 	docker-compose up -d postgres
 	$(test_backend) make run
 
+.PHONY: go-generate
+go-generate: install-tools
+	go generate ./...
+
 .PHONY: unit-test
-unit-test: unit-test-memory unit-test-postgres
-
-.PHONY: unit-test-memory
-unit-test-memory: ## Run unit tests against the OpenFGA server using an in-memory datastore
+unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -v \
-		-coverprofile=coverageunitmemory.out \
-		-covermode=atomic -race \
-		-coverpkg=$(basic_code_locations) \
-    	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v postgres`
-
-.PHONY: unit-test-postgres
-unit-test-postgres:  ## Run unit tests against the OpenFGA server using a Postgres datastore
-	$(postgres_test_backend) go test $(gotest_extra_flags) -v \
-		-coverprofile=coverageunitpostgres.out \
-		-covermode=atomic -race \
-		-p 1 \
-		-coverpkg=$(basic_code_locations) \
-    	`go list ./internal/...` `go list ./pkg/...` `go list ./server/...` `go list ./storage/... | grep -v memory`
+			-coverprofile=coverageunitmemory.out \
+			-covermode=atomic -race \
+			-count=1 \
+			./...
 
 .PHONY: initialize-db
-initialize-db:
+initialize-db: go-generate
     #TODO wait for docker postgres container to be healthy
 	go clean -testcache; $(test_backend) go test ./storage/postgres -run TestReadTypeDefinition; \

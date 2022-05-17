@@ -47,15 +47,5 @@ jobs:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
 
-      - name: Spin up Postgres
-        run: docker compose up -d postgres
-
-      - name: Unit-test against memory
-        run: make unit-test-memory
-
-      - name: Unit-test against Postgres
-        run: make unit-test-postgres
-
-      - name: docker compose down
-        if: ${{ always() }}
-        run: docker compose down
+      - name: Unit Tests 
+        run: make unit-test

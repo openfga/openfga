@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -7,14 +7,16 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestGetStoreQuery(t *testing.T) {
+func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type getStoreQueryTest struct {
 		_name            string
 		request          *openfgav1pb.GetStoreRequest
@@ -33,18 +35,17 @@ func TestGetStoreQuery(t *testing.T) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.GetStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 
-			query := NewGetStoreQuery(backends.StoresBackend, logger)
+			query := queries.NewGetStoreQuery(datastore, logger)
 			actualResponse, actualError := query.Execute(ctx, test.request)
 
 			if test.err != nil {
@@ -70,25 +71,24 @@ func TestGetStoreQuery(t *testing.T) {
 	}
 }
 
-func TestGetStoreSucceeds(t *testing.T) {
+func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.GetStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
-	createStoreQuery := commands.NewCreateStoreCommand(backends.StoresBackend, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: store})
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)
 	}
-	query := NewGetStoreQuery(backends.StoresBackend, logger)
+	query := queries.NewGetStoreQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgav1pb.GetStoreRequest{StoreId: createStoreResponse.Id})
 
 	if actualError != nil {

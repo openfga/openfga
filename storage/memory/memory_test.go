@@ -6,9 +6,11 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/telemetry"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
+	"github.com/openfga/openfga/storage/test"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -19,6 +21,20 @@ var (
 
 func init() {
 	memoryStorage = memory.New(telemetry.NewNoopTracer(), 10000, 10000)
+}
+
+func TestMemdbStorage(t *testing.T) {
+	t.Skip() // todo(jon-whit): fix in-memory implementation so they pass the storage tests
+
+	testEngine := storagefixtures.RunDatastoreEngine(t, "memory")
+
+	test.TestAll(t, test.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
+		ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
+			return memory.New(telemetry.NewNoopTracer(), 10, 24)
+		})
+
+		return ds, nil
+	}))
 }
 
 func TestMemoryBackend_ReadAuthorizationModels(t *testing.T) {

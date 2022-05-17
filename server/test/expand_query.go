@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -11,7 +11,10 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	"go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -31,7 +34,7 @@ func setUp(ctx context.Context, store string, backend storage.TupleBackend, auth
 	return modelID, nil
 }
 
-func TestExpandQuery(t *testing.T) {
+func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgav1pb.TypeDefinitions
@@ -719,22 +722,22 @@ func TestExpandQuery(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
-			modelID, err := setUp(ctx, store, backends.TupleBackend, backends.AuthorizationModelBackend, test.typeDefinitions, test.tuples)
+			modelID, err := setUp(ctx, store, datastore, datastore, test.typeDefinitions, test.tuples)
 			if err != nil {
 				t.Fatal(err)
 			}
-			query := NewExpandQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
+			query := queries.NewExpandQuery(datastore, datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			got, err := query.Execute(ctx, test.request)
@@ -748,7 +751,7 @@ func TestExpandQuery(t *testing.T) {
 	}
 }
 
-func TestExpandQuery_Errors(t *testing.T) {
+func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgav1pb.TypeDefinitions
@@ -832,24 +835,24 @@ func TestExpandQuery_Errors(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
 
-			modelID, err := setUp(ctx, store, backends.TupleBackend, backends.AuthorizationModelBackend, test.typeDefinitions, test.tuples)
+			modelID, err := setUp(ctx, store, datastore, datastore, test.typeDefinitions, test.tuples)
 			if err != nil {
 				t.Fatalf("'%s': setUp() error was %s, want nil", test.name, err)
 			}
 
-			query := NewExpandQuery(backends.TupleBackend, backends.AuthorizationModelBackend, tracer, logger)
+			query := queries.NewExpandQuery(datastore, datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 

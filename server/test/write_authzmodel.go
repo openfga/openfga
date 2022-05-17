@@ -1,17 +1,19 @@
-package commands
+package test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/server/errors"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAuthorizationModel(t *testing.T) {
+func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type writeAuthorizationModelTestSettings struct {
 		_name    string
 		request  *openfgav1pb.WriteAuthorizationModelRequest
@@ -595,17 +597,16 @@ func TestWriteAuthorizationModel(t *testing.T) {
 		},
 	}
 
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			cmd := NewWriteAuthorizationModelCommand(backends.AuthorizationModelBackend, logger)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
 			actualResponse, actualError := cmd.Execute(ctx, test.request)
 
 			if test.err != nil {

@@ -1,4 +1,4 @@
-package queries
+package test
 
 import (
 	"context"
@@ -9,14 +9,16 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/queries"
+	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
+func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage.DatastoreTester) {
 	store := testutils.CreateRandomString(20)
 	for _, tc := range []struct {
 		name                string
@@ -61,14 +63,12 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			require := require.New(t)
 			ctx := context.Background()
-			tracer := telemetry.NewNoopTracer()
 			logger := logger.NewNoopLogger()
 
-			backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-			if err != nil {
-				t.Fatal(err)
-			}
+			datastore, err := dbTester.New()
+			require.NoError(err)
 
 			if tc.backendState != nil {
 				for store, state := range tc.backendState {
@@ -76,7 +76,7 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
-					if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
+					if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 						t.Fatalf("WriteAuthorizationModel(%s), err = %v, want nil", store, err)
 					}
 				}
@@ -84,7 +84,7 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 
 			encoder := encoder.NewNoopEncoder()
 
-			query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
+			query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 			resp, err := query.Execute(ctx, tc.request)
 			if err != nil {
 				t.Fatalf("Query.Execute(), err = %v, want nil", err)
@@ -101,14 +101,13 @@ func testReadAuthorizationModelsWithoutPaging(t *testing.T) {
 	}
 }
 
-func testReadAuthorizationModelsWithPaging(t *testing.T) {
+func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	backendState := &openfgav1pb.TypeDefinitions{
 		TypeDefinitions: []*openfgav1pb.TypeDefinition{
@@ -123,14 +122,14 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 	modelID2, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
 		t.Fatalf("Second WriteAuthorizationModel err = %v, want nil", err)
 	}
 
@@ -139,7 +138,7 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 		t.Fatalf("Error building encoder: %s", err)
 	}
 
-	query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
+	query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 	firstRequest := &openfgav1pb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -204,14 +203,13 @@ func testReadAuthorizationModelsWithPaging(t *testing.T) {
 	}
 }
 
-func testInvalidContinuationToken(t *testing.T) {
+func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester) {
+	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	backends, err := testutils.BuildAllBackends(ctx, tracer, logger)
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -226,7 +224,7 @@ func testInvalidContinuationToken(t *testing.T) {
 		},
 	}
 
-	if err := backends.AuthorizationModelBackend.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
 		t.Fatal(err)
 	}
 	encoder, err := encoder.NewTokenEncrypter("key")
@@ -234,17 +232,11 @@ func testInvalidContinuationToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	query := NewReadAuthorizationModelsQuery(backends.AuthorizationModelBackend, encoder, logger)
+	query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 	if _, err := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
 		t.Fatalf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)
 	}
-}
-
-func TestReadAuthorizationModels(t *testing.T) {
-	t.Run("read all authorization model configurations without paging", testReadAuthorizationModelsWithoutPaging)
-	t.Run("read all authorization model configurations with paging", testReadAuthorizationModelsWithPaging)
-	t.Run("invalid continuation token should return invalid continuation token error", testInvalidContinuationToken)
 }
