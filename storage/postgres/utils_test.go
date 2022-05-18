@@ -21,12 +21,12 @@ func TestHandlePostgresError(t *testing.T) {
 		}
 	})
 
-	t.Run("duplicate key value error without tuple key returns the error", func(t *testing.T) {
+	t.Run("duplicate key value error without tuple key returns collision", func(t *testing.T) {
 		duplicateKeyError := errors.New("duplicate key value")
 		err := handlePostgresError(duplicateKeyError)
 
-		if !errors.Is(err, duplicateKeyError) {
-			t.Fatalf("got '%v', expected '%v'", err, duplicateKeyError)
+		if !errors.Is(err, storage.ErrCollision) {
+			t.Fatalf("got '%v', expected '%v'", err, storage.ErrCollision)
 		}
 	})
 

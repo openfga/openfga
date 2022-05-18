@@ -10,6 +10,7 @@ import (
 // since these errors are allocated at init time, it is better to leave them as normal errors instead of
 // errors that have stack encoded.
 var (
+	ErrCollision                = errors.New("item already exists")
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
 	ErrInvalidWriteInput        = errors.New("invalid write input")
 	ErrNotFound                 = errors.New("not found")

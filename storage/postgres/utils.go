@@ -212,6 +212,7 @@ func handlePostgresError(err error, args ...interface{}) error {
 				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE))
 			}
 		}
+		return openfgaerrors.ErrorWithStack(storage.ErrCollision)
 	}
 	return openfgaerrors.ErrorWithStack(err)
 }

@@ -574,6 +574,10 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfga.Store
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if _, ok := s.stores[newStore.Id]; ok {
+		return nil, storage.ErrCollision
+	}
+
 	now := timestamppb.New(time.Now().UTC())
 	s.stores[newStore.Id] = &openfga.Store{
 		Id:        newStore.Id,
