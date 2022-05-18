@@ -150,7 +150,9 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	if len(firstResponse.AuthorizationModelIds) != 1 {
 		t.Fatal("Expected 1 modelID")
 	}
-	firstModelID := firstResponse.AuthorizationModelIds[0]
+	if firstResponse.AuthorizationModelIds[0] != modelID2 {
+		t.Fatalf("Expected model id to be %v but was %v", modelID2, firstResponse.AuthorizationModelIds[0])
+	}
 
 	if firstResponse.ContinuationToken == "" {
 		t.Fatal("Expected continuation token")
@@ -158,6 +160,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 
 	secondRequest := &openfgav1pb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
+		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: firstResponse.ContinuationToken,
 	}
 	secondResponse, err := query.Execute(ctx, secondRequest)
@@ -167,10 +170,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	if len(secondResponse.AuthorizationModelIds) != 1 {
 		t.Fatal("Expected 1 modelID")
 	}
-	secondModelID := secondResponse.AuthorizationModelIds[0]
-	if firstModelID == secondModelID {
-		t.Fatalf("Expected first configuration Id %v to be different than second %v", firstModelID, secondModelID)
+	if secondResponse.AuthorizationModelIds[0] != modelID1 {
+		t.Fatalf("Expected model id to be %v but was %v", modelID1, firstResponse.AuthorizationModelIds[0])
 	}
+	// no token <=> no more results
 	if secondResponse.ContinuationToken != "" {
 		t.Fatal("Expected empty continuation token")
 	}

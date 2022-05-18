@@ -70,11 +70,15 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 	t.Run("read changes without type", func(t *testing.T) {
 		testCases := []testCase{
 			{
-				_name:   "request with pageSize=1 returns 1 tuple and a token",
-				request: newReadChangesRequest(store, "", "", 1),
+				_name:   "request with pageSize=2 returns 2 tuple and a token",
+				request: newReadChangesRequest(store, "", "", 2),
 				expectedChanges: []*openfga.TupleChange{
 					{
 						TupleKey:  tkMaria,
+						Operation: openfga.TupleOperation_WRITE,
+					},
+					{
+						TupleKey:  tkCraig,
 						Operation: openfga.TupleOperation_WRITE,
 					},
 				},
@@ -86,10 +90,6 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 				_name:   "request with previous token returns all remaining changes",
 				request: newReadChangesRequest(store, "", "", storage.DefaultPageSize),
 				expectedChanges: []*openfga.TupleChange{
-					{
-						TupleKey:  tkCraig,
-						Operation: openfga.TupleOperation_WRITE,
-					},
 					{
 						TupleKey:  tkYamil,
 						Operation: openfga.TupleOperation_WRITE,

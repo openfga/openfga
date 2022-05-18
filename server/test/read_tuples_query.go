@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/go-errors/errors"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
@@ -81,6 +83,9 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(firstResponse.Tuples) != 1 {
 		t.Errorf("Expected 1 tuple got %d", len(firstResponse.Tuples))
 	}
+	if diff := cmp.Diff(firstResponse.Tuples[0].Key, writes[0], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
+	}
 	if firstResponse.ContinuationToken == "" {
 		t.Error("Expected continuation token")
 	}
@@ -93,6 +98,13 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(secondResponse.Tuples) != 2 {
 		t.Fatal("Expected 2 tuples")
 	}
+	if diff := cmp.Diff(secondResponse.Tuples[0].Key, writes[1], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
+	}
+	if diff := cmp.Diff(secondResponse.Tuples[1].Key, writes[2], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
+	}
+	// no token <=> no more results
 	if secondResponse.ContinuationToken != "" {
 		t.Fatal("Expected empty continuation token")
 	}

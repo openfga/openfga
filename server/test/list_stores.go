@@ -28,24 +28,48 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 		t.Fatal(err)
 	}
 
+	// clean up all stores from other tests
 	getStoresQuery := queries.NewListStoresQuery(datastore, fakeEncoder, logger)
-	_, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
+	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
+	deleteContinuationToken := ""
+	for ok := true; ok; ok = deleteContinuationToken != "" {
+		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+			ContinuationToken: deleteContinuationToken,
+		})
+		for _, store := range listStoresResponse.Stores {
+			if err = deleteCmd.Execute(ctx, &openfgav1pb.DeleteStoreRequest{
+				StoreId: store.Id,
+			}); err != nil {
+				t.Fatalf("failed cleaning stores with %v", err)
+			}
+		}
+		deleteContinuationToken = listStoresResponse.ContinuationToken
+	}
+
+	// ensure there are actually no stores
+	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
 	if actualError != nil {
 		t.Fatalf("Expected no error, but got %v", actualError)
 	}
+	if len(listStoresResponse.Stores) != 0 {
+		t.Fatalf("Expected 0 stores, got: %v", len(listStoresResponse.Stores))
+	}
 
+	// create two stores
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
-	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
+	firstStoreName := testutils.CreateRandomString(10)
+	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: firstStoreName})
 	if err != nil {
 		t.Fatalf("Error creating store 1: %v", err)
 	}
 
-	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: testutils.CreateRandomString(10)})
+	secondStoreName := testutils.CreateRandomString(10)
+	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: secondStoreName})
 	if err != nil {
 		t.Fatalf("Error creating store 2: %v", err)
 	}
-
-	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+	// first page: 1st store
+	listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
 	})
@@ -56,10 +80,14 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(listStoresResponse.Stores) != 1 {
 		t.Fatalf("Expected 1 store, got: %v", len(listStoresResponse.Stores))
 	}
+	if listStoresResponse.Stores[0].Name != firstStoreName {
+		t.Fatalf("Expected store name to be %v but got %v", firstStoreName, listStoresResponse.Stores[0].Name)
+	}
 	if listStoresResponse.ContinuationToken == "" {
 		t.Fatal("Expected continuation token, got nothing")
 	}
 
+	// first page: 2nd store
 	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: listStoresResponse.ContinuationToken,
@@ -71,7 +99,12 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(secondListStoresResponse.Stores) != 1 {
 		t.Fatalf("Expected 1 store, got: %v", len(secondListStoresResponse.Stores))
 	}
-	if secondListStoresResponse.ContinuationToken == "" {
-		t.Fatal("Expected continuation token, got nothing")
+	if secondListStoresResponse.Stores[0].Name != secondStoreName {
+		t.Fatalf("Expected store name to be %v but got %v", secondStoreName, secondListStoresResponse.Stores[0].Name)
 	}
+	// no token <=> no more results
+	if secondListStoresResponse.ContinuationToken != "" {
+		t.Fatalf("Expected no continuation token, got %v", secondListStoresResponse.ContinuationToken)
+	}
+
 }

@@ -66,7 +66,7 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) 
 	}
 
 	_, err = datastore.ReadAuthorizationModel(ctx, "undefined", modelID)
-	if err != storage.ErrNotFound {
+	if !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
 	}
 }
@@ -141,7 +141,7 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
 		t.Fatalf("expected 1, got %d", len(models))
 	}
 	if modelID2 != models[0].Id {
-		t.Fatalf("expected '%s', got '%s", modelID1, models[0].Id)
+		t.Fatalf("expected '%s', got '%s", modelID2, models[0].Id)
 	}
 	if diff := cmp.Diff(tds2, models[0].TypeDefinitions, cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)

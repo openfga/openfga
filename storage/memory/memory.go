@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -188,8 +187,8 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	}
 
 	continuationToken = strconv.Itoa(len(allChanges))
-	if len(allChanges) > pageSize {
-		continuationToken = strconv.Itoa(int(from + 1))
+	if to != len(allChanges) {
+		continuationToken = strconv.Itoa(to)
 	}
 	continuationToken = continuationToken + fmt.Sprintf("|%s", objectType)
 
@@ -358,9 +357,7 @@ func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options s
 	matches := make([]*openfga.Tuple, len(s.tuples[store]))
 	copy(matches, s.tuples[store])
 
-	var partition []*openfga.Tuple
-	var from int64
-	var continuationToken string
+	var from int64 = 0
 	var err error
 
 	pageSize := storage.DefaultPageSize
@@ -368,22 +365,21 @@ func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options s
 		pageSize = options.PageSize
 	}
 
-	if options.From == "" {
-		from = 0
-	} else {
+	if options.From != "" {
 		from, err = strconv.ParseInt(options.From, 10, 32)
 		if err != nil {
 			return nil, make([]byte, 0), openfgaerrors.ErrorWithStack(err)
 		}
 	}
+	to := int(from) + pageSize
+	if len(matches) < to {
+		to = len(matches)
+	}
 
-	to := math.Min(float64(pageSize), float64(len(matches)))
-	partition = matches[from:uint(to)]
-
-	if len(matches) <= pageSize {
-		continuationToken = ""
-	} else {
-		continuationToken = strconv.FormatInt(from+1, 10)
+	partition := matches[from:to]
+	continuationToken := ""
+	if to != len(matches) {
+		continuationToken = strconv.Itoa(to)
 	}
 
 	return partition, []byte(continuationToken), nil
@@ -464,33 +460,38 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 		models = append(models, entry.model)
 	}
 
+	// from newest to oldest
 	sort.Slice(models, func(i, j int) bool {
 		return models[i].Id > models[j].Id
 	})
 
-	var from int64
-	var continuationToken string
+	var from int64 = 0
+	continuationToken := ""
 	var err error
 
-	if options.From == "" {
-		from = 0
-	} else {
+	pageSize := storage.DefaultPageSize
+	if options.PageSize > 0 {
+		pageSize = options.PageSize
+	}
+
+	if options.From != "" {
 		from, err = strconv.ParseInt(options.From, 10, 32)
 		if err != nil {
 			return nil, nil, openfgaerrors.ErrorWithStack(err)
 		}
 	}
 
-	to := math.Min(float64(options.PageSize), float64(len(models)))
-	partition := models[from:uint(to)]
+	to := int(from) + pageSize
+	if len(models) < to {
+		to = len(models)
+	}
+	res := models[from:to]
 
-	if len(models) <= options.PageSize {
-		continuationToken = ""
-	} else {
-		continuationToken = strconv.FormatInt(from+1, 10)
+	if to != len(models) {
+		continuationToken = strconv.Itoa(to)
 	}
 
-	return partition, []byte(continuationToken), nil
+	return res, []byte(continuationToken), nil
 }
 
 // FindLatestAuthorizationModelID See storage.AuthorizationModelBackend.FindLatestAuthorizationModelID
@@ -659,13 +660,13 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 		stores = append(stores, t)
 	}
 
+	// from oldest to newest
 	sort.SliceStable(stores, func(i, j int) bool {
 		return stores[i].Id < stores[j].Id
 	})
 
 	var err error
 	var from int64 = 0
-	var continuationToken string
 	if paginationOptions.From != "" {
 		from, err = strconv.ParseInt(paginationOptions.From, 10, 32)
 		if err != nil {
@@ -685,9 +686,9 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 		return nil, nil, nil
 	}
 
-	continuationToken = strconv.Itoa(len(stores))
-	if len(stores) > pageSize {
-		continuationToken = strconv.Itoa(int(from + 1))
+	continuationToken := ""
+	if to != len(stores) {
+		continuationToken = strconv.Itoa(to)
 	}
 
 	return res, []byte(continuationToken), nil
