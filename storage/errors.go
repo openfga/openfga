@@ -1,9 +1,8 @@
 package storage
 
 import (
-	"fmt"
-
 	"errors"
+	"fmt"
 
 	"go.buf.build/openfga/go/openfga/api/openfga"
 )

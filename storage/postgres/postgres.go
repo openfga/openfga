@@ -171,7 +171,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	deleteResults := tx.SendBatch(ctx, deleteBatch)
-	for i := 0; i < len(deletes); i++ {
+	for i := 0; i < deleteBatch.Len(); i++ {
 		tag, err := deleteResults.Exec()
 		if err != nil {
 			return handlePostgresError(err)
@@ -195,7 +195,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	writeResults := tx.SendBatch(ctx, writeBatch)
-	for i := 0; i < len(writes); i++ {
+	for i := 0; i < writeBatch.Len(); i++ {
 		if _, err := writeResults.Exec(); err != nil {
 			return handlePostgresError(err, writes[i])
 		}
