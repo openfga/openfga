@@ -162,6 +162,9 @@ func (query *CheckQuery) resolveComputed(ctx context.Context, rc *resolutionCont
 // resolveDirectUserSet attempts to find individual user concurrently by resolving the usersets. If the user is found
 // in the direct user search or in any of the usersets, the peer goroutines will be short-circuited.
 func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutionContext) error {
+	done := make(chan struct{})
+	defer close(done)
+
 	var wg sync.WaitGroup
 	c := make(chan *chanResolveResult)
 
@@ -179,7 +182,10 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 		}
 
 		rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
-		c <- &chanResolveResult{err: nil, found: true}
+		select {
+		case c <- &chanResolveResult{err: nil, found: true}:
+		case <-done:
+		}
 	}(c)
 
 	iter, err := rc.readUsersetTuples(ctx, query.tupleBackend)
@@ -227,7 +233,11 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 				return
 			}
 			err = query.resolveNode(ctx, nestedRC, userset)
-			c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
+
+			select {
+			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
+			case <-done:
+			}
 		}(c)
 	}
 
