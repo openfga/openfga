@@ -51,7 +51,7 @@ func TestDeleteStore(t *testing.T, dbTester teststorage.DatastoreTester) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			err := deleteCmd.Execute(ctx, test.request)
+			_, err := deleteCmd.Execute(ctx, test.request)
 
 			if test.err != nil {
 				if err == nil {

@@ -33,6 +33,6 @@ func TestThatProbablyNoCollisionsHappen(t *testing.T) {
 	}
 
 	if len(m) != length {
-		t.Error("ids collided!!")
+		t.Error("ids collided")
 	}
 }

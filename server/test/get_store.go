@@ -84,6 +84,7 @@ func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester) {
 
 	store := testutils.CreateRandomString(10)
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
+
 	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)

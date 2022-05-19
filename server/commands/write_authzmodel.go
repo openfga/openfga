@@ -2,14 +2,10 @@ package commands
 
 import (
 	"context"
-	"net/http"
-	"strconv"
 
-	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
-	"github.com/openfga/openfga/pkg/utils/grpcutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -25,13 +21,15 @@ func NewWriteAuthorizationModelCommand(
 	backend storage.TypeDefinitionWriteBackend,
 	logger logger.Logger,
 ) *WriteAuthorizationModelCommand {
-	return &WriteAuthorizationModelCommand{backend: backend, logger: logger}
+	return &WriteAuthorizationModelCommand{
+		backend: backend,
+		logger:  logger,
+	}
 }
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	err := w.validateAuthorizationModel(req.GetTypeDefinitions().GetTypeDefinitions())
-	if err != nil {
+	if err := w.validateAuthorizationModel(req.GetTypeDefinitions().GetTypeDefinitions()); err != nil {
 		return nil, err
 	}
 
@@ -44,8 +42,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, req.GetTypeDefinitions()); err != nil {
 		return nil, serverErrors.HandleError("Error writing authorization model configuration", err)
 	}
-
-	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated), w.logger)
 
 	return &openfgapb.WriteAuthorizationModelResponse{
 		AuthorizationModelId: id,

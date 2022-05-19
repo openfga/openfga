@@ -14,9 +14,9 @@ import (
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils/grpcutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
@@ -35,7 +35,8 @@ const (
 )
 
 var (
-	ErrNilTokenEncoder error = fmt.Errorf("TokenEncoder must be a non-nil interface value")
+	ErrNilTokenEncoder error = fmt.Errorf("tokenEncoder must be a non-nil interface value")
+	ErrNilTransport    error = fmt.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -54,6 +55,7 @@ type Server struct {
 	storesBackend             storage.StoresBackend
 	encoder                   encoder.Encoder
 	config                    *Config
+	transport                 gateway.Transport
 
 	defaultServeMuxOpts []runtime.ServeMuxOption
 }
@@ -72,6 +74,7 @@ type Dependencies struct {
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
 	// Defaults to Base64Encoder if none is provided.
 	TokenEncoder encoder.Encoder
+	Transport    gateway.Transport
 }
 
 type Config struct {
@@ -99,6 +102,16 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		}
 	}
 
+	transport := dependencies.Transport
+	if transport == nil {
+		transport = gateway.NewRPCTransport(dependencies.Logger)
+	} else {
+		t := reflect.TypeOf(transport)
+		if reflect.ValueOf(transport) == reflect.Zero(t) {
+			return nil, ErrNilTransport
+		}
+	}
+
 	server := &Server{
 		Server:                    grpcServer,
 		tracer:                    dependencies.Tracer,
@@ -111,6 +124,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		changelogBackend:          dependencies.ChangelogBackend,
 		storesBackend:             dependencies.StoresBackend,
 		encoder:                   tokenEncoder,
+		transport:                 transport,
 		config:                    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
@@ -269,7 +283,14 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	defer span.End()
 
 	c := commands.NewWriteAuthorizationModelCommand(s.authorizationModelBackend, s.logger)
-	return c.Execute(ctx, req)
+	res, err := c.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
+
+	return res, nil
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
@@ -296,11 +317,18 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	c := commands.NewWriteAssertionsCommand(s.assertionsBackend, s.typeDefinitionReadBackend, s.logger)
-	return c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
+	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		Assertions:           req.GetAssertions(),
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
+
+	return res, nil
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertionsRequest) (*openfgapb.ReadAssertionsResponse, error) {
@@ -333,13 +361,14 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 	defer span.End()
 
 	c := commands.NewCreateStoreCommand(s.storesBackend, s.logger)
-	response, err := c.Execute(ctx, req)
+	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated), s.logger)
 
-	return response, nil
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
+
+	return res, nil
 }
 
 func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
@@ -347,13 +376,14 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 	defer span.End()
 
 	cmd := commands.NewDeleteStoreCommand(s.storesBackend, s.logger)
-	err := cmd.Execute(ctx, req)
+	res, err := cmd.Execute(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), s.logger)
 
-	return &openfgapb.DeleteStoreResponse{}, nil
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
+
+	return res, nil
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (*openfgapb.GetStoreResponse, error) {
@@ -457,8 +487,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	var err error
 
 	if modelID == "" {
-		modelID, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store)
-		if err != nil {
+		if modelID, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return "", serverErrors.LatestAuthorizationModelNotFound(store)
 			}
@@ -466,14 +495,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 		}
 	}
 
-	if _, err := s.authorizationModelBackend.ReadAuthorizationModel(ctx, store, modelID); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", serverErrors.AuthorizationModelNotFound(modelID)
-		}
-		return "", serverErrors.HandleError("", err)
-	}
-
-	grpcutils.SetHeaderLogError(ctx, AuthorizationModelIDHeader, modelID, s.logger)
+	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
 }

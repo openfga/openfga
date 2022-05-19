@@ -26,21 +26,20 @@ func NewDeleteStoreCommand(
 	}
 }
 
-func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteStoreRequest) error {
+func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
 	store, err := s.storesBackend.GetStore(ctx, req.StoreId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil
+			return &openfgapb.DeleteStoreResponse{}, nil
 		}
 
-		return serverErrors.HandleError("", err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	utils.LogDBStats(ctx, s.logger, "DeleteStore", 1, 1)
 
 	if err := s.storesBackend.DeleteStore(ctx, store.Id); err != nil {
-		return serverErrors.HandleError("Error deleting store", err)
+		return nil, serverErrors.HandleError("Error deleting store", err)
 	}
-
-	return nil
+	return &openfgapb.DeleteStoreResponse{}, nil
 }

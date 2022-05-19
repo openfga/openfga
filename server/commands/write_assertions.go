@@ -2,14 +2,10 @@ package commands
 
 import (
 	"context"
-	"net/http"
-	"strconv"
 
-	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
-	"github.com/openfga/openfga/pkg/utils/grpcutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -51,8 +47,6 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), w.logger)
 
 	return &openfgapb.WriteAssertionsResponse{}, nil
 }

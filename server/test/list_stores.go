@@ -37,7 +37,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 			ContinuationToken: deleteContinuationToken,
 		})
 		for _, store := range listStoresResponse.Stores {
-			if err = deleteCmd.Execute(ctx, &openfgapb.DeleteStoreRequest{
+			if _, err = deleteCmd.Execute(ctx, &openfgapb.DeleteStoreRequest{
 				StoreId: store.Id,
 			}); err != nil {
 				t.Fatalf("failed cleaning stores with %v", err)
