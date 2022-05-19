@@ -172,10 +172,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 		tk, err := rc.readUserTuple(ctx, query.tupleBackend)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				c <- &chanResolveResult{err: nil, found: false}
-			} else {
-				c <- &chanResolveResult{err: err, found: false}
+				err = nil
 			}
+			c <- &chanResolveResult{err: err, found: false}
 			return
 		}
 
@@ -254,7 +253,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 
 func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_Union) error {
 	var wg sync.WaitGroup
-	c := make(chan *chanResolveResult)
+	c := make(chan *chanResolveResult, len(nodes.Union.Child))
 
 	for idx, userset := range nodes.Union.Child {
 		if rc.shouldShortCircuit() {
