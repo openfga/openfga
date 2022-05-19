@@ -11,7 +11,7 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -33,11 +33,11 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
-		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgapb.ListStoresRequest{
 			ContinuationToken: deleteContinuationToken,
 		})
 		for _, store := range listStoresResponse.Stores {
-			if err = deleteCmd.Execute(ctx, &openfgav1pb.DeleteStoreRequest{
+			if err = deleteCmd.Execute(ctx, &openfgapb.DeleteStoreRequest{
 				StoreId: store.Id,
 			}); err != nil {
 				t.Fatalf("failed cleaning stores with %v", err)
@@ -47,7 +47,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	}
 
 	// ensure there are actually no stores
-	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{})
+	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgapb.ListStoresRequest{})
 	if actualError != nil {
 		t.Fatalf("Expected no error, but got %v", actualError)
 	}
@@ -58,18 +58,18 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	// create two stores
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 	firstStoreName := testutils.CreateRandomString(10)
-	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: firstStoreName})
+	_, err = createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: firstStoreName})
 	if err != nil {
 		t.Fatalf("Error creating store 1: %v", err)
 	}
 
 	secondStoreName := testutils.CreateRandomString(10)
-	_, err = createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: secondStoreName})
+	_, err = createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: secondStoreName})
 	if err != nil {
 		t.Fatalf("Error creating store 2: %v", err)
 	}
 	// first page: 1st store
-	listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+	listStoresResponse, actualError = getStoresQuery.Execute(ctx, &openfgapb.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
 	})
@@ -88,7 +88,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester) {
 	}
 
 	// first page: 2nd store
-	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1pb.ListStoresRequest{
+	secondListStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgapb.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: listStoresResponse.ContinuationToken,
 	})

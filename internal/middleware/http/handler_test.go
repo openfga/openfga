@@ -10,14 +10,14 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/server/errors"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/metadata"
 )
 
 func TestCustomHTTPErrorHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgav1pb.ErrorCode_assertions_too_many_items), "some error")
+	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS), "some error")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",
@@ -40,19 +40,19 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
-	expectedData := "{\"code\":\"assertions_too_many_items\",\"message\":\"some error\"}"
+	expectedData := "{\"code\":\"ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS\",\"message\":\"some error\"}"
 	if strings.Compare(strings.TrimSpace(string(data)), expectedData) != 0 {
 		t.Errorf("Expect data %s actual %s", expectedData, string(data))
 	}
 	if res.StatusCode != http.StatusBadRequest {
-		t.Errorf("Expect http code %d actual %d", http.StatusBadRequest, res.StatusCode)
+		t.Errorf("want '%d', got '%d'", http.StatusBadRequest, res.StatusCode)
 	}
 }
 
 func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgav1pb.ErrorCode_assertions_too_many_items), "invalid character '<' looking for beginning of value,")
+	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS), "invalid character '<' looking for beginning of value,")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",
@@ -75,9 +75,9 @@ func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
-	expectedData := "{\"code\":\"assertions_too_many_items\",\"message\":\"invalid character '<' looking for beginning of value,\"}"
+	expectedData := "{\"code\":\"ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS\",\"message\":\"invalid character '<' looking for beginning of value,\"}"
 	if strings.Compare(strings.TrimSpace(string(data)), expectedData) != 0 {
-		t.Errorf("Expect data %s actual %s", strings.TrimSpace(expectedData), strings.TrimSpace(string(data)))
+		t.Errorf("want '%s', got '%s'", strings.TrimSpace(expectedData), strings.TrimSpace(string(data)))
 	}
 	if res.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expect http code %d actual %d", http.StatusBadRequest, res.StatusCode)

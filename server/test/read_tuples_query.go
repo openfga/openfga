@@ -15,8 +15,7 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -36,8 +35,8 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		t.Fatal(err)
 	}
 
-	backendState := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	backendState := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "ns1",
 			},
@@ -51,7 +50,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 
 	cmd := queries.NewReadTuplesQuery(datastore, encoder, logger)
 
-	writes := []*openfga.TupleKey{
+	writes := []*openfgapb.TupleKey{
 		{
 			Object:   "repo:auth0/foo",
 			Relation: "admin",
@@ -68,10 +67,10 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 			User:     "github|jon.allie@auth0.com",
 		},
 	}
-	if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, writes); err != nil {
+	if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes); err != nil {
 		return
 	}
-	firstRequest := &openfgav1pb.ReadTuplesRequest{
+	firstRequest := &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
@@ -83,14 +82,14 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(firstResponse.Tuples) != 1 {
 		t.Errorf("Expected 1 tuple got %d", len(firstResponse.Tuples))
 	}
-	if diff := cmp.Diff(firstResponse.Tuples[0].Key, writes[0], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+	if diff := cmp.Diff(firstResponse.Tuples[0].Key, writes[0], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
 		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
 	}
 	if firstResponse.ContinuationToken == "" {
 		t.Error("Expected continuation token")
 	}
 
-	secondRequest := &openfgav1pb.ReadTuplesRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
+	secondRequest := &openfgapb.ReadTuplesRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
 	secondResponse, err := cmd.Execute(ctx, secondRequest)
 	if err != nil {
 		t.Fatalf("Query.Execute(), err = %v, want nil", err)
@@ -98,10 +97,10 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	if len(secondResponse.Tuples) != 2 {
 		t.Fatal("Expected 2 tuples")
 	}
-	if diff := cmp.Diff(secondResponse.Tuples[0].Key, writes[1], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+	if diff := cmp.Diff(secondResponse.Tuples[0].Key, writes[1], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
 		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
 	}
-	if diff := cmp.Diff(secondResponse.Tuples[1].Key, writes[2], cmpopts.IgnoreUnexported(openfga.TupleKey{})); diff != "" {
+	if diff := cmp.Diff(secondResponse.Tuples[1].Key, writes[2], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
 		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
 	}
 	// no token <=> no more results
@@ -128,8 +127,8 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	state := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
 			},
@@ -141,7 +140,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	}
 
 	q := queries.NewReadTuplesQuery(datastore, encoder, logger)
-	if _, err := q.Execute(ctx, &openfgav1pb.ReadTuplesRequest{
+	if _, err := q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {

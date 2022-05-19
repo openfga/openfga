@@ -13,7 +13,7 @@ import (
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -27,9 +27,9 @@ type tupleRecord struct {
 	insertedAt time.Time
 }
 
-func (t *tupleRecord) asTuple() *openfga.Tuple {
-	return &openfga.Tuple{
-		Key: &openfga.TupleKey{
+func (t *tupleRecord) asTuple() *openfgapb.Tuple {
+	return &openfgapb.Tuple{
+		Key: &openfgapb.TupleKey{
 			Object:   tupleUtils.BuildObject(t.objectType, t.objectID),
 			Relation: t.relation,
 			User:     t.user,
@@ -60,11 +60,11 @@ func (t *tupleIterator) next() (*tupleRecord, error) {
 	return &record, nil
 }
 
-// toArray converts the tupleIterator to an []*openfga.Tuple and a possibly empty continuation token. If the
+// toArray converts the tupleIterator to an []*openfgapb.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	defer t.Stop()
-	var res []*openfga.Tuple
+	var res []*openfgapb.Tuple
 	var lastUlid string
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
@@ -87,7 +87,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfga.Tupl
 	return res, []byte(lastUlid), nil
 }
 
-func (t *tupleIterator) Next() (*openfga.Tuple, error) {
+func (t *tupleIterator) Next() (*openfgapb.Tuple, error) {
 	record, err := t.next()
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func newContToken(ulid, objectType string) *contToken {
 	}
 }
 
-func buildReadQuery(store string, tupleKey *openfga.TupleKey, opts storage.PaginationOptions) string {
+func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) string {
 	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s'", store)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
@@ -136,7 +136,7 @@ func buildReadQuery(store string, tupleKey *openfga.TupleKey, opts storage.Pagin
 	return stmt
 }
 
-func buildReadUsersetTuplesQuery(store string, tupleKey *openfga.TupleKey) string {
+func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) string {
 	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s' AND user_type = '%s'", store, tupleUtils.UserSet)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
@@ -208,8 +208,8 @@ func handlePostgresError(err error, args ...interface{}) error {
 		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
 	} else if strings.Contains(err.Error(), "duplicate key value") {
 		if len(args) > 0 {
-			if tk, ok := args[0].(*openfga.TupleKey); ok {
-				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE))
+			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
+				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
 			}
 		}
 		return openfgaerrors.ErrorWithStack(storage.ErrCollision)

@@ -10,8 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -40,7 +39,7 @@ func NewReadQuery(tupleBackend storage.TupleBackend, typeDefinitionReadBackend s
 }
 
 // Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tupleset
-func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1pb.ReadRequest) (*openfgav1pb.ReadResponse, error) {
+func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
@@ -68,13 +67,13 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1pb.ReadRequest) (
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgav1pb.ReadResponse{
+	return &openfgapb.ReadResponse{
 		Tuples:            tuples,
 		ContinuationToken: encodedContToken,
 	}, nil
 }
 
-func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, authorizationModelID string, tupleKey *openfga.TupleKey, rwCounter utils.DBCallCounter) error {
+func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, authorizationModelID string, tupleKey *openfgapb.TupleKey, rwCounter utils.DBCallCounter) error {
 	ctx, span := q.tracer.Start(ctx, "validateAndAuthenticateTupleset")
 	defer span.End()
 

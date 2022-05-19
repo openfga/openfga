@@ -8,7 +8,7 @@ import (
 	"github.com/karlseguin/ccache/v2"
 	"github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 const (
@@ -28,12 +28,12 @@ func NewTypeDefinitionCachingBackend(innerBackend storage.TypeDefinitionReadBack
 	}
 }
 
-func (cachingBackend *typeDefinitionContextCachingBackend) ReadTypeDefinition(ctx context.Context, store, modelID, name string) (*openfgav1pb.TypeDefinition, error) {
+func (cachingBackend *typeDefinitionContextCachingBackend) ReadTypeDefinition(ctx context.Context, store, modelID, name string) (*openfgapb.TypeDefinition, error) {
 	cacheKey := strings.Join([]string{store, modelID, name}, Separator)
 	cachedEntry := cachingBackend.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
-		return cachedEntry.Value().(*openfgav1pb.TypeDefinition), nil
+		return cachedEntry.Value().(*openfgapb.TypeDefinition), nil
 	}
 
 	ns, err := cachingBackend.innerBackend.ReadTypeDefinition(ctx, store, modelID, name)

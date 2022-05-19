@@ -11,7 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
@@ -25,18 +25,18 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 	t.Run("read changes with continuation token", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 
-		tk1 := &openfga.TupleKey{
+		tk1 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfga.TupleKey{
+		tk2 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder2"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,10 +50,10 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 			t.Error("expected non-empty token")
 		}
 
-		expectedChanges := []*openfga.TupleChange{
+		expectedChanges := []*openfgapb.TupleChange{
 			{
 				TupleKey:  tk1,
-				Operation: openfga.TupleOperation_WRITE,
+				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 
@@ -75,10 +75,10 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 			t.Error("expected non-empty token")
 		}
 
-		expectedChanges = []*openfga.TupleChange{
+		expectedChanges = []*openfgapb.TupleChange{
 			{
 				TupleKey:  tk2,
-				Operation: openfga.TupleOperation_WRITE,
+				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
@@ -98,18 +98,18 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 	t.Run("read changes with horizon offset should return not found (no changes)", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 
-		tk1 := &openfga.TupleKey{
+		tk1 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfga.TupleKey{
+		tk2 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder2"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -123,18 +123,18 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 	t.Run("read changes with non-empty object type should only read that object type", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 
-		tk1 := &openfga.TupleKey{
+		tk1 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("folder", "1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfga.TupleKey{
+		tk2 := &openfgapb.TupleKey{
 			Object:   tuple.BuildObject("document", "1"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk1, tk2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -148,10 +148,10 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 			t.Errorf("expected empty token but got '%s'", continuationToken)
 		}
 
-		expectedChanges := []*openfga.TupleChange{
+		expectedChanges := []*openfgapb.TupleChange{
 			{
 				TupleKey:  tk1,
-				Operation: openfga.TupleOperation_WRITE,
+				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
@@ -170,7 +170,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 
 	t.Run("deletes would succeed and write would fail, fails and introduces no changes", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tks := []*openfga.TupleKey{
+		tks := []*openfgapb.TupleKey{
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
@@ -184,17 +184,17 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 			{
 				Object:   "doc:readme",
 				Relation: "viewer",
-				User:     "org:openfga#viewer",
+				User:     "org:openfgapb#viewer",
 			},
 		}
-		expectedError := storage.InvalidWriteInputError(tks[2], openfga.TupleOperation_WRITE)
+		expectedError := storage.InvalidWriteInputError(tks[2], openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// Write tks
 		if err := datastore.Write(ctx, store, nil, tks); err != nil {
 			t.Fatal(err)
 		}
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		if err := datastore.Write(ctx, store, []*openfga.TupleKey{tks[0], tks[1]}, []*openfga.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
+		if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
 			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 		tuples, _, err := datastore.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
@@ -208,24 +208,24 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 
 	t.Run("delete fails if the tuple does not exist", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_DELETE)
+		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 
-		if err := datastore.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
+		if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
 			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 	})
 
 	t.Run("deleting a tuple which exists succeeds", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		// Write
-		if err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
+		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk}); err != nil {
 			t.Fatal(err)
 		}
 		// Then delete
-		if err := datastore.Write(ctx, store, []*openfga.TupleKey{tk}, nil); err != nil {
+		if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tk}, nil); err != nil {
 			t.Fatal(err)
 		}
 		// Ensure it is not there
@@ -236,24 +236,24 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 
 	t.Run("inserting a tuple twice fails", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-		expectedError := storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE)
+		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// First write should succeed.
-		if err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err != nil {
+		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk}); err != nil {
 			t.Fatal(err)
 		}
 		// Second write of the same tuple should fail.
-		if err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk}); err.Error() != expectedError.Error() {
+		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk}); err.Error() != expectedError.Error() {
 			t.Fatalf("got '%v', want '%v'", err, expectedError)
 		}
 	})
 
 	t.Run("reading a tuple that exists succeeds", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tuple := &openfga.Tuple{Key: &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
+		tuple := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
 
-		if err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tuple.Key}); err != nil {
+		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tuple.Key}); err != nil {
 			t.Fatal(err)
 		}
 		gotTuple, err := datastore.ReadUserTuple(ctx, store, tuple.Key)
@@ -267,7 +267,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 
 	t.Run("reading a tuple that does not exist returns not found", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tk := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		if _, err := datastore.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("got '%v', want '%v'", err, storage.ErrNotFound)
@@ -276,7 +276,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 
 	t.Run("reading userset tuples that exists succeeds", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tks := []*openfga.TupleKey{
+		tks := []*openfgapb.TupleKey{
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
@@ -290,14 +290,14 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 			{
 				Object:   "doc:readme",
 				Relation: "viewer",
-				User:     "org:openfga#viewer",
+				User:     "org:openfgapb#viewer",
 			},
 		}
 
 		if err := datastore.Write(ctx, store, nil, tks); err != nil {
 			t.Fatal(err)
 		}
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, store, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -322,7 +322,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 	t.Run("reading userset tuples that don't exist should an empty iterator", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, store, &openfga.TupleKey{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, store, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -343,15 +343,15 @@ func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
-	tk0 := &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-	tk1 := &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
+	tk0 := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+	tk1 := &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
 
-	if err := datastore.Write(ctx, store, nil, []*openfga.TupleKey{tk0, tk1}); err != nil {
+	if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk0, tk1}); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("readPage pagination works properly", func(t *testing.T) {
-		tuples0, contToken0, err := datastore.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples0, contToken0, err := datastore.ReadPage(ctx, store, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -365,7 +365,7 @@ func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
 			t.Fatalf("got '%s', want empty", string(contToken0))
 		}
 
-		tuples1, contToken1, err := datastore.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuples1, contToken1, err := datastore.ReadPage(ctx, store, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -381,7 +381,7 @@ func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
 	})
 
 	t.Run("reading a page completely does not return a continuation token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := datastore.ReadPage(ctx, store, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -394,7 +394,7 @@ func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
 	})
 
 	t.Run("reading a page partially returns a continuation token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, store, &openfga.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := datastore.ReadPage(ctx, store, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

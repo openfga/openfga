@@ -7,7 +7,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type GetStoreQuery struct {
@@ -22,7 +22,7 @@ func NewGetStoreQuery(storesBackend storage.StoresBackend, logger logger.Logger)
 	}
 }
 
-func (q *GetStoreQuery) Execute(ctx context.Context, req *openfgav1pb.GetStoreRequest) (*openfgav1pb.GetStoreResponse, error) {
+func (q *GetStoreQuery) Execute(ctx context.Context, req *openfgapb.GetStoreRequest) (*openfgapb.GetStoreResponse, error) {
 	storeID := req.GetStoreId()
 	store, err := q.storesBackend.GetStore(ctx, storeID)
 	if err != nil {
@@ -31,7 +31,7 @@ func (q *GetStoreQuery) Execute(ctx context.Context, req *openfgav1pb.GetStoreRe
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return &openfgav1pb.GetStoreResponse{
+	return &openfgapb.GetStoreResponse{
 		Id:        store.Id,
 		Name:      store.Name,
 		CreatedAt: store.CreatedAt,

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // since these errors are allocated at init time, it is better to leave them as normal errors instead of
@@ -24,11 +24,11 @@ func ExceededMaxTypeDefinitionsLimitError(limit int) error {
 	return fmt.Errorf("exceeded number of allowed type definitions: %d", limit)
 }
 
-func InvalidWriteInputError(tk *openfga.TupleKey, operation openfga.TupleOperation) error {
+func InvalidWriteInputError(tk *openfgapb.TupleKey, operation openfgapb.TupleOperation) error {
 	switch operation {
-	case openfga.TupleOperation_DELETE:
+	case openfgapb.TupleOperation_TUPLE_OPERATION_DELETE:
 		return fmt.Errorf("cannot delete a tuple which does not exist: user: '%s', relation: '%s', object: '%s': %w", tk.GetUser(), tk.GetRelation(), tk.GetObject(), ErrInvalidWriteInput)
-	case openfga.TupleOperation_WRITE:
+	case openfgapb.TupleOperation_TUPLE_OPERATION_WRITE:
 		return fmt.Errorf("cannot write a tuple which already exists: user: '%s', relation: '%s', object: '%s': %w", tk.GetUser(), tk.GetRelation(), tk.GetObject(), ErrInvalidWriteInput)
 	default:
 		return nil

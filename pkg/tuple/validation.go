@@ -7,8 +7,7 @@ import (
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/utils"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // This file provides validation utility that are shared across different commands
@@ -16,7 +15,7 @@ import (
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
 	Reason   string
-	TupleKey *openfga.TupleKey
+	TupleKey *openfgapb.TupleKey
 }
 
 func (i *InvalidTupleError) Error() string {
@@ -25,7 +24,7 @@ func (i *InvalidTupleError) Error() string {
 
 // InvalidObjectFormatError is returned if the object is invalid
 type InvalidObjectFormatError struct {
-	TupleKey *openfga.TupleKey
+	TupleKey *openfgapb.TupleKey
 }
 
 func (i *InvalidObjectFormatError) Error() string {
@@ -43,7 +42,7 @@ func (i *TypeNotFoundError) Error() string {
 
 // RelationNotFoundError is returned if the relation is not found
 type RelationNotFoundError struct {
-	TupleKey *openfga.TupleKey
+	TupleKey *openfgapb.TupleKey
 	Relation string
 	TypeName string
 }
@@ -52,8 +51,8 @@ func (i *RelationNotFoundError) Error() string {
 	return fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", i.Relation, i.TypeName, i.TupleKey.String())
 }
 
-// ValidateTuple returns whether a *openfga.TupleKey is valid
-func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, authorizationModelID string, tk *openfga.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgav1pb.Userset, error) {
+// ValidateTuple returns whether a *openfgapb.TupleKey is valid
+func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgapb.Userset, error) {
 	if !IsValidUser(tk.GetUser()) {
 		return nil, &InvalidTupleError{Reason: "missing user", TupleKey: tk}
 	}
@@ -61,7 +60,7 @@ func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBacken
 }
 
 // ValidateObjectsRelations returns whether a tuple's object and relations are valid
-func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID string, t *openfga.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgav1pb.Userset, error) {
+func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID string, t *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgapb.Userset, error) {
 	if !IsValidRelation(t.GetRelation()) {
 		return nil, &InvalidTupleError{Reason: "invalid relation", TupleKey: t}
 	}

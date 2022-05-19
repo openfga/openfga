@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -36,7 +36,7 @@ func (e *EncodedError) CodeValue() int32 {
 	return e.ActualError.codeInt
 }
 
-// HTTPStatusCode returns the HTTP Status code
+// HTTPStatus returns the HTTP Status code
 func (e *EncodedError) HTTPStatus() int {
 	return e.HTTPStatusCode
 }
@@ -64,39 +64,34 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 		return EncodedError{
 			HTTPStatusCode: http.StatusInternalServerError,
 			ActualError: ErrorResponse{
-				Code:    openfgav1pb.InternalErrorCode(errorCode).String(),
+				Code:    openfgapb.InternalErrorCode(errorCode).String(),
 				Message: sanitizedMessage(message),
-				codeInt: int32(openfgav1pb.InternalErrorCode(errorCode)),
+				codeInt: errorCode,
 			},
 		}
 	}
 
 	var httpStatusCode int
 	var code string
-	var codeInt int32
 	if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
 		httpStatusCode = http.StatusBadRequest
-		code = openfgav1pb.ErrorCode(errorCode).String()
-		codeInt = int32(openfgav1pb.ErrorCode(errorCode))
+		code = openfgapb.ErrorCode(errorCode).String()
 	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
 		httpStatusCode = http.StatusInternalServerError
-		code = openfgav1pb.InternalErrorCode(errorCode).String()
-		codeInt = int32(openfgav1pb.InternalErrorCode(errorCode))
+		code = openfgapb.InternalErrorCode(errorCode).String()
 	} else if errorCode >= cFirstUnknownEndpointErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
 		httpStatusCode = http.StatusInternalServerError
-		code = openfgav1pb.InternalErrorCode(errorCode).String()
-		codeInt = int32(openfgav1pb.InternalErrorCode(errorCode))
+		code = openfgapb.InternalErrorCode(errorCode).String()
 	} else {
 		httpStatusCode = http.StatusNotFound
-		code = openfgav1pb.NotFoundErrorCode(errorCode).String()
-		codeInt = int32(openfgav1pb.NotFoundErrorCode(errorCode))
+		code = openfgapb.NotFoundErrorCode(errorCode).String()
 	}
 	return EncodedError{
 		HTTPStatusCode: httpStatusCode,
 		ActualError: ErrorResponse{
 			Code:    code,
 			Message: sanitizedMessage(message),
-			codeInt: codeInt,
+			codeInt: errorCode,
 		},
 	}
 }
@@ -110,85 +105,85 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 	switch field {
 	case "Assertions":
 		if strings.HasPrefix(reason, "value must contain no more than") {
-			return int32(openfgav1pb.ErrorCode_assertions_too_many_items)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS)
 		}
 	case "AuthorizationModelId":
 		if strings.HasPrefix(reason, "value length must be at most") {
-			return int32(openfgav1pb.ErrorCode_authorization_model_id_too_long)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_AUTHORIZATION_MODEL_ID_TOO_LONG)
 		}
 	case "Base":
 		if strings.HasPrefix(reason, "value is required") {
-			return int32(openfgav1pb.ErrorCode_difference_base_missing_value)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_DIFFERENCE_BASE_MISSING_VALUE)
 		}
 	case "Id":
 		if strings.HasPrefix(reason, "value length must be at most") {
-			return int32(openfgav1pb.ErrorCode_id_too_long)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_ID_TOO_LONG)
 		}
 	case "Object":
 		if strings.HasPrefix(reason, "value length must be at most") {
-			return int32(openfgav1pb.ErrorCode_object_too_long)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_OBJECT_TOO_LONG)
 		}
 		if strings.HasPrefix(reason, "value does not match regex pattern") {
-			return int32(openfgav1pb.ErrorCode_object_invalid_pattern)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_OBJECT_INVALID_PATTERN)
 		}
 	case "PageSize":
 		if strings.HasPrefix(reason, "value must be inside range") {
-			return int32(openfgav1pb.ErrorCode_page_size_invalid)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_PAGE_SIZE_INVALID)
 		}
 	case "Params":
 		if strings.HasPrefix(reason, "value is required") {
-			return int32(openfgav1pb.ErrorCode_param_missing_value)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_PARAM_MISSING_VALUE)
 		}
 	case "Relation":
 		if strings.HasPrefix(reason, "value length must be at most") {
-			return int32(openfgav1pb.ErrorCode_relation_too_long)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_RELATION_TOO_LONG)
 		}
 	case "Relations":
 		if strings.HasPrefix(reason, "value must contain at least") {
-			return int32(openfgav1pb.ErrorCode_relations_too_few_items)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_RELATIONS_TOO_FEW_ITEMS)
 		}
 	case "Subtract":
 		if strings.HasPrefix(reason, "value is required") {
-			return int32(openfgav1pb.ErrorCode_subtract_base_missing_value)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_SUBTRACT_BASE_MISSING_VALUE)
 		}
 	case "StoreId":
 		if strings.HasPrefix(reason, "value length must be") {
-			return int32(openfgav1pb.ErrorCode_store_id_invalid_length)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_STORE_ID_INVALID_LENGTH)
 		}
 	case "TupleKey":
 		if strings.HasPrefix(reason, "value is required") {
-			return int32(openfgav1pb.ErrorCode_tuple_key_value_not_specified)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_TUPLE_KEY_VALUE_NOT_SPECIFIED)
 		}
 	case "TupleKeys":
 		if strings.HasPrefix(reason, "value must contain between") {
-			return int32(openfgav1pb.ErrorCode_tuple_keys_too_many_or_too_few_items)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_TUPLE_KEYS_TOO_MANY_OR_TOO_FEW_ITEMS)
 		}
 	case "Type":
 		if strings.HasPrefix(reason, "value length must be at") {
-			return int32(openfgav1pb.ErrorCode_type_invalid_length)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_TYPE_INVALID_LENGTH)
 		}
 		if strings.HasPrefix(reason, "value does not match regex pattern") {
-			return int32(openfgav1pb.ErrorCode_type_invalid_pattern)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_TYPE_INVALID_PATTERN)
 		}
 	case "TypeDefinitions":
 		if strings.HasPrefix(reason, "value must contain at least") {
-			return int32(openfgav1pb.ErrorCode_type_definitions_too_few_items)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_TYPE_DEFINITIONS_TOO_FEW_ITEMS)
 		}
 
 	}
 	// We will need to check for regex pattern
 	if strings.HasPrefix(field, "Relations[") {
 		if strings.HasPrefix(reason, "value length must be at most") {
-			return int32(openfgav1pb.ErrorCode_relations_too_long)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_RELATIONS_TOO_LONG)
 		}
 		if strings.HasPrefix(reason, "value does not match regex pattern") {
-			return int32(openfgav1pb.ErrorCode_relations_invalid_pattern)
+			return int32(openfgapb.ErrorCode_ERROR_CODE_RELATIONS_INVALID_PATTERN)
 		}
 	}
 
 	// When we get to here, this is not a type or message that we know well.
 	// We needs to return the generic error type
-	return int32(openfgav1pb.ErrorCode_validation_error)
+	return int32(openfgapb.ErrorCode_ERROR_CODE_VALIDATION_ERROR)
 
 }
 
@@ -200,58 +195,58 @@ func ConvertToEncodedErrorCode(statusError *status.Status) int32 {
 
 	switch statusError.Code() {
 	case codes.OK:
-		return int32(openfgav1pb.ErrorCode_no_error)
+		return int32(codes.OK)
 	case codes.Canceled:
-		return int32(openfgav1pb.InternalErrorCode_cancelled)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_CANCELLED)
 	case codes.Unknown:
 		// we will return InternalError as our implementation of
 		// InternalError does not have a status code - which will result
 		// in unknown error
-		return int32(openfgav1pb.InternalErrorCode_internal_error)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_INTERNAL_ERROR)
 	case codes.DeadlineExceeded:
-		return int32(openfgav1pb.InternalErrorCode_deadline_exceeded)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_DEADLINE_EXCEEDED)
 	case codes.NotFound:
-		return int32(openfgav1pb.NotFoundErrorCode_undefined_endpoint)
+		return int32(openfgapb.NotFoundErrorCode_NOT_FOUND_ERROR_CODE_UNDEFINED_ENDPOINT)
 	case codes.AlreadyExists:
-		return int32(openfgav1pb.InternalErrorCode_already_exists)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_ALREADY_EXISTS)
 	case codes.ResourceExhausted:
-		return int32(openfgav1pb.InternalErrorCode_resource_exhausted)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_RESOURCE_EXHAUSTED)
 	case codes.FailedPrecondition:
-		return int32(openfgav1pb.InternalErrorCode_failed_precondition)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_FAILED_PRECONDITION)
 	case codes.Aborted:
-		return int32(openfgav1pb.InternalErrorCode_aborted)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_ABORTED)
 	case codes.OutOfRange:
-		return int32(openfgav1pb.InternalErrorCode_out_of_range)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_OUT_OF_RANGE)
 	case codes.Unimplemented:
-		return int32(openfgav1pb.NotFoundErrorCode_unimplemented)
+		return int32(openfgapb.NotFoundErrorCode_NOT_FOUND_ERROR_CODE_UNIMPLEMENTED)
 	case codes.Internal:
-		return int32(openfgav1pb.InternalErrorCode_internal_error)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_INTERNAL_ERROR)
 	case codes.Unavailable:
-		return int32(openfgav1pb.InternalErrorCode_unavailable)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_UNAVAILABLE)
 	case codes.DataLoss:
-		return int32(openfgav1pb.InternalErrorCode_data_loss)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_DATA_LOSS)
 	case codes.InvalidArgument:
 		break
 	default:
 		// Unknown code - internal error
-		return int32(openfgav1pb.InternalErrorCode_internal_error)
+		return int32(openfgapb.InternalErrorCode_INTERNAL_ERROR_CODE_INTERNAL_ERROR)
 	}
 	// When we get to here, the cause is InvalidArgument (likely flagged by the framework's validator).
 	// We will try to find out the actual cause if possible. Otherwise, the default response will
-	// be openfgav1pb.ErrorCode_validation_error
+	// be openfgapb.ErrorCode_validation_error
 
 	lastMessage := sanitizedMessage(statusError.Message())
 	lastMessageSplitted := strings.SplitN(lastMessage, ": ", 2)
 	if len(lastMessageSplitted) < 2 {
 		// I don't know how to process this message.
 		// The safest thing is to return the generic validation error
-		return int32(openfgav1pb.ErrorCode_validation_error)
+		return int32(openfgapb.ErrorCode_ERROR_CODE_VALIDATION_ERROR)
 	}
 	errorObjectSplitted := strings.Split(lastMessageSplitted[0], ".")
 	if len(errorObjectSplitted) != 2 {
 		// I don't know is the type.
 		// Return generic error type
-		return int32(openfgav1pb.ErrorCode_validation_error)
+		return int32(openfgapb.ErrorCode_ERROR_CODE_VALIDATION_ERROR)
 	}
 	return getCustomizedErrorCode(errorObjectSplitted[1], lastMessageSplitted[1])
 }

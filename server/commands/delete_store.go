@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type DeleteStoreCommand struct {
@@ -26,7 +26,7 @@ func NewDeleteStoreCommand(
 	}
 }
 
-func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) error {
+func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteStoreRequest) error {
 	store, err := s.storesBackend.GetStore(ctx, req.StoreId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

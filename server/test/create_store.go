@@ -11,14 +11,14 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type createStoreTestSettings struct {
 		_name    string
-		request  *openfgav1pb.CreateStoreRequest
-		response *openfgav1pb.CreateStoreResponse
+		request  *openfgapb.CreateStoreRequest
+		response *openfgapb.CreateStoreResponse
 		err      error
 	}
 
@@ -27,17 +27,17 @@ func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester) {
 	var tests = []createStoreTestSettings{
 		{
 			_name: "CreateStoreSucceeds",
-			request: &openfgav1pb.CreateStoreRequest{
+			request: &openfgapb.CreateStoreRequest{
 				Name: name,
 			},
-			response: &openfgav1pb.CreateStoreResponse{
+			response: &openfgapb.CreateStoreResponse{
 				Name: name,
 			},
 		},
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.CreateStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.CreateStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.CreateStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.CreateStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
 	require := require.New(t)
 	ctx := context.Background()

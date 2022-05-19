@@ -10,33 +10,33 @@ import (
 	"github.com/openfga/openfga/server/errors"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type writeAuthorizationModelTestSettings struct {
 		_name    string
-		request  *openfgav1pb.WriteAuthorizationModelRequest
-		response *openfgav1pb.WriteAuthorizationModelResponse
+		request  *openfgapb.WriteAuthorizationModelRequest
+		response *openfgapb.WriteAuthorizationModelResponse
 		err      error
 	}
 
 	var tests = []writeAuthorizationModelTestSettings{
 		{
 			_name: "ExecuteWriteFailsIfSameTypeTwice",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"admin": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"admin": {Userset: &openfgapb.Userset_This{}},
 							},
 						},
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"admin": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"admin": {Userset: &openfgapb.Userset_This{}},
 							},
 						},
 					},
@@ -46,12 +46,12 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfEmptyRelationDefinition",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"owner": {},
 							},
 						},
@@ -62,15 +62,15 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"writer": {
-									Userset: &openfgav1pb.Userset_ComputedUserset{
-										ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
 											Object:   "",
 											Relation: "owner",
 										},
@@ -85,21 +85,21 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_TupleToUserset{
-										TupleToUserset: &openfgav1pb.TupleToUserset{
-											Tupleset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_TupleToUserset{
+										TupleToUserset: &openfgapb.TupleToUserset{
+											Tupleset: &openfgapb.ObjectRelation{
 												Object:   "",
 												Relation: "writer",
 											},
-											ComputedUserset: &openfgav1pb.ObjectRelation{
+											ComputedUserset: &openfgapb.ObjectRelation{
 												Object:   "$TUPLE_USERSET_OBJECT",
 												Relation: "owner",
 											},
@@ -115,20 +115,20 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInUnion",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Union{
-										Union: &openfgav1pb.Usersets{
-											Child: []*openfgav1pb.Userset{
-												{Userset: &openfgav1pb.Userset_This{}},
-												{Userset: &openfgav1pb.Userset_ComputedUserset{
-													ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_This{}},
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
 														Object:   "",
 														Relation: "owner",
 													},
@@ -146,20 +146,20 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Intersection{
-										Intersection: &openfgav1pb.Usersets{
-											Child: []*openfgav1pb.Userset{
-												{Userset: &openfgav1pb.Userset_This{}},
-												{Userset: &openfgav1pb.Userset_ComputedUserset{
-													ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Intersection{
+										Intersection: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_This{}},
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
 														Object:   "",
 														Relation: "owner",
 													},
@@ -177,24 +177,24 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Difference{
-										Difference: &openfgav1pb.Difference{
-											Base: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Difference{
+										Difference: &openfgapb.Difference{
+											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "writer",
 												},
 											}},
-											Subtract: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "owner",
 												},
@@ -211,24 +211,24 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Difference{
-										Difference: &openfgav1pb.Difference{
-											Base: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Difference{
+										Difference: &openfgapb.Difference{
+											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "owner",
 												},
 											}},
-											Subtract: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "writer",
 												},
@@ -245,12 +245,12 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfEmptyRelationDefinition",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"owner": {},
 							},
 						},
@@ -261,15 +261,15 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"writer": {
-									Userset: &openfgav1pb.Userset_ComputedUserset{
-										ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
 											Object:   "",
 											Relation: "owner",
 										},
@@ -284,21 +284,21 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_TupleToUserset{
-										TupleToUserset: &openfgav1pb.TupleToUserset{
-											Tupleset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_TupleToUserset{
+										TupleToUserset: &openfgapb.TupleToUserset{
+											Tupleset: &openfgapb.ObjectRelation{
 												Object:   "",
 												Relation: "owner",
 											},
-											ComputedUserset: &openfgav1pb.ObjectRelation{
+											ComputedUserset: &openfgapb.ObjectRelation{
 												Object:   "$TUPLE_USERSET_OBJECT",
 												Relation: "from",
 											},
@@ -314,21 +314,21 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_TupleToUserset{
-										TupleToUserset: &openfgav1pb.TupleToUserset{
-											Tupleset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_TupleToUserset{
+										TupleToUserset: &openfgapb.TupleToUserset{
+											Tupleset: &openfgapb.ObjectRelation{
 												Object:   "",
 												Relation: "writer",
 											},
-											ComputedUserset: &openfgav1pb.ObjectRelation{
+											ComputedUserset: &openfgapb.ObjectRelation{
 												Object:   "$TUPLE_USERSET_OBJECT",
 												Relation: "owner",
 											},
@@ -344,31 +344,31 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "foo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"writer": {
-									Userset: &openfgav1pb.Userset_ComputedUserset{
-										ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
 											Object:   "",
 											Relation: "reader",
 										},
 									},
 								},
 								"reader": {
-									Userset: &openfgav1pb.Userset_This{},
+									Userset: &openfgapb.Userset_This{},
 								},
 							},
 						},
 						{
 							Type: "bar",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"owner": {
-									Userset: &openfgav1pb.Userset_ComputedUserset{
-										ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
 											Object:   "",
 											Relation: "writer",
 										},
@@ -383,20 +383,20 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInUnion",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Union{
-										Union: &openfgav1pb.Usersets{
-											Child: []*openfgav1pb.Userset{
-												{Userset: &openfgav1pb.Userset_This{}},
-												{Userset: &openfgav1pb.Userset_ComputedUserset{
-													ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_This{}},
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
 														Object:   "",
 														Relation: "owner",
 													},
@@ -414,20 +414,20 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Intersection{
-										Intersection: &openfgav1pb.Usersets{
-											Child: []*openfgav1pb.Userset{
-												{Userset: &openfgav1pb.Userset_This{}},
-												{Userset: &openfgav1pb.Userset_ComputedUserset{
-													ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Intersection{
+										Intersection: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_This{}},
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
 														Object:   "",
 														Relation: "owner",
 													},
@@ -445,24 +445,24 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Difference{
-										Difference: &openfgav1pb.Difference{
-											Base: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Difference{
+										Difference: &openfgapb.Difference{
+											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "writer",
 												},
 											}},
-											Subtract: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "owner",
 												},
@@ -479,24 +479,24 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
-								"writer": {Userset: &openfgav1pb.Userset_This{}},
+							Relations: map[string]*openfgapb.Userset{
+								"writer": {Userset: &openfgapb.Userset_This{}},
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Difference{
-										Difference: &openfgav1pb.Difference{
-											Base: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Difference{
+										Difference: &openfgapb.Difference{
+											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "owner",
 												},
 											}},
-											Subtract: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "writer",
 												},
@@ -513,18 +513,18 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Difference{
-										Difference: &openfgav1pb.Difference{
-											Base: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_This{}},
-											Subtract: &openfgav1pb.Userset{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Difference{
+										Difference: &openfgapb.Difference{
+											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_This{}},
+											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Object:   "",
 													Relation: "viewer",
 												},
@@ -541,19 +541,19 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
+			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: testutils.CreateRandomString(10),
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Union{
-										Union: &openfgav1pb.Usersets{
-											Child: []*openfgav1pb.Userset{
-												{Userset: &openfgav1pb.Userset_ComputedUserset{
-													ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
 														Relation: "viewer",
 													},
 												}},
@@ -570,21 +570,21 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		},
 		{
 			_name: "ExecuteWriteFailsIfIntersectionIncludesSameRelationTwice",
-			request: &openfgav1pb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgav1pb.TypeDefinitions{
-					TypeDefinitions: []*openfgav1pb.TypeDefinition{
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
 							Type: "repo",
-							Relations: map[string]*openfgav1pb.Userset{
+							Relations: map[string]*openfgapb.Userset{
 								"viewer": {
-									Userset: &openfgav1pb.Userset_Intersection{
-										Intersection: &openfgav1pb.Usersets{Child: []*openfgav1pb.Userset{
-											{Userset: &openfgav1pb.Userset_ComputedUserset{
-												ComputedUserset: &openfgav1pb.ObjectRelation{
+									Userset: &openfgapb.Userset_Intersection{
+										Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
+											{Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
 													Relation: "viewer",
 												},
 											}},
-											{Userset: &openfgav1pb.Userset_This{}},
+											{Userset: &openfgapb.Userset_This{}},
 										}},
 									},
 								},

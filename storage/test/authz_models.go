@@ -12,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) {
@@ -28,14 +28,14 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedModel := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	expectedModel := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"viewer": {
-						Userset: &openfgav1pb.Userset_This{
-							This: &openfgav1pb.DirectUserset{},
+						Userset: &openfgapb.Userset_This{
+							This: &openfgapb.DirectUserset{},
 						},
 					},
 				},
@@ -54,10 +54,10 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) 
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
-			openfgav1pb.TypeDefinition{},
-			openfgav1pb.Userset{},
-			openfgav1pb.Userset_This{},
-			openfgav1pb.DirectUserset{},
+			openfgapb.TypeDefinition{},
+			openfgapb.Userset{},
+			openfgapb.Userset_This{},
+			openfgapb.DirectUserset{},
 		),
 	}
 
@@ -84,19 +84,19 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tds1 := []*openfgav1pb.TypeDefinition{
+	tds1 := []*openfgapb.TypeDefinition{
 		{
 			Type: "folder",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"viewer": {
-					Userset: &openfgav1pb.Userset_This{
-						This: &openfgav1pb.DirectUserset{},
+					Userset: &openfgapb.Userset_This{
+						This: &openfgapb.DirectUserset{},
 					},
 				},
 			},
 		},
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds1})
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, &openfgapb.TypeDefinitions{TypeDefinitions: tds1})
 	if err != nil {
 		t.Fatalf("failed to write authorization model: %v", err)
 	}
@@ -105,29 +105,29 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tds2 := []*openfgav1pb.TypeDefinition{
+	tds2 := []*openfgapb.TypeDefinition{
 		{
 			Type: "folder",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"reader": {
-					Userset: &openfgav1pb.Userset_This{
-						This: &openfgav1pb.DirectUserset{},
+					Userset: &openfgapb.Userset_This{
+						This: &openfgapb.DirectUserset{},
 					},
 				},
 			},
 		},
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, &openfgav1pb.TypeDefinitions{TypeDefinitions: tds2})
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, &openfgapb.TypeDefinitions{TypeDefinitions: tds2})
 	if err != nil {
 		t.Fatalf("failed to write authorization model: %v", err)
 	}
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
-			openfgav1pb.TypeDefinition{},
-			openfgav1pb.Userset{},
-			openfgav1pb.Userset_This{},
-			openfgav1pb.DirectUserset{},
+			openfgapb.TypeDefinition{},
+			openfgapb.Userset{},
+			openfgapb.Userset_This{},
+			openfgapb.DirectUserset{},
 		),
 	}
 
@@ -194,13 +194,13 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = datastore.WriteAuthorizationModel(ctx, store, oldModelID, &openfgav1pb.TypeDefinitions{
-			TypeDefinitions: []*openfgav1pb.TypeDefinition{
+		err = datastore.WriteAuthorizationModel(ctx, store, oldModelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"viewer": {
-							Userset: &openfgav1pb.Userset_This{},
+							Userset: &openfgapb.Userset_This{},
 						},
 					},
 				},
@@ -214,13 +214,13 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, &openfgav1pb.TypeDefinitions{
-			TypeDefinitions: []*openfgav1pb.TypeDefinition{
+		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"reader": {
-							Userset: &openfgav1pb.Userset_This{},
+							Userset: &openfgapb.Userset_This{},
 						},
 					},
 				},
@@ -268,19 +268,19 @@ func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expectedTypeDef := &openfgav1pb.TypeDefinition{
+		expectedTypeDef := &openfgapb.TypeDefinition{
 			Type: "folder",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"viewer": {
-					Userset: &openfgav1pb.Userset_This{
-						This: &openfgav1pb.DirectUserset{},
+					Userset: &openfgapb.Userset_This{
+						This: &openfgapb.DirectUserset{},
 					},
 				},
 			},
 		}
 
-		err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{
-			TypeDefinitions: []*openfgav1pb.TypeDefinition{
+		err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
 				expectedTypeDef,
 			},
 		})
@@ -295,10 +295,10 @@ func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester) {
 
 		cmpOpts := []cmp.Option{
 			cmpopts.IgnoreUnexported(
-				openfgav1pb.TypeDefinition{},
-				openfgav1pb.Userset{},
-				openfgav1pb.Userset_This{},
-				openfgav1pb.DirectUserset{},
+				openfgapb.TypeDefinition{},
+				openfgapb.Userset{},
+				openfgapb.Userset_This{},
+				openfgapb.DirectUserset{},
 			),
 		}
 

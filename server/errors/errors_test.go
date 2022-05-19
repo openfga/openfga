@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-errors/errors"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -36,17 +35,17 @@ func TestContextualTupleValidationErrors(t *testing.T) {
 		message string
 	}
 
-	tk := &openfga.TupleKey{Object: "doc:top-secret", Relation: "access", User: "mallory"}
+	tk := &openfgapb.TupleKey{Object: "doc:top-secret", Relation: "access", User: "mallory"}
 
 	tests := []errorTest{
 		{
 			error:   InvalidContextualTuple(tk),
-			code:    codes.Code(openfgav1pb.ErrorCode_invalid_contextual_tuple),
+			code:    codes.Code(openfgapb.ErrorCode_ERROR_CODE_INVALID_CONTEXTUAL_TUPLE),
 			message: fmt.Sprintf("Invalid contextual tuple: %s. Please provide a user, object and relation.", tk.String()),
 		},
 		{
 			error:   DuplicateContextualTuple(tk),
-			code:    codes.Code(openfgav1pb.ErrorCode_duplicate_contextual_tuple),
+			code:    codes.Code(openfgapb.ErrorCode_ERROR_CODE_DUPLICATE_CONTEXTUAL_TUPLE),
 			message: fmt.Sprintf("Duplicate contextual tuple in request: %s.", tk.String()),
 		},
 	}

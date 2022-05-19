@@ -13,27 +13,27 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type getStoreQueryTest struct {
 		_name            string
-		request          *openfgav1pb.GetStoreRequest
-		expectedResponse *openfgav1pb.GetStoreResponse
+		request          *openfgapb.GetStoreRequest
+		expectedResponse *openfgapb.GetStoreResponse
 		err              error
 	}
 
 	var tests = []getStoreQueryTest{
 		{
 			_name:   "ReturnsNotFound",
-			request: &openfgav1pb.GetStoreRequest{StoreId: "non-existent store"},
+			request: &openfgapb.GetStoreRequest{StoreId: "non-existent store"},
 			err:     serverErrors.StoreIDNotFound,
 		},
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -72,8 +72,8 @@ func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 }
 
 func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester) {
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1pb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1pb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -84,18 +84,18 @@ func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester) {
 
 	store := testutils.CreateRandomString(10)
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
-	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1pb.CreateStoreRequest{Name: store})
+	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)
 	}
 	query := queries.NewGetStoreQuery(datastore, logger)
-	actualResponse, actualError := query.Execute(ctx, &openfgav1pb.GetStoreRequest{StoreId: createStoreResponse.Id})
+	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
 
 	if actualError != nil {
 		t.Errorf("Expected no error, but got %v", actualError)
 	}
 
-	expectedResponse := &openfgav1pb.GetStoreResponse{
+	expectedResponse := &openfgapb.GetStoreResponse{
 		Id:   createStoreResponse.Id,
 		Name: store,
 	}

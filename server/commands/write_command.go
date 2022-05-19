@@ -9,8 +9,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -33,7 +32,7 @@ func NewWriteCommand(tupleBackend storage.TupleBackend, typeDefinitionReadBacken
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
-func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1pb.WriteRequest) (*openfgav1pb.WriteResponse, error) {
+func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
 	dbCallsCounter := utils.NewDBCallCounter()
 	if err := c.validateTuplesets(ctx, req, dbCallsCounter); err != nil {
 		utils.LogDBStats(ctx, c.logger, "Write", dbCallsCounter.GetReadCalls(), 0)
@@ -46,10 +45,10 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1pb.WriteReques
 		return nil, handleError(err)
 	}
 
-	return &openfgav1pb.WriteResponse{}, nil
+	return &openfgapb.WriteResponse{}, nil
 }
 
-func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgav1pb.WriteRequest, dbCallsCounter utils.DBCallCounter) error {
+func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.WriteRequest, dbCallsCounter utils.DBCallCounter) error {
 	ctx, span := c.tracer.Start(ctx, "validateAndAuthenticateTuplesets")
 	defer span.End()
 
@@ -76,7 +75,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgav1pb.W
 }
 
 // validateWriteTuples ensures the deletes and writes are valid in that there are no duplicates and length fits.
-func (c *WriteCommand) validateWriteTuples(deletes []*openfga.TupleKey, writes []*openfga.TupleKey) error {
+func (c *WriteCommand) validateWriteTuples(deletes []*openfgapb.TupleKey, writes []*openfgapb.TupleKey) error {
 	tuples := map[string]struct{}{}
 	for _, tk := range deletes {
 		key := tupleUtils.TupleKeyToString(tk)

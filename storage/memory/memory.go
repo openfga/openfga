@@ -14,18 +14,17 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type staticIterator struct {
-	tuples            []*openfga.Tuple
+	tuples            []*openfgapb.Tuple
 	continuationToken []byte
 }
 
-func match(key *openfga.TupleKey, target *openfga.TupleKey) bool {
+func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	if key.Object != "" {
 		td, objectid := tupleUtils.SplitObject(key.Object)
 		if objectid == "" {
@@ -47,7 +46,7 @@ func match(key *openfga.TupleKey, target *openfga.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfga.Tuple, error) {
+func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
 		return nil, storage.TupleIteratorDone
 	}
@@ -68,25 +67,25 @@ type MemoryBackend struct {
 
 	// TupleBackend
 	// map: store => set of tuples
-	tuples map[string][]*openfga.Tuple /* GUARDED_BY(mu) */
+	tuples map[string][]*openfgapb.Tuple /* GUARDED_BY(mu) */
 
 	// ChangelogBackend
 	// map: store => set of changes
-	changes map[string][]*openfga.TupleChange
+	changes map[string][]*openfgapb.TupleChange
 
 	// AuthorizationModelBackend
 	// map: store = > map: type definition id => type definition
 	authorizationModels map[string]map[string]*AuthorizationModelEntry /* GUARDED_BY(mu_) */
 
 	// map: store id => store data
-	stores map[string]*openfga.Store
+	stores map[string]*openfgapb.Store
 
 	// map: store id | authz model id => assertions
-	assertions map[string][]*openfga.Assertion
+	assertions map[string][]*openfgapb.Assertion
 }
 
 type AuthorizationModelEntry struct {
-	model  *openfgav1pb.AuthorizationModel
+	model  *openfgapb.AuthorizationModel
 	latest bool
 }
 
@@ -98,11 +97,11 @@ func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationMo
 		tracer:                    tracer,
 		maxTuplesInWriteOperation: maxTuplesInOneWrite,
 		maxTypesInTypeDefinition:  maxTypesInAuthorizationModel,
-		tuples:                    make(map[string][]*openfga.Tuple, 0),
-		changes:                   make(map[string][]*openfga.TupleChange, 0),
+		tuples:                    make(map[string][]*openfgapb.Tuple, 0),
+		changes:                   make(map[string][]*openfgapb.TupleChange, 0),
 		authorizationModels:       make(map[string]map[string]*AuthorizationModelEntry),
-		stores:                    make(map[string]*openfga.Store, 0),
-		assertions:                make(map[string][]*openfga.Assertion, 0),
+		stores:                    make(map[string]*openfgapb.Store, 0),
+		assertions:                make(map[string][]*openfgapb.Assertion, 0),
 	}
 }
 
@@ -113,14 +112,14 @@ func (s *MemoryBackend) Close(ctx context.Context) error {
 }
 
 // Read See storage.TupleBackend.Read
-func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfga.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := s.tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
 	return s.read(ctx, store, key, storage.PaginationOptions{})
 }
 
-func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := s.tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
@@ -132,7 +131,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 	return it.tuples, it.continuationToken, nil
 }
 
-func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error) {
+func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgapb.TupleChange, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
@@ -159,7 +158,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrMismatchObjectType)
 	}
 
-	var allChanges []*openfga.TupleChange
+	var allChanges []*openfgapb.TupleChange
 	now := time.Now().UTC()
 	for _, change := range s.changes[store] {
 		if objectType == "" || (objectType != "" && strings.HasPrefix(change.TupleKey.Object, objectType+":")) {
@@ -195,7 +194,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) read(ctx context.Context, store string, key *openfga.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.read")
 	defer span.End()
 
@@ -207,7 +206,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfga.Tup
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
-	var matches []*openfga.Tuple
+	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
 			matches = append(matches, t)
@@ -250,12 +249,12 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 		return openfgaerrors.ErrorWithStack(err)
 	}
 
-	var tuples []*openfga.Tuple
+	var tuples []*openfgapb.Tuple
 Delete:
 	for _, t := range s.tuples[store] {
 		for _, k := range deletes {
 			if match(k, t.Key) {
-				s.changes[store] = append(s.changes[store], &openfga.TupleChange{TupleKey: t.Key, Operation: openfga.TupleOperation_DELETE, Timestamp: timestamppb.New(now)})
+				s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t.Key, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: timestamppb.New(now)})
 				continue Delete
 			}
 		}
@@ -269,28 +268,28 @@ Write:
 				continue Write
 			}
 		}
-		tuples = append(tuples, &openfga.Tuple{Key: t})
-		s.changes[store] = append(s.changes[store], &openfga.TupleChange{TupleKey: t, Operation: openfga.TupleOperation_WRITE, Timestamp: timestamppb.New(now)})
+		tuples = append(tuples, &openfgapb.Tuple{Key: t})
+		s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: timestamppb.New(now)})
 	}
 	s.tuples[store] = tuples
 	return nil
 }
 
-func validateTuples(tuples []*openfga.Tuple, deletes, writes []*openfga.TupleKey) error {
+func validateTuples(tuples []*openfgapb.Tuple, deletes, writes []*openfgapb.TupleKey) error {
 	for _, tk := range deletes {
 		if !find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_DELETE))
+			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE))
 		}
 	}
 	for _, tk := range writes {
 		if find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfga.TupleOperation_WRITE))
+			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
 		}
 	}
 	return nil
 }
 
-func find(tuples []*openfga.Tuple, tupleKey *openfga.TupleKey) bool {
+func find(tuples []*openfgapb.Tuple, tupleKey *openfgapb.TupleKey) bool {
 	for _, tuple := range tuples {
 		if match(tuple.Key, tupleKey) {
 			return true
@@ -300,7 +299,7 @@ func find(tuples []*openfga.Tuple, tupleKey *openfga.TupleKey) bool {
 }
 
 // ReadUserTuple See storage.TupleBackend.ReadUserTuple
-func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfga.TupleKey) (*openfga.Tuple, error) {
+func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
@@ -322,7 +321,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
-func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key *openfga.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
@@ -334,9 +333,9 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
-	var matches []*openfga.Tuple
+	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
-		if match(&openfga.TupleKey{
+		if match(&openfgapb.TupleKey{
 			Object:   key.GetObject(),
 			Relation: key.GetRelation(),
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
@@ -347,14 +346,14 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 }
 
 // ReadByStore See storage.TupleBackend.ReadByStore
-func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadByStore")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	matches := make([]*openfga.Tuple, len(s.tuples[store]))
+	matches := make([]*openfgapb.Tuple, len(s.tuples[store]))
 	copy(matches, s.tuples[store])
 
 	var from int64 = 0
@@ -385,8 +384,8 @@ func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options s
 	return partition, []byte(continuationToken), nil
 }
 
-func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgav1pb.AuthorizationModel, bool) {
-	var nsc *openfgav1pb.AuthorizationModel
+func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgapb.AuthorizationModel, bool) {
+	var nsc *openfgapb.AuthorizationModel
 
 	if id == "" {
 		// find latest
@@ -411,7 +410,7 @@ func findAuthorizationModelByID(id string, configurations map[string]*Authorizat
 }
 
 // definitionByType returns the definition of the objectType if it exists in the authorization model
-func definitionByType(authorizationModel *openfgav1pb.AuthorizationModel, objectType string) (*openfgav1pb.TypeDefinition, bool) {
+func definitionByType(authorizationModel *openfgapb.AuthorizationModel, objectType string) (*openfgapb.TypeDefinition, bool) {
 	for _, td := range authorizationModel.GetTypeDefinitions() {
 		if td.GetType() == objectType {
 			return td, true
@@ -422,7 +421,7 @@ func definitionByType(authorizationModel *openfgav1pb.AuthorizationModel, object
 }
 
 // ReadAuthorizationModel See storage.AuthorizationModelBackend.ReadAuthorizationModel
-func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1pb.AuthorizationModel, error) {
+func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgapb.AuthorizationModel, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadAuthorizationModel")
 	defer span.End()
 
@@ -448,14 +447,14 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 
 // ReadAuthorizationModels See storage.AuthorizationModelBackend.ReadAuthorizationModels
 // options.From is expected to be a number
-func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgav1pb.AuthorizationModel, []byte, error) {
+func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	models := make([]*openfgav1pb.AuthorizationModel, 0, len(s.authorizationModels[store]))
+	models := make([]*openfgapb.AuthorizationModel, 0, len(s.authorizationModels[store]))
 	for _, entry := range s.authorizationModels[store] {
 		models = append(models, entry.model)
 	}
@@ -517,7 +516,7 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 }
 
 // ReadTypeDefinition See storage.TypeDefinitionReadBackend.ReadTypeDefinition
-func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgav1pb.TypeDefinition, error) {
+func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgapb.TypeDefinition, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadTypeDefinition")
 	defer span.End()
 
@@ -541,7 +540,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgav1pb.TypeDefinitions) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgapb.TypeDefinitions) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -557,7 +556,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 	}
 
 	s.authorizationModels[store][id] = &AuthorizationModelEntry{
-		model: &openfgav1pb.AuthorizationModel{
+		model: &openfgapb.AuthorizationModel{
 			Id:              id,
 			TypeDefinitions: tds.GetTypeDefinitions(),
 		},
@@ -567,7 +566,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 	return nil
 }
 
-func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfga.Store) (*openfga.Store, error) {
+func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgapb.Store) (*openfgapb.Store, error) {
 	_, span := s.tracer.Start(ctx, "memory.CreateStore")
 	defer span.End()
 
@@ -579,7 +578,7 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfga.Store
 	}
 
 	now := timestamppb.New(time.Now().UTC())
-	s.stores[newStore.Id] = &openfga.Store{
+	s.stores[newStore.Id] = &openfgapb.Store{
 		Id:        newStore.Id,
 		Name:      newStore.Name,
 		CreatedAt: now,
@@ -600,7 +599,7 @@ func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error {
+func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAssertions")
 	defer span.End()
 
@@ -613,7 +612,7 @@ func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID stri
 	return nil
 }
 
-func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfga.Assertion, error) {
+func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadAssertions")
 	defer span.End()
 
@@ -623,7 +622,7 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	assertionsID := fmt.Sprintf("%s|%s", store, modelID)
 	assertions, ok := s.assertions[assertionsID]
 	if !ok {
-		return []*openfga.Assertion{}, nil
+		return []*openfgapb.Assertion{}, nil
 	}
 	return assertions, nil
 }
@@ -638,7 +637,7 @@ func (s *MemoryBackend) MaxTypesInTypeDefinition() int {
 	return s.maxTypesInTypeDefinition
 }
 
-func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfga.Store, error) {
+func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgapb.Store, error) {
 	_, span := s.tracer.Start(ctx, "memory.GetStore")
 	defer span.End()
 
@@ -652,14 +651,14 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfga.
 	return s.stores[storeID], nil
 }
 
-func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfga.Store, []byte, error) {
+func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ListStores")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	stores := make([]*openfga.Store, 0, len(s.stores))
+	stores := make([]*openfgapb.Store, 0, len(s.stores))
 	for _, t := range s.stores {
 		stores = append(stores, t)
 	}

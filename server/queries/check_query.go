@@ -10,8 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
@@ -46,7 +45,7 @@ func NewCheckQuery(tupleBackend storage.TupleBackend, typeDefinitionReadBackend 
 }
 
 // Execute the query in `checkRequest`, returning the response or an error.
-func (query *CheckQuery) Execute(ctx context.Context, req *openfgav1pb.CheckRequest) (*openfgav1pb.CheckResponse, error) {
+func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
 	statCheckResolutionDepth, _ := query.meter.SyncInt64().Counter(
 		"openfga.check.resolution.depth",
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
@@ -96,13 +95,13 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgav1pb.CheckRequ
 		statCheckDBCalls.Add(ctx, int64(rc.metadata.GetReadCalls()))
 	}
 
-	return &openfgav1pb.CheckResponse{
+	return &openfgapb.CheckResponse{
 		Allowed:    ok,
 		Resolution: resolution,
 	}, nil
 }
 
-func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgav1pb.Userset, error) {
+func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgapb.Userset, error) {
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
@@ -114,7 +113,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 }
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
-func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgav1pb.Userset) error {
+func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset) error {
 	if rc.metadata.AddResolve() >= query.resolveNodeLimit {
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
@@ -126,22 +125,22 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 	}
 
 	switch usType := nsUS.Userset.(type) {
-	case nil, *openfgav1pb.Userset_This:
+	case nil, *openfgapb.Userset_This:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("this")})
 		return query.resolveDirectUserSet(ctx, rc)
-	case *openfgav1pb.Userset_Union:
+	case *openfgapb.Userset_Union:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("union")})
 		return query.resolveUnion(ctx, rc, usType)
-	case *openfgav1pb.Userset_Intersection:
+	case *openfgapb.Userset_Intersection:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("intersection")})
 		return query.resolveIntersection(ctx, rc, usType)
-	case *openfgav1pb.Userset_Difference:
+	case *openfgapb.Userset_Difference:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("difference")})
 		return query.resolveDifference(ctx, rc, usType)
-	case *openfgav1pb.Userset_ComputedUserset:
+	case *openfgapb.Userset_ComputedUserset:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("computed")})
 		return query.resolveComputed(ctx, rc, usType)
-	case *openfgav1pb.Userset_TupleToUserset:
+	case *openfgapb.Userset_TupleToUserset:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("tuple-to-userset")})
 		return query.resolveTupleToUserset(ctx, rc, usType)
 	default:
@@ -149,8 +148,8 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 	}
 }
 
-func (query *CheckQuery) resolveComputed(ctx context.Context, rc *resolutionContext, nodes *openfgav1pb.Userset_ComputedUserset) error {
-	computedTK := &openfga.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
+func (query *CheckQuery) resolveComputed(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_ComputedUserset) error {
+	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
 	userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
@@ -212,7 +211,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 		userset := usersetTuple.GetUser()
 		object, relation := tupleUtils.SplitObjectRelation(userset)
 		tracer := rc.tracer.AppendDirect().AppendString(userset)
-		tupleKey := &openfga.TupleKey{
+		tupleKey := &openfgapb.TupleKey{
 			Object:   object,
 			Relation: relation,
 			User:     rc.tk.GetUser(),
@@ -253,7 +252,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	return err
 }
 
-func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext, nodes *openfgav1pb.Userset_Union) error {
+func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_Union) error {
 	var wg sync.WaitGroup
 	c := make(chan *chanResolveResult)
 
@@ -292,7 +291,7 @@ func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext
 	return err
 }
 
-func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolutionContext, nodes *openfgav1pb.Userset_Intersection) error {
+func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_Intersection) error {
 	userSetsPerChild := newUserSets()
 	grp, ctx := errgroup.WithContext(ctx)
 	breaker := &circuitBreaker{breakerState: false}
@@ -355,8 +354,8 @@ func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolution
 	return nil
 }
 
-func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionContext, node *openfgav1pb.Userset_Difference) error {
-	sets := []*openfgav1pb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
+func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionContext, node *openfgapb.Userset_Difference) error {
+	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
 	usPerNode := newUserSets()
 	grp, ctx := errgroup.WithContext(ctx)
 	breaker := &circuitBreaker{breakerState: false}
@@ -387,12 +386,12 @@ func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionCo
 	return nil
 }
 
-func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resolutionContext, node *openfgav1pb.Userset_TupleToUserset) error {
+func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resolutionContext, node *openfgapb.Userset_TupleToUserset) error {
 	relation := node.TupleToUserset.Tupleset.GetRelation()
 	if relation == "" {
 		relation = rc.tk.GetRelation()
 	}
-	findTK := &openfga.TupleKey{Object: rc.tk.GetObject(), Relation: relation}
+	findTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
 	iter, err := rc.read(ctx, query.tupleBackend, findTK)
 	if err != nil {
@@ -421,7 +420,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		if uRelation != node.TupleToUserset.GetComputedUserset().GetRelation() {
 			continue
 		}
-		tupleKey := &openfga.TupleKey{
+		tupleKey := &openfgapb.TupleKey{
 			// user from previous lookup
 			Object:   uObject,
 			Relation: uRelation,

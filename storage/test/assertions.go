@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func AssertionsTest(t *testing.T, dbTester DatastoreTester) {
@@ -25,13 +25,13 @@ func AssertionsTest(t *testing.T, dbTester DatastoreTester) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertions := []*openfga.Assertion{
+		assertions := []*openfgapb.Assertion{
 			{
-				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 			{
-				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"},
+				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"},
 				Expectation: true,
 			},
 		}
@@ -58,11 +58,11 @@ func AssertionsTest(t *testing.T, dbTester DatastoreTester) {
 			t.Fatal(err)
 		}
 
-		assertions := []*openfga.Assertion{{TupleKey: &openfga.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
+		assertions := []*openfgapb.Assertion{{TupleKey: &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
 
-		err = datastore.WriteAssertions(ctx, store, modelID, []*openfga.Assertion{
+		err = datastore.WriteAssertions(ctx, store, modelID, []*openfgapb.Assertion{
 			{
-				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 		})
@@ -95,9 +95,9 @@ func AssertionsTest(t *testing.T, dbTester DatastoreTester) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		assertions := []*openfga.Assertion{
+		assertions := []*openfgapb.Assertion{
 			{
-				TupleKey:    &openfga.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 		}

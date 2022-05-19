@@ -19,7 +19,7 @@ import (
 	"github.com/openfga/openfga/storage/postgres"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestOpenFGAServer(t *testing.T) {
@@ -146,7 +146,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).
-			Return(&openfgav1pb.AuthorizationModel{Id: modelID}, nil)
+			Return(&openfgapb.AuthorizationModel{Id: modelID}, nil)
 
 		s := Server{
 			authorizationModelBackend: mockDatastore,

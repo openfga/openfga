@@ -8,8 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type CreateStoreCommand struct {
@@ -27,13 +26,13 @@ func NewCreateStoreCommand(
 	}
 }
 
-func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1pb.CreateStoreRequest) (*openfgav1pb.CreateStoreResponse, error) {
+func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgapb.CreateStoreRequest) (*openfgapb.CreateStoreResponse, error) {
 	storeID, err := id.NewString()
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	store, err := s.storesBackend.CreateStore(ctx, &openfga.Store{
+	store, err := s.storesBackend.CreateStore(ctx, &openfgapb.Store{
 		Id:   storeID,
 		Name: req.Name,
 	})
@@ -43,7 +42,7 @@ func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1pb.Creat
 
 	utils.LogDBStats(ctx, s.logger, "CreateStore", 0, 1)
 
-	return &openfgav1pb.CreateStoreResponse{
+	return &openfgapb.CreateStoreResponse{
 		Id:        store.Id,
 		Name:      store.Name,
 		CreatedAt: store.CreatedAt,

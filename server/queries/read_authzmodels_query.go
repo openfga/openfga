@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type ReadAuthorizationModelsQuery struct {
@@ -25,7 +25,7 @@ func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBacke
 	}
 }
 
-func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgav1pb.ReadAuthorizationModelsRequest) (*openfgav1pb.ReadAuthorizationModelsResponse, error) {
+func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
@@ -48,7 +48,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		ids = append(ids, model.Id)
 	}
 
-	resp := &openfgav1pb.ReadAuthorizationModelsResponse{
+	resp := &openfgapb.ReadAuthorizationModelsResponse{
 		AuthorizationModelIds: ids,
 		ContinuationToken:     encodedContToken,
 	}

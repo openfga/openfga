@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // A ReadTuplesQuery can be used to read tuples from a store
@@ -29,7 +29,7 @@ func NewReadTuplesQuery(backend storage.TupleBackend, encoder encoder.Encoder, l
 }
 
 // Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store
-func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgav1pb.ReadTuplesRequest) (*openfgav1pb.ReadTuplesResponse, error) {
+func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
@@ -47,7 +47,7 @@ func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgav1pb.ReadTupl
 		return nil, serverErrors.NewInternalError("", err)
 	}
 
-	resp := &openfgav1pb.ReadTuplesResponse{
+	resp := &openfgapb.ReadTuplesResponse{
 		Tuples:            tuples,
 		ContinuationToken: encodedToken,
 	}

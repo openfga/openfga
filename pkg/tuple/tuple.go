@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type UserType string
@@ -22,8 +22,8 @@ var (
 	relationRegex = regexp.MustCompile(`^[^:#\s]+$`)
 )
 
-func NewTupleKey(object, relation, user string) *openfga.TupleKey {
-	return &openfga.TupleKey{
+func NewTupleKey(object, relation, user string) *openfgapb.TupleKey {
+	return &openfgapb.TupleKey{
 		Object:   object,
 		Relation: relation,
 		User:     user,
@@ -100,7 +100,7 @@ func GetUserTypeFromUser(user string) UserType {
 }
 
 // TupleKeyToString converts a tuple key into its string representation.
-func TupleKeyToString(tk *openfga.TupleKey) string {
+func TupleKeyToString(tk *openfgapb.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
 }
 

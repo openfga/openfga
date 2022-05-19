@@ -226,6 +226,10 @@ go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 h1:A1OduCnmHrcb3X//F
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43/go.mod h1:bAq6RDrSP9x2I9Rb+1NzQ1/0AbFkiLx1RwIcWTw4lWI=
 go.buf.build/openfga/go/openfga/api v1.1.8 h1:/jpgwC0TMSwgsd7CbxJ0vHcrtCUJyniBKrFnzLWn5tU=
 go.buf.build/openfga/go/openfga/api v1.1.8/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
+go.buf.build/openfga/go/openfga/api v1.1.9 h1:fs5YogBEuOMXSB5esg7svUhiidkDpUj/fIskcYMPlmw=
+go.buf.build/openfga/go/openfga/api v1.1.9/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
+go.buf.build/openfga/go/openfga/api v1.1.10 h1:8uovju92uK/8/P24BTbw8wmAYekAj94JMzeaqCYG9s4=
+go.buf.build/openfga/go/openfga/api v1.1.10/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0 h1:WenoaOMNP71oq3KkMZ/jnxI9xU/JSCLw8yZILSI2lfU=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0/go.mod h1:J0dBVrt7dPS/lKJyQoW0xzQiUr4r2Ik1VwPjAUWnofI=
 go.opentelemetry.io/otel v1.7.0 h1:Z2lA3Tdch0iDcrhJXDIlC94XE+bxok1F9B+4Lz/lGsM=

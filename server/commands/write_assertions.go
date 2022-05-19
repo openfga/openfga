@@ -12,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils/grpcutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type WriteAssertionsCommand struct {
@@ -33,7 +33,7 @@ func NewWriteAssertionsCommand(
 	}
 }
 
-func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1pb.WriteAssertionsRequest) (*openfgav1pb.WriteAssertionsResponse, error) {
+func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
@@ -54,5 +54,5 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1pb.W
 
 	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), w.logger)
 
-	return &openfgav1pb.WriteAssertionsResponse{}, nil
+	return &openfgapb.WriteAssertionsResponse{}, nil
 }

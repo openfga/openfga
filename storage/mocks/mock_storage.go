@@ -11,7 +11,6 @@ import (
 
 	gomock "github.com/golang/mock/gomock"
 	storage "github.com/openfga/openfga/storage"
-	openfga "go.buf.build/openfga/go/openfga/api/openfga"
 	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -39,10 +38,10 @@ func (m *MockTupleIterator) EXPECT() *MockTupleIteratorMockRecorder {
 }
 
 // Next mocks base method.
-func (m *MockTupleIterator) Next() (*openfga.Tuple, error) {
+func (m *MockTupleIterator) Next() (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(*openfga.Tuple)
+	ret0, _ := ret[0].(*openfgav1.Tuple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -103,7 +102,7 @@ func (mr *MockTupleBackendMockRecorder) MaxTuplesInWriteOperation() *gomock.Call
 }
 
 // Read mocks base method.
-func (m *MockTupleBackend) Read(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) Read(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Read", arg0, arg1, arg2)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -118,10 +117,10 @@ func (mr *MockTupleBackendMockRecorder) Read(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // ReadByStore mocks base method.
-func (m *MockTupleBackend) ReadByStore(arg0 context.Context, arg1 string, arg2 storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (m *MockTupleBackend) ReadByStore(arg0 context.Context, arg1 string, arg2 storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadByStore", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*openfga.Tuple)
+	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -134,10 +133,10 @@ func (mr *MockTupleBackendMockRecorder) ReadByStore(arg0, arg1, arg2 interface{}
 }
 
 // ReadPage mocks base method.
-func (m *MockTupleBackend) ReadPage(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey, arg3 storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (m *MockTupleBackend) ReadPage(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey, arg3 storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].([]*openfga.Tuple)
+	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -150,10 +149,10 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(arg0, arg1, arg2, arg3 interfac
 }
 
 // ReadUserTuple mocks base method.
-func (m *MockTupleBackend) ReadUserTuple(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (*openfga.Tuple, error) {
+func (m *MockTupleBackend) ReadUserTuple(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUserTuple", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*openfga.Tuple)
+	ret0, _ := ret[0].(*openfgav1.Tuple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -165,7 +164,7 @@ func (mr *MockTupleBackendMockRecorder) ReadUserTuple(arg0, arg1, arg2 interface
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockTupleBackend) ReadUsersetTuples(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) ReadUsersetTuples(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUsersetTuples", arg0, arg1, arg2)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -487,10 +486,10 @@ func (m *MockStoresBackend) EXPECT() *MockStoresBackendMockRecorder {
 }
 
 // CreateStore mocks base method.
-func (m *MockStoresBackend) CreateStore(ctx context.Context, store *openfga.Store) (*openfga.Store, error) {
+func (m *MockStoresBackend) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateStore", ctx, store)
-	ret0, _ := ret[0].(*openfga.Store)
+	ret0, _ := ret[0].(*openfgav1.Store)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -516,10 +515,10 @@ func (mr *MockStoresBackendMockRecorder) DeleteStore(ctx, id interface{}) *gomoc
 }
 
 // GetStore mocks base method.
-func (m *MockStoresBackend) GetStore(ctx context.Context, id string) (*openfga.Store, error) {
+func (m *MockStoresBackend) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStore", ctx, id)
-	ret0, _ := ret[0].(*openfga.Store)
+	ret0, _ := ret[0].(*openfgav1.Store)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -531,10 +530,10 @@ func (mr *MockStoresBackendMockRecorder) GetStore(ctx, id interface{}) *gomock.C
 }
 
 // ListStores mocks base method.
-func (m *MockStoresBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfga.Store, []byte, error) {
+func (m *MockStoresBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, paginationOptions)
-	ret0, _ := ret[0].([]*openfga.Store)
+	ret0, _ := ret[0].([]*openfgav1.Store)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -570,10 +569,10 @@ func (m *MockAssertionsBackend) EXPECT() *MockAssertionsBackendMockRecorder {
 }
 
 // ReadAssertions mocks base method.
-func (m *MockAssertionsBackend) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfga.Assertion, error) {
+func (m *MockAssertionsBackend) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAssertions", ctx, store, modelID)
-	ret0, _ := ret[0].([]*openfga.Assertion)
+	ret0, _ := ret[0].([]*openfgav1.Assertion)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -585,7 +584,7 @@ func (mr *MockAssertionsBackendMockRecorder) ReadAssertions(ctx, store, modelID 
 }
 
 // WriteAssertions mocks base method.
-func (m *MockAssertionsBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error {
+func (m *MockAssertionsBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteAssertions", ctx, store, modelID, assertions)
 	ret0, _ := ret[0].(error)
@@ -622,10 +621,10 @@ func (m *MockChangelogBackend) EXPECT() *MockChangelogBackendMockRecorder {
 }
 
 // ReadChanges mocks base method.
-func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error) {
+func (m *MockChangelogBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, paginationOptions, horizonOffset)
-	ret0, _ := ret[0].([]*openfga.TupleChange)
+	ret0, _ := ret[0].([]*openfgav1.TupleChange)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -675,10 +674,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) Close(ctx interface{}) *gomock.Call 
 }
 
 // CreateStore mocks base method.
-func (m *MockOpenFGADatastore) CreateStore(ctx context.Context, store *openfga.Store) (*openfga.Store, error) {
+func (m *MockOpenFGADatastore) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CreateStore", ctx, store)
-	ret0, _ := ret[0].(*openfga.Store)
+	ret0, _ := ret[0].(*openfgav1.Store)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -719,10 +718,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) FindLatestAuthorizationModelID(ctx, 
 }
 
 // GetStore mocks base method.
-func (m *MockOpenFGADatastore) GetStore(ctx context.Context, id string) (*openfga.Store, error) {
+func (m *MockOpenFGADatastore) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetStore", ctx, id)
-	ret0, _ := ret[0].(*openfga.Store)
+	ret0, _ := ret[0].(*openfgav1.Store)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -734,10 +733,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) GetStore(ctx, id interface{}) *gomoc
 }
 
 // ListStores mocks base method.
-func (m *MockOpenFGADatastore) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfga.Store, []byte, error) {
+func (m *MockOpenFGADatastore) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListStores", ctx, paginationOptions)
-	ret0, _ := ret[0].([]*openfga.Store)
+	ret0, _ := ret[0].([]*openfgav1.Store)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -778,7 +777,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesInTypeDefinition() *gomock.C
 }
 
 // Read mocks base method.
-func (m *MockOpenFGADatastore) Read(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) Read(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Read", arg0, arg1, arg2)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -793,10 +792,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) Read(arg0, arg1, arg2 interface{}) *
 }
 
 // ReadAssertions mocks base method.
-func (m *MockOpenFGADatastore) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfga.Assertion, error) {
+func (m *MockOpenFGADatastore) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadAssertions", ctx, store, modelID)
-	ret0, _ := ret[0].([]*openfga.Assertion)
+	ret0, _ := ret[0].([]*openfgav1.Assertion)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -839,10 +838,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, 
 }
 
 // ReadByStore mocks base method.
-func (m *MockOpenFGADatastore) ReadByStore(arg0 context.Context, arg1 string, arg2 storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (m *MockOpenFGADatastore) ReadByStore(arg0 context.Context, arg1 string, arg2 storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadByStore", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*openfga.Tuple)
+	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -855,10 +854,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadByStore(arg0, arg1, arg2 interfa
 }
 
 // ReadChanges mocks base method.
-func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfga.TupleChange, []byte, error) {
+func (m *MockOpenFGADatastore) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadChanges", ctx, store, objectType, paginationOptions, horizonOffset)
-	ret0, _ := ret[0].([]*openfga.TupleChange)
+	ret0, _ := ret[0].([]*openfgav1.TupleChange)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -871,10 +870,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadChanges(ctx, store, objectType, 
 }
 
 // ReadPage mocks base method.
-func (m *MockOpenFGADatastore) ReadPage(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey, arg3 storage.PaginationOptions) ([]*openfga.Tuple, []byte, error) {
+func (m *MockOpenFGADatastore) ReadPage(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey, arg3 storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadPage", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].([]*openfga.Tuple)
+	ret0, _ := ret[0].([]*openfgav1.Tuple)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -902,10 +901,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadTypeDefinition(ctx, store, id, o
 }
 
 // ReadUserTuple mocks base method.
-func (m *MockOpenFGADatastore) ReadUserTuple(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (*openfga.Tuple, error) {
+func (m *MockOpenFGADatastore) ReadUserTuple(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUserTuple", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*openfga.Tuple)
+	ret0, _ := ret[0].(*openfgav1.Tuple)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -917,7 +916,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUserTuple(arg0, arg1, arg2 inter
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockOpenFGADatastore) ReadUsersetTuples(arg0 context.Context, arg1 string, arg2 *openfga.TupleKey) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) ReadUsersetTuples(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReadUsersetTuples", arg0, arg1, arg2)
 	ret0, _ := ret[0].(storage.TupleIterator)
@@ -946,7 +945,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) Write(arg0, arg1, arg2, arg3 interfa
 }
 
 // WriteAssertions mocks base method.
-func (m *MockOpenFGADatastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfga.Assertion) error {
+func (m *MockOpenFGADatastore) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteAssertions", ctx, store, modelID, assertions)
 	ret0, _ := ret[0].(error)

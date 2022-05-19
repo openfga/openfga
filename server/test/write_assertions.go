@@ -9,27 +9,26 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type writeAssertionsTestSettings struct {
 		_name   string
-		request *openfgav1pb.WriteAssertionsRequest
+		request *openfgapb.WriteAssertionsRequest
 		err     error
 	}
 
 	store := testutils.CreateRandomString(10)
 
-	githubModelReq := &openfgav1pb.WriteAuthorizationModelRequest{
+	githubModelReq := &openfgapb.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: &openfgav1pb.TypeDefinitions{
-			TypeDefinitions: []*openfgav1pb.TypeDefinition{
+		TypeDefinitions: &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
-						"reader": {Userset: &openfgav1pb.Userset_This{}},
+					Relations: map[string]*openfgapb.Userset{
+						"reader": {Userset: &openfgapb.Userset_This{}},
 					},
 				},
 			},
@@ -39,10 +38,10 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester) {
 	var tests = []writeAssertionsTestSettings{
 		{
 			_name: "writing assertions succeeds",
-			request: &openfgav1pb.WriteAssertionsRequest{
+			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfga.Assertion{{
-					TupleKey: &openfga.TupleKey{
+				Assertions: []*openfgapb.Assertion{{
+					TupleKey: &openfgapb.TupleKey{
 						Object:   "repo:test",
 						Relation: "reader",
 						User:     "elbuo",
@@ -53,10 +52,10 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester) {
 		},
 		{
 			_name: "writing empty assertions succeeds",
-			request: &openfgav1pb.WriteAssertionsRequest{
+			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfga.Assertion{{
-					TupleKey: &openfga.TupleKey{
+				Assertions: []*openfgapb.Assertion{{
+					TupleKey: &openfgapb.TupleKey{
 						Object:   "repo:test",
 						Relation: "reader",
 						User:     "elbuo",

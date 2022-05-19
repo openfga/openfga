@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type ListStoresQuery struct {
@@ -25,7 +25,7 @@ func NewListStoresQuery(storesBackend storage.StoresBackend, encoder encoder.Enc
 	}
 }
 
-func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1pb.ListStoresRequest) (*openfgav1pb.ListStoresResponse, error) {
+func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStoresRequest) (*openfgapb.ListStoresResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
@@ -43,7 +43,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1pb.ListStor
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	resp := &openfgav1pb.ListStoresResponse{
+	resp := &openfgapb.ListStoresResponse{
 		Stores:            stores,
 		ContinuationToken: encodedToken,
 	}

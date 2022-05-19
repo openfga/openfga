@@ -6,12 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v4"
 	"github.com/openfga/openfga/storage"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestHandlePostgresError(t *testing.T) {
 	t.Run("duplicate key value error with tuple key wraps ErrInvalidWriteInput", func(t *testing.T) {
-		err := handlePostgresError(errors.New("duplicate key value"), &openfga.TupleKey{
+		err := handlePostgresError(errors.New("duplicate key value"), &openfgapb.TupleKey{
 			Object:   "object",
 			Relation: "relation",
 			User:     "user",

@@ -14,20 +14,19 @@ import (
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type writeCommandTest struct {
 	_name           string
-	typeDefinitions []*openfgav1pb.TypeDefinition
-	tuples          []*openfga.TupleKey
-	request         *openfgav1pb.WriteRequest
+	typeDefinitions []*openfgapb.TypeDefinition
+	tuples          []*openfgapb.TupleKey
+	request         *openfgapb.WriteRequest
 	err             error
-	response        *openfgav1pb.WriteResponse
+	response        *openfgapb.WriteResponse
 }
 
-var tk = &openfga.TupleKey{
+var tk = &openfgapb.TupleKey{
 	Object:   "repository:auth0/express-jwt",
 	Relation: "administrator",
 	User:     "github|alice@auth0.com",
@@ -37,24 +36,24 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input
-		request: &openfgav1pb.WriteRequest{},
+		request: &openfgapb.WriteRequest{},
 		// output
 		err: serverErrors.InvalidWriteInput,
 	},
 	{
 		_name: "ExecuteWithSameTupleInWritesReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repository",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"administrator": {},
 				},
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk, tk}},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
 		},
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
@@ -62,17 +61,17 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repository",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"administrator": {},
 				},
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk, tk}},
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
 		},
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
@@ -80,18 +79,18 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repository",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"administrator": {},
 				},
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes:  &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk}},
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk}},
+		request: &openfgapb.WriteRequest{
+			Writes:  &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
@@ -99,31 +98,31 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteDeleteTupleWhichDoesNotExistReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repository",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"administrator": {},
 				},
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk}},
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
 		// output
-		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfga.TupleOperation_DELETE)),
+		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
-			Relations: map[string]*openfgav1pb.Userset{},
+			Relations: map[string]*openfgapb.Userset{},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk}},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
 		// output
 		err: serverErrors.TypeNotFound("repository"),
@@ -131,40 +130,40 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithMissingUserError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
 			},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repo:auth0",
 				Relation: "owner",
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("missing user", &openfga.TupleKey{Object: "repo:auth0", Relation: "owner"}),
+		err: serverErrors.InvalidTuple("missing user", &openfgapb.TupleKey{Object: "repo:auth0", Relation: "owner"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
 			},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Relation: "owner",
 				User:     "elbuo@github.com",
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfga.TupleKey{
+		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
 			Relation: "owner",
 			User:     "elbuo@github.com",
 		}),
@@ -172,34 +171,34 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
 			},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object: "repo:auth0",
 				User:   "elbuo@github.com",
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("invalid relation", &openfga.TupleKey{Object: "repo:auth0", User: "elbuo@github.com"}),
+		err: serverErrors.InvalidTuple("invalid relation", &openfgapb.TupleKey{Object: "repo:auth0", User: "elbuo@github.com"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
 			},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repo:auth0",
 				Relation: "BadRelation",
 				User:     "elbuo@github.com",
@@ -207,31 +206,31 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// output
 		err: serverErrors.RelationNotFound("BadRelation", "repo",
-			&openfga.TupleKey{Object: "repo:auth0", Relation: "BadRelation", User: "elbuo@github.com"}),
+			&openfgapb.TupleKey{Object: "repo:auth0", Relation: "BadRelation", User: "elbuo@github.com"}),
 	},
 	{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
-			Relations: map[string]*openfgav1pb.Userset{},
+			Relations: map[string]*openfgapb.Userset{},
 		}},
-		tuples: []*openfga.TupleKey{tk},
+		tuples: []*openfgapb.TupleKey{tk},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{tk}},
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
 	},
 	{
 		_name: "ExecuteWithInvalidObjectFormatReturnsError",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
-			Relations: map[string]*openfgav1pb.Userset{},
+			Relations: map[string]*openfgapb.Userset{},
 		}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				// invalid because it has no :
 				Object:   "auth0",
 				Relation: "owner",
@@ -239,7 +238,7 @@ var writeCommandTests = []writeCommandTest{
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfga.TupleKey{
+		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
 			Object:   "auth0",
 			Relation: "owner",
 			User:     "github|jose@auth0.com",
@@ -248,21 +247,21 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{{
+		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
-			Relations: map[string]*openfgav1pb.Userset{
+			Relations: map[string]*openfgapb.Userset{
 				"admin": {},
 			},
 		},
 			{
 				Type: "org",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"manages": {},
 				},
 			}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "writer",
@@ -271,7 +270,7 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound("writer", "repo", &openfga.TupleKey{
+		err: serverErrors.RelationNotFound("writer", "repo", &openfgapb.TupleKey{
 			Object:   "repo:auth0/express-jwt",
 			Relation: "writer",
 			User:     "github|jose@auth0.com",
@@ -280,20 +279,20 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"admin": {},
 				},
 			},
 			{
 				Type: "org",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"manages": {},
 				},
 			}},
-		tuples: []*openfga.TupleKey{
+		tuples: []*openfgapb.TupleKey{
 			{
 				Object:   "org:auth0",
 				Relation: "owner",
@@ -301,8 +300,8 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "org:auth0",
 					Relation: "owner",
@@ -314,29 +313,29 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForWriteOnly",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"admin":  {},
 					"writer": {},
 				},
 			},
 			{
 				Type: "org",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"owner": {},
 				},
 			},
 			{
 				Type: "team",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"member": {},
 				},
 			}},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "org:auth0",
 					Relation: "owner",
@@ -363,27 +362,27 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForDeleteOnly",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"admin":  {},
 					"writer": {},
 				},
 			},
 			{
 				Type: "org",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"owner": {},
 				},
 			},
 			{
 				Type: "team",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"member": {},
 				},
 			}},
-		tuples: []*openfga.TupleKey{
+		tuples: []*openfgapb.TupleKey{
 			{
 				Object:   "org:auth0",
 				Relation: "owner",
@@ -406,8 +405,8 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "org:auth0",
 					Relation: "owner",
@@ -434,27 +433,27 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForWriteAndDelete",
 		// state
-		typeDefinitions: []*openfgav1pb.TypeDefinition{
+		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"admin":  {},
 					"writer": {},
 				},
 			},
 			{
 				Type: "org",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"owner": {},
 				},
 			},
 			{
 				Type: "team",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"member": {},
 				},
 			}},
-		tuples: []*openfga.TupleKey{
+		tuples: []*openfgapb.TupleKey{
 			{
 				Object:   "org:auth0",
 				Relation: "owner",
@@ -467,8 +466,8 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		// input
-		request: &openfgav1pb.WriteRequest{
-			Writes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "org:auth0",
 					Relation: "owner",
@@ -490,7 +489,7 @@ var writeCommandTests = []writeCommandTest{
 					User:     "iaco@auth0.com",
 				},
 			}},
-			Deletes: &openfga.TupleKeys{TupleKeys: []*openfga.TupleKey{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					Object:   "org:auth0",
 					Relation: "owner",
@@ -523,13 +522,13 @@ func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester) {
 				t.Fatal(err)
 			}
 			if test.typeDefinitions != nil {
-				if err := datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions}); err != nil {
+				if err := datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions}); err != nil {
 					t.Fatalf("%s: WriteAuthorizationModel: got '%v', want nil", test._name, err)
 				}
 			}
 
 			if test.tuples != nil {
-				if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
+				if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples); err != nil {
 					t.Fatalf("error writing test tuples: %v", err)
 				}
 			}

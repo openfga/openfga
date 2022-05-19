@@ -10,7 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -24,14 +24,14 @@ func TestStore(t *testing.T, dbTester DatastoreTester) {
 
 	// Create some stores
 	numStores := 10
-	var stores []*openfga.Store
+	var stores []*openfgapb.Store
 	for i := 0; i < numStores; i++ {
 		id, err := id.NewString()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		store := &openfga.Store{
+		store := &openfgapb.Store{
 			Id:        id,
 			Name:      testutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),

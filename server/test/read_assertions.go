@@ -9,25 +9,24 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readAssertionsQueryTest struct {
 		_name            string
-		request          *openfgav1pb.ReadAssertionsRequest
-		expectedResponse *openfgav1pb.ReadAssertionsResponse
+		request          *openfgapb.ReadAssertionsRequest
+		expectedResponse *openfgapb.ReadAssertionsResponse
 		expectedError    error
 	}
 
 	var tests = []readAssertionsQueryTest{
 		{
 			_name:   "ReturnsAssertionModelNotFound",
-			request: &openfgav1pb.ReadAssertionsRequest{StoreId: "store", AuthorizationModelId: "test"},
-			expectedResponse: &openfgav1pb.ReadAssertionsResponse{
+			request: &openfgapb.ReadAssertionsRequest{StoreId: "store", AuthorizationModelId: "test"},
+			expectedResponse: &openfgapb.ReadAssertionsResponse{
 				AuthorizationModelId: "test",
-				Assertions:           []*openfga.Assertion{},
+				Assertions:           []*openfgapb.Assertion{},
 			},
 		},
 	}

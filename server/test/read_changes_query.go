@@ -15,44 +15,43 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type testCase struct {
 	_name                            string
-	request                          *openfgav1pb.ReadChangesRequest
+	request                          *openfgapb.ReadChangesRequest
 	expectedError                    error
-	expectedChanges                  []*openfga.TupleChange
+	expectedChanges                  []*openfgapb.TupleChange
 	expectEmptyContinuationToken     bool
 	saveContinuationTokenForNextTest bool
 }
 
-var tkMaria = &openfga.TupleKey{
-	Object:   "repo:auth0/openfga",
+var tkMaria = &openfgapb.TupleKey{
+	Object:   "repo:auth0/openfgapb",
 	Relation: "admin",
 	User:     "maria",
 }
-var tkMariaOrg = &openfga.TupleKey{
+var tkMariaOrg = &openfgapb.TupleKey{
 	Object:   "org:auth0",
 	Relation: "member",
 	User:     "maria",
 }
-var tkCraig = &openfga.TupleKey{
-	Object:   "repo:auth0/openfga",
+var tkCraig = &openfgapb.TupleKey{
+	Object:   "repo:auth0/openfgapb",
 	Relation: "admin",
 	User:     "craig",
 }
-var tkYamil = &openfga.TupleKey{
-	Object:   "repo:auth0/openfga",
+var tkYamil = &openfgapb.TupleKey{
+	Object:   "repo:auth0/openfgapb",
 	Relation: "admin",
 	User:     "yamil",
 }
 
-func newReadChangesRequest(store, objectType, contToken string, pageSize int32) *openfgav1pb.ReadChangesRequest {
-	return &openfgav1pb.ReadChangesRequest{
+func newReadChangesRequest(store, objectType, contToken string, pageSize int32) *openfgapb.ReadChangesRequest {
+	return &openfgapb.ReadChangesRequest{
 		StoreId:           store,
 		Type:              objectType,
 		ContinuationToken: contToken,
@@ -72,14 +71,14 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 			{
 				_name:   "request with pageSize=2 returns 2 tuple and a token",
 				request: newReadChangesRequest(store, "", "", 2),
-				expectedChanges: []*openfga.TupleChange{
+				expectedChanges: []*openfgapb.TupleChange{
 					{
 						TupleKey:  tkMaria,
-						Operation: openfga.TupleOperation_WRITE,
+						Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 					},
 					{
 						TupleKey:  tkCraig,
-						Operation: openfga.TupleOperation_WRITE,
+						Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 					},
 				},
 				expectEmptyContinuationToken:     false,
@@ -89,14 +88,14 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 			{
 				_name:   "request with previous token returns all remaining changes",
 				request: newReadChangesRequest(store, "", "", storage.DefaultPageSize),
-				expectedChanges: []*openfga.TupleChange{
+				expectedChanges: []*openfgapb.TupleChange{
 					{
 						TupleKey:  tkYamil,
-						Operation: openfga.TupleOperation_WRITE,
+						Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 					},
 					{
 						TupleKey:  tkMariaOrg,
-						Operation: openfga.TupleOperation_WRITE,
+						Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 					},
 				},
 				expectEmptyContinuationToken:     false,
@@ -141,9 +140,9 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 			{
 				_name:   "if 1 tuple with 'org type', read changes with 'org' filter returns 1 change and a token",
 				request: newReadChangesRequest(store, "org", "", storage.DefaultPageSize),
-				expectedChanges: []*openfga.TupleChange{{
+				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkMariaOrg,
-					Operation: openfga.TupleOperation_WRITE,
+					Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 				}},
 				expectEmptyContinuationToken: false,
 				expectedError:                nil,
@@ -151,9 +150,9 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 			{
 				_name:   "if 2 tuples with 'repo' type, read changes with 'repo' filter and page size of 1 returns 1 change and a token",
 				request: newReadChangesRequest(store, "repo", "", 1),
-				expectedChanges: []*openfga.TupleChange{{
+				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkMaria,
-					Operation: openfga.TupleOperation_WRITE,
+					Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 				}},
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
@@ -161,12 +160,12 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 			}, {
 				_name:   "using the token from the previous test yields 1 change and a token",
 				request: newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
-				expectedChanges: []*openfga.TupleChange{{
+				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkCraig,
-					Operation: openfga.TupleOperation_WRITE,
+					Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 				}, {
 					TupleKey:  tkYamil,
-					Operation: openfga.TupleOperation_WRITE,
+					Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
 				}},
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
@@ -193,7 +192,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 		testCases := []testCase{
 			{
 				_name: "when the horizon offset is non-zero no tuples should be returned",
-				request: &openfgav1pb.ReadChangesRequest{
+				request: &openfgapb.ReadChangesRequest{
 					StoreId: store,
 				},
 				expectedChanges:              nil,
@@ -208,10 +207,10 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
 }
 
 func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *queries.ReadChangesQuery) {
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfga.Tuple{}, openfga.TupleKey{}, openfga.TupleChange{})
-	ignoreTimestampOpts := cmpopts.IgnoreFields(openfga.TupleChange{}, "Timestamp")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.Tuple{}, openfgapb.TupleKey{}, openfgapb.TupleChange{})
+	ignoreTimestampOpts := cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp")
 
-	var res *openfgav1pb.ReadChangesResponse
+	var res *openfgapb.ReadChangesResponse
 	var err error
 	for i, test := range testCasesInOrder {
 		if i >= 1 {
@@ -281,8 +280,8 @@ func setup(store string, dbTester teststorage.DatastoreTester) (context.Context,
 		return nil, nil, nil, err
 	}
 
-	writes := []*openfga.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	err = datastore.Write(ctx, store, []*openfga.TupleKey{}, writes)
+	writes := []*openfgapb.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	if err != nil {
 		return nil, nil, nil, err
 	}

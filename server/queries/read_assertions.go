@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type ReadAssertionsQuery struct {
@@ -23,7 +23,7 @@ func NewReadAssertionsQuery(backend storage.AssertionsBackend, logger logger.Log
 	}
 }
 
-func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgav1pb.ReadAssertionsResponse, error) {
+func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgapb.ReadAssertionsResponse, error) {
 	utils.LogDBStats(ctx, query.logger, "ReadAssertions", 1, 0)
 
 	assertions, err := query.backend.ReadAssertions(ctx, store, authorizationModelID)
@@ -33,7 +33,7 @@ func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizat
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return &openfgav1pb.ReadAssertionsResponse{
+	return &openfgapb.ReadAssertionsResponse{
 		AuthorizationModelId: authorizationModelID,
 		Assertions:           assertions,
 	}, nil

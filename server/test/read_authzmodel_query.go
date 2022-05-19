@@ -12,20 +12,20 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readAuthorizationModelQueryTest struct {
 		_name         string
-		request       *openfgav1pb.ReadAuthorizationModelRequest
+		request       *openfgapb.ReadAuthorizationModelRequest
 		expectedError error
 	}
 
 	var tests = []readAuthorizationModelQueryTest{
 		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
-			request: &openfgav1pb.ReadAuthorizationModelRequest{
+			request: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: testutils.CreateRandomString(10),
 				Id:      "123",
 			},
@@ -58,13 +58,13 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	state := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{
+	state := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
-				Relations: map[string]*openfgav1pb.Userset{
+				Relations: map[string]*openfgapb.Userset{
 					"viewer": {
-						Userset: &openfgav1pb.Userset_This{},
+						Userset: &openfgapb.Userset_This{},
 					},
 				},
 			},
@@ -80,7 +80,7 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
 	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
-	actualResponse, actualError := query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
+	actualResponse, actualError := query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
 	})
@@ -105,8 +105,8 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	emptyState := &openfgav1pb.TypeDefinitions{
-		TypeDefinitions: []*openfgav1pb.TypeDefinition{},
+	emptyState := &openfgapb.TypeDefinitions{
+		TypeDefinitions: []*openfgapb.TypeDefinition{},
 	}
 
 	store := testutils.CreateRandomString(10)
@@ -120,7 +120,7 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 	}
 
 	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
-	_, err = query.Execute(ctx, &openfgav1pb.ReadAuthorizationModelRequest{
+	_, err = query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
 	})

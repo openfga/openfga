@@ -11,14 +11,14 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
-	"go.buf.build/openfga/go/openfga/api/openfga"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestValidateWriteTuples(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfga.TupleKey
-		writes        []*openfga.TupleKey
+		deletes       []*openfgapb.TupleKey
+		writes        []*openfgapb.TupleKey
 		expectedError error
 	}
 
@@ -32,9 +32,9 @@ func TestValidateWriteTuples(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
 
-	items := make([]*openfga.TupleKey, maxTuplesInWriteOp+1)
+	items := make([]*openfgapb.TupleKey, maxTuplesInWriteOp+1)
 	for i := 0; i < maxTuplesInWriteOp+1; i++ {
-		items[i] = &openfga.TupleKey{
+		items[i] = &openfgapb.TupleKey{
 			Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 			Relation: testutils.CreateRandomString(50),
 			User:     testutils.CreateRandomString(512),
@@ -46,30 +46,30 @@ func TestValidateWriteTuples(t *testing.T) {
 	tests := []test{
 		{
 			name:    "empty deletes and writes",
-			deletes: []*openfga.TupleKey{},
-			writes:  []*openfga.TupleKey{},
+			deletes: []*openfgapb.TupleKey{},
+			writes:  []*openfgapb.TupleKey{},
 		},
 		{
 			name:    "good deletes and writes",
-			deletes: []*openfga.TupleKey{items[0], items[1]},
-			writes:  []*openfga.TupleKey{items[2], items[3]},
+			deletes: []*openfgapb.TupleKey{items[0], items[1]},
+			writes:  []*openfgapb.TupleKey{items[2], items[3]},
 		},
 		{
 			name:          "duplicate deletes",
-			deletes:       []*openfga.TupleKey{items[0], items[1], items[0]},
-			writes:        []*openfga.TupleKey{},
+			deletes:       []*openfgapb.TupleKey{items[0], items[1], items[0]},
+			writes:        []*openfgapb.TupleKey{},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
 			name:          "duplicate writes",
-			deletes:       []*openfga.TupleKey{},
-			writes:        []*openfga.TupleKey{items[0], items[1], items[0]},
+			deletes:       []*openfgapb.TupleKey{},
+			writes:        []*openfgapb.TupleKey{items[0], items[1], items[0]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
 			name:          "same item appeared in writes and deletes",
-			deletes:       []*openfga.TupleKey{items[2], items[1]},
-			writes:        []*openfga.TupleKey{items[0], items[1]},
+			deletes:       []*openfgapb.TupleKey{items[2], items[1]},
+			writes:        []*openfgapb.TupleKey{items[0], items[1]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[1]),
 		},
 		{

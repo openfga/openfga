@@ -20,7 +20,7 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -41,7 +41,7 @@ var (
 // A Server implements the OpenFGA service backend as both
 // a GRPC and HTTP server.
 type Server struct {
-	openfgav1pb.UnimplementedOpenFGAServiceServer
+	openfgapb.UnimplementedOpenFGAServiceServer
 	*grpc.Server
 	tracer                    trace.Tracer
 	meter                     metric.Meter
@@ -126,14 +126,14 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		},
 	}
 
-	openfgav1pb.RegisterOpenFGAServiceServer(grpcServer, server)
+	openfgapb.RegisterOpenFGAServiceServer(grpcServer, server)
 
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
 	return server, nil
 }
 
-func (s *Server) Read(ctx context.Context, req *openfgav1pb.ReadRequest) (*openfgav1pb.ReadResponse, error) {
+func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := s.tracer.Start(ctx, "read", trace.WithAttributes(
@@ -151,7 +151,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1pb.ReadRequest) (*openf
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	q := queries.NewReadQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger, s.encoder)
-	return q.Execute(ctx, &openfgav1pb.ReadRequest{
+	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
 		AuthorizationModelId: modelID,
@@ -160,7 +160,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1pb.ReadRequest) (*openf
 	})
 }
 
-func (s *Server) ReadTuples(ctx context.Context, req *openfgav1pb.ReadTuplesRequest) (*openfgav1pb.ReadTuplesResponse, error) {
+func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
 
 	ctx, span := s.tracer.Start(ctx, "readTuples", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
@@ -171,7 +171,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgav1pb.ReadTuplesRequ
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) Write(ctx context.Context, req *openfgav1pb.WriteRequest) (*openfgav1pb.WriteResponse, error) {
+func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
 	store := req.GetStoreId()
 	ctx, span := s.tracer.Start(ctx, "write", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
@@ -184,7 +184,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1pb.WriteRequest) (*ope
 	}
 
 	cmd := commands.NewWriteCommand(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger)
-	return cmd.Execute(ctx, &openfgav1pb.WriteRequest{
+	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		Writes:               req.GetWrites(),
@@ -192,7 +192,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1pb.WriteRequest) (*ope
 	})
 }
 
-func (s *Server) Check(ctx context.Context, req *openfgav1pb.CheckRequest) (*openfgav1pb.CheckResponse, error) {
+func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := s.tracer.Start(ctx, "check", trace.WithAttributes(
@@ -211,7 +211,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1pb.CheckRequest) (*ope
 
 	q := queries.NewCheckQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
-	res, err := q.Execute(ctx, &openfgav1pb.CheckRequest{
+	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		TupleKey:             tk,
 		ContextualTuples:     req.GetContextualTuples(),
@@ -226,7 +226,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1pb.CheckRequest) (*ope
 	return res, nil
 }
 
-func (s *Server) Expand(ctx context.Context, req *openfgav1pb.ExpandRequest) (*openfgav1pb.ExpandResponse, error) {
+func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := s.tracer.Start(ctx, "expand", trace.WithAttributes(
@@ -244,14 +244,14 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1pb.ExpandRequest) (*o
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	q := queries.NewExpandQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger)
-	return q.Execute(ctx, &openfgav1pb.ExpandRequest{
+	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		TupleKey:             tk,
 	})
 }
 
-func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1pb.ReadAuthorizationModelRequest) (*openfgav1pb.ReadAuthorizationModelResponse, error) {
+func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "readAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(req.GetId())},
@@ -262,7 +262,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1pb.Re
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1pb.WriteAuthorizationModelRequest) (*openfgav1pb.WriteAuthorizationModelResponse, error) {
+func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "writeAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
@@ -272,7 +272,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1pb.W
 	return c.Execute(ctx, req)
 }
 
-func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1pb.ReadAuthorizationModelsRequest) (*openfgav1pb.ReadAuthorizationModelsResponse, error) {
+func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "readAuthorizationModels", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
@@ -282,7 +282,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1pb.R
 	return c.Execute(ctx, req)
 }
 
-func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1pb.WriteAssertionsRequest) (*openfgav1pb.WriteAssertionsResponse, error) {
+func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
 	ctx, span := s.tracer.Start(ctx, "writeAssertions", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
@@ -296,14 +296,14 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1pb.WriteAsse
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	c := commands.NewWriteAssertionsCommand(s.assertionsBackend, s.typeDefinitionReadBackend, s.logger)
-	return c.Execute(ctx, &openfgav1pb.WriteAssertionsRequest{
+	return c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		Assertions:           req.GetAssertions(),
 	})
 }
 
-func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1pb.ReadAssertionsRequest) (*openfgav1pb.ReadAssertionsResponse, error) {
+func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertionsRequest) (*openfgapb.ReadAssertionsResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "readAssertions", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
@@ -317,7 +317,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1pb.ReadAssert
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
-func (s *Server) ReadChanges(ctx context.Context, req *openfgav1pb.ReadChangesRequest) (*openfgav1pb.ReadChangesResponse, error) {
+func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
@@ -328,7 +328,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1pb.ReadChangesRe
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) CreateStore(ctx context.Context, req *openfgav1pb.CreateStoreRequest) (*openfgav1pb.CreateStoreResponse, error) {
+func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequest) (*openfgapb.CreateStoreResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "createStore")
 	defer span.End()
 
@@ -342,7 +342,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1pb.CreateStoreRe
 	return response, nil
 }
 
-func (s *Server) DeleteStore(ctx context.Context, req *openfgav1pb.DeleteStoreRequest) (*openfgav1pb.DeleteStoreResponse, error) {
+func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "deleteStore")
 	defer span.End()
 
@@ -353,10 +353,10 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1pb.DeleteStoreRe
 	}
 	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent), s.logger)
 
-	return &openfgav1pb.DeleteStoreResponse{}, nil
+	return &openfgapb.DeleteStoreResponse{}, nil
 }
 
-func (s *Server) GetStore(ctx context.Context, req *openfgav1pb.GetStoreRequest) (*openfgav1pb.GetStoreResponse, error) {
+func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (*openfgapb.GetStoreResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "getStore", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 	))
@@ -366,7 +366,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1pb.GetStoreRequest)
 	return q.Execute(ctx, req)
 }
 
-func (s *Server) ListStores(ctx context.Context, req *openfgav1pb.ListStoresRequest) (*openfgav1pb.ListStoresResponse, error) {
+func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresRequest) (*openfgapb.ListStoresResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
@@ -404,7 +404,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	mux := runtime.NewServeMux(muxOpts...)
 
-	if err := openfgav1pb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, []grpc.DialOption{
+	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}); err != nil {

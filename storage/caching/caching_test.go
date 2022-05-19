@@ -7,7 +7,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/storage/memory"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 )
 
@@ -17,8 +17,8 @@ type readTypeDefinitionTest struct {
 	_name                  string
 	store                  string
 	name                   string
-	dbState                []*openfgav1pb.TypeDefinition
-	expectedTypeDefinition *openfgav1pb.TypeDefinition
+	dbState                []*openfgapb.TypeDefinition
+	expectedTypeDefinition *openfgapb.TypeDefinition
 	expectedError          error
 }
 
@@ -27,12 +27,12 @@ var readTypeDefinitionTests = []readTypeDefinitionTest{
 		_name: "ShouldReturnTypeDefinitionFromInnerBackendAndSetItInCache",
 		store: store,
 		name:  "clients",
-		dbState: []*openfgav1pb.TypeDefinition{
+		dbState: []*openfgapb.TypeDefinition{
 			{
 				Type: "clients",
 			},
 		},
-		expectedTypeDefinition: &openfgav1pb.TypeDefinition{
+		expectedTypeDefinition: &openfgapb.TypeDefinition{
 			Type: "clients",
 		},
 	},
@@ -48,7 +48,7 @@ func TestReadTypeDefinition(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := memoryBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.dbState}); err != nil {
+		if err := memoryBackend.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.dbState}); err != nil {
 			t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
 		}
 
@@ -78,7 +78,7 @@ func TestReadTypeDefinition(t *testing.T) {
 				continue
 			}
 
-			cachedNS := cachedEntry.Value().(*openfgav1pb.TypeDefinition)
+			cachedNS := cachedEntry.Value().(*openfgapb.TypeDefinition)
 
 			if test.expectedTypeDefinition.GetType() != cachedNS.GetType() {
 				t.Errorf("[%s] Expected cached name to be '%s', actual '%s'", test._name, test.expectedTypeDefinition.GetType(), cachedNS.GetType())

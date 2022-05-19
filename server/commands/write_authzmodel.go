@@ -12,7 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/utils/grpcutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
@@ -29,7 +29,7 @@ func NewWriteAuthorizationModelCommand(
 }
 
 // Execute the command using the supplied request.
-func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgav1pb.WriteAuthorizationModelRequest) (*openfgav1pb.WriteAuthorizationModelResponse, error) {
+func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
 	err := w.validateAuthorizationModel(req.GetTypeDefinitions().GetTypeDefinitions())
 	if err != nil {
 		return nil, err
@@ -47,12 +47,12 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	grpcutils.SetHeaderLogError(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated), w.logger)
 
-	return &openfgav1pb.WriteAuthorizationModelResponse{
+	return &openfgapb.WriteAuthorizationModelResponse{
 		AuthorizationModelId: id,
 	}, nil
 }
 
-func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openfgav1pb.TypeDefinition) error {
+func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openfgapb.TypeDefinition) error {
 	types := map[string]bool{}
 	topLevelRelations := map[string]bool{}
 	var tupleToUsersetTargets []string
@@ -90,7 +90,7 @@ func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openf
 	return nil
 }
 
-func validateTypeDefinition(td *openfgav1pb.TypeDefinition) ([]string, error) {
+func validateTypeDefinition(td *openfgapb.TypeDefinition) ([]string, error) {
 	topLevelRelations := map[string]bool{}
 	relations := td.GetRelations()
 	for relation := range relations {
@@ -113,11 +113,11 @@ func validateTypeDefinition(td *openfgav1pb.TypeDefinition) ([]string, error) {
 }
 
 // validateUserset ensures that usersets do not contain relations that are not top-level
-func validateUserset(topLevelRelations map[string]bool, userset *openfgav1pb.Userset, name string) ([]string, error) {
+func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Userset, name string) ([]string, error) {
 	var tupleToUsersetTargets []string
 
 	switch t := userset.GetUserset().(type) {
-	case *openfgav1pb.Userset_ComputedUserset:
+	case *openfgapb.Userset_ComputedUserset:
 		relation := t.ComputedUserset.GetRelation()
 		if relation == name {
 			return nil, serverErrors.CannotAllowMultipleReferencesToOneRelation
@@ -125,7 +125,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgav1pb.Use
 		if ok := topLevelRelations[relation]; !ok {
 			return nil, serverErrors.UnknownRelation(relation)
 		}
-	case *openfgav1pb.Userset_Union:
+	case *openfgapb.Userset_Union:
 		for _, us := range t.Union.GetChild() {
 			targets, err := validateUserset(topLevelRelations, us, name)
 			if err != nil {
@@ -133,7 +133,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgav1pb.Use
 			}
 			tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
 		}
-	case *openfgav1pb.Userset_Intersection:
+	case *openfgapb.Userset_Intersection:
 		for _, us := range t.Intersection.GetChild() {
 			targets, err := validateUserset(topLevelRelations, us, name)
 			if err != nil {
@@ -141,7 +141,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgav1pb.Use
 			}
 			tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
 		}
-	case *openfgav1pb.Userset_Difference:
+	case *openfgapb.Userset_Difference:
 		targets1, err := validateUserset(topLevelRelations, t.Difference.Base, name)
 		if err != nil {
 			return nil, err
@@ -152,7 +152,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgav1pb.Use
 			return nil, err
 		}
 		tupleToUsersetTargets = append(tupleToUsersetTargets, targets2...)
-	case *openfgav1pb.Userset_TupleToUserset:
+	case *openfgapb.Userset_TupleToUserset:
 		relation := t.TupleToUserset.GetTupleset().GetRelation()
 		if ok := topLevelRelations[relation]; !ok {
 			return nil, serverErrors.UnknownRelation(relation)

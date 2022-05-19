@@ -13,18 +13,17 @@ import (
 	"github.com/openfga/openfga/server/queries"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
-	"go.buf.build/openfga/go/openfga/api/openfga"
-	openfgav1pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	type readQueryTest struct {
 		_name           string
-		typeDefinitions []*openfgav1pb.TypeDefinition
-		tuples          []*openfga.TupleKey
-		request         *openfgav1pb.ReadRequest
+		typeDefinitions []*openfgapb.TypeDefinition
+		tuples          []*openfgapb.TupleKey
+		request         *openfgapb.ReadRequest
 		err             error
-		response        *openfgav1pb.ReadResponse
+		response        *openfgapb.ReadResponse
 	}
 
 	// TODO: review which of these tests should be moved to validation/types in gRPC rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/auth0/sandcastle/issues/13
@@ -32,17 +31,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{},
 			},
 			// output
 			err: serverErrors.InvalidTupleSet,
@@ -50,17 +49,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasObjectWithoutType",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: "auth0/iam",
 				},
 			},
@@ -70,17 +69,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyObjectIs':'",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: ":",
 				},
 			},
@@ -90,17 +89,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleSetHasNoObjectAndThusNoType",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Relation: "admin",
 					User:     "github|jon.allie@auth0.com",
 				},
@@ -111,23 +110,23 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNoObjectIdAndNoUserSetButHasAType",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 				},
 			},
 			// output
-			err: serverErrors.InvalidTuple("missing objectID and user", &openfga.TupleKey{
+			err: serverErrors.InvalidTuple("missing objectID and user", &openfgapb.TupleKey{
 				Object:   "repo:",
 				Relation: "writer",
 			}),
@@ -135,17 +134,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyInTupleSetOnlyHasRelation",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Relation: "writer",
 				},
 			},
@@ -155,22 +154,22 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfTypeDoesNotExist",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 				{
 					Type: "org",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"manages": {},
 					},
 				}},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "team:auth0/iam",
 					Relation: "member",
 					User:     "github|jose@auth0.com",
@@ -182,29 +181,29 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleHasRelationThatDoesNotExistInAuthorizationModel",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				},
 				{
 					Type: "org",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"manages": {},
 					},
 				}},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "org:",
 					Relation: "owner",
 					User:     "github|jose@auth0.com",
 				},
 			},
 			// output
-			err: serverErrors.RelationNotFound("owner", "org", &openfga.TupleKey{
+			err: serverErrors.RelationNotFound("owner", "org", &openfgapb.TupleKey{
 				Object:   "org:",
 				Relation: "owner",
 				User:     "github|jose@auth0.com",
@@ -213,14 +212,14 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsExactMatchingTupleKey",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -233,17 +232,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
 					User:     "github|jose@auth0.com",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|jose@auth0.com",
@@ -254,15 +253,15 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndObjectIdInAuthorizationModelRegardlessOfRelationIfNoRelation",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin": {},
 						"owner": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -274,27 +273,27 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 					User:     "github|jose@auth0.com",
 				},
 				{
-					Object:   "repo:auth0/openfga",
+					Object:   "repo:auth0/openfgapb",
 					Relation: "owner",
 					User:     "github|jose@auth0.com",
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:auth0/express-jwt",
 					User:   "github|jose@auth0.com",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|jose@auth0.com",
 					}},
-					{Key: &openfga.TupleKey{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "owner",
 						User:     "github|jose@auth0.com",
@@ -305,15 +304,15 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedUserInAuthorizationModelRegardlessOfRelationAndObjectIdIfNoRelationAndNoObjectId",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin":  {},
 						"writer": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -331,21 +330,21 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:",
 					User:   "github|jose@auth0.com",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|jose@auth0.com",
 					}},
-					{Key: &openfga.TupleKey{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/auth0-server",
 						Relation: "writer",
 						User:     "github|jose@auth0.com",
@@ -356,15 +355,15 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin":  {},
 						"writer": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -387,22 +386,22 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 					User:     "github|jose@auth0.com",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/auth0-server",
 						Relation: "writer",
 						User:     "github|jose@auth0.com",
 					}},
-					{Key: &openfga.TupleKey{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/auth0-users",
 						Relation: "writer",
 						User:     "github|jose@auth0.com",
@@ -413,15 +412,15 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin":  {},
 						"writer": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -444,21 +443,21 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|jose@auth0.com",
 					}},
-					{Key: &openfga.TupleKey{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|yenkel@auth0.com",
@@ -469,15 +468,15 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdInAuthorizationModelRegardlessOfUserAndRelation",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin":  {},
 						"writer": {},
 					},
 				}},
-			tuples: []*openfga.TupleKey{
+			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:auth0/express-jwt",
 					Relation: "admin",
@@ -500,20 +499,20 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				},
 			},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:auth0/express-jwt",
 				},
 			},
 			// output
-			response: &openfgav1pb.ReadResponse{
-				Tuples: []*openfga.Tuple{
-					{Key: &openfga.TupleKey{
+			response: &openfgapb.ReadResponse{
+				Tuples: []*openfgapb.Tuple{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "admin",
 						User:     "github|jose@auth0.com",
 					}},
-					{Key: &openfga.TupleKey{
+					{Key: &openfgapb.TupleKey{
 						Object:   "repo:auth0/express-jwt",
 						Relation: "writer",
 						User:     "github|yenkel@auth0.com",
@@ -524,17 +523,17 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 		{
 			_name: "ExecuteErrorsIfOneTupleIsUnauthorized",
 			// state
-			typeDefinitions: []*openfgav1pb.TypeDefinition{
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
-					Relations: map[string]*openfgav1pb.Userset{
+					Relations: map[string]*openfgapb.Userset{
 						"admin":  {},
 						"writer": {},
 					},
 				}},
 			// input
-			request: &openfgav1pb.ReadRequest{
-				TupleKey: &openfga.TupleKey{
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:auth0/express-jwt",
 				},
 				ContinuationToken: "foo",
@@ -561,19 +560,19 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgav1pb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+			err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
 			if err != nil {
 				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
 			}
 
 			if test.tuples != nil {
-				if err := datastore.Write(ctx, store, []*openfga.TupleKey{}, test.tuples); err != nil {
+				if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples); err != nil {
 					t.Fatalf("[%s] failed to write test tuples: %v", test._name, err)
 				}
 			}
 
 			cmd := queries.NewReadQuery(datastore, datastore, tracer, logger, encoder)
-			req := &openfgav1pb.ReadRequest{
+			req := &openfgapb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,
 				TupleKey:             test.request.TupleKey,
