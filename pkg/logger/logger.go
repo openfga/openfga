@@ -35,8 +35,8 @@ type ZapLogger struct {
 	*zap.Logger
 }
 
-func (l *ZapLogger) With(fields ...zap.Field) *ZapLogger {
-	return &ZapLogger{l.Logger.With(fields...)}
+func (l *ZapLogger) With(fields ...zap.Field) {
+	l.Logger = l.Logger.With(fields...)
 }
 
 func (l *ZapLogger) Debug(msg string, fields ...zap.Field) {

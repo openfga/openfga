@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/kelseyhightower/envconfig"
@@ -17,6 +18,12 @@ import (
 	"github.com/openfga/openfga/storage/postgres"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 type svcConfig struct {
@@ -43,6 +50,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
+
+	logger.With(
+		zap.String("build.version", version),
+		zap.String("build.commit", commit),
+	)
 
 	var config svcConfig
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
@@ -97,9 +109,15 @@ func main() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		logger.Info("🚀 starting openfga server...")
+	logger.Info(
+		"🚀 starting openfga service...",
+		zap.String("version", version),
+		zap.String("date", date),
+		zap.String("commit", commit),
+		zap.String("go-version", runtime.Version()),
+	)
 
+	g.Go(func() error {
 		return openFgaServer.Run(ctx)
 	})
 

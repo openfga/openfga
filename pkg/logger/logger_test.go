@@ -124,12 +124,12 @@ func TestMessageWithEmptyId(t *testing.T) {
 
 func TestWithFields(t *testing.T) {
 	observerLogger, logs := observer.New(zap.DebugLevel)
-	dut := ZapLogger{zap.New(observerLogger)}
-	dutNew := dut.With(
+	logger := ZapLogger{zap.New(observerLogger)}
+	logger.With(
 		zap.String("TestOption", "Message"),
 	)
 	testMessage := "ABC"
-	dutNew.Info(testMessage)
+	logger.Info(testMessage)
 	actualMessage := logs.All()[0]
 	if actualMessage.Message != testMessage {
 		t.Errorf("Expected message to be %s, actual %s", testMessage, actualMessage.LoggerName)
