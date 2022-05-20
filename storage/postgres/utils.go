@@ -64,8 +64,9 @@ func (t *tupleIterator) next() (*tupleRecord, error) {
 // continuation token exists it is the ulid of the last element of the returned array.
 func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	defer t.Stop()
+
 	var res []*openfgapb.Tuple
-	var lastUlid string
+	var ulid string
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
@@ -74,7 +75,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 			}
 			return nil, nil, err
 		}
-		lastUlid = tupleRecord.ulid
+		ulid = tupleRecord.ulid
 		res = append(res, tupleRecord.asTuple())
 	}
 
@@ -84,7 +85,12 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 		return res, nil, nil
 	}
 
-	return res, []byte(lastUlid), nil
+	contToken, err := json.Marshal(newContToken(ulid, ""))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return res, contToken, nil
 }
 
 func (t *tupleIterator) Next() (*openfgapb.Tuple, error) {
@@ -111,7 +117,7 @@ func newContToken(ulid, objectType string) *contToken {
 	}
 }
 
-func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) string {
+func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, error) {
 	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s'", store)
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
@@ -127,13 +133,17 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 		stmt = fmt.Sprintf("%s AND _user = '%s'", stmt, tupleKey.GetUser())
 	}
 	if opts.From != "" {
-		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, opts.From)
+		token, err := unmarshallContToken(opts.From)
+		if err != nil {
+			return "", err
+		}
+		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, token.Ulid)
 	}
 	stmt = fmt.Sprintf("%s ORDER BY ulid", stmt)
 	if opts.PageSize != 0 {
 		stmt = fmt.Sprintf("%s LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
 	}
-	return stmt
+	return stmt, nil
 }
 
 func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) string {
@@ -155,9 +165,9 @@ func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) str
 func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
 	stmt := "SELECT id, name, created_at, updated_at FROM store WHERE deleted_at IS NULL"
 	if opts.From != "" {
-		var token contToken
-		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
-			return "", storage.ErrInvalidContinuationToken
+		token, err := unmarshallContToken(opts.From)
+		if err != nil {
+			return "", err
 		}
 		stmt = fmt.Sprintf("%s AND id >= '%s'", stmt, token.Ulid)
 	}
@@ -172,9 +182,9 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	}
 	stmt = fmt.Sprintf("%s AND inserted_at < NOW() - interval '%dms'", stmt, horizonOffset.Milliseconds())
 	if opts.From != "" {
-		var token contToken
-		if err := json.Unmarshal([]byte(opts.From), &token); err != nil {
-			return "", storage.ErrInvalidContinuationToken
+		token, err := unmarshallContToken(opts.From)
+		if err != nil {
+			return "", err
 		}
 		if token.ObjectType != objectTypeFilter {
 			return "", storage.ErrMismatchObjectType
@@ -188,13 +198,25 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	return stmt, nil
 }
 
-func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) string {
+func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) (string, error) {
 	stmt := fmt.Sprintf("SELECT DISTINCT authorization_model_id FROM authorization_model WHERE store = '%s'", store)
 	if opts.From != "" {
-		stmt = fmt.Sprintf("%s AND authorization_model_id <= '%s'", stmt, opts.From)
+		token, err := unmarshallContToken(opts.From)
+		if err != nil {
+			return "", err
+		}
+		stmt = fmt.Sprintf("%s AND authorization_model_id <= '%s'", stmt, token.Ulid)
 	}
 	stmt = fmt.Sprintf("%s ORDER BY authorization_model_id DESC LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
-	return stmt
+	return stmt, nil
+}
+
+func unmarshallContToken(from string) (*contToken, error) {
+	var token contToken
+	if err := json.Unmarshal([]byte(from), &token); err != nil {
+		return nil, storage.ErrInvalidContinuationToken
+	}
+	return &token, nil
 }
 
 func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {

@@ -131,8 +131,12 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	ctx, span := p.tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
-	readQuery := buildReadQuery(store, tupleKey, opts)
-	rows, err := p.pool.Query(ctx, readQuery)
+	stmt, err := buildReadQuery(store, tupleKey, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := p.pool.Query(ctx, stmt)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
@@ -303,7 +307,11 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	stmt := buildReadAuthorizationModelsQuery(store, opts)
+	stmt, err := buildReadAuthorizationModelsQuery(store, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	rows, err := p.pool.Query(ctx, stmt)
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
@@ -325,11 +333,14 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		return nil, nil, handlePostgresError(err)
 	}
 
-	var contToken []byte
+	var token []byte
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > opts.PageSize {
 		numModelIDs = opts.PageSize
-		contToken = []byte(modelID)
+		token, err = json.Marshal(newContToken(modelID, ""))
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
@@ -344,7 +355,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		models = append(models, model)
 	}
 
-	return models, contToken, nil
+	return models, token, nil
 }
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
