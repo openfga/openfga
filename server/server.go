@@ -85,6 +85,7 @@ type Config struct {
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
+	RequestTimeout         time.Duration
 }
 
 // New creates a new Server which uses the supplied backends
@@ -427,6 +428,9 @@ func (s *Server) Run(ctx context.Context) error {
 	}()
 
 	s.logger.Info(fmt.Sprintf("gRPC server listening on '%s'...", rpcAddr))
+
+	// Set a request timeout.
+	runtime.DefaultContextTimeout = s.config.RequestTimeout
 
 	muxOpts := []runtime.ServeMuxOption{}
 	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first

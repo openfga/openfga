@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -39,6 +40,8 @@ type svcConfig struct {
 	ChangelogHorizonOffset int `default:"0" split_words:"true" `
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
+	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
+	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 }
 
 func main() {
@@ -102,6 +105,7 @@ func main() {
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		UnaryInterceptors:      nil,
 		MuxOptions:             nil,
+		RequestTimeout:         config.RequestTimeout,
 	})
 	if err != nil {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
