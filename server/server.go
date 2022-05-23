@@ -13,6 +13,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -490,7 +491,11 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
 	var err error
 
-	if modelID == "" {
+	if modelID != "" {
+		if !id.IsValid(modelID) {
+			return "", serverErrors.AuthorizationModelNotFound(modelID)
+		}
+	} else {
 		if modelID, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return "", serverErrors.LatestAuthorizationModelNotFound(store)

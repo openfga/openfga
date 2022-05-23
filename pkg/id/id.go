@@ -51,6 +51,13 @@ func Parse(s string) (*ID, error) {
 	return &ID{id}, nil
 }
 
+func IsValid(s string) bool {
+	if _, err := Parse(s); err != nil {
+		return false
+	}
+	return true
+}
+
 func (id *ID) Time() time.Time {
 	return ulid.Time(id.value.Time())
 }

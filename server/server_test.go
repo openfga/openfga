@@ -24,7 +24,7 @@ import (
 
 func TestOpenFGAServer(t *testing.T) {
 
-	t.Run("TestPostgresDatstore", func(t *testing.T) {
+	t.Run("TestPostgresDatastore", func(t *testing.T) {
 		testEngine := storagefixtures.RunDatastoreEngine(t, "postgres")
 
 		test.TestAll(t, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
@@ -54,7 +54,7 @@ func TestOpenFGAServer(t *testing.T) {
 
 func BenchmarkOpenFGAServer(b *testing.B) {
 
-	b.Run("TestPostgresDatstore", func(b *testing.B) {
+	b.Run("TestPostgresDatastore", func(b *testing.B) {
 		testEngine := storagefixtures.RunDatastoreEngine(b, "postgres")
 
 		test.BenchmarkAll(b, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
@@ -139,6 +139,28 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		}
 		if got != modelID {
 			t.Errorf("wanted '%v', but got %v", modelID, got)
+		}
+	})
+
+	t.Run("non-valid modelID returns error", func(t *testing.T) {
+		store := testutils.CreateRandomString(10)
+		modelID := "foo"
+		want := serverErrors.AuthorizationModelNotFound(modelID)
+
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+		s := Server{
+			authorizationModelBackend: mockDatastore,
+			tracer:                    tracer,
+			transport:                 transport,
+			logger:                    logger,
+		}
+
+		if _, err := s.resolveAuthorizationModelID(ctx, store, modelID); err.Error() != want.Error() {
+			t.Fatalf("got '%v', want '%v'", err, want)
 		}
 	})
 }
