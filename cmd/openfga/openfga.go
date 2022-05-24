@@ -71,8 +71,12 @@ func main() {
 	var datastore storage.OpenFGADatastore
 	switch config.DatastoreEngine {
 	case "memory":
+		logger.Info("using 'memory' storage engine")
+
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
+		logger.Info("using 'postgres' storage engine")
+
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),

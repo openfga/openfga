@@ -25,9 +25,3 @@ services:
       - default
     ports:
       - "8080:8080"
-    environment:
-      OPENFGA_DATASTORE_ENGINE: postgres
-      OPENFGA_DATASTORE_CONNECTION_URI: "postgres://postgres:password@postgres:5432/postgres"
-    depends_on:
-      postgres:
-        condition: service_healthy
