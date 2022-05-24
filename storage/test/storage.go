@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -14,6 +15,7 @@ var (
 		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}, openfgapb.Tuple{}, openfgapb.TupleChange{}, openfgapb.Assertion{}),
 		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
 		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
+		testutils.TupleKeyCmpTransformer,
 	}
 )
 

@@ -303,19 +303,25 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 		}
 		defer gotTuples.Stop()
 
+		gotTupleKeys := []*openfgapb.TupleKey{}
+
 		// We should find the first two tupleKeys
 		for i := 0; i < 2; i++ {
 			gotTuple, err := gotTuples.Next()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if diff := cmp.Diff(gotTuple.Key, tks[i], cmpOpts...); diff != "" {
-				t.Fatalf("mismatch (-got +want):\n%s", diff)
-			}
+
+			gotTupleKeys = append(gotTupleKeys, gotTuple.Key)
 		}
+
 		// Then the iterator should run out
 		if _, err := gotTuples.Next(); !errors.Is(err, storage.TupleIteratorDone) {
 			t.Fatalf("got '%v', want '%v'", err, storage.TupleIteratorDone)
+		}
+
+		if diff := cmp.Diff(gotTupleKeys, tks[:2], cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 	})
 
@@ -361,9 +367,7 @@ func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
 		if diff := cmp.Diff(tuples0[0].Key, tk0, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
-		if len(contToken0) == 0 {
-			t.Fatalf("got '%s', want empty", string(contToken0))
-		}
+		require.NotEmpty(string(contToken0))
 
 		tuples1, contToken1, err := datastore.ReadPage(ctx, store, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		if err != nil {
