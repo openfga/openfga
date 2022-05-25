@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
 	"github.com/openfga/openfga/storage"
+	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
 	"go.uber.org/zap"
@@ -31,6 +32,7 @@ type svcConfig struct {
 	// Optional configuration
 	DatastoreEngine               string `default:"memory" split_words:"true" required:"true"`
 	DatastoreConnectionURI        string `split_words:"true"`
+	DatastoreMaxCacheSize         int    `default:"100000" split_words:"true"`
 	ServiceName                   string `default:"openfga" split_words:"true"`
 	HTTPPort                      int    `default:"8080" split_words:"true"`
 	RPCPort                       int    `default:"8081" split_words:"true"`
@@ -58,6 +60,7 @@ func main() {
 		zap.String("build.version", version),
 		zap.String("build.commit", commit),
 	)
+
 	datastore, openFgaServer := BuildServerAndDatastore(logger)
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -124,16 +127,11 @@ func BuildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *s
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
-		AuthorizationModelBackend: datastore,
-		TypeDefinitionReadBackend: datastore,
-		TupleBackend:              datastore,
-		ChangelogBackend:          datastore,
-		AssertionsBackend:         datastore,
-		StoresBackend:             datastore,
-		Tracer:                    tracer,
-		Logger:                    logger,
-		Meter:                     meter,
-		TokenEncoder:              tokenEncoder,
+		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
+		Tracer:       tracer,
+		Logger:       logger,
+		Meter:        meter,
+		TokenEncoder: tokenEncoder,
 	}, &server.Config{
 		ServiceName:            config.ServiceName,
 		RPCPort:                config.RPCPort,
@@ -147,5 +145,6 @@ func BuildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *s
 	if err != nil {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
+
 	return datastore, openFgaServer
 }

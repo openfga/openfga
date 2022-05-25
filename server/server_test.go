@@ -99,10 +99,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
 
 		s := Server{
-			authorizationModelBackend: mockDatastore,
-			tracer:                    tracer,
-			transport:                 transport,
-			logger:                    logger,
+			datastore: mockDatastore,
+			tracer:    tracer,
+			transport: transport,
+			logger:    logger,
 		}
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
@@ -127,10 +127,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
 
 		s := Server{
-			authorizationModelBackend: mockDatastore,
-			tracer:                    tracer,
-			transport:                 transport,
-			logger:                    logger,
+			datastore: mockDatastore,
+			tracer:    tracer,
+			transport: transport,
+			logger:    logger,
 		}
 
 		got, err := s.resolveAuthorizationModelID(ctx, store, "")
@@ -153,10 +153,10 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 		s := Server{
-			authorizationModelBackend: mockDatastore,
-			tracer:                    tracer,
-			transport:                 transport,
-			logger:                    logger,
+			datastore: mockDatastore,
+			tracer:    tracer,
+			transport: transport,
+			logger:    logger,
 		}
 
 		if _, err := s.resolveAuthorizationModelID(ctx, store, modelID); err.Error() != want.Error() {

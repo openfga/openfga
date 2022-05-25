@@ -20,21 +20,19 @@ import (
 // a given object ID or userset in a type, optionally
 // constrained by a relation name.
 type ReadQuery struct {
-	logger                    logger.Logger
-	tracer                    trace.Tracer
-	tupleBackend              storage.TupleBackend
-	typeDefinitionReadBackend storage.TypeDefinitionReadBackend
-	encoder                   encoder.Encoder
+	logger    logger.Logger
+	tracer    trace.Tracer
+	datastore storage.OpenFGADatastore
+	encoder   encoder.Encoder
 }
 
-// NewReadQuery creates a ReadQuery with specified `tupleBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadQuery(tupleBackend storage.TupleBackend, typeDefinitionReadBackend storage.TypeDefinitionReadBackend, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
+// NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
+func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
 	return &ReadQuery{
-		logger:                    logger,
-		tracer:                    tracer,
-		tupleBackend:              tupleBackend,
-		typeDefinitionReadBackend: typeDefinitionReadBackend,
-		encoder:                   encoder,
+		logger:    logger,
+		tracer:    tracer,
+		datastore: datastore,
+		encoder:   encoder,
 	}
 }
 
@@ -57,7 +55,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 
 	dbCallsCounter.AddReadCall()
 	utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
-	tuples, contToken, err := q.tupleBackend.ReadPage(ctx, store, tk, paginationOptions)
+	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -89,7 +87,7 @@ func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, 
 
 	rwCounter.AddReadCall()
 
-	ns, err := q.typeDefinitionReadBackend.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
+	ns, err := q.datastore.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return serverErrors.TypeNotFound(objectType)

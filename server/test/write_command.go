@@ -533,7 +533,7 @@ func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester) {
 				}
 			}
 
-			cmd := commands.NewWriteCommand(datastore, datastore, tracer, logger)
+			cmd := commands.NewWriteCommand(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			resp, gotErr := cmd.Execute(ctx, test.request)

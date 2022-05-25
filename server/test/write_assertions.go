@@ -81,7 +81,7 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			cmd := commands.NewWriteAssertionsCommand(datastore, datastore, logger)
+			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)

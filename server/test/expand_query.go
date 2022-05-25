@@ -19,15 +19,15 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-func setUp(ctx context.Context, store string, backend storage.TupleBackend, authModelBackend storage.AuthorizationModelBackend, typeDefinitions *openfgapb.TypeDefinitions, tuples []*openfgapb.TupleKey) (string, error) {
+func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions *openfgapb.TypeDefinitions, tuples []*openfgapb.TupleKey) (string, error) {
 	modelID, err := id.NewString()
 	if err != nil {
 		return "", err
 	}
-	if err := authModelBackend.WriteAuthorizationModel(ctx, store, modelID, typeDefinitions); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, typeDefinitions); err != nil {
 		return "", err
 	}
-	if err := backend.Write(ctx, store, []*openfgapb.TupleKey{}, tuples); err != nil {
+	if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples); err != nil {
 		return "", err
 	}
 	return modelID, nil
@@ -732,11 +732,11 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
-			modelID, err := setUp(ctx, store, datastore, datastore, test.typeDefinitions, test.tuples)
+			modelID, err := setUp(ctx, store, datastore, test.typeDefinitions, test.tuples)
 			if err != nil {
 				t.Fatal(err)
 			}
-			query := queries.NewExpandQuery(datastore, datastore, tracer, logger)
+			query := queries.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			got, err := query.Execute(ctx, test.request)
@@ -846,12 +846,12 @@ func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
 
-			modelID, err := setUp(ctx, store, datastore, datastore, test.typeDefinitions, test.tuples)
+			modelID, err := setUp(ctx, store, datastore, test.typeDefinitions, test.tuples)
 			if err != nil {
 				t.Fatalf("'%s': setUp() error was %s, want nil", test.name, err)
 			}
 
-			query := queries.NewExpandQuery(datastore, datastore, tracer, logger)
+			query := queries.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 

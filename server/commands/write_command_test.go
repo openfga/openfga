@@ -41,7 +41,7 @@ func TestValidateWriteTuples(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, mockDatastore, tracer, logger)
+	cmd := NewWriteCommand(mockDatastore, tracer, logger)
 
 	tests := []test{
 		{

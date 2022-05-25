@@ -571,7 +571,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 				}
 			}
 
-			cmd := queries.NewReadQuery(datastore, datastore, tracer, logger, encoder)
+			cmd := queries.NewReadQuery(datastore, tracer, logger, encoder)
 			req := &openfgapb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,

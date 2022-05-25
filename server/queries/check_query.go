@@ -24,23 +24,21 @@ const AllUsers = "*"
 // A CheckQuery can be used to Check if a User has a Relation to an Object
 // CheckQuery instances may be safely shared by multiple go-routines
 type CheckQuery struct {
-	logger                    logger.Logger
-	tracer                    trace.Tracer
-	meter                     metric.Meter
-	tupleBackend              storage.TupleBackend
-	typeDefinitionReadBackend storage.TypeDefinitionReadBackend
-	resolveNodeLimit          uint32
+	logger           logger.Logger
+	tracer           trace.Tracer
+	meter            metric.Meter
+	datastore        storage.OpenFGADatastore
+	resolveNodeLimit uint32
 }
 
 // NewCheckQuery creates a CheckQuery with specified `tupleBackend` and `typeDefinitionReadBackend` to use for storage
-func NewCheckQuery(tupleBackend storage.TupleBackend, typeDefinitionReadBackend storage.TypeDefinitionReadBackend, t trace.Tracer, m metric.Meter, l logger.Logger, resolveNodeLimit uint32) *CheckQuery {
+func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.Meter, l logger.Logger, resolveNodeLimit uint32) *CheckQuery {
 	return &CheckQuery{
-		logger:                    l,
-		tracer:                    t,
-		meter:                     m,
-		tupleBackend:              tupleBackend,
-		typeDefinitionReadBackend: typeDefinitionReadBackend,
-		resolveNodeLimit:          resolveNodeLimit,
+		logger:           l,
+		tracer:           t,
+		meter:            m,
+		datastore:        datastore,
+		resolveNodeLimit: resolveNodeLimit,
 	}
 }
 
@@ -105,7 +103,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateTuple(ctx, query.typeDefinitionReadBackend, rc.store, rc.modelID, rc.tk, rc.metadata)
+	userset, err := tupleUtils.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
@@ -172,7 +170,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	go func(c chan<- *chanResolveResult) {
 		defer wg.Done()
 
-		tk, err := rc.readUserTuple(ctx, query.tupleBackend)
+		tk, err := rc.readUserTuple(ctx, query.datastore)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				err = nil
@@ -188,7 +186,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 		}
 	}(c)
 
-	iter, err := rc.readUsersetTuples(ctx, query.tupleBackend)
+	iter, err := rc.readUsersetTuples(ctx, query.datastore)
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
@@ -402,7 +400,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	}
 	findTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
-	iter, err := rc.read(ctx, query.tupleBackend, findTK)
+	iter, err := rc.read(ctx, query.datastore, findTK)
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}

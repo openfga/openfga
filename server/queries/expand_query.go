@@ -15,15 +15,14 @@ import (
 
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
-	logger                    logger.Logger
-	tracer                    trace.Tracer
-	typeDefinitionReadBackend storage.TypeDefinitionReadBackend
-	tupleBackend              storage.TupleBackend
+	logger    logger.Logger
+	tracer    trace.Tracer
+	datastore storage.OpenFGADatastore
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(tupleBackend storage.TupleBackend, typeDefinitionReadBackend storage.TypeDefinitionReadBackend, tracer trace.Tracer, logger logger.Logger) *ExpandQuery {
-	return &ExpandQuery{logger: logger, tracer: tracer, typeDefinitionReadBackend: typeDefinitionReadBackend, tupleBackend: tupleBackend}
+func NewExpandQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger) *ExpandQuery {
+	return &ExpandQuery{logger: logger, tracer: tracer, datastore: datastore}
 }
 
 func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
@@ -86,7 +85,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 	defer span.End()
 
 	metadata.AddReadCall()
-	iter, err := query.tupleBackend.Read(ctx, store, tk)
+	iter, err := query.datastore.Read(ctx, store, tk)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -165,7 +164,7 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 	}
 
 	metadata.AddReadCall()
-	iter, err := query.tupleBackend.Read(ctx, store, tsKey)
+	iter, err := query.datastore.Read(ctx, store, tsKey)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -309,7 +308,7 @@ func (query *ExpandQuery) getUserset(ctx context.Context, store, modelID string,
 	ctx, span := query.tracer.Start(ctx, "getUserset")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateObjectsRelations(ctx, query.typeDefinitionReadBackend, store, modelID, tk, metadata)
+	userset, err := tupleUtils.ValidateObjectsRelations(ctx, query.datastore, store, modelID, tk, metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}

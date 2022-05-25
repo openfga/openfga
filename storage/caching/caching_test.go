@@ -42,7 +42,7 @@ func TestReadTypeDefinition(t *testing.T) {
 	for _, test := range readTypeDefinitionTests {
 		ctx := context.Background()
 		memoryBackend := memory.New(otel.Tracer("noop"), 10000, 10000)
-		cachingBackend := NewTypeDefinitionCachingBackend(memoryBackend, 5)
+		cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 
 		modelID, err := id.NewString()
 		if err != nil {

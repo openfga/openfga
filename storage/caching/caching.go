@@ -16,32 +16,34 @@ const (
 	TTL       = time.Hour * 168
 )
 
-type typeDefinitionContextCachingBackend struct {
-	innerBackend storage.TypeDefinitionReadBackend
-	cache        *ccache.Cache
+var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
+
+type cachedOpenFGADatastore struct {
+	storage.OpenFGADatastore
+	cache *ccache.Cache
 }
 
-func NewTypeDefinitionCachingBackend(innerBackend storage.TypeDefinitionReadBackend, maxEntries int64) *typeDefinitionContextCachingBackend {
-	return &typeDefinitionContextCachingBackend{
-		innerBackend: innerBackend,
-		cache:        ccache.New(ccache.Configure().MaxSize(maxEntries)),
+func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
+	return &cachedOpenFGADatastore{
+		OpenFGADatastore: inner,
+		cache:            ccache.New(ccache.Configure().MaxSize(int64(maxSize))),
 	}
 }
 
-func (cachingBackend *typeDefinitionContextCachingBackend) ReadTypeDefinition(ctx context.Context, store, modelID, name string) (*openfgapb.TypeDefinition, error) {
+func (c *cachedOpenFGADatastore) ReadTypeDefinition(ctx context.Context, store, modelID, name string) (*openfgapb.TypeDefinition, error) {
 	cacheKey := strings.Join([]string{store, modelID, name}, Separator)
-	cachedEntry := cachingBackend.cache.Get(cacheKey)
+	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
 		return cachedEntry.Value().(*openfgapb.TypeDefinition), nil
 	}
 
-	ns, err := cachingBackend.innerBackend.ReadTypeDefinition(ctx, store, modelID, name)
+	ns, err := c.OpenFGADatastore.ReadTypeDefinition(ctx, store, modelID, name)
 	if err != nil {
 		return nil, errors.ErrorWithStack(err)
 	}
 
-	cachingBackend.cache.Set(cacheKey, ns, TTL) // these are immutable, once created, there cannot be edits, therefore they can be cached without TTL
+	c.cache.Set(cacheKey, ns, TTL) // these are immutable, once created, there cannot be edits, therefore they can be cached without TTL
 	return ns, nil
 }
 

@@ -12,20 +12,17 @@ import (
 )
 
 type WriteAssertionsCommand struct {
-	assertionBackend      storage.AssertionsBackend
-	typeDefinitionBackend storage.TypeDefinitionReadBackend
-	logger                logger.Logger
+	datastore storage.OpenFGADatastore
+	logger    logger.Logger
 }
 
 func NewWriteAssertionsCommand(
-	assertionBackend storage.AssertionsBackend,
-	typeDefinitionBackend storage.TypeDefinitionReadBackend,
+	datastore storage.OpenFGADatastore,
 	logger logger.Logger,
 ) *WriteAssertionsCommand {
 	return &WriteAssertionsCommand{
-		assertionBackend:      assertionBackend,
-		typeDefinitionBackend: typeDefinitionBackend,
-		logger:                logger,
+		datastore: datastore,
+		logger:    logger,
 	}
 }
 
@@ -36,14 +33,14 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 
 	dbCallsCounter := utils.NewDBCallCounter()
 	for _, assertion := range assertions {
-		if _, err := tupleUtils.ValidateTuple(ctx, w.typeDefinitionBackend, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
+		if _, err := tupleUtils.ValidateTuple(ctx, w.datastore, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}
 	dbCallsCounter.AddWriteCall()
 	utils.LogDBStats(ctx, w.logger, "WriteAssertions", dbCallsCounter.GetReadCalls(), dbCallsCounter.GetWriteCalls())
 
-	err := w.assertionBackend.WriteAssertions(ctx, store, modelID, assertions)
+	err := w.datastore.WriteAssertions(ctx, store, modelID, assertions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

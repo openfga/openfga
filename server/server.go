@@ -45,32 +45,22 @@ var (
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 	*grpc.Server
-	tracer                    trace.Tracer
-	meter                     metric.Meter
-	logger                    logger.Logger
-	typeDefinitionReadBackend storage.TypeDefinitionReadBackend
-	authorizationModelBackend storage.AuthorizationModelBackend
-	tupleBackend              storage.TupleBackend
-	assertionsBackend         storage.AssertionsBackend
-	changelogBackend          storage.ChangelogBackend
-	storesBackend             storage.StoresBackend
-	encoder                   encoder.Encoder
-	config                    *Config
-	transport                 gateway.Transport
+	tracer    trace.Tracer
+	meter     metric.Meter
+	logger    logger.Logger
+	datastore storage.OpenFGADatastore
+	encoder   encoder.Encoder
+	config    *Config
+	transport gateway.Transport
 
 	defaultServeMuxOpts []runtime.ServeMuxOption
 }
 
 type Dependencies struct {
-	AuthorizationModelBackend storage.AuthorizationModelBackend
-	TypeDefinitionReadBackend storage.TypeDefinitionReadBackend
-	TupleBackend              storage.TupleBackend
-	ChangelogBackend          storage.ChangelogBackend
-	AssertionsBackend         storage.AssertionsBackend
-	StoresBackend             storage.StoresBackend
-	Tracer                    trace.Tracer
-	Meter                     metric.Meter
-	Logger                    logger.Logger
+	Datastore storage.OpenFGADatastore
+	Tracer    trace.Tracer
+	Meter     metric.Meter
+	Logger    logger.Logger
 
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
 	// Defaults to Base64Encoder if none is provided.
@@ -115,19 +105,14 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:                    grpcServer,
-		tracer:                    dependencies.Tracer,
-		meter:                     dependencies.Meter,
-		logger:                    dependencies.Logger,
-		authorizationModelBackend: dependencies.AuthorizationModelBackend,
-		typeDefinitionReadBackend: dependencies.TypeDefinitionReadBackend,
-		tupleBackend:              dependencies.TupleBackend,
-		assertionsBackend:         dependencies.AssertionsBackend,
-		changelogBackend:          dependencies.ChangelogBackend,
-		storesBackend:             dependencies.StoresBackend,
-		encoder:                   tokenEncoder,
-		transport:                 transport,
-		config:                    config,
+		Server:    grpcServer,
+		tracer:    dependencies.Tracer,
+		meter:     dependencies.Meter,
+		logger:    dependencies.Logger,
+		datastore: dependencies.Datastore,
+		encoder:   tokenEncoder,
+		transport: transport,
+		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 
@@ -166,7 +151,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewReadQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger, s.encoder)
+	q := queries.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -183,7 +168,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := queries.NewReadTuplesQuery(s.tupleBackend, s.encoder, s.logger)
+	q := queries.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -199,7 +184,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger)
+	cmd := commands.NewWriteCommand(s.datastore, s.tracer, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -225,7 +210,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewCheckQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
@@ -259,7 +244,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewExpandQuery(s.tupleBackend, s.typeDefinitionReadBackend, s.tracer, s.logger)
+	q := queries.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -274,7 +259,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
-	q := queries.NewReadAuthorizationModelQuery(s.authorizationModelBackend, s.logger)
+	q := queries.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -284,7 +269,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	))
 	defer span.End()
 
-	c := commands.NewWriteAuthorizationModelCommand(s.authorizationModelBackend, s.logger)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -301,7 +286,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := queries.NewReadAuthorizationModelsQuery(s.authorizationModelBackend, s.encoder, s.logger)
+	c := queries.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
 	return c.Execute(ctx, req)
 }
 
@@ -318,7 +303,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	c := commands.NewWriteAssertionsCommand(s.assertionsBackend, s.typeDefinitionReadBackend, s.logger)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -343,7 +328,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 		return nil, err
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-	q := queries.NewReadAssertionsQuery(s.assertionsBackend, s.logger)
+	q := queries.NewReadAssertionsQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
@@ -354,7 +339,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := queries.NewReadChangesQuery(s.changelogBackend, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := queries.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -362,7 +347,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 	ctx, span := s.tracer.Start(ctx, "createStore")
 	defer span.End()
 
-	c := commands.NewCreateStoreCommand(s.storesBackend, s.logger)
+	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -377,7 +362,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 	ctx, span := s.tracer.Start(ctx, "deleteStore")
 	defer span.End()
 
-	cmd := commands.NewDeleteStoreCommand(s.storesBackend, s.logger)
+	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -394,7 +379,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (
 	))
 	defer span.End()
 
-	q := queries.NewGetStoreQuery(s.storesBackend, s.logger)
+	q := queries.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -402,7 +387,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := queries.NewListStoresQuery(s.storesBackend, s.encoder, s.logger)
+	q := queries.NewListStoresQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -496,7 +481,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 			return "", serverErrors.AuthorizationModelNotFound(modelID)
 		}
 	} else {
-		if modelID, err = s.authorizationModelBackend.FindLatestAuthorizationModelID(ctx, store); err != nil {
+		if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return "", serverErrors.LatestAuthorizationModelNotFound(store)
 			}

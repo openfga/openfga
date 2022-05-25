@@ -15,19 +15,17 @@ import (
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger                    logger.Logger
-	tracer                    trace.Tracer
-	tupleBackend              storage.TupleBackend
-	typeDefinitionReadBackend storage.TypeDefinitionReadBackend
+	logger    logger.Logger
+	tracer    trace.Tracer
+	datastore storage.OpenFGADatastore
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(tupleBackend storage.TupleBackend, typeDefinitionReadBackend storage.TypeDefinitionReadBackend, tracer trace.Tracer, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger) *WriteCommand {
 	return &WriteCommand{
-		logger:                    logger,
-		tracer:                    tracer,
-		tupleBackend:              tupleBackend,
-		typeDefinitionReadBackend: typeDefinitionReadBackend,
+		logger:    logger,
+		tracer:    tracer,
+		datastore: datastore,
 	}
 }
 
@@ -40,7 +38,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 	}
 
 	utils.LogDBStats(ctx, c.logger, "Write", dbCallsCounter.GetReadCalls(), 1)
-	err := c.tupleBackend.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
+	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -66,7 +64,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		if _, err := tupleUtils.ValidateTuple(ctx, c.typeDefinitionReadBackend, store, modelID, tk, dbCallsCounter); err != nil {
+		if _, err := tupleUtils.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
@@ -91,8 +89,8 @@ func (c *WriteCommand) validateWriteTuples(deletes []*openfgapb.TupleKey, writes
 		}
 		tuples[key] = struct{}{}
 	}
-	if len(tuples) > c.tupleBackend.MaxTuplesInWriteOperation() {
-		return serverErrors.ExceededEntityLimit("write operations", c.tupleBackend.MaxTuplesInWriteOperation())
+	if len(tuples) > c.datastore.MaxTuplesInWriteOperation() {
+		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesInWriteOperation())
 	}
 	return nil
 }
