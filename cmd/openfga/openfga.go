@@ -58,8 +58,42 @@ func main() {
 		zap.String("build.version", version),
 		zap.String("build.commit", commit),
 	)
+	datastore, openFgaServer := BuildServerAndDatastore(logger)
 
+	g, ctx := errgroup.WithContext(ctx)
+
+	logger.Info(
+		"🚀 starting openfga service...",
+		zap.String("version", version),
+		zap.String("date", date),
+		zap.String("commit", commit),
+		zap.String("go-version", runtime.Version()),
+	)
+
+	g.Go(func() error {
+		return openFgaServer.Run(ctx)
+	})
+
+	if err := g.Wait(); err != nil {
+		logger.Error("failed to run openfga server", zap.Error(err))
+	}
+
+	if err := openFgaServer.Close(context.Background()); err != nil {
+		logger.Error("failed to gracefully shutdown openfga server", zap.Error(err))
+	}
+
+	if err := datastore.Close(context.Background()); err != nil {
+		logger.Error("failed to gracefully shutdown openfga datastore", zap.Error(err))
+	}
+
+	logger.Info("Server exiting. Goodbye 👋")
+}
+
+func BuildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *server.Server) {
 	var config svcConfig
+	var err error
+	var datastore storage.OpenFGADatastore
+
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
 		logger.Fatal("failed to process server config", zap.Error(err))
 	}
@@ -68,7 +102,6 @@ func main() {
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
-	var datastore storage.OpenFGADatastore
 	switch config.DatastoreEngine {
 	case "memory":
 		logger.Info("using 'memory' storage engine")
@@ -114,32 +147,5 @@ func main() {
 	if err != nil {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	logger.Info(
-		"🚀 starting openfga service...",
-		zap.String("version", version),
-		zap.String("date", date),
-		zap.String("commit", commit),
-		zap.String("go-version", runtime.Version()),
-	)
-
-	g.Go(func() error {
-		return openFgaServer.Run(ctx)
-	})
-
-	if err := g.Wait(); err != nil {
-		logger.Error("failed to run openfga server", zap.Error(err))
-	}
-
-	if err := openFgaServer.Close(context.Background()); err != nil {
-		logger.Error("failed to gracefully shutdown openfga server", zap.Error(err))
-	}
-
-	if err := datastore.Close(context.Background()); err != nil {
-		logger.Error("failed to gracefully shutdown openfga datastore", zap.Error(err))
-	}
-
-	logger.Info("Server exiting. Goodbye 👋")
+	return datastore, openFgaServer
 }
