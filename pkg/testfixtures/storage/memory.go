@@ -2,22 +2,23 @@ package storage
 
 import (
 	"testing"
-
-	"github.com/openfga/openfga/storage"
 )
 
-type memoryTest struct{}
+type memoryTest[T any] struct{}
 
-// RunMemoryForTesting returns a RunningEngineForTest for the in-memory driver.
-func RunMemoryForTesting(t testing.TB) RunningEngineForTest {
-	return &memoryTest{}
+func NewMemoryTester[T any]() *memoryTest[T] {
+	return &memoryTest[T]{}
 }
 
-func (mdbt *memoryTest) NewDatabase(t testing.TB) string {
-	// Does nothing.
+func (m *memoryTest[T]) NewDatabase(t testing.TB) string {
 	return ""
 }
 
-func (mdbt *memoryTest) NewDatastore(t testing.TB, initFunc InitFunc) storage.OpenFGADatastore {
+func (m *memoryTest[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
 	return initFunc("memory", "")
+}
+
+// RunMemoryForTesting returns a RunningEngineForTest for the in-memory driver.
+func RunMemoryForTesting[T any](t testing.TB) RunningEngineForTest[T] {
+	return &memoryTest[T]{}
 }

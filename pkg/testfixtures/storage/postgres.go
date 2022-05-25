@@ -14,7 +14,6 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	"github.com/openfga/openfga/pkg/id"
-	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,16 +73,19 @@ var (
 	expireTimeout = 60 * time.Second
 )
 
-type postgresTester struct {
+type postgresTester[T any] struct {
 	conn     *pgx.Conn
 	hostname string
 	port     string
 	creds    string
 }
 
-// RunPostgresForTesting returns a RunningEngineForTest for the postgres driver.
-func RunPostgresForTesting(t testing.TB, bridgeNetworkName string) RunningEngineForTest {
+func NewPostgresTester[T any]() *postgresTester[T] {
+	return &postgresTester[T]{}
+}
 
+// RunPostgresForTesting returns a RunningEngineForTest for the postgres driver.
+func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkName string) RunningEngineForTest[T] {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
 
@@ -160,7 +162,7 @@ func RunPostgresForTesting(t testing.TB, bridgeNetworkName string) RunningEngine
 		stopContainer()
 	})
 
-	builder := &postgresTester{
+	builder := &postgresTester[T]{
 		hostname: "localhost",
 		creds:    "postgres:secret",
 	}
@@ -201,7 +203,7 @@ func RunPostgresForTesting(t testing.TB, bridgeNetworkName string) RunningEngine
 	return builder
 }
 
-func (b *postgresTester) NewDatabase(t testing.TB) string {
+func (b *postgresTester[T]) NewDatabase(t testing.TB) string {
 
 	dbName := "defaultdb"
 
@@ -214,7 +216,7 @@ func (b *postgresTester) NewDatabase(t testing.TB) string {
 	)
 }
 
-func (b *postgresTester) NewDatastore(t testing.TB, initFunc InitFunc) storage.OpenFGADatastore {
+func (b *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
 	connectStr := b.NewDatabase(t)
 
 	for _, stmt := range createTableStmts {

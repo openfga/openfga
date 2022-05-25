@@ -25,7 +25,7 @@ import (
 func TestOpenFGAServer(t *testing.T) {
 
 	t.Run("TestPostgresDatastore", func(t *testing.T) {
-		testEngine := storagefixtures.RunDatastoreEngine(t, "postgres")
+		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "postgres")
 
 		test.TestAll(t, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
 			ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
@@ -40,7 +40,7 @@ func TestOpenFGAServer(t *testing.T) {
 	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
-		testEngine := storagefixtures.RunDatastoreEngine(t, "memory")
+		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "memory")
 
 		test.TestAll(t, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
 			ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
@@ -55,7 +55,7 @@ func TestOpenFGAServer(t *testing.T) {
 func BenchmarkOpenFGAServer(b *testing.B) {
 
 	b.Run("TestPostgresDatastore", func(b *testing.B) {
-		testEngine := storagefixtures.RunDatastoreEngine(b, "postgres")
+		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(b, "postgres")
 
 		test.BenchmarkAll(b, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
 			ds := testEngine.NewDatastore(b, func(engine, uri string) storage.OpenFGADatastore {
@@ -70,7 +70,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("TestMemoryDatastore", func(b *testing.B) {
-		testEngine := storagefixtures.RunDatastoreEngine(b, "memory")
+		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(b, "memory")
 
 		test.BenchmarkAll(b, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
 			ds := testEngine.NewDatastore(b, func(engine, uri string) storage.OpenFGADatastore {

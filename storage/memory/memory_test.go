@@ -19,7 +19,7 @@ func init() {
 }
 
 func TestMemdbStorage(t *testing.T) {
-	testEngine := storagefixtures.RunDatastoreEngine(t, "memory")
+	testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "memory")
 
 	test.TestAll(t, test.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
 		ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
