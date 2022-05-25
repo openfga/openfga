@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStore(t *testing.T, dbTester DatastoreTester) {
+func TestStore(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()

@@ -11,12 +11,13 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	type getStoreQueryTest struct {
 		_name            string
 		request          *openfgapb.GetStoreRequest
@@ -71,7 +72,7 @@ func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	}
 }
 
-func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 

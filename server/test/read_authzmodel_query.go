@@ -10,12 +10,13 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	type readAuthorizationModelQueryTest struct {
 		_name         string
 		request       *openfgapb.ReadAuthorizationModelRequest
@@ -49,7 +50,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.Da
 	}
 }
 
-func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -97,7 +98,7 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	}
 }
 
-func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()

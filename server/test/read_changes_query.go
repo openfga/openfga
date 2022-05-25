@@ -59,7 +59,7 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 	}
 }
 
-func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, tracer, err := setup(store, dbTester)
 	if err != nil {
@@ -248,7 +248,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	}
 }
 
-func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, tracer, err := setup(store, dbTester)
 	if err != nil {
@@ -271,7 +271,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	}
 }
 
-func setup(store string, dbTester teststorage.DatastoreTester) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 

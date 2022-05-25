@@ -3,15 +3,16 @@ package test
 import (
 	"testing"
 
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 )
 
-func TestAll(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestAll(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	QueryTests(t, dbTester)
 	CommandTests(t, dbTester)
 }
 
-func QueryTests(t *testing.T, dbTester teststorage.DatastoreTester) {
+func QueryTests(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, dbTester) })
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, dbTester) })
 	t.Run("TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel",
@@ -59,7 +60,7 @@ func QueryTests(t *testing.T, dbTester teststorage.DatastoreTester) {
 	)
 }
 
-func CommandTests(t *testing.T, dbTester teststorage.DatastoreTester) {
+func CommandTests(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 
 	t.Run("TestWriteCommand", func(t *testing.T) { TestWriteCommand(t, dbTester) })
 
@@ -72,11 +73,11 @@ func CommandTests(t *testing.T, dbTester teststorage.DatastoreTester) {
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, dbTester) })
 }
 
-func BenchmarkAll(b *testing.B, dbTester teststorage.DatastoreTester) {
+func BenchmarkAll(b *testing.B, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	BenchmarkCheck(b, dbTester)
 }
 
-func BenchmarkCheck(b *testing.B, dbTester teststorage.DatastoreTester) {
+func BenchmarkCheck(b *testing.B, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { BenchmarkCheckWithoutTrace(b, dbTester) })
 	b.Run("BenchmarkWithTrace", func(b *testing.B) { BenchmarkWithTrace(b, dbTester) })
 }

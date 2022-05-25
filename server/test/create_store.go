@@ -9,12 +9,14 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+
 	type createStoreTestSettings struct {
 		_name    string
 		request  *openfgapb.CreateStoreRequest

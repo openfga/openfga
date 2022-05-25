@@ -14,7 +14,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
+func ReadChangesTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -160,7 +160,7 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester) {
 	})
 }
 
-func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
+func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -340,7 +340,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester) {
 	})
 }
 
-func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester) {
+func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()

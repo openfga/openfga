@@ -7,12 +7,13 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	type readAssertionsQueryTest struct {
 		_name            string
 		request          *openfgapb.ReadAssertionsRequest

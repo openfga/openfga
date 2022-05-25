@@ -33,7 +33,7 @@ func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore
 	return modelID, nil
 }
 
-func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions
@@ -750,7 +750,7 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
 	}
 }
 
-func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions

@@ -7,11 +7,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func AssertionsTest(t *testing.T, dbTester DatastoreTester) {
+func AssertionsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()

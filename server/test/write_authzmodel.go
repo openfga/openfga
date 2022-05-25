@@ -8,12 +8,13 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	type writeAuthorizationModelTestSettings struct {
 		_name    string
 		request  *openfgapb.WriteAuthorizationModelRequest

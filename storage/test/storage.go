@@ -21,9 +21,9 @@ var (
 
 // DatastoreTester provides a generic datastore suite a means of initializing
 // a particular datastore.
-type DatastoreTester interface {
+type DatastoreTester[T any] interface {
 	// New creates a new datastore instance for a single test.
-	New() (storage.OpenFGADatastore, error)
+	New() (T, error)
 }
 
 type DatastoreTesterFunc func() (storage.OpenFGADatastore, error)
@@ -33,7 +33,7 @@ func (f DatastoreTesterFunc) New() (storage.OpenFGADatastore, error) {
 }
 
 // All runs all generic datastore tests on a DatastoreTester.
-func TestAll(t *testing.T, dbTester DatastoreTester) {
+func TestAll(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, dbTester) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, dbTester) })
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { TestWriteAndReadAuthorizationModel(t, dbTester) })

@@ -11,12 +11,13 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	type readQueryTest struct {
 		_name           string
 		typeDefinitions []*openfgapb.TypeDefinition

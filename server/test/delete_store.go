@@ -6,12 +6,14 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/commands"
+	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestDeleteStore(t *testing.T, dbTester teststorage.DatastoreTester) {
+func TestDeleteStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()

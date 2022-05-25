@@ -15,7 +15,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) {
+func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -71,7 +71,7 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester) 
 	}
 }
 
-func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
+func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -171,7 +171,7 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester) {
 	}
 }
 
-func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester) {
+func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -241,7 +241,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester) 
 	})
 }
 
-func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester) {
+func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
