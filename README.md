@@ -77,6 +77,13 @@ Take a look at examples of how to:
 
 Don't hesitate to browse the official [Documentation][doc], [API Reference][api], and [Examples][examples].
 
+# Production Readiness
+The core [OpenFGA](https://github.com/openfga/openfga) service is used by [Auth0 FGA](https://fga.dev), and it has been used in production since December 2021. 
+
+OpenFGA's PostgreSQL Storage Adapter was built specifically for OpenFGA and does not have production usage yet. 
+
+The OpenFGA team will do its best to address all production issues with high priority.
+
 # Contributing
 
 
