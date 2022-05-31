@@ -81,11 +81,14 @@ func main() {
 		logger.Error("failed to run openfga server", zap.Error(err))
 	}
 
-	if err := openFgaServer.Close(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := openFgaServer.Close(ctx); err != nil {
 		logger.Error("failed to gracefully shutdown openfga server", zap.Error(err))
 	}
 
-	if err := datastore.Close(context.Background()); err != nil {
+	if err := datastore.Close(ctx); err != nil {
 		logger.Error("failed to gracefully shutdown openfga datastore", zap.Error(err))
 	}
 
