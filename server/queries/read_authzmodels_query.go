@@ -43,14 +43,9 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	ids := make([]string, 0, len(models))
-	for _, model := range models {
-		ids = append(ids, model.Id)
-	}
-
 	resp := &openfgapb.ReadAuthorizationModelsResponse{
-		AuthorizationModelIds: ids,
-		ContinuationToken:     encodedContToken,
+		AuthorizationModels: models,
+		ContinuationToken:   encodedContToken,
 	}
 	return resp, nil
 }

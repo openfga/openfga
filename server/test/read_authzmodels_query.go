@@ -2,10 +2,8 @@ package test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
@@ -21,18 +19,27 @@ import (
 
 func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(20)
-	for _, tc := range []struct {
-		name                string
-		backendState        map[string]*openfgapb.TypeDefinitions
-		request             *openfgapb.ReadAuthorizationModelsRequest
-		expectedIdsReturned int
+
+	require := require.New(t)
+	logger := logger.NewNoopLogger()
+	encoder := encoder.NewNoopEncoder()
+	ctx := context.Background()
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
+
+	tests := []struct {
+		name                      string
+		backendState              map[string]*openfgapb.TypeDefinitions
+		request                   *openfgapb.ReadAuthorizationModelsRequest
+		expectedNumModelsReturned int
 	}{
 		{
 			name: "empty",
 			request: &openfgapb.ReadAuthorizationModelsRequest{
 				StoreId: store,
 			},
-			expectedIdsReturned: 0,
+			expectedNumModelsReturned: 0,
 		},
 		{
 			name: "empty for requested store",
@@ -44,7 +51,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 			request: &openfgapb.ReadAuthorizationModelsRequest{
 				StoreId: store,
 			},
-			expectedIdsReturned: 0,
+			expectedNumModelsReturned: 0,
 		},
 		{
 			name: "multiple type definitions",
@@ -60,44 +67,28 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 			request: &openfgapb.ReadAuthorizationModelsRequest{
 				StoreId: store,
 			},
-			expectedIdsReturned: 1,
+			expectedNumModelsReturned: 1,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require := require.New(t)
-			ctx := context.Background()
-			logger := logger.NewNoopLogger()
+	}
 
-			datastore, err := dbTester.New()
-			require.NoError(err)
-
-			if tc.backendState != nil {
-				for store, state := range tc.backendState {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if test.backendState != nil {
+				for store, state := range test.backendState {
 					modelID, err := id.NewString()
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(err)
 					if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 						t.Fatalf("WriteAuthorizationModel(%s), err = %v, want nil", store, err)
 					}
 				}
 			}
 
-			encoder := encoder.NewNoopEncoder()
-
 			query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
-			resp, err := query.Execute(ctx, tc.request)
-			if err != nil {
-				t.Fatalf("Query.Execute(), err = %v, want nil", err)
-			}
+			resp, err := query.Execute(ctx, test.request)
 
-			if tc.expectedIdsReturned != len(resp.GetAuthorizationModelIds()) {
-				t.Errorf("expected %d, got %d", tc.expectedIdsReturned, len(resp.GetAuthorizationModelIds()))
-			}
-
-			if resp.ContinuationToken != "" {
-				t.Error("Expected an empty continuation token")
-			}
+			require.NoError(err)
+			require.Equal(test.expectedNumModelsReturned, len(resp.GetAuthorizationModels()))
+			require.Empty(resp.ContinuationToken, "expected an empty continuation token")
 		})
 	}
 }
@@ -110,7 +101,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	backendState := &openfgapb.TypeDefinitions{
+	tds := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "ns1",
@@ -120,24 +111,21 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 
 	store := testutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, backendState); err != nil {
+	require.NoError(err)
+
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds); err != nil {
 		t.Fatal(err)
 	}
 	modelID2, err := id.NewString()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, backendState); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, tds); err != nil {
 		t.Fatal(err)
 	}
 
 	encoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatalf("Error building encoder: %s", err)
-	}
+	require.NoError(err)
 
 	query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
@@ -145,19 +133,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		PageSize: wrapperspb.Int32(1),
 	}
 	firstResponse, err := query.Execute(ctx, firstRequest)
-	if err != nil {
-		t.Fatalf("Query.Execute(), err = %v, want nil", err)
-	}
-	if len(firstResponse.AuthorizationModelIds) != 1 {
-		t.Fatal("Expected 1 modelID")
-	}
-	if firstResponse.AuthorizationModelIds[0] != modelID2 {
-		t.Fatalf("Expected model id to be %v but was %v", modelID2, firstResponse.AuthorizationModelIds[0])
-	}
-
-	if firstResponse.ContinuationToken == "" {
-		t.Fatal("Expected continuation token")
-	}
+	require.NoError(err)
+	require.Len(firstResponse.AuthorizationModels, 1)
+	require.Equal(firstResponse.AuthorizationModels[0].Id, modelID2)
+	require.NotEmpty(firstResponse.ContinuationToken, "Expected continuation token")
 
 	secondRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
@@ -165,32 +144,18 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		ContinuationToken: firstResponse.ContinuationToken,
 	}
 	secondResponse, err := query.Execute(ctx, secondRequest)
-	if err != nil {
-		t.Fatalf("Query.Execute(), err = %v, want nil", err)
-	}
-	if len(secondResponse.AuthorizationModelIds) != 1 {
-		t.Fatal("Expected 1 modelID")
-	}
-	if secondResponse.AuthorizationModelIds[0] != modelID1 {
-		t.Fatalf("Expected model id to be %v but was %v", modelID1, firstResponse.AuthorizationModelIds[0])
-	}
-	// no token <=> no more results
-	if secondResponse.ContinuationToken != "" {
-		t.Fatal("Expected empty continuation token")
-	}
+	require.NoError(err)
+	require.Len(secondResponse.AuthorizationModels, 1)
+	require.Equal(secondResponse.AuthorizationModels[0].Id, modelID1)
+	require.Empty(secondResponse.ContinuationToken, "Expected empty continuation token")
 
 	thirdRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "bad",
 	}
 	_, err = query.Execute(ctx, thirdRequest)
-	if err == nil {
-		t.Fatal("Expected an error")
-	}
-	expectedError := "Invalid continuation token"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Fatalf("Expected error '%s', actual '%s'", expectedError, err.Error())
-	}
+	require.Error(err)
+	require.ErrorContains(err, "Invalid continuation token")
 
 	validToken := "eyJwayI6IkxBVEVTVF9OU0NPTkZJR19hdXRoMHN0b3JlIiwic2siOiIxem1qbXF3MWZLZExTcUoyN01MdTdqTjh0cWgifQ=="
 	invalidStoreRequest := &openfgapb.ReadAuthorizationModelsRequest{
@@ -198,13 +163,8 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		ContinuationToken: validToken,
 	}
 	_, err = query.Execute(ctx, invalidStoreRequest)
-	if err == nil {
-		t.Fatal("Expected an error")
-	}
-	expectedError = "Invalid continuation token"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Fatalf("Expected error '%s', actual '%s'", expectedError, err.Error())
-	}
+	require.Error(err)
+	require.ErrorContains(err, "Invalid continuation token")
 }
 
 func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
@@ -232,15 +192,11 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 		t.Fatal(err)
 	}
 	encoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
-	query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
-	if _, err := query.Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	_, err = queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
-	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
-		t.Fatalf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)
-	}
+	})
+	require.ErrorIs(err, serverErrors.InvalidContinuationToken)
 }
