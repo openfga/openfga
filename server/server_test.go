@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"os"
+	"path"
+	"runtime"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -21,6 +24,15 @@ import (
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func TestOpenFGAServer(t *testing.T) {
 

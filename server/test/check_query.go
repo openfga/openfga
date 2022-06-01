@@ -20,7 +20,7 @@ import (
 
 const (
 	defaultResolveNodeLimit = 25
-	gitHubTestDataFile      = "../testdata/github.json"
+	gitHubTestDataFile      = "testdata/github.json" // relative to project root
 )
 
 var gitHubTuples = []*openfgapb.TupleKey{

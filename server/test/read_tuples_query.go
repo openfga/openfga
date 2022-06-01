@@ -80,14 +80,18 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	if err != nil {
 		t.Errorf("Query.Execute(), err = %v, want nil", err)
 	}
+
 	if len(firstResponse.Tuples) != 1 {
 		t.Errorf("Expected 1 tuple got %d", len(firstResponse.Tuples))
 	}
-	if diff := cmp.Diff(firstResponse.Tuples[0].Key, writes[0], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
-		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
-	}
+
 	if firstResponse.ContinuationToken == "" {
 		t.Error("Expected continuation token")
+	}
+
+	receivedTuples := []*openfgapb.TupleKey{}
+	for _, tuple := range firstResponse.Tuples {
+		receivedTuples = append(receivedTuples, tuple.Key)
 	}
 
 	secondRequest := &openfgapb.ReadTuplesRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
@@ -98,15 +102,25 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	if len(secondResponse.Tuples) != 2 {
 		t.Fatal("Expected 2 tuples")
 	}
-	if diff := cmp.Diff(secondResponse.Tuples[0].Key, writes[1], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
-		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
-	}
-	if diff := cmp.Diff(secondResponse.Tuples[1].Key, writes[2], cmpopts.IgnoreUnexported(openfgapb.TupleKey{})); diff != "" {
-		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
-	}
+
 	// no token <=> no more results
 	if secondResponse.ContinuationToken != "" {
 		t.Fatal("Expected empty continuation token")
+	}
+
+	for _, tuple := range secondResponse.Tuples {
+		receivedTuples = append(receivedTuples, tuple.Key)
+	}
+
+	cmpOpts := []cmp.Option{
+		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}, openfgapb.Tuple{}, openfgapb.TupleChange{}, openfgapb.Assertion{}),
+		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
+		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
+		testutils.TupleKeyCmpTransformer,
+	}
+
+	if diff := cmp.Diff(writes, receivedTuples, cmpOpts...); diff != "" {
+		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
 	}
 }
 
