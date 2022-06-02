@@ -14,12 +14,17 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
+	"github.com/openfga/openfga/server/authentication"
+	"github.com/openfga/openfga/server/authentication/oidc"
+	"github.com/openfga/openfga/server/authentication/presharedkey"
+	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -44,6 +49,16 @@ type svcConfig struct {
 	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
+
+	// Authentication. Possible options: none,preshared,oidc
+	AuthMethod string `default:"none" split_words:"true"`
+
+	// Shared key authentication
+	PresharedKeys []string `default:"" split_words:"true"`
+
+	// OIDC authentication
+	IssuerURL string `default:"" split_words:"true"`
+	Audience  string `default:"" split_words:"true"`
 }
 
 func main() {
@@ -61,7 +76,10 @@ func main() {
 		zap.String("build.commit", commit),
 	)
 
-	datastore, openFgaServer := BuildServerAndDatastore(logger)
+	datastore, openFgaServer, err := buildServerAndDatastore(logger)
+	if err != nil {
+		log.Fatalf("failed to initialize server and/or datastore: %v", err)
+	}
 
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -95,13 +113,13 @@ func main() {
 	logger.Info("Server exiting. Goodbye 👋")
 }
 
-func BuildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *server.Server) {
+func buildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *server.Server, error) {
 	var config svcConfig
 	var err error
 	var datastore storage.OpenFGADatastore
 
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
-		logger.Fatal("failed to process server config", zap.Error(err))
+		return nil, nil, fmt.Errorf("failed to process server config: %v", err)
 	}
 
 	tracer := telemetry.NewNoopTracer()
@@ -123,31 +141,52 @@ func BuildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *s
 
 		datastore, err = postgres.NewPostgresDatastore(config.DatastoreConnectionURI, opts...)
 		if err != nil {
-			logger.Fatal("failed to initialize postgres datastore", zap.Error(err))
+			return nil, nil, fmt.Errorf("failed to initialize postgres datastore: %v", err)
 		}
 	default:
-		logger.Fatal(fmt.Sprintf("storage engine '%s' is unsupported", config.DatastoreEngine))
+		return nil, nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
+	}
+
+	var interceptors []grpc.UnaryServerInterceptor
+	var authenticator authentication.Authenticator
+
+	switch config.AuthMethod {
+	case "preshared":
+		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.PresharedKeys)
+
+	case "oidc":
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.IssuerURL, config.Audience)
+	default:
+		err = nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize authenticator: %v", err)
+	}
+
+	if authenticator != nil {
+		interceptors = append(interceptors, middleware.NewAuthenticationInterceptor(authenticator))
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
-		Tracer:       tracer,
-		Logger:       logger,
-		Meter:        meter,
-		TokenEncoder: tokenEncoder,
+		Datastore:     caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
+		Tracer:        tracer,
+		Logger:        logger,
+		Meter:         meter,
+		TokenEncoder:  tokenEncoder,
+		Authenticator: authenticator,
 	}, &server.Config{
 		ServiceName:            config.ServiceName,
 		RPCPort:                config.RPCPort,
 		HTTPPort:               config.HTTPPort,
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
-		UnaryInterceptors:      nil,
+		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 		RequestTimeout:         config.RequestTimeout,
 	})
 	if err != nil {
-		logger.Fatal("failed to initialize openfga server", zap.Error(err))
+		return nil, nil, fmt.Errorf("failed to initialize openfga server: %v", err)
 	}
 
-	return datastore, openFgaServer
+	return datastore, openFgaServer, nil
 }

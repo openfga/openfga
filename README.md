@@ -74,6 +74,7 @@ Take a look at examples of how to:
 * [Write an Authorization Model](...)
 * [Write Relationship Tuples](...)
 * [Check Relationships](...)
+* [Add authentication](...)
 
 Don't hesitate to browse the official [Documentation][doc], [API Reference][api], and [Examples][examples].
 

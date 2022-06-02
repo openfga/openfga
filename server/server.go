@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/server/authentication"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
@@ -53,14 +54,16 @@ type Server struct {
 	config    *Config
 	transport gateway.Transport
 
+	authenticator       authentication.Authenticator
 	defaultServeMuxOpts []runtime.ServeMuxOption
 }
 
 type Dependencies struct {
-	Datastore storage.OpenFGADatastore
-	Tracer    trace.Tracer
-	Meter     metric.Meter
-	Logger    logger.Logger
+	Datastore     storage.OpenFGADatastore
+	Tracer        trace.Tracer
+	Meter         metric.Meter
+	Logger        logger.Logger
+	Authenticator authentication.Authenticator
 
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
 	// Defaults to Base64Encoder if none is provided.
@@ -104,15 +107,21 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		}
 	}
 
+	authenticator := dependencies.Authenticator
+	if authenticator == nil {
+		authenticator = &authentication.NoopAuthenticator{}
+	}
+
 	server := &Server{
-		Server:    grpcServer,
-		tracer:    dependencies.Tracer,
-		meter:     dependencies.Meter,
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   tokenEncoder,
-		transport: transport,
-		config:    config,
+		Server:        grpcServer,
+		tracer:        dependencies.Tracer,
+		meter:         dependencies.Meter,
+		logger:        dependencies.Logger,
+		datastore:     dependencies.Datastore,
+		encoder:       tokenEncoder,
+		transport:     transport,
+		config:        config,
+		authenticator: dependencies.Authenticator,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 
@@ -396,6 +405,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 func (s *Server) Close(ctx context.Context) error {
 	s.GracefulStop()
 
+	s.authenticator.Close()
 	return nil
 }
 
@@ -428,6 +438,13 @@ func (s *Server) Run(ctx context.Context) error {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithBlock(), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}); err != nil {
+		return err
+	}
+
+	if err := mux.HandlePath(http.MethodGet, "/healthz", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+		w.WriteHeader(http.StatusOK)
+	}); err != nil {
+		s.logger.Error("failed to register /healthz endpoint (for server health)", logger.Error(err))
 		return err
 	}
 
