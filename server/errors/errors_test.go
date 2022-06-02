@@ -40,12 +40,12 @@ func TestContextualTupleValidationErrors(t *testing.T) {
 	tests := []errorTest{
 		{
 			error:   InvalidContextualTuple(tk),
-			code:    codes.Code(openfgapb.ErrorCode_ERROR_CODE_INVALID_CONTEXTUAL_TUPLE),
+			code:    codes.Code(openfgapb.ErrorCode_invalid_contextual_tuple),
 			message: fmt.Sprintf("Invalid contextual tuple: %s. Please provide a user, object and relation.", tk.String()),
 		},
 		{
 			error:   DuplicateContextualTuple(tk),
-			code:    codes.Code(openfgapb.ErrorCode_ERROR_CODE_DUPLICATE_CONTEXTUAL_TUPLE),
+			code:    codes.Code(openfgapb.ErrorCode_duplicate_contextual_tuple),
 			message: fmt.Sprintf("Duplicate contextual tuple in request: %s.", tk.String()),
 		},
 	}

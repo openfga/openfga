@@ -17,7 +17,7 @@ import (
 func TestCustomHTTPErrorHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS), "some error")
+	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_assertions_too_many_items), "some error")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",
@@ -40,7 +40,7 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
-	expectedData := "{\"code\":\"ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS\",\"message\":\"some error\"}"
+	expectedData := "{\"code\":\"assertions_too_many_items\",\"message\":\"some error\"}"
 	if strings.Compare(strings.TrimSpace(string(data)), expectedData) != 0 {
 		t.Errorf("Expect data %s actual %s", expectedData, string(data))
 	}
@@ -52,7 +52,7 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS), "invalid character '<' looking for beginning of value,")
+	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_assertions_too_many_items), "invalid character '<' looking for beginning of value,")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",
@@ -75,7 +75,7 @@ func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
-	expectedData := "{\"code\":\"ERROR_CODE_ASSERTIONS_TOO_MANY_ITEMS\",\"message\":\"invalid character '<' looking for beginning of value,\"}"
+	expectedData := "{\"code\":\"assertions_too_many_items\",\"message\":\"invalid character '<' looking for beginning of value,\"}"
 	if strings.Compare(strings.TrimSpace(string(data)), expectedData) != 0 {
 		t.Errorf("want '%s', got '%s'", strings.TrimSpace(expectedData), strings.TrimSpace(string(data)))
 	}
