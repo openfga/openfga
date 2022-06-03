@@ -78,7 +78,7 @@ func main() {
 
 	datastore, openFgaServer, err := buildServerAndDatastore(logger)
 	if err != nil {
-		log.Fatalf("failed to initialize server and/or datastore: %v", err)
+		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
