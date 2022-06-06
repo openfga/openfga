@@ -54,11 +54,11 @@ type svcConfig struct {
 	AuthMethod string `default:"none" split_words:"true"`
 
 	// Shared key authentication
-	PresharedKeys []string `default:"" split_words:"true"`
+	AuthPresharedKeys []string `default:"" split_words:"true"`
 
 	// OIDC authentication
-	IssuerURL string `default:"" split_words:"true"`
-	Audience  string `default:"" split_words:"true"`
+	AuthOIDCIssuer   string `default:"" split_words:"true"`
+	AuthOIDCAudience string `default:"" split_words:"true"`
 }
 
 func main() {
@@ -152,10 +152,10 @@ func buildServerAndDatastore(logger logger.Logger) (storage.OpenFGADatastore, *s
 
 	switch config.AuthMethod {
 	case "preshared":
-		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.PresharedKeys)
+		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
 
 	case "oidc":
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.IssuerURL, config.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
 	default:
 		err = nil
 	}

@@ -38,7 +38,7 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 	noopLogger := logger.NewNoopLogger()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_PRESHARED_KEYS", "")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
 
 	_, _, err := buildServerAndDatastore(noopLogger)
 	if err == nil {
@@ -56,7 +56,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	ctx := context.Background()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_PRESHARED_KEYS", "KEYONE,KEYTWO")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 
 	_, server, err := buildServerAndDatastore(noopLogger)
 	require.NoError(t, err, "Failed to build server and/or datastore")
@@ -123,8 +123,8 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
-	os.Setenv("OPENFGA_ISSUER_URL", localOidcServerURL)
-	os.Setenv("OPENFGA_AUDIENCE", openFgaServerURL)
+	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
+	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
 	if err != nil {
