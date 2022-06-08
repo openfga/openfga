@@ -7,10 +7,12 @@ WORKDIR $GOPATH/src/github.com/openfga/openfga
 
 COPY . .
 RUN make build
+COPY ./static/playground /app/bin/static/playground
 RUN cp ./bin/openfga /app/bin/
 
 FROM alpine as final
 EXPOSE 8080
 RUN mkdir /app && mkdir /app/bin
-COPY --from=builder /app/bin/openfga /app/bin
-ENTRYPOINT ["/app/bin/openfga"]
+WORKDIR /app/bin
+COPY --from=builder /app/bin /app/bin
+ENTRYPOINT ["./openfga"]

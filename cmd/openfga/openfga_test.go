@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
@@ -27,10 +28,25 @@ const (
 	openFgaServerURL = "http://localhost:8080"
 )
 
+func processEnv(t *testing.T, env map[string]string) svcConfig {
+	for key, value := range env {
+		os.Setenv(key, value)
+	}
+
+	var config svcConfig
+	if err := envconfig.Process("OPENFGA", &config); err != nil {
+		t.Fatalf("failed to process server config: %v", err)
+	}
+
+	return config
+}
+
 func TestBuildServerWithNoAuth(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 
-	service, err := buildService(noopLogger)
+	config := processEnv(t, map[string]string{})
+
+	service, err := buildService(config, noopLogger)
 	require.NoError(t, err, "Failed to build server and/or datastore")
 
 	defer service.authenticator.Close()
@@ -39,10 +55,12 @@ func TestBuildServerWithNoAuth(t *testing.T) {
 func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 
-	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
+	config := processEnv(t, map[string]string{
+		"OPENFGA_AUTH_METHOD":         "preshared",
+		"OPENFGA_AUTH_PRESHARED_KEYS": "",
+	})
 
-	_, err := buildService(noopLogger)
+	_, err := buildService(config, noopLogger)
 	if err == nil {
 		t.Fatal("Expected to fail with error")
 	}
@@ -57,10 +75,12 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
 
-	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+	config := processEnv(t, map[string]string{
+		"OPENFGA_AUTH_METHOD":         "preshared",
+		"OPENFGA_AUTH_PRESHARED_KEYS": "KEYONE,KEYTWO",
+	})
 
-	service, err := buildService(noopLogger)
+	service, err := buildService(config, noopLogger)
 	require.NoError(t, err, "Failed to build server and/or datastore")
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -124,17 +144,20 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
 
-	const localOidcServerURL = "http://localhost:8083"
-	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
-	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
-	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
+	const localOIDCServerURL = "http://localhost:8083"
 
-	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
+	config := processEnv(t, map[string]string{
+		"OPENFGA_AUTH_METHOD":        "oidc",
+		"OPENFGA_AUTH_OIDC_ISSUER":   localOIDCServerURL,
+		"OPENFGA_AUTH_OIDC_AUDIENCE": openFgaServerURL,
+	})
+
+	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	service, err := buildService(noopLogger)
+	service, err := buildService(config, noopLogger)
 	if err != nil {
 		t.Fatalf("Failed to build server and/or datastore: %v", err)
 	}

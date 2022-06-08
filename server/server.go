@@ -401,7 +401,7 @@ func (s *Server) Close() error {
 
 // Run starts server execution, and blocks until complete, returning any serverErrors.
 func (s *Server) Run(ctx context.Context) error {
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
+	rpcAddr := fmt.Sprintf(":%d", s.config.RPCPort)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -438,8 +438,10 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 
+	httpAddr := fmt.Sprintf(":%d", s.config.HTTPPort)
+
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPPort),
+		Addr: httpAddr,
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -453,12 +455,11 @@ func (s *Server) Run(ctx context.Context) error {
 		s.Stop()
 	})
 
-	go func() {
-		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-		err := httpServer.ListenAndServe()
+	s.logger.Info(fmt.Sprintf("http gateway server listening on '%s'...", httpAddr))
 
-		if err != http.ErrServerClosed {
-			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+	go func() {
+		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
+			s.logger.Error("failed to start gateway http server", logger.Error(err))
 		}
 	}()
 

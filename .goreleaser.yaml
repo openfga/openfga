@@ -35,6 +35,9 @@ dockers:
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}"
       - "ghcr.io/openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
 
+    extra_files:
+      - static/playground
+
 release:
   github:
     owner: openfga
