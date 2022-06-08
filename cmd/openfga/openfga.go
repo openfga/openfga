@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/signal"
@@ -31,6 +32,8 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+
+	errFailedToSetTLSVariables = errors.New("please set TLS_CERT_PATH and TLS_KEY_PATH to enable TLS")
 )
 
 type service struct {
@@ -41,7 +44,7 @@ type service struct {
 
 type svcConfig struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
-	DatastoreEngine               string `default:"memory" split_words:"true" required:"true"`
+	DatastoreEngine               string `default:"memory" split_words:"true"`
 	DatastoreConnectionURI        string `split_words:"true"`
 	DatastoreMaxCacheSize         int    `default:"100000" split_words:"true"`
 	ServiceName                   string `default:"openfga" split_words:"true"`
@@ -55,6 +58,10 @@ type svcConfig struct {
 	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
+
+	TLSEnable   bool   `default:"false" split_words:"true"`
+	TLSCertPath string `split_words:"true"`
+	TLSKeyPath  string `split_words:"true"`
 
 	// Authentication. Possible options: none,preshared,oidc
 	AuthMethod string `default:"none" split_words:"true"`
@@ -155,8 +162,21 @@ func buildService(logger logger.Logger) (*service, error) {
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
 
-	var authenticator authentication.Authenticator
+	if config.TLSEnable {
+		if config.TLSCertPath == "" || config.TLSKeyPath == "" {
+			return nil, errFailedToSetTLSVariables
+		}
+		logger.Info("will serve TLS")
+	} else {
+		// In what follows if TLSCertPath and TLSKeyPath are non-empty assume
+		// that we want TLS. Since in this case we don't want TLS set both of
+		// these values to empty.
+		config.TLSCertPath = ""
+		config.TLSKeyPath = ""
+		logger.Info("will serve plaintext")
+	}
 
+	var authenticator authentication.Authenticator
 	switch config.AuthMethod {
 	case "none":
 		authenticator = authentication.NoopAuthenticator{}
@@ -191,6 +211,8 @@ func buildService(logger logger.Logger) (*service, error) {
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 		RequestTimeout:         config.RequestTimeout,
+		TLSCertPath:            config.TLSCertPath,
+		TLSKeyPath:             config.TLSKeyPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)

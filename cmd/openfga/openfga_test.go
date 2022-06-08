@@ -43,14 +43,7 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
 
 	_, err := buildService(noopLogger)
-	if err == nil {
-		t.Fatal("Expected to fail with error")
-	}
-
-	expectedError := "invalid auth configuration, please specify at least one key"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Fatalf("Expected to fail with error %v but got %v", expectedError, err.Error())
-	}
+	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
@@ -196,10 +189,8 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	service.openFgaServer.Close()
 }
 
-func ensureServiceUp(t testing.TB) {
+func ensureServiceUp(t *testing.T) {
 	t.Helper()
-
-	defer t.Log("service is now up")
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 2 * time.Second
