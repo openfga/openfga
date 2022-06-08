@@ -3,7 +3,6 @@ package oidc
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	"github.com/openfga/openfga/pkg/httpclient"
 
 	"github.com/openfga/openfga/server/authentication"
 )
@@ -22,6 +22,8 @@ type RemoteOidcAuthenticator struct {
 
 	JwksURI string
 	JWKs    *keyfunc.JWKS
+
+	httpClient httpclient.RetryableHTTPClient
 }
 
 var (
@@ -33,8 +35,9 @@ var _ authentication.OidcAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
 func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
 	oidc := &RemoteOidcAuthenticator{
-		IssuerURL: issuerURL,
-		Audience:  audience,
+		IssuerURL:  issuerURL,
+		Audience:   audience,
+		httpClient: httpclient.RetryableHTTPClient{},
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
@@ -122,7 +125,6 @@ func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          &http.Client{},
 		RefreshInterval: JWKRefreshInterval,
 	})
 	if err != nil {
@@ -138,19 +140,13 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authentication.OidcCon
 		return nil, errors.Errorf("error forming request to get OIDC: %v", err)
 	}
 
-	res, err := (&http.Client{}).Do(req)
+	res, body, err := oidc.httpClient.ExecuteRequest(req)
 	if err != nil {
 		return nil, errors.Errorf("error getting OIDC: %v", err)
 	}
 
 	if res.StatusCode != http.StatusOK {
 		return nil, errors.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
-	}
-
-	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, errors.Errorf("error reading response body: %v", err)
 	}
 
 	oidcConfig := &authentication.OidcConfig{}

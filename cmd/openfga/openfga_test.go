@@ -3,15 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/mocks"
+	"github.com/openfga/openfga/pkg/httpclient"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
@@ -56,6 +54,7 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
+	retryClient := httpclient.NewRetryableHTTPClient()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
@@ -97,13 +96,9 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
-			retryClient := http.Client{}
-			res, err := retryClient.Do(req)
-			require.NoError(t, err, "Failed to execute request")
 
-			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
-			require.NoError(t, err, "Failed to read response")
+			_, body, err := retryClient.ExecuteRequest(req)
+			require.NoError(t, err, "Failed to execute request")
 
 			stringBody := string(body)
 
@@ -123,6 +118,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
+	retryClient := httpclient.NewRetryableHTTPClient()
 
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
@@ -174,13 +170,9 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
-			retryClient := http.Client{}
-			res, err := retryClient.Do(req)
-			require.NoError(t, err, "Failed to execute request")
 
-			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
-			require.NoError(t, err, "Failed to read response")
+			_, body, err := retryClient.ExecuteRequest(req)
+			require.NoError(t, err, "Failed to execute request")
 
 			stringBody := string(body)
 			if test.expectedError == "" && strings.Contains(stringBody, "code") {
@@ -199,26 +191,12 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 func ensureServiceUp(t testing.TB) {
 	t.Helper()
 
-	defer t.Log("service is now up")
+	retryClient := httpclient.NewRetryableHTTPClient()
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFgaServerURL), nil)
+	resp, _, err := retryClient.ExecuteRequest(req)
+	if resp.StatusCode != http.StatusOK || err != nil {
+		t.Fatalf("Failed to start service")
+	}
 
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 2 * time.Second
-
-	err := backoff.Retry(
-		func() error {
-			resp, err := http.Get(fmt.Sprintf("%s/healthz", openFgaServerURL))
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("waiting for OK status")
-			}
-
-			return nil
-		},
-		backoffPolicy,
-	)
-	require.NoError(t, err)
+	t.Log("Service is now up")
 }
