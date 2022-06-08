@@ -1,0 +1,48 @@
+{
+    "type_definitions": [
+        {
+            "type": "employee",
+            "relations": {
+                "manager": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "manager"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "manager"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "report",
+            "relations": {
+                "submitter": {
+                    "this": {}
+                },
+                "approver": {
+                    "tupleToUserset": {
+                        "tupleset": {
+                            "relation": "submitter"
+                        },
+                        "computedUserset": {
+                            "object": "$TUPLE_USERSET_OBJECT",
+                            "relation": "manager"
+                        }
+                    }
+                }
+            }
+        }
+    ]
+}

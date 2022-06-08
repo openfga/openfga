@@ -1,0 +1,9 @@
+run:
+  timeout: 3m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - stylecheck

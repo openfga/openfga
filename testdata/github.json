@@ -1,0 +1,191 @@
+{
+    "type_definitions": [
+        {
+            "type": "repo",
+            "relations": {
+                "admin": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "owner"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "repo_admin"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "maintainer": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "admin"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "writer": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "maintainer"
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "owner"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "repo_writer"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "triager": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "triager"
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "owner"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "repo_reader"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "owner": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "team",
+            "relations": {
+                "member": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "org",
+            "relations": {
+                "owner": {
+                    "this": {}
+                },
+                "member": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "owner"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "billing_manager": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "owner"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "repo_writer": {
+                    "this": {}
+                },
+                "repo_admin": {
+                    "this": {}
+                },
+                "repo_reader": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "app",
+            "relations": {
+                "owner": {
+                    "this": {}
+                },
+                "app_manager": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "owner"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "owner"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ]
+}

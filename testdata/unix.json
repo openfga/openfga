@@ -1,0 +1,155 @@
+{
+    "type_definitions": [
+        {
+            "type": "unix-file",
+            "relations": {
+                "owner": {
+                    "this": {}
+                },
+                "group": {
+                    "this": {}
+                },
+                "reader": {
+                    "intersection": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "parent-executor"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "writer": {
+                    "intersection": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "parent-executor"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "executor": {
+                    "intersection": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "parent-executor"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "parent": {
+                    "this": {}
+                },
+                "parent-executor": {
+                    "tupleToUserset": {
+                        "tupleset": {
+                            "relation": "parent"
+                        },
+                        "computedUserset": {
+                            "object": "$TUPLE_USERSET_OBJECT",
+                            "relation": "executor"
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "type": "unix-directory",
+            "relations": {
+                "owner": {
+                    "this": {}
+                },
+                "group": {
+                    "this": {}
+                },
+                "parent": {
+                    "this": {}
+                },
+                "reader": {
+                    "intersection": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "executor"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "writer": {
+                    "intersection": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "executor"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "root-executor": {
+                    "this": {}
+                },
+                "executor": {
+                    "union": {
+                        "child": [
+                            {
+                                "computedUserset": {
+                                    "relation": "root-executor"
+                                }
+                            },
+                            {
+                                "intersection": {
+                                    "child": [
+                                        {
+                                            "this": {}
+                                        },
+                                        {
+                                            "tupleToUserset": {
+                                                "tupleset": {
+                                                    "relation": "parent"
+                                                },
+                                                "computedUserset": {
+                                                    "object": "$TUPLE_USERSET_OBJECT",
+                                                    "relation": "executor"
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "unix-group",
+            "relations": {
+                "member": {
+                    "this": {}
+                }
+            }
+        }
+    ]
+}
