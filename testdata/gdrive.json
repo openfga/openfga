@@ -1,0 +1,115 @@
+{
+    "type_definitions": [
+        {
+            "type": "document",
+            "relations": {
+                "owner": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "parent"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "owner"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "writer": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "owner"
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "parent"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "writer"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "commenter": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "parent"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "commenter"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "commenter"
+                                }
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "parent"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "reader"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "parent": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "domain",
+            "relations": {
+                "member": {
+                    "this": {}
+                }
+            }
+        }
+    ]
+}

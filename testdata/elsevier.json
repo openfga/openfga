@@ -1,0 +1,51 @@
+{
+    "type_definitions": [
+        {
+            "type": "group",
+            "relations": {
+                "member_writer": {
+                    "this": {}
+                },
+                "member": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "doc",
+            "relations": {
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "tupleToUserset": {
+                                    "tupleset": {
+                                        "relation": "parent"
+                                    },
+                                    "computedUserset": {
+                                        "object": "$TUPLE_USERSET_OBJECT",
+                                        "relation": "reader"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "sandcastle|fga_writer$reader": {
+                    "computedUserset": {
+                        "relation": "member_writer"
+                    }
+                },
+                "member_writer": {
+                    "this": {}
+                },
+                "parent": {
+                    "this": {}
+                }
+            }
+        }
+    ]
+}

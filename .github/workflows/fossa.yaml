@@ -1,0 +1,18 @@
+name: FOSSA
+on:
+  push:
+    branches:
+      - master
+      - main
+
+jobs:
+  fossa:
+    runs-on: ubuntu-latest
+    if: (github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Run FOSSA scan and upload build data
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}

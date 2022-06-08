@@ -1,0 +1,101 @@
+{
+    "type_definitions": [
+        {
+            "type": "auth0-client",
+            "relations": {
+                "writer": {
+                    "this": {}
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "auth0-rule",
+            "relations": {
+                "writer": {
+                    "this": {}
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "type": "auth0-org",
+            "relations": {
+                "writer": {
+                    "this": {}
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "manage_users": {
+                    "this": {}
+                }
+            }
+        },
+        {
+            "type": "auth0-team",
+            "relations": {
+                "member": {
+                    "this": {}
+                },
+                "writer": {
+                    "this": {}
+                },
+                "reader": {
+                    "union": {
+                        "child": [
+                            {
+                                "this": {}
+                            },
+                            {
+                                "computedUserset": {
+                                    "relation": "writer"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "manage_users": {
+                    "this": {}
+                }
+            }
+        }
+    ]
+}
