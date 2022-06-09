@@ -73,21 +73,25 @@ type Config struct {
 	ServiceName            string
 	RPCPort                int
 	HTTPPort               int
+	TLSConfig              *TLSConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 	RequestTimeout         time.Duration
-	TLSCertPath            string
-	TLSKeyPath             string
+}
+
+type TLSConfig struct {
+	CertPath string
+	KeyPath  string
 }
 
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(config.UnaryInterceptors...)}
-	if config.TLSCertPath != "" && config.TLSKeyPath != "" {
-		creds, err := credentials.NewServerTLSFromFile(config.TLSCertPath, config.TLSKeyPath)
+	if config.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(config.TLSConfig.CertPath, config.TLSConfig.KeyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -438,8 +442,8 @@ func (s *Server) Run(ctx context.Context) error {
 		grpc.WithBlock(),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
-	if s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
-		creds, err := credentials.NewClientTLSFromFile(s.config.TLSCertPath, "")
+	if s.config.TLSConfig != nil {
+		creds, err := credentials.NewClientTLSFromFile(s.config.TLSConfig.CertPath, "")
 		if err != nil {
 			return err
 		}
@@ -478,8 +482,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 
 		var err error
-		if s.config.TLSCertPath != "" && s.config.TLSKeyPath != "" {
-			err = httpServer.ListenAndServeTLS(s.config.TLSCertPath, s.config.TLSKeyPath)
+		if s.config.TLSConfig != nil {
+			err = httpServer.ListenAndServeTLS(s.config.TLSConfig.CertPath, s.config.TLSConfig.KeyPath)
 		} else {
 			err = httpServer.ListenAndServe()
 		}

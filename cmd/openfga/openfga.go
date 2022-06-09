@@ -59,7 +59,7 @@ type svcConfig struct {
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 
-	TLSEnable   bool   `default:"false" split_words:"true"`
+	EnableTLS   bool   `default:"false" split_words:"true"`
 	TLSCertPath string `split_words:"true"`
 	TLSKeyPath  string `split_words:"true"`
 
@@ -162,17 +162,17 @@ func buildService(logger logger.Logger) (*service, error) {
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
 
-	if config.TLSEnable {
+	var tlsConfig *server.TLSConfig
+	if config.EnableTLS {
 		if config.TLSCertPath == "" || config.TLSKeyPath == "" {
 			return nil, errFailedToSetTLSVariables
 		}
+		tlsConfig = &server.TLSConfig{
+			CertPath: config.TLSCertPath,
+			KeyPath:  config.TLSKeyPath,
+		}
 		logger.Info("will serve TLS")
 	} else {
-		// In what follows if TLSCertPath and TLSKeyPath are non-empty assume
-		// that we want TLS. Since in this case we don't want TLS set both of
-		// these values to empty.
-		config.TLSCertPath = ""
-		config.TLSKeyPath = ""
 		logger.Info("will serve plaintext")
 	}
 
@@ -206,13 +206,12 @@ func buildService(logger logger.Logger) (*service, error) {
 		ServiceName:            config.ServiceName,
 		RPCPort:                config.RPCPort,
 		HTTPPort:               config.HTTPPort,
+		TLSConfig:              tlsConfig,
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 		RequestTimeout:         config.RequestTimeout,
-		TLSCertPath:            config.TLSCertPath,
-		TLSKeyPath:             config.TLSKeyPath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)

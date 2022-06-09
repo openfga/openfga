@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	tlsEnableEnvVar   = "OPENFGA_TLS_ENABLE"
+	tlsEnableEnvVar   = "OPENFGA_ENABLE_TLS"
 	tlsCertPathEnvVar = "OPENFGA_TLS_CERT_PATH"
 	tlsKeyPathEnvVar  = "OPENFGA_TLS_KEY_PATH"
 
