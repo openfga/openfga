@@ -46,3 +46,10 @@ jobs:
 
       - name: Unit Tests 
         run: make unit-test
+
+      - name: upload coverage to codecov
+        uses: codecov/codecov-action@v2
+        with:
+          files: ./coverageunit.out
+          verbose: true
+          fail_ci_if_error: false

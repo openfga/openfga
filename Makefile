@@ -41,7 +41,7 @@ go-generate: install-tools
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -v \
-			-coverprofile=coverageunitmemory.out \
+			-coverprofile=coverageunit.out \
 			-covermode=atomic -race \
 			-count=1 \
 			./...
