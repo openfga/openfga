@@ -97,7 +97,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
 
-			_, body, err := retryClient.ExecuteRequest(req)
+			_, body, err := retryClient.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 
 			stringBody := string(body)
@@ -171,7 +171,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
 
-			_, body, err := retryClient.ExecuteRequest(req)
+			_, body, err := retryClient.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 
 			stringBody := string(body)
@@ -193,10 +193,8 @@ func ensureServiceUp(t testing.TB) {
 
 	retryClient := httpclient.NewRetryableHTTPClient()
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFgaServerURL), nil)
-	resp, _, err := retryClient.ExecuteRequest(req)
+	resp, _, err := retryClient.Do(req)
 	if resp.StatusCode != http.StatusOK || err != nil {
-		t.Fatalf("Failed to start service")
+		t.Fatalf("failed to start service")
 	}
-
-	t.Log("Service is now up")
 }

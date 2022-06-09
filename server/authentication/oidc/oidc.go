@@ -140,7 +140,7 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authentication.OidcCon
 		return nil, errors.Errorf("error forming request to get OIDC: %v", err)
 	}
 
-	res, body, err := oidc.httpClient.ExecuteRequest(req)
+	res, body, err := oidc.httpClient.Do(req)
 	if err != nil {
 		return nil, errors.Errorf("error getting OIDC: %v", err)
 	}

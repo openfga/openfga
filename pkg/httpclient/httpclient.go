@@ -18,7 +18,7 @@ func NewRetryableHTTPClient() *RetryableHTTPClient {
 	}
 }
 
-func (client RetryableHTTPClient) ExecuteRequest(req *http.Request) (*http.Response, []byte, error) {
+func (client *RetryableHTTPClient) Do(req *http.Request) (*http.Response, []byte, error) {
 	var body []byte
 	var err error
 	var resp *http.Response
@@ -28,7 +28,7 @@ func (client RetryableHTTPClient) ExecuteRequest(req *http.Request) (*http.Respo
 
 	err = backoff.Retry(
 		func() error {
-			resp, body, err = client.executeRequest(req)
+			resp, body, err = client.do(req)
 			if err != nil {
 				return err
 			}
@@ -46,7 +46,7 @@ func (client RetryableHTTPClient) ExecuteRequest(req *http.Request) (*http.Respo
 	return resp, body, nil
 }
 
-func (client RetryableHTTPClient) executeRequest(req *http.Request) (*http.Response, []byte, error) {
+func (client *RetryableHTTPClient) do(req *http.Request) (*http.Response, []byte, error) {
 	resp, err := client.internalClient.Do(req)
 	if err != nil {
 		return nil, nil, err
