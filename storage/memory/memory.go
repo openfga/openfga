@@ -268,7 +268,7 @@ Write:
 				continue Write
 			}
 		}
-		tuples = append(tuples, &openfgapb.Tuple{Key: t})
+		tuples = append(tuples, &openfgapb.Tuple{Key: t, Timestamp: timestamppb.New(now)})
 		s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: timestamppb.New(now)})
 	}
 	s.tuples[store] = tuples
