@@ -132,9 +132,9 @@ func main() {
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					tmpl.Execute(w, struct {
-						HttpServerUrl string
+						HTTPServerURL string
 					}{
-						HttpServerUrl: fmt.Sprintf("http://localhost:%d", config.HTTPPort),
+						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPPort),
 					})
 
 					return
