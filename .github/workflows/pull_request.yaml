@@ -46,7 +46,7 @@ jobs:
 
       - name: Unit Tests
         run: make unit-test
-      
+
       - name: upload coverage to codecov
         uses: codecov/codecov-action@v2
         with:
@@ -103,3 +103,5 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-on-alert: true
