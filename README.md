@@ -76,7 +76,7 @@ Take a look at examples of how to:
 * [Check Relationships](https://openfga.dev/api/service/#/Relationship%20Queries/Check)
 * [Add authentication](https://openfga.dev/intro/setup-openfga#configuring-authentication)
 
-Don't hesitate to browse the official [Documentation][https://openfga.dev/], [API Reference][https://openfga.dev/api/service], and [Examples][examples].
+Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 
 # Production Readiness
 The core [OpenFGA](https://github.com/openfga/openfga) service is used by [Auth0 FGA](https://fga.dev), and it has been used in production since December 2021. 
