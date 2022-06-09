@@ -3,7 +3,6 @@ package queries
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
@@ -45,8 +44,6 @@ func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.
 
 // Execute the query in `checkRequest`, returning the response or an error.
 func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	time.Sleep(time.Second) // test benchmark
-
 	statCheckResolutionDepth, _ := query.meter.SyncInt64().Counter(
 		"openfga.check.resolution.depth",
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
