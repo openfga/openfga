@@ -87,7 +87,7 @@ The OpenFGA team will do its best to address all production issues with high pri
 
 # Contributing
 
-See [CONTRIBUTING](./CONTRIBUTING.md).
+See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 
 [doc]: https://docs.openfga.dev
 [config-doc]: https://docs.openfga.dev/configuration
