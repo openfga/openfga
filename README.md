@@ -8,12 +8,12 @@ A high performance and flexible authorization/permission engine built for develo
 OpenFGA is designed to make it easy for developers to model their application permissions, and to add and integrate fine-grained authorization into their applications.
 
 # Getting Started
-The following section is intended to help you get started quickly. For more in-depth information, please take a look at our official [Documentation][doc].
+The following section is intended to help you get started quickly. For more in-depth information, please take a look at our official [Documentation](https://openfga.dev/).
 
 ## Setup and Installation
 > ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are intended for rapid development and not for a production environment.
 >
-> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA][config-doc] or our [Production Checklist][prod-checklist].
+> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/intro/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/intro/setup-openfga#production-checklist).
 
 ### Docker Compose
 [`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to setup OpenFGA using Docker, and it's a great way to get started quickly.
@@ -49,7 +49,7 @@ Or you can build it with the source by cloning the project first and then buildi
 ```
 
 ## Verifying the Installation
-Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by creating an [OpenFGA Store](...). 
+Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/integration/create-store/). 
 
 ```
 curl -X POST 'localhost:8080/stores' \
@@ -68,15 +68,15 @@ If everything is running correctly you should get a response with information ab
     "updated_at": "2022-05-19T17:11:12.888680Z"
 }
 ```
-## Next Steps...
+## Next Steps
 Take a look at examples of how to:
 
-* [Write an Authorization Model](...)
-* [Write Relationship Tuples](...)
-* [Check Relationships](...)
-* [Add authentication](...)
+* [Write an Authorization Model](https://openfga.dev/api/service/#/Authorization%20Models/WriteAuthorizationModel)
+* [Write Relationship Tuples](https://openfga.dev/api/service/#/Relationship%20Tuples/Write)
+* [Check Relationships](https://openfga.dev/api/service/#/Relationship%20Queries/Check)
+* [Add authentication](https://openfga.dev/intro/setup-openfga#configuring-authentication)
 
-Don't hesitate to browse the official [Documentation][doc], [API Reference][api], and [Examples][examples].
+Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 
 # Production Readiness
 The core [OpenFGA](https://github.com/openfga/openfga) service is used by [Auth0 FGA](https://fga.dev), and it has been used in production since December 2021. 
@@ -87,6 +87,7 @@ The OpenFGA team will do its best to address all production issues with high pri
 
 # Contributing
 
+See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 
 [doc]: https://docs.openfga.dev
 [config-doc]: https://docs.openfga.dev/configuration
