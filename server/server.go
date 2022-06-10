@@ -71,14 +71,23 @@ type Dependencies struct {
 
 type Config struct {
 	ServiceName            string
-	RPCPort                int
-	HTTPPort               int
-	TLSConfig              *TLSConfig
+	GRPCServer             GRPCServerConfig
+	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 	RequestTimeout         time.Duration
+}
+
+type GRPCServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
+}
+
+type HTTPServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
 }
 
 type TLSConfig struct {
@@ -90,8 +99,8 @@ type TLSConfig struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(config.UnaryInterceptors...)}
-	if config.TLSConfig != nil {
-		creds, err := credentials.NewServerTLSFromFile(config.TLSConfig.CertPath, config.TLSConfig.KeyPath)
+	if config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(config.GRPCServer.TLSConfig.CertPath, config.GRPCServer.TLSConfig.KeyPath)
 		if err != nil {
 			return nil, err
 		}
@@ -415,7 +424,7 @@ func (s *Server) Close() error {
 
 // Run starts server execution, and blocks until complete, returning any serverErrors.
 func (s *Server) Run(ctx context.Context) error {
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
+	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Addr)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -442,8 +451,8 @@ func (s *Server) Run(ctx context.Context) error {
 		grpc.WithBlock(),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
-	if s.config.TLSConfig != nil {
-		creds, err := credentials.NewClientTLSFromFile(s.config.TLSConfig.CertPath, "")
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
 		if err != nil {
 			return err
 		}
@@ -464,7 +473,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPPort),
+		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Addr),
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -482,8 +491,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 
 		var err error
-		if s.config.TLSConfig != nil {
-			err = httpServer.ListenAndServeTLS(s.config.TLSConfig.CertPath, s.config.TLSConfig.KeyPath)
+		if s.config.HTTPServer.TLSConfig != nil {
+			err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
 		} else {
 			err = httpServer.ListenAndServe()
 		}

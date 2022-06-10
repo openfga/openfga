@@ -33,7 +33,9 @@ var (
 	commit  = "none"
 	date    = "unknown"
 
-	errInvalidTLSConfig = errors.New("'OPENFGA_TLS_CERT_PATH' and 'OPENFGA_TLS_KEY_PATH' env variables must be set")
+	errUnsupportedStorageEngine = errors.New("unsupported storage engine")
+	errInvalidGRPCTLSConfig     = errors.New("'OPENFGA_GRPC_TLS_CERT_PATH' and 'OPENFGA_GRPC_TLS_KEY_PATH' env variables must be set")
+	errInvalidHTTPTLSConfig     = errors.New("'OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH' and 'OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH' env variables must be set")
 )
 
 type service struct {
@@ -59,9 +61,13 @@ type svcConfig struct {
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 
-	TLSEnabled  bool   `default:"false" split_words:"true"`
-	TLSCertPath string `split_words:"true"`
-	TLSKeyPath  string `split_words:"true"`
+	GRPCTLSEnabled  bool   `default:"false" envconfig:"GRPC_TLS_ENABLED"`
+	GRPCTLSCertPath string `envconfig:"GRPC_TLS_CERT_PATH"`
+	GRPCTLSKeyPath  string `envconfig:"GRPC_TLS_KEY_PATH"`
+
+	HTTPGatewayTLSEnabled  bool   `default:"false" split_words:"true"`
+	HTTPGatewayTLSCertPath string `split_words:"true"`
+	HTTPGatewayTLSKeyPath  string `split_words:"true"`
 
 	// Authentication. Possible options: none,preshared,oidc
 	AuthMethod string `default:"none" split_words:"true"`
@@ -162,18 +168,32 @@ func buildService(logger logger.Logger) (*service, error) {
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
 
-	var tlsConfig *server.TLSConfig
-	if config.TLSEnabled {
-		if config.TLSCertPath == "" || config.TLSKeyPath == "" {
-			return nil, errInvalidTLSConfig
+	var grpcTLSConfig *server.TLSConfig
+	if config.GRPCTLSEnabled {
+		if config.GRPCTLSCertPath == "" || config.GRPCTLSKeyPath == "" {
+			return nil, errInvalidGRPCTLSConfig
 		}
-		tlsConfig = &server.TLSConfig{
-			CertPath: config.TLSCertPath,
-			KeyPath:  config.TLSKeyPath,
+		grpcTLSConfig = &server.TLSConfig{
+			CertPath: config.GRPCTLSCertPath,
+			KeyPath:  config.GRPCTLSKeyPath,
 		}
-		logger.Info("TLS enabled, serving connections using the provided certificate")
+		logger.Info("GRPC TLS enabled, serving connections using the provided certificate")
 	} else {
-		logger.Warn("TLS is disabled, falling back to insecure plaintext")
+		logger.Warn("GRPC TLS is disabled, falling back to insecure plaintext")
+	}
+
+	var httpTLSConfig *server.TLSConfig
+	if config.HTTPGatewayTLSEnabled {
+		if config.HTTPGatewayTLSCertPath == "" || config.HTTPGatewayTLSKeyPath == "" {
+			return nil, errInvalidHTTPTLSConfig
+		}
+		httpTLSConfig = &server.TLSConfig{
+			CertPath: config.HTTPGatewayTLSCertPath,
+			KeyPath:  config.HTTPGatewayTLSKeyPath,
+		}
+		logger.Info("HTTP TLS enabled, serving connections using the provided certificate")
+	} else {
+		logger.Warn("HTTP TLS is disabled, falling back to insecure plaintext")
 	}
 
 	var authenticator authentication.Authenticator
@@ -203,10 +223,15 @@ func buildService(logger logger.Logger) (*service, error) {
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
-		ServiceName:            config.ServiceName,
-		RPCPort:                config.RPCPort,
-		HTTPPort:               config.HTTPPort,
-		TLSConfig:              tlsConfig,
+		ServiceName: config.ServiceName,
+		GRPCServer: server.GRPCServerConfig{
+			Addr:      config.RPCPort,
+			TLSConfig: grpcTLSConfig,
+		},
+		HTTPServer: server.HTTPServerConfig{
+			Addr:      config.HTTPPort,
+			TLSConfig: httpTLSConfig,
+		},
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		UnaryInterceptors:      interceptors,
