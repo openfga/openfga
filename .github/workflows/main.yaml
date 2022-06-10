@@ -1,11 +1,11 @@
-name: OpenFGA Main
+name: Main
 on:
   push:
     branches:
       - main
 
 jobs:
-  bench:
+  go-bench:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
