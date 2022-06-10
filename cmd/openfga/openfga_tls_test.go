@@ -14,7 +14,11 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const (
@@ -101,7 +105,7 @@ p2CIcm9oUH1iG9P/ELWz/it0RUbfy7GuBsUJn9MOdiO58uTiDBE7Kg==
 -----END RSA PRIVATE KEY-----`
 )
 
-func createKeys(t *testing.T) {
+func createKeys(t *testing.T) string {
 	certFile, err := ioutil.TempFile("", "server_cert")
 	require.NoError(t, err, "error creating pem file")
 	defer certFile.Close()
@@ -119,6 +123,12 @@ func createKeys(t *testing.T) {
 	require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "true"), "failed to set env var")
 	require.NoError(t, os.Setenv(httpGatewayTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
 	require.NoError(t, os.Setenv(httpGatewayTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
+
+	require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "true"), "failed to set env var")
+	require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
+	require.NoError(t, os.Setenv(grpcTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
+
+	return certFile.Name()
 }
 
 func TestServingTLS(t *testing.T) {
@@ -178,9 +188,34 @@ func TestServingTLS(t *testing.T) {
 		ensureServiceUp(t)
 	})
 
+	t.Run("enable gRPC TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
+		createKeys(t)
+		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
+		defer os.Clearenv()
+
+		service, err := buildService(logger)
+		require.NoError(t, err)
+		defer service.openFgaServer.Close()
+
+		ctx := context.Background()
+		g, ctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			return service.openFgaServer.Run(ctx)
+		})
+
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+		conn, err := grpc.Dial("localhost:8081", opts...)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		client := openfgapb.NewOpenFGAServiceClient(conn)
+		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
+		require.NoError(t, err)
+	})
+
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
 		createKeys(t)
-		require.NoError(t, os.Setenv("OPENFGA_HTTP_PORT", "9090"), "failed to set env var")
+		//require.NoError(t, os.Setenv("OPENFGA_HTTP_PORT", "9090"), "failed to set env var")
 		defer os.Clearenv()
 
 		service, err := buildService(logger)
@@ -211,7 +246,7 @@ func TestServingTLS(t *testing.T) {
 
 		err = backoff.Retry(
 			func() error {
-				resp, err := client.Get("https://localhost:9090/healthz")
+				resp, err := client.Get("https://localhost:8080/healthz")
 				if err != nil {
 					return err
 				}
@@ -225,6 +260,33 @@ func TestServingTLS(t *testing.T) {
 			},
 			backoffPolicy,
 		)
+		require.NoError(t, err)
+	})
+
+	t.Run("enable gRPC TLS is true will serve gRPC TLS", func(t *testing.T) {
+		certFile := createKeys(t)
+		defer os.Clearenv()
+
+		service, err := buildService(logger)
+		require.NoError(t, err)
+		defer service.openFgaServer.Close()
+
+		ctx := context.Background()
+		g, ctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			return service.openFgaServer.Run(ctx)
+		})
+
+		creds, err := credentials.NewClientTLSFromFile(certFile, "")
+		require.NoError(t, err)
+
+		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
+		conn, err := grpc.Dial("localhost:8081", opts...)
+		require.NoError(t, err)
+		defer conn.Close()
+
+		client := openfgapb.NewOpenFGAServiceClient(conn)
+		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
 	})
 }
