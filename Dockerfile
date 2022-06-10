@@ -1,16 +1,16 @@
 FROM golang:1.18-alpine AS builder
 
-RUN mkdir /app && mkdir /app/bin
-RUN apk update && apk --no-cache add make curl git gcc build-base
+RUN apk update && apk --no-cache add make
 
-WORKDIR $GOPATH/src/github.com/openfga/openfga
+RUN mkdir /app
+WORKDIR /app
 
 COPY . .
 RUN make build
-RUN cp ./bin/openfga /app/bin/
+RUN cp ./bin/openfga /app
 
 FROM alpine as final
 EXPOSE 8080
-RUN mkdir /app && mkdir /app/bin
-COPY --from=builder /app/bin/openfga /app/bin
-ENTRYPOINT ["/app/bin/openfga"]
+RUN mkdir /app
+COPY --from=builder /app/openfga /app
+ENTRYPOINT ["/app/openfga"]
