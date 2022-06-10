@@ -33,7 +33,7 @@ var (
 	commit  = "none"
 	date    = "unknown"
 
-	errFailedToSetTLSVariables = errors.New("please set TLS_CERT_PATH and TLS_KEY_PATH to enable TLS")
+	errInvalidTLSConfig = errors.New("'OPENFGA_TLS_CERT_PATH' and 'OPENFGA_TLS_KEY_PATH' env variables must be set")
 )
 
 type service struct {
@@ -59,7 +59,7 @@ type svcConfig struct {
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 
-	EnableTLS   bool   `default:"false" split_words:"true"`
+	TLSEnabled  bool   `default:"false" split_words:"true"`
 	TLSCertPath string `split_words:"true"`
 	TLSKeyPath  string `split_words:"true"`
 
@@ -163,17 +163,17 @@ func buildService(logger logger.Logger) (*service, error) {
 	}
 
 	var tlsConfig *server.TLSConfig
-	if config.EnableTLS {
+	if config.TLSEnabled {
 		if config.TLSCertPath == "" || config.TLSKeyPath == "" {
-			return nil, errFailedToSetTLSVariables
+			return nil, errInvalidTLSConfig
 		}
 		tlsConfig = &server.TLSConfig{
 			CertPath: config.TLSCertPath,
 			KeyPath:  config.TLSKeyPath,
 		}
-		logger.Info("will serve TLS")
+		logger.Info("TLS enabled, serving connections using the provided certificate")
 	} else {
-		logger.Info("will serve plaintext")
+		logger.Warn("TLS is disabled, falling back to insecure plaintext")
 	}
 
 	var authenticator authentication.Authenticator

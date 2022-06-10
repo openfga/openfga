@@ -125,7 +125,7 @@ func TestServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		_, err := buildService(logger.NewNoopLogger())
-		require.ErrorIs(t, err, errFailedToSetTLSVariables)
+		require.ErrorIs(t, err, errInvalidTLSConfig)
 	})
 
 	t.Run("failing to set key path will not allow server to start", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		_, err := buildService(logger.NewNoopLogger())
-		require.ErrorIs(t, err, errFailedToSetTLSVariables)
+		require.ErrorIs(t, err, errInvalidTLSConfig)
 	})
 
 	t.Run("Enable TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
