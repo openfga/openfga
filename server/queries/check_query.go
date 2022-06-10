@@ -3,6 +3,7 @@ package queries
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
@@ -112,6 +113,8 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
 func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset) error {
+	time.Sleep(5 * time.Millisecond)
+
 	if rc.metadata.AddResolve() >= query.resolveNodeLimit {
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
