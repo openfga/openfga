@@ -42,6 +42,7 @@ go-generate: install-tools
 unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coverageunit.out \
+			-coverpkg=./... \
 			-covermode=atomic -race \
 			-count=1 \
 			./...

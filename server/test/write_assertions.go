@@ -4,9 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
+	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -54,17 +57,30 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester[stor
 		{
 			_name: "writing empty assertions succeeds",
 			request: &openfgapb.WriteAssertionsRequest{
+				StoreId:    store,
+				Assertions: []*openfgapb.Assertion{},
+			},
+		},
+		{
+			_name: "writing assertion with invalid relation fails",
+			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "reader",
-						User:     "elbuo",
+				Assertions: []*openfgapb.Assertion{
+					{
+						TupleKey: &openfgapb.TupleKey{
+							Object:   "repo:test",
+							Relation: "invalidrelation",
+							User:     "elbuo",
+						},
+						Expectation: false,
 					},
-					Expectation: false,
-				},
 				},
 			},
+			err: serverErrors.RelationNotFound("invalidrelation", "repo", &openfgapb.TupleKey{
+				Object:   "repo:test",
+				Relation: "invalidrelation",
+				User:     "elbuo",
+			}),
 		},
 	}
 
@@ -86,8 +102,8 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester[stor
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)
-			if err != test.err {
-				t.Fatalf("got '%v', expected '%v'", err, test.err)
+			if diff := cmp.Diff(err, test.err, cmpopts.EquateErrors()); diff != "" {
+				t.Fatalf("mismatch (-got +want):\n%s", diff)
 			}
 		})
 	}
