@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
+	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -34,9 +35,18 @@ var (
 )
 
 type service struct {
-	openFgaServer *server.Server
+	server        *server.Server
 	datastore     storage.OpenFGADatastore
 	authenticator authentication.Authenticator
+}
+
+func (s *service) Close(ctx context.Context) error {
+	s.authenticator.Close()
+
+	return multierr.Combine(
+		s.server.Close(),
+		s.datastore.Close(ctx),
+	)
 }
 
 type svcConfig struct {
@@ -98,24 +108,18 @@ func main() {
 	)
 
 	g.Go(func() error {
-		return service.openFgaServer.Run(ctx)
+		return service.server.Run(ctx)
 	})
 
 	if err := g.Wait(); err != nil {
 		logger.Error("failed to run openfga server", zap.Error(err))
 	}
 
-	defer service.authenticator.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := service.openFgaServer.Close(); err != nil {
-		logger.Error("failed to gracefully shutdown openfga server", zap.Error(err))
-	}
-
-	if err := service.datastore.Close(ctx); err != nil {
-		logger.Error("failed to gracefully shutdown openfga datastore", zap.Error(err))
+	if err := service.Close(ctx); err != nil {
+		logger.Error("failed to gracefully shutdown the service", zap.Error(err))
 	}
 
 	logger.Info("Server exiting. Goodbye 👋")
@@ -197,7 +201,7 @@ func buildService(logger logger.Logger) (*service, error) {
 	}
 
 	return &service{
-		openFgaServer: openFgaServer,
+		server:        openFgaServer,
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
