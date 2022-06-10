@@ -1,23 +1,11 @@
-name: OpenFGA Pull Request
+name: Codecov
 on:
-  pull_request:
+  push:
     branches:
       - main
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: './go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: latest
-
-  unit-tests:
+  codecov:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -44,7 +32,7 @@ jobs:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
 
-      - name: Unit Tests 
+      - name: Unit Tests
         run: make unit-test
 
       - name: upload coverage to codecov
