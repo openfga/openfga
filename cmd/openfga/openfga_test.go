@@ -48,7 +48,8 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
@@ -115,7 +116,8 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
