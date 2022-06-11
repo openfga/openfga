@@ -40,10 +40,10 @@ go-generate: install-tools
 
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
-	test_locations=`go list ./... | grep -v mocks`
+	coverpkg=`go list ./... | grep -v mocks`
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coverageunit.out \
-			-coverpkg=$(test_locations) \
+			-coverpkg=$(coverpkg) \
 			-covermode=atomic -race \
 			-count=1 \
 			./...
