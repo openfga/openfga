@@ -4,14 +4,12 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -131,7 +129,7 @@ func createKeys(t *testing.T) string {
 	return certFile.Name()
 }
 
-func TestServingTLS(t *testing.T) {
+func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
@@ -169,6 +167,10 @@ func TestServingTLS(t *testing.T) {
 		_, err := buildService(logger)
 		require.ErrorIs(t, err, errInvalidGRPCTLSConfig)
 	})
+}
+
+func TestHTTPServingTLS(t *testing.T) {
+	logger := logger.NewNoopLogger()
 
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
@@ -187,6 +189,44 @@ func TestServingTLS(t *testing.T) {
 
 		ensureServiceUp(t)
 	})
+
+	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
+		createKeys(t)
+		require.NoError(t, os.Setenv("OPENFGA_HTTP_PORT", "9090"), "failed to set env var")
+		defer os.Clearenv()
+
+		service, err := buildService(logger)
+		require.NoError(t, err, "failed to build service")
+		defer service.openFgaServer.Close()
+
+		ctx := context.Background()
+		g, ctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			return service.openFgaServer.Run(ctx)
+		})
+
+		certPool := x509.NewCertPool()
+		if ok := certPool.AppendCertsFromPEM([]byte(caCert)); !ok {
+			t.Error("failed to add ca cert to pool")
+		}
+
+		retryClient := retryablehttp.NewClient()
+		retryClient.HTTPClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs: certPool,
+				},
+			},
+		}
+
+		_, err = retryClient.Get("https://localhost:9090/healthz")
+		require.NoError(t, err)
+	})
+
+}
+
+func TestGRPCServingTLS(t *testing.T) {
+	logger := logger.NewNoopLogger()
 
 	t.Run("enable gRPC TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
@@ -210,56 +250,6 @@ func TestServingTLS(t *testing.T) {
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
-		require.NoError(t, err)
-	})
-
-	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
-		createKeys(t)
-		//require.NoError(t, os.Setenv("OPENFGA_HTTP_PORT", "9090"), "failed to set env var")
-		defer os.Clearenv()
-
-		service, err := buildService(logger)
-		require.NoError(t, err, "failed to build service")
-		defer service.openFgaServer.Close()
-
-		ctx := context.Background()
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			return service.openFgaServer.Run(ctx)
-		})
-
-		certPool := x509.NewCertPool()
-		if ok := certPool.AppendCertsFromPEM([]byte(caCert)); !ok {
-			t.Error("failed to add ca cert to pool")
-		}
-
-		client := &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs: certPool,
-				},
-			},
-		}
-
-		backoffPolicy := backoff.NewExponentialBackOff()
-		backoffPolicy.MaxElapsedTime = 2 * time.Second
-
-		err = backoff.Retry(
-			func() error {
-				resp, err := client.Get("https://localhost:8080/healthz")
-				if err != nil {
-					return err
-				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode != http.StatusOK {
-					return fmt.Errorf("want '200', got '%d'", resp.StatusCode)
-				}
-
-				return nil
-			},
-			backoffPolicy,
-		)
 		require.NoError(t, err)
 	})
 
