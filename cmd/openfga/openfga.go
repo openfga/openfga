@@ -22,7 +22,6 @@ import (
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
-	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -42,11 +41,9 @@ type service struct {
 
 func (s *service) Close(ctx context.Context) error {
 	s.authenticator.Close()
+	s.server.Close()
 
-	return multierr.Combine(
-		s.server.Close(),
-		s.datastore.Close(ctx),
-	)
+	return s.datastore.Close(ctx)
 }
 
 type svcConfig struct {
