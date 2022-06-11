@@ -181,7 +181,9 @@ func TestHTTPServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.openFgaServer.Close()
 
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			return service.openFgaServer.Run(ctx)
@@ -192,14 +194,15 @@ func TestHTTPServingTLS(t *testing.T) {
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
 		createKeys(t)
-		require.NoError(t, os.Setenv("OPENFGA_HTTP_PORT", "9090"), "failed to set env var")
 		defer os.Clearenv()
 
 		service, err := buildService(logger)
 		require.NoError(t, err, "failed to build service")
 		defer service.openFgaServer.Close()
 
-		ctx := context.Background()
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			return service.openFgaServer.Run(ctx)
@@ -219,7 +222,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err = retryClient.Get("https://localhost:9090/healthz")
+		_, err = retryClient.Get("https://localhost:8080/healthz")
 		require.NoError(t, err)
 	})
 
