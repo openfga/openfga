@@ -1,59 +1,10 @@
-name: Pull Request
+name: Main
 on:
-  pull_request:
+  push:
     branches:
       - main
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: './go.mod'
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: latest
-
-  unit-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: actions/setup-go@v3
-        with:
-          go-version-file: './go.mod'
-
-      - id: go-cache-paths
-        run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
-
-      # Cache go build cache, used to speedup go test
-      - uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-
-      # Cache go mod cache, used to speedup builds
-      - uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
-
-      - name: Unit Tests
-        run: make unit-test
-
-      - name: upload coverage to codecov
-        uses: codecov/codecov-action@v2
-        with:
-          files: ./coverageunit.out
-          verbose: true
-          fail_ci_if_error: false
-
   go-bench:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -83,7 +34,7 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
-        run: go test ./... -bench=. -run=XXX | tee ${{ github.sha }}_bench_output.txt
+        run: go test ./... -bench=. -run=XXX | tee bench_output.txt
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
@@ -92,17 +43,15 @@ jobs:
           path: ./cache
           key: ${{ runner.os }}-benchmark
 
-      - name: Compare benchmark result
+      - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
           # Where the output from the benchmark tool is stored
-          output-file-path: ${{ github.sha }}_bench_output.txt
+          output-file-path: bench_output.txt
           # Where the previous data file is stored
           external-data-json-path: ./cache/benchmark-data.json
-          # Do not save the data
-          save-data-file: false
           alert-threshold: "150%"
           # Workflow will fail when an alert happens
           fail-on-alert: true
