@@ -41,7 +41,6 @@ type service struct {
 
 func (s *service) Close(ctx context.Context) error {
 	s.authenticator.Close()
-	s.server.Close()
 
 	return s.datastore.Close(ctx)
 }

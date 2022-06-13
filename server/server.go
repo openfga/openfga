@@ -44,7 +44,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
-	*grpc.Server
+
 	tracer    trace.Tracer
 	meter     metric.Meter
 	logger    logger.Logger
@@ -82,7 +82,6 @@ type Config struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(config.UnaryInterceptors...))
 
 	tokenEncoder := dependencies.TokenEncoder
 	if tokenEncoder == nil {
@@ -105,7 +104,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:    grpcServer,
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
@@ -126,8 +124,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 			}),
 		},
 	}
-
-	openfgapb.RegisterOpenFGAServiceServer(grpcServer, server)
 
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
@@ -391,14 +387,12 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	return q.Execute(ctx, req)
 }
 
-// Close gracefully stops this server, blocking any subsequent requests and waiting for
-// any existing ones to complete before returning.
-func (s *Server) Close() {
-	s.GracefulStop()
-}
-
-// Run starts server execution, and blocks until complete, returning any serverErrors.
+// Run starts server execution, and blocks until complete, returning any server errors. To close the
+// server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
+	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(s.config.UnaryInterceptors...))
+	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
+
 	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
@@ -406,7 +400,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil {
 			s.logger.Error("failed to start grpc server", logger.Error(err))
 		}
 	}()
@@ -447,10 +441,6 @@ func (s *Server) Run(ctx context.Context) error {
 		}).Handler(mux),
 	}
 
-	httpServer.RegisterOnShutdown(func() {
-		s.Stop()
-	})
-
 	go func() {
 		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 		err := httpServer.ListenAndServe()
@@ -470,6 +460,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
 		return err
 	}
+
+	grpcServer.GracefulStop()
 
 	return nil
 }
