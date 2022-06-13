@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/hashicorp/go-retryablehttp"
+	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -213,8 +215,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			t.Error("failed to add ca cert to pool")
 		}
 
-		retryClient := retryablehttp.NewClient()
-		retryClient.HTTPClient = &http.Client{
+		client := &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					RootCAs: certPool,
@@ -222,7 +223,24 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err = retryClient.Get("https://localhost:8080/healthz")
+		backoffPolicy := backoff.NewExponentialBackOff()
+		backoffPolicy.MaxElapsedTime = 2 * time.Second
+		err = backoff.Retry(
+			func() error {
+				resp, err := client.Get("https://localhost:8080/healthz")
+				if err != nil {
+					return err
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					return errors.New("waiting for OK status")
+				}
+
+				return nil
+			},
+			backoffPolicy,
+		)
 		require.NoError(t, err)
 	})
 

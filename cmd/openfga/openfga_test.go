@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -198,7 +199,7 @@ func ensureServiceUp(t *testing.T) {
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("waiting for OK status")
+				return errors.New("waiting for OK status")
 			}
 
 			return nil
