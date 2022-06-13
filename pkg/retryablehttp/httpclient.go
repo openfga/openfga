@@ -21,7 +21,7 @@ var _ http.RoundTripper = (*RetryableRoundTripper)(nil)
 
 func (rt *RetryableRoundTripper) init() {
 	if rt.Client == nil {
-		rt.Client = NewRetryableHTTPClient()
+		rt.Client = NewClient()
 	}
 }
 
@@ -35,10 +35,18 @@ type RetryableHTTPClient struct {
 	internalClient http.Client
 }
 
-func NewRetryableHTTPClient() *RetryableHTTPClient {
+func NewClient() *RetryableHTTPClient {
 	return &RetryableHTTPClient{
 		internalClient: http.Client{},
 	}
+}
+
+func (client *RetryableHTTPClient) Get(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
 }
 
 func (client *RetryableHTTPClient) Do(req *http.Request) (*http.Response, error) {
