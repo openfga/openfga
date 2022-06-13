@@ -103,7 +103,6 @@ jobs:
           external-data-json-path: ./cache/benchmark-data.json
           # Do not save the data
           save-data-file: false
-          alert-threshold: "150%"
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
