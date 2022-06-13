@@ -55,7 +55,7 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
-	retryClient := retryablehttp.NewClient().StandardClient()
+	retryClient := retryablehttp.New().StandardClient()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
@@ -121,7 +121,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
 	ctx := context.Background()
-	retryClient := retryablehttp.NewClient().StandardClient()
+	retryClient := retryablehttp.New().StandardClient()
 
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
@@ -192,7 +192,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 func ensureServiceUp(t testing.TB) {
 	t.Helper()
 
-	retryClient := retryablehttp.NewClient().StandardClient()
+	retryClient := retryablehttp.New().StandardClient()
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFgaServerURL), nil)
 	resp, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute request")

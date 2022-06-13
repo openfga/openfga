@@ -21,7 +21,7 @@ var _ http.RoundTripper = (*RetryableRoundTripper)(nil)
 
 func (rt *RetryableRoundTripper) init() {
 	if rt.Client == nil {
-		rt.Client = NewClient()
+		rt.Client = New()
 	}
 }
 
@@ -35,9 +35,15 @@ type RetryableHTTPClient struct {
 	internalClient http.Client
 }
 
-func NewClient() *RetryableHTTPClient {
+func New() *RetryableHTTPClient {
 	return &RetryableHTTPClient{
 		internalClient: http.Client{},
+	}
+}
+
+func NewWithClient(c http.Client) *RetryableHTTPClient {
+	return &RetryableHTTPClient{
+		internalClient: c,
 	}
 }
 
