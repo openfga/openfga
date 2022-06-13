@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := help
+COVERPKG := $(shell eval go list ./... | grep -v mocks | tr '\n' ',')
 
 .PHONY: help
 help:
@@ -40,10 +41,9 @@ go-generate: install-tools
 
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
-	coverpkg=`go list ./... | grep -v mocks`
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coverageunit.out \
-			-coverpkg=$(coverpkg) \
+			-coverpkg=$(COVERPKG) \
 			-covermode=atomic -race \
 			-count=1 \
 			./...
