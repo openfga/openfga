@@ -393,10 +393,8 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 
 // Close gracefully stops this server, blocking any subsequent requests and waiting for
 // any existing ones to complete before returning.
-func (s *Server) Close() error {
+func (s *Server) Close() {
 	s.GracefulStop()
-
-	return nil
 }
 
 // Run starts server execution, and blocks until complete, returning any serverErrors.

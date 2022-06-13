@@ -243,7 +243,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now().UTC()
+	now := timestamppb.Now()
 
 	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
 		return openfgaerrors.ErrorWithStack(err)
@@ -254,7 +254,7 @@ Delete:
 	for _, t := range s.tuples[store] {
 		for _, k := range deletes {
 			if match(k, t.Key) {
-				s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t.Key, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: timestamppb.New(now)})
+				s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t.Key, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: now})
 				continue Delete
 			}
 		}
@@ -268,8 +268,8 @@ Write:
 				continue Write
 			}
 		}
-		tuples = append(tuples, &openfgapb.Tuple{Key: t})
-		s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: timestamppb.New(now)})
+		tuples = append(tuples, &openfgapb.Tuple{Key: t, Timestamp: now})
+		s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: now})
 	}
 	s.tuples[store] = tuples
 	return nil

@@ -41,10 +41,15 @@ go-generate: install-tools
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -v \
-			-coverprofile=coverageunitmemory.out \
+			-coverprofile=coverageunit.out \
+			-coverpkg=./... \
 			-covermode=atomic -race \
 			-count=1 \
 			./...
+
+.PHONY: bench
+bench: go-generate
+	go test ./... -bench=. -run=XXX -benchmem
 
 .PHONY: initialize-db
 initialize-db: go-generate
