@@ -177,16 +177,16 @@ func TestHTTPServingTLS(t *testing.T) {
 		require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
-		service, err := buildService(logger)
-		require.NoError(t, err)
-		defer service.openFgaServer.Close()
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		service, err := buildService(logger)
+		require.NoError(t, err)
+		defer service.Close(ctx)
+
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			return service.openFgaServer.Run(ctx)
+			return service.server.Run(ctx)
 		})
 
 		ensureServiceUp(t)
@@ -196,16 +196,16 @@ func TestHTTPServingTLS(t *testing.T) {
 		createKeys(t)
 		defer os.Clearenv()
 
-		service, err := buildService(logger)
-		require.NoError(t, err, "failed to build service")
-		defer service.openFgaServer.Close()
-
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		service, err := buildService(logger)
+		require.NoError(t, err, "failed to build service")
+		defer service.Close(ctx)
+
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			return service.openFgaServer.Run(ctx)
+			return service.server.Run(ctx)
 		})
 
 		certPool := x509.NewCertPool()
@@ -236,14 +236,16 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.openFgaServer.Close()
+		defer service.Close(ctx)
 
-		ctx := context.Background()
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			return service.openFgaServer.Run(ctx)
+			return service.server.Run(ctx)
 		})
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
@@ -260,14 +262,16 @@ func TestGRPCServingTLS(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.openFgaServer.Close()
+		defer service.Close(ctx)
 
-		ctx := context.Background()
 		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
-			return service.openFgaServer.Run(ctx)
+			return service.server.Run(ctx)
 		})
 
 		creds, err := credentials.NewClientTLSFromFile(certFile, "")
