@@ -24,6 +24,7 @@ dockers:
     dockerfile: Dockerfile.goreleaser
 
     image_templates:
+      - "openfga/openfga:latest"
       - "openfga/openfga:{{ .Tag }}"
       - "openfga/openfga:v{{ .Version }}"
       - "openfga/openfga:v{{ .Major }}"
