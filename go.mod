@@ -19,7 +19,7 @@ require (
 	github.com/oklog/ulid/v2 v2.0.2
 	github.com/rs/cors v1.8.2
 	github.com/stretchr/testify v1.7.2
-	go.buf.build/openfga/go/openfga/api v1.1.12
+	go.buf.build/openfga/go/openfga/api v1.1.15
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0
 	go.opentelemetry.io/otel v1.7.0
 	go.opentelemetry.io/otel/metric v0.30.0
