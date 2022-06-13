@@ -81,10 +81,11 @@ func TestValidateWriteTuples(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		err := cmd.validateNoDuplicatesAndCorrectSize(test.deletes, test.writes)
-		if !reflect.DeepEqual(err, test.expectedError) {
-			t.Errorf("%s: Expected error %v, got %v", test.name, test.expectedError, err)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			err := cmd.validateNoDuplicatesAndCorrectSize(test.deletes, test.writes)
+			if !reflect.DeepEqual(err, test.expectedError) {
+				t.Errorf("Expected error %v, got %v", test.expectedError, err)
+			}
+		})
 	}
-
 }

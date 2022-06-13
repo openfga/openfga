@@ -33,7 +33,7 @@ func TestBuildServerWithNoAuth(t *testing.T) {
 	service, err := buildService(noopLogger)
 	require.NoError(t, err, "Failed to build server and/or datastore")
 
-	defer service.authenticator.Close()
+	defer service.Close(context.Background())
 }
 
 func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
@@ -56,14 +56,14 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 
 	service, err := buildService(noopLogger)
 	require.NoError(t, err, "Failed to build server and/or datastore")
+	defer service.Close(ctx)
 
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return service.openFgaServer.Run(ctx)
+		return service.server.Run(ctx)
 	})
 
-	defer service.authenticator.Close()
 	ensureServiceUp(t)
 
 	tests := []authTest{{
@@ -110,8 +110,6 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 			}
 		})
 	}
-
-	service.openFgaServer.Close()
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
@@ -125,22 +123,18 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	service, err := buildService(noopLogger)
-	if err != nil {
-		t.Fatalf("Failed to build server and/or datastore: %v", err)
-	}
+	require.NoError(t, err)
+	defer service.Close(ctx)
 
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return service.openFgaServer.Run(ctx)
+		return service.server.Run(ctx)
 	})
 
-	defer service.authenticator.Close()
 	ensureServiceUp(t)
 
 	trustedToken, err := trustedIssuerServer.GetToken(openFgaServerURL, "some-user")
@@ -187,8 +181,6 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 			}
 		})
 	}
-
-	service.openFgaServer.Close()
 }
 
 func ensureServiceUp(t *testing.T) {
