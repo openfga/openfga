@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -22,7 +23,53 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		err      error
 	}
 
+	require := require.New(t)
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+
+	datastore, err := dbTester.New()
+	require.NoError(err)
+
+	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)
+	for i := 0; i < datastore.MaxTypesInTypeDefinition(); i++ {
+		items[i] = &openfgapb.TypeDefinition{
+			Type: fmt.Sprintf("type%v", i),
+			Relations: map[string]*openfgapb.Userset{
+				"admin": {Userset: &openfgapb.Userset_This{}},
+			},
+		}
+	}
+
 	var tests = []writeAuthorizationModelTestSettings{
+		{
+			_name: "succeeds",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "somestoreid",
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "repo",
+							Relations: map[string]*openfgapb.Userset{
+								"admin": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+					},
+				},
+			},
+			err:      nil,
+			response: &openfgapb.WriteAuthorizationModelResponse{},
+		},
+		{
+			_name: "fails if too many types",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "somestoreid",
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: items,
+				},
+			},
+			err:      errors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
+			response: nil,
+		},
 		{
 			_name: "ExecuteWriteFailsIfSameTypeTwice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
@@ -146,37 +193,6 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 			err: errors.UnknownRelation("owner"),
 		},
 		{
-			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"writer": {Userset: &openfgapb.Userset_This{}},
-								"viewer": {
-									Userset: &openfgapb.Userset_Intersection{
-										Intersection: &openfgapb.Usersets{
-											Child: []*openfgapb.Userset{
-												{Userset: &openfgapb.Userset_This{}},
-												{Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Object:   "",
-														Relation: "owner",
-													},
-												}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.UnknownRelation("owner"),
-		},
-		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				TypeDefinitions: &openfgapb.TypeDefinitions{
@@ -234,45 +250,6 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 													Relation: "writer",
 												},
 											}},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.UnknownRelation("owner"),
-		},
-		{
-			_name: "ExecuteWriteFailsIfEmptyRelationDefinition",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"owner": {},
-							},
-						},
-					},
-				},
-			},
-			err: errors.EmptyRelationDefinition("repo", "owner"),
-		},
-		{
-			_name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"writer": {
-									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "",
-											Relation: "owner",
 										},
 									},
 								},
@@ -383,37 +360,6 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 			err: errors.UnknownRelation("writer"),
 		},
 		{
-			_name: "ExecuteWriteFailsIfUnknownRelationInUnion",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"writer": {Userset: &openfgapb.Userset_This{}},
-								"viewer": {
-									Userset: &openfgapb.Userset_Union{
-										Union: &openfgapb.Usersets{
-											Child: []*openfgapb.Userset{
-												{Userset: &openfgapb.Userset_This{}},
-												{Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Object:   "",
-														Relation: "owner",
-													},
-												}},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.UnknownRelation("owner"),
-		},
-		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				TypeDefinitions: &openfgapb.TypeDefinitions{
@@ -434,74 +380,6 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 													},
 												}},
 											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.UnknownRelation("owner"),
-		},
-		{
-			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"writer": {Userset: &openfgapb.Userset_This{}},
-								"viewer": {
-									Userset: &openfgapb.Userset_Difference{
-										Difference: &openfgapb.Difference{
-											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
-													Relation: "writer",
-												},
-											}},
-											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
-													Relation: "owner",
-												},
-											}},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.UnknownRelation("owner"),
-		},
-		{
-			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"writer": {Userset: &openfgapb.Userset_This{}},
-								"viewer": {
-									Userset: &openfgapb.Userset_Difference{
-										Difference: &openfgapb.Difference{
-											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
-													Relation: "owner",
-												},
-											}},
-											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
-													Relation: "writer",
-												},
-											}},
 										},
 									},
 								},
@@ -597,14 +475,6 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 			err: errors.CannotAllowMultipleReferencesToOneRelation,
 		},
 	}
-
-	require := require.New(t)
-	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
-
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
