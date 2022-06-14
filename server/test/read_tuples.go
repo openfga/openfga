@@ -11,8 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -49,7 +49,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	cmd := queries.NewReadTuplesQuery(datastore, encoder, logger)
+	cmd := commands.NewReadTuplesQuery(datastore, encoder, logger)
 
 	writes := []*openfgapb.TupleKey{
 		{
@@ -154,7 +154,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	q := queries.NewReadTuplesQuery(datastore, encoder, logger)
+	q := commands.NewReadTuplesQuery(datastore, encoder, logger)
 	if _, err := q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",

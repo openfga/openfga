@@ -9,8 +9,8 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -1549,7 +1549,7 @@ func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 				}
 			}
 
-			cmd := queries.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, test.resolveNodeLimit)
+			cmd := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			resp, gotErr := cmd.Execute(ctx, test.request)
@@ -1636,7 +1636,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dbTester teststor
 		t.Fatalf("failed to write test tuple: %v", err)
 	}
 
-	originalCheckQuery := queries.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	originalCheckQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 	originalNSResponse, err := originalCheckQuery.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: originalModelID,
@@ -1654,7 +1654,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dbTester teststor
 		t.Errorf("[%s] Expected allowed '%t', actual '%t'", "originalNS", true, originalNSResponse.Allowed)
 	}
 
-	updatedCheckQuery := queries.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	updatedCheckQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 	updatedNSResponse, err := updatedCheckQuery.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: updatedModelID,
@@ -1723,7 +1723,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTest
 		b.Fatal(err)
 	}
 
-	checkQuery := queries.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
@@ -1776,7 +1776,7 @@ func BenchmarkWithTrace(b *testing.B, dbTester teststorage.DatastoreTester[stora
 		b.Fatal(err)
 	}
 
-	checkQuery := queries.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
