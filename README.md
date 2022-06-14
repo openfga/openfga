@@ -17,7 +17,7 @@ The following section is intended to help you get started quickly. For more in-d
 
 ### Docker
 
-Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the follpwing command:
+Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the following command:
 
 ```
 ➜ docker run -p 8080:8080 openfga/openfga:latest
