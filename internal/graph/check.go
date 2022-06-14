@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/openfga/openfga/internal/dispatch"
 	dispatchpb "github.com/openfga/openfga/pkg/proto/dispatch/v1"
@@ -75,10 +74,11 @@ func (cc *ConcurrentChecker) reduce(
 		return cc.checkSetOperation(ctx, req, rw.Intersection.GetChild(), all)
 	case *openfgapb.Userset_Difference:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("difference")})
-		return func(ctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
-			// todo: wire me up properly
-			return fmt.Errorf("not implemented")
+		children := []*openfgapb.Userset{
+			rw.Difference.GetBase(),
+			rw.Difference.GetSubtract(),
 		}
+		return cc.checkSetOperation(ctx, req, children, difference)
 	case *openfgapb.Userset_ComputedUserset:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("computed")})
 		return cc.checkComputedUserset(ctx, req, rw)
@@ -131,6 +131,7 @@ func (cc *ConcurrentChecker) checkDirect(ctx context.Context, req *dispatchpb.Di
 			if err != nil {
 				return err
 			}
+			defer iter.Stop()
 
 			var requestsToDispatch []ReduceableCheckFunc
 			for {
@@ -215,6 +216,7 @@ func (cc *ConcurrentChecker) checkTupleToUserset(
 			if err != nil {
 				return err
 			}
+			defer iter.Stop()
 
 			t, err := iter.Next()
 			if err != nil {
@@ -296,6 +298,8 @@ func all(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 
 	resultChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests))
 	errChan := make(chan error)
+	defer close(resultChan)
+	defer close(errChan)
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -303,14 +307,16 @@ func all(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 	g := new(errgroup.Group)
 
 	for _, req := range requests {
-		g.Go(func() error {
+		fn := func() error {
 			err := req(cctx, resultChan)
 			if err != nil {
 				errChan <- err
 			}
 
 			return err
-		})
+		}
+
+		g.Go(fn)
 	}
 
 	for i := 0; i < len(requests); i++ {
@@ -352,6 +358,8 @@ func any(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 	responseMetadata := emptyMetadata
 	resultChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests))
 	errChan := make(chan error)
+	defer close(resultChan)
+	defer close(errChan)
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -359,14 +367,16 @@ func any(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 	g := new(errgroup.Group)
 
 	for _, req := range requests {
-		g.Go(func() error {
+		fn := func() error {
 			err := req(cctx, resultChan)
 			if err != nil {
 				errChan <- err
 			}
 
 			return err
-		})
+		}
+
+		g.Go(fn)
 	}
 
 	for i := 0; i < len(requests); i++ {
@@ -411,6 +421,9 @@ func difference(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchp
 	baseChan := make(chan *dispatchpb.DispatchCheckResponse, 1)
 	subtractChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests)-1)
 	errChan := make(chan error, 1)
+	defer close(baseChan)
+	defer close(subtractChan)
+	defer close(errChan)
 
 	g := new(errgroup.Group)
 
@@ -424,14 +437,16 @@ func difference(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchp
 	})
 
 	for _, req := range requests[1:] {
-		g.Go(func() error {
+		fn := func() error {
 			err := req(cctx, subtractChan)
 			if err != nil {
 				errChan <- err
 			}
 
 			return err
-		})
+		}
+
+		g.Go(fn)
 	}
 
 	for i := 0; i < len(requests); i++ {

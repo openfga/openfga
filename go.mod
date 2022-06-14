@@ -7,6 +7,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/docker/docker v20.10.16+incompatible
 	github.com/docker/go-connections v0.4.0
+	github.com/envoyproxy/protoc-gen-validate v0.1.0
 	github.com/go-errors/errors v1.4.2
 	github.com/golang-jwt/jwt/v4 v4.4.1
 	github.com/golang/mock v1.6.0
