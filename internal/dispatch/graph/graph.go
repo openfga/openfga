@@ -2,11 +2,14 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/openfga/openfga/internal/dispatch"
 	"github.com/openfga/openfga/internal/graph"
 	dispatchpb "github.com/openfga/openfga/pkg/proto/dispatch/v1"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 )
@@ -61,10 +64,12 @@ func (ld *localDispatcher) DispatchCheck(
 		return &dispatchpb.DispatchCheckResponse{Metadata: emptyMetadata}, nil
 	}
 
-	// validate the request inputs
+	// todo: validate the request inputs
 
-	// get type information for the relation
-	var rewrite *openfgapb.Userset
+	rewrite, err := ld.lookupRelation(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
 	return ld.checker.Check(ctx, req, rewrite)
 }
@@ -87,4 +92,37 @@ func (ld *localDispatcher) IsReady() bool {
 // Close closes the local dispatcher by closing and cleaning up any residual resources.
 func (ld *localDispatcher) Close(ctx context.Context) error {
 	return nil
+}
+
+// lookupRelation looks up the userset rewrite rule associated with the object and relation provided
+// in the request.
+func (ld *localDispatcher) lookupRelation(ctx context.Context, req *dispatchpb.DispatchCheckRequest) (*openfgapb.Userset, error) {
+	var datastore storage.OpenFGADatastore
+	//ds := datastoremw.MustFromContext(ctx).ReadTypeDefinition()
+
+	storeID := req.GetWrappedRequest().GetStoreId()
+	modelID := req.GetWrappedRequest().GetAuthorizationModelId()
+	tupleKey := req.GetWrappedRequest().GetTupleKey()
+	objectType, _ := tuple.SplitObject(tupleKey.GetObject())
+	relation := tupleKey.GetRelation()
+
+	typeDef, err := datastore.ReadTypeDefinition(
+		ctx,
+		storeID,
+		modelID,
+		objectType,
+	)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, NewTypeNotFoundErr(objectType)
+		}
+		return nil, err
+	}
+
+	rewrite, ok := typeDef.Relations[relation]
+	if !ok {
+		return nil, NewRelationNotFoundErr(tupleKey, relation, objectType)
+	}
+
+	return rewrite, nil
 }
