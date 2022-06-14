@@ -1,0 +1,45 @@
+syntax = "proto3";
+package dispatch.v1;
+
+import "validate/validate.proto";
+import "openfga/v1/openfga_service.proto";
+
+service DispatchService {
+    rpc DispatchCheck(DispatchCheckRequest) returns (DispatchCheckResponse) {}
+    rpc DispatchExpand(DispatchExpandRequest) returns (DispatchExpandResponse) {}
+}
+
+message DispatchCheckRequest {
+  ResolverMeta metadata = 1 [ (validate.rules).message.required = true ];
+
+  openfga.v1.CheckRequest wrapped_request = 2;
+}
+
+message DispatchCheckResponse {
+  ResponseMeta metadata = 1;
+
+  openfga.v1.CheckResponse wrapped_response = 2;
+}
+
+message DispatchExpandRequest {
+
+  ResolverMeta metadata = 1 [ (validate.rules).message.required = true ];
+
+  openfga.v1.ExpandRequest wrapped_request = 2;
+}
+
+message DispatchExpandResponse {
+  ResponseMeta metadata = 1;
+  
+  openfga.v1.ExpandResponse wrapped_response = 2;
+}
+
+message ResolverMeta {
+  uint32 depth_remaining = 1 [ (validate.rules).uint32.gt = 0 ];
+}
+
+message ResponseMeta {
+  uint32 dispatch_count = 1;
+  uint32 depth_required = 2;
+  uint32 cached_dispatch_count = 3;
+}

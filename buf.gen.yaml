@@ -1,0 +1,22 @@
+#!/usr/bin/env -S buf generate proto/internal --template
+---
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/openfga/openfga/pkg/proto
+    except:
+      - buf.build/envoyproxy/protoc-gen-validate
+  override:
+    GO_PACKAGE:
+      openfga/v1/openfga_service.proto: "go.buf.build/openfga/go/openfga/api/openfga/v1;openfgav1"
+plugins:
+  - name: "go"
+    out: "pkg/proto"
+    opt: "paths=source_relative"
+  - name: "go-grpc"
+    out: "pkg/proto"
+    opt: "paths=source_relative"
+  - name: "validate"
+    out: "pkg/proto"
+    opt: "paths=source_relative,lang=go"

@@ -1,0 +1,4 @@
+version: v1
+deps:
+  - buf.build/envoyproxy/protoc-gen-validate
+  - buf.build/openfga/api

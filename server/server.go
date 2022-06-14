@@ -11,10 +11,12 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/openfga/openfga/internal/dispatch"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	dispatchpb "github.com/openfga/openfga/pkg/proto/dispatch/v1"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
@@ -45,13 +47,14 @@ var (
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 	*grpc.Server
-	tracer    trace.Tracer
-	meter     metric.Meter
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	config    *Config
-	transport gateway.Transport
+	tracer     trace.Tracer
+	meter      metric.Meter
+	logger     logger.Logger
+	datastore  storage.OpenFGADatastore
+	encoder    encoder.Encoder
+	config     *Config
+	transport  gateway.Transport
+	dispatcher dispatch.Dispatcher
 
 	defaultServeMuxOpts []runtime.ServeMuxOption
 }
@@ -210,7 +213,12 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	resp, err := s.dispatcher.DispatchCheck(ctx, &dispatchpb.DispatchCheckRequest{})
+	if err != nil {
+		return resp.WrappedResponse, err
+	}
+
+	/*q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
@@ -221,10 +229,11 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	})
 	if err != nil {
 		return nil, err
-	}
+	}*/
 
-	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
-	return res, nil
+	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(resp.GetWrappedResponse().GetAllowed())})
+	return resp.WrappedResponse, nil
+	//return res, nil
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
