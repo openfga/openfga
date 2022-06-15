@@ -24,7 +24,7 @@ Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openf
 ```
 
 ### Docker Compose
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as datastore yet:
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
 
 ```
 ➜ docker compose up openfga
