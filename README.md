@@ -15,11 +15,26 @@ The following section aims to help you get started quickly. Please look at our o
 >
 > For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/intro/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/intro/setup-openfga#production-checklist).
 
-### Docker Compose
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to setup OpenFGA using Docker, and it's a great way to get started quickly.
+### Docker
+
+Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the following command:
 
 ```
-➜ docker-compose up openfga
+➜ docker run -p 8080:8080 openfga/openfga:latest
+```
+
+### Docker Compose
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
+
+```
+➜ docker compose up openfga
+```
+
+If you haven't cloned the repository you can get the `docker-compose.yaml` file with the following command:
+
+```
+➜ curl -LO https://openfga.dev/docker-compose.yaml
+
 ```
 
 ### Pre-compiled Binaries
