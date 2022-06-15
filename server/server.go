@@ -18,7 +18,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -174,7 +173,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -191,7 +190,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := queries.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -233,7 +232,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	q := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
@@ -267,7 +266,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewExpandQuery(s.datastore, s.tracer, s.logger)
+	q := commands.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -282,7 +281,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
-	q := queries.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -309,7 +308,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := queries.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
 	return c.Execute(ctx, req)
 }
 
@@ -351,7 +350,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 		return nil, err
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-	q := queries.NewReadAssertionsQuery(s.datastore, s.logger)
+	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
@@ -362,7 +361,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := queries.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -402,7 +401,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (
 	))
 	defer span.End()
 
-	q := queries.NewGetStoreQuery(s.datastore, s.logger)
+	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -410,7 +409,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := queries.NewListStoresQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
