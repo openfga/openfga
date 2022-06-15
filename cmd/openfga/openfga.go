@@ -71,9 +71,9 @@ type svcConfig struct {
 	GRPCTLSCertPath string `envconfig:"GRPC_TLS_CERT_PATH"`
 	GRPCTLSKeyPath  string `envconfig:"GRPC_TLS_KEY_PATH"`
 
-	HTTPGatewayTLSEnabled  bool   `default:"false" split_words:"true"`
-	HTTPGatewayTLSCertPath string `split_words:"true"`
-	HTTPGatewayTLSKeyPath  string `split_words:"true"`
+	HTTPTLSEnabled  bool   `default:"false" envconfig:"HTTP_TLS_ENABLED"`
+	HTTPTLSCertPath string `envconfig:"HTTP_TLS_CERT_PATH"`
+	HTTPTLSKeyPath  string `envconfig:"HTTP_TLS_KEY_PATH"`
 
 	// Authentication. Possible options: none,preshared,oidc
 	AuthMethod string `default:"none" split_words:"true"`
@@ -183,13 +183,13 @@ func buildService(logger logger.Logger) (*service, error) {
 	}
 
 	var httpTLSConfig *server.TLSConfig
-	if config.HTTPGatewayTLSEnabled {
-		if config.HTTPGatewayTLSCertPath == "" || config.HTTPGatewayTLSKeyPath == "" {
+	if config.HTTPTLSEnabled {
+		if config.HTTPTLSCertPath == "" || config.HTTPTLSKeyPath == "" {
 			return nil, errInvalidHTTPTLSConfig
 		}
 		httpTLSConfig = &server.TLSConfig{
-			CertPath: config.HTTPGatewayTLSCertPath,
-			KeyPath:  config.HTTPGatewayTLSKeyPath,
+			CertPath: config.HTTPTLSCertPath,
+			KeyPath:  config.HTTPTLSKeyPath,
 		}
 		logger.Info("HTTP TLS enabled, serving connections using the provided certificate")
 	} else {

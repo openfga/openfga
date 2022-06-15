@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	grpcTLSEnabledEnvVar         = "OPENFGA_GRPC_TLS_ENABLED"
-	grpcTLSCertPathEnvVar        = "OPENFGA_GRPC_TLS_CERT_PATH"
-	grpcTLSKeyPathEnvVar         = "OPENFGA_GRPC_TLS_KEY_PATH"
-	httpGatewayTLSEnabledEnvVar  = "OPENFGA_HTTP_GATEWAY_TLS_ENABLED"
-	httpGatewayTLSCertPathEnvVar = "OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH"
-	httpGatewayTLSKeyPathEnvVar  = "OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH"
+	grpcTLSEnabledEnvVar  = "OPENFGA_GRPC_TLS_ENABLED"
+	grpcTLSCertPathEnvVar = "OPENFGA_GRPC_TLS_CERT_PATH"
+	grpcTLSKeyPathEnvVar  = "OPENFGA_GRPC_TLS_KEY_PATH"
+	httpTLSEnabledEnvVar  = "OPENFGA_HTTP_TLS_ENABLED"
+	httpTLSCertPathEnvVar = "OPENFGA_HTTP_TLS_CERT_PATH"
+	httpTLSKeyPathEnvVar  = "OPENFGA_HTTP_TLS_KEY_PATH"
 
 	caCert = `-----BEGIN CERTIFICATE-----
 MIIDpzCCAo+gAwIBAgIUayZ6IiyldzKDZIA42b1ByVu4Hd8wDQYJKoZIhvcNAQEL
@@ -120,9 +120,9 @@ func createKeys(t *testing.T) string {
 	_, err = keyFile.Write([]byte(serverKey))
 	require.NoError(t, err, "failed to write pem")
 
-	require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "true"), "failed to set env var")
-	require.NoError(t, os.Setenv(httpGatewayTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
-	require.NoError(t, os.Setenv(httpGatewayTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
+	require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
+	require.NoError(t, os.Setenv(httpTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
+	require.NoError(t, os.Setenv(httpTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
 
 	require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "true"), "failed to set env var")
 	require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
@@ -135,8 +135,8 @@ func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(httpGatewayTLSKeyPathEnvVar, "some/path"), "failed to set env var")
+		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
+		require.NoError(t, os.Setenv(httpTLSKeyPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
 		_, err := buildService(logger)
@@ -153,8 +153,8 @@ func TestTLSFailureSettings(t *testing.T) {
 	})
 
 	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(httpGatewayTLSCertPathEnvVar, "some/path"), "failed to set env var")
+		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
+		require.NoError(t, os.Setenv(httpTLSCertPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
 		_, err := buildService(logger)
@@ -176,7 +176,7 @@ func TestHTTPServingTLS(t *testing.T) {
 
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
-		require.NoError(t, os.Setenv(httpGatewayTLSEnabledEnvVar, "false"), "failed to set env var") // override
+		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
