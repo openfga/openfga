@@ -72,6 +72,9 @@ type svcConfig struct {
 	// OIDC authentication
 	AuthOIDCIssuer   string `default:"" split_words:"true"`
 	AuthOIDCAudience string `default:"" split_words:"true"`
+
+	// Logging
+	DevelopmentLogging bool `default:"true" split_words:"true"`
 }
 
 func main() {
@@ -79,15 +82,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger, err := logger.NewZapLogger()
+	logger, err := buildLogger()
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-
-	logger.With(
-		zap.String("build.version", version),
-		zap.String("build.commit", commit),
-	)
 
 	service, err := buildService(logger)
 	if err != nil {
@@ -122,14 +120,19 @@ func main() {
 	logger.Info("Server exiting. Goodbye 👋")
 }
 
-func buildService(logger logger.Logger) (*service, error) {
+func getServiceConfig() svcConfig {
 	var config svcConfig
-	var err error
-	var datastore storage.OpenFGADatastore
 
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
-		return nil, fmt.Errorf("failed to process server config: %v", err)
+		log.Fatalf("failed to process server config: %v", err)
 	}
+	return config
+}
+
+func buildService(logger logger.Logger) (*service, error) {
+	var err error
+	var datastore storage.OpenFGADatastore
+	config := getServiceConfig()
 
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
@@ -160,10 +163,11 @@ func buildService(logger logger.Logger) (*service, error) {
 
 	switch config.AuthMethod {
 	case "none":
+		logger.Info("using no authentication")
 		authenticator = authentication.NoopAuthenticator{}
 	case "preshared":
+		logger.Info("using preshared key authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
-
 	case "oidc":
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
 	default:
@@ -202,4 +206,29 @@ func buildService(logger logger.Logger) (*service, error) {
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
+}
+
+func buildLogger() (*logger.ZapLogger, error) {
+	var err error
+	var openfgaLogger *logger.ZapLogger
+
+	config := getServiceConfig()
+
+	if config.DevelopmentLogging {
+		openfgaLogger, err = logger.NewDevelopmentLogger()
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		openfgaLogger, err = logger.NewProductionLogger()
+		if err != nil {
+			return nil, err
+		}
+		openfgaLogger.With(
+			zap.String("build.version", version),
+			zap.String("build.commit", commit),
+		)
+	}
+
+	return openfgaLogger, err
 }
