@@ -13,7 +13,7 @@ The following section aims to help you get started quickly. Please look at our o
 ## Setup and Installation
 > ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment.
 >
-> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/intro/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/intro/setup-openfga#production-checklist).
+> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
 
 ### Docker
 
@@ -64,7 +64,7 @@ Or you can build it with the source by cloning the project and then building it.
 ```
 
 ## Verifying the Installation
-Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/integration/create-store/). 
+Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store). 
 
 ```
 curl -X POST 'localhost:8080/stores' \
@@ -86,10 +86,10 @@ If everything is running correctly, you should get a response with information a
 ## Next Steps
 Take a look at examples of how to:
 
-* [Write an Authorization Model](https://openfga.dev/api/service/#/Authorization%20Models/WriteAuthorizationModel)
-* [Write Relationship Tuples](https://openfga.dev/api/service/#/Relationship%20Tuples/Write)
-* [Check Relationships](https://openfga.dev/api/service/#/Relationship%20Queries/Check)
-* [Add authentication](https://openfga.dev/intro/setup-openfga#configuring-authentication)
+* [Write an Authorization Model](https://openfga.dev/docs/getting-started/configure-model)
+* [Write Relationship Tuples](https://openfga.dev/docs/getting-started/update-tuples)
+* [Perform Authorization Checks](https://openfga.dev/docs/getting-started/perform-check)
+* [Add Authentication to your OpenFGA server](https://openfga.dev/docs/getting-started/setup-openfga#configuring-authentication)
 
 Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 
