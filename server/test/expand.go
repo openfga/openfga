@@ -10,8 +10,8 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -736,7 +736,7 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			if err != nil {
 				t.Fatal(err)
 			}
-			query := queries.NewExpandQuery(datastore, tracer, logger)
+			query := commands.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			got, err := query.Execute(ctx, test.request)
@@ -851,7 +851,7 @@ func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[st
 				t.Fatalf("'%s': setUp() error was %s, want nil", test.name, err)
 			}
 
-			query := queries.NewExpandQuery(datastore, tracer, logger)
+			query := commands.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 

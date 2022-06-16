@@ -52,7 +52,6 @@ jobs:
           output-file-path: bench_output.txt
           # Where the previous data file is stored
           external-data-json-path: ./cache/benchmark-data.json
-          alert-threshold: "150%"
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
