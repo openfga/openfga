@@ -9,8 +9,8 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -572,7 +572,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 				}
 			}
 
-			cmd := queries.NewReadQuery(datastore, tracer, logger, encoder)
+			cmd := commands.NewReadQuery(datastore, tracer, logger, encoder)
 			req := &openfgapb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,

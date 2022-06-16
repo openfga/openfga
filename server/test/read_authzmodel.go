@@ -8,8 +8,8 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -42,7 +42,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.Da
 	require.NoError(err)
 
 	for _, test := range tests {
-		query := queries.NewReadAuthorizationModelQuery(datastore, logger)
+		query := commands.NewReadAuthorizationModelQuery(datastore, logger)
 		if _, err := query.Execute(ctx, test.request); !errors.Is(test.expectedError, err) {
 			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
 			continue
@@ -80,7 +80,7 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
-	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
+	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
@@ -120,7 +120,7 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	query := queries.NewReadAuthorizationModelQuery(datastore, logger)
+	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
 	_, err = query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
