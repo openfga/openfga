@@ -86,7 +86,7 @@ func TestStore(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore])
 		}
 	})
 
-	t.Run("get non-existant store returns not found", func(t *testing.T) {
+	t.Run("get non-existent store returns not found", func(t *testing.T) {
 		_, err := datastore.GetStore(ctx, "foo")
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("got '%v', expected '%v'", err, storage.ErrNotFound)
