@@ -19,29 +19,29 @@ The following section aims to help you get started quickly. Please look at our o
 
 Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the following command:
 
-```
-➜ docker run -p 8080:8080 openfga/openfga:latest
+```bash
+docker run -p 8080:8080 openfga/openfga:latest
 ```
 
 ### Docker Compose
 [`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
 
-```
-➜ docker compose up openfga
+```bash
+docker compose up openfga
 ```
 
 If you haven't cloned the repository you can get the `docker-compose.yaml` file with the following command:
 
-```
-➜ curl -LO https://openfga.dev/docker-compose.yaml
+```bash
+curl -LO https://openfga.dev/docker-compose.yaml
 
 ```
 
 ### Pre-compiled Binaries
 Download your platform's [latest release](https://github.com/openfga/openfga/releases/latest) and extract it. Then run the binary
 with the command:
-```
-➜ ./bin/openfga
+```bash
+./bin/openfga
 ```
 
 ### Source
@@ -49,33 +49,34 @@ with the command:
 
 You can install from source using Go modules (make sure `$GOBIN` is on your shell `$PATH`).
 
-```
-➜ export PATH=$PATH:$(go env GOBIN)
-➜ go install github.com/openfga/openfga/cmd/openfga
+```bash
+export PATH=$PATH:$(go env GOBIN)
+go install github.com/openfga/openfga/cmd/openfga
 ```
 
 Or you can build it with the source by cloning the project and then building it.
 
-```
-➜ git clone https://github.com/openfga/openfga.git && cd openfga
-➜ go build cmd/openfga/openfga.go
+```bash
+git clone https://github.com/openfga/openfga.git && cd openfga
+go build cmd/openfga/openfga.go
 
-➜ ./openfga
+./openfga
 ```
 
 ## Verifying the Installation
 Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/integration/create-store/). 
 
-```
+```bash
 curl -X POST 'localhost:8080/stores' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "name": "openfga-demo"
 }'
 ```
+
 If everything is running correctly, you should get a response with information about the newly created store, for example:
 
-```
+```json
 {
     "id": "01G3EMTKQRKJ93PFVDA1SJHWD2",
     "name": "openfga-demo",
