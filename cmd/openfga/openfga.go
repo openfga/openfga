@@ -198,10 +198,13 @@ func buildService(logger logger.Logger) (*service, error) {
 	var authenticator authentication.Authenticator
 	switch config.AuthMethod {
 	case "none":
+		logger.Warn("using 'none' authentication")
 		authenticator = authentication.NoopAuthenticator{}
 	case "preshared":
+		logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
 	case "oidc":
+		logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
 	default:
 		return nil, fmt.Errorf("unsupported authenticator type: %v", config.AuthMethod)
@@ -209,8 +212,6 @@ func buildService(logger logger.Logger) (*service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize authenticator: %v", err)
 	}
-
-	logger.Info(fmt.Sprintf("using '%v' authentication", config.AuthMethod))
 
 	interceptors := []grpc.UnaryServerInterceptor{
 		middleware.NewAuthenticationInterceptor(authenticator),
