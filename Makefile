@@ -27,7 +27,7 @@ build: ## Build/compile the OpenFGA service
 
 .PHONY: run
 run: build ## Run the OpenFGA server with in-memory storage
-	./bin/openfga
+	./bin/openfga run
 
 .PHONY: run-postgres
 run-postgres: build ## Run the OpenFGA server with Postgres storage
