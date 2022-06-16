@@ -24,7 +24,7 @@ type RemoteOidcAuthenticator struct {
 	JwksURI string
 	JWKs    *keyfunc.JWKS
 
-	httpClient retryablehttp.RetryableHTTPClient
+	httpClient *http.Client
 }
 
 var (
@@ -38,7 +38,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 	oidc := &RemoteOidcAuthenticator{
 		IssuerURL:  issuerURL,
 		Audience:   audience,
-		httpClient: retryablehttp.RetryableHTTPClient{},
+		httpClient: retryablehttp.New().StandardClient(),
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
