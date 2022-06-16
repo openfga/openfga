@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-COVERPKG := $(shell eval go list ./... | grep -v mocks | tr '\n' ',')
+COVERPKG := $(shell eval go list ./... | grep -v mocks |  paste -sd "," -)
 
 .PHONY: help
 help:
