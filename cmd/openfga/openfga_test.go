@@ -67,7 +67,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		service.server.Run(ctx)
+		_ = service.server.Run(ctx)
 	}()
 
 	ensureServiceUp(t)
@@ -138,7 +138,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		service.server.Run(ctx)
+		_ = service.server.Run(ctx)
 	}()
 
 	ensureServiceUp(t)
