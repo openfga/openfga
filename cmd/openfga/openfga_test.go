@@ -168,7 +168,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
 	defer service.Close(ctx)
-	defer g.Wait()
+	defer require.NoError(t, g.Wait())
 	defer cancel()
 
 	g.Go(func() error {
@@ -221,6 +221,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 			}
 		})
 	}
+
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
@@ -238,7 +239,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
 	defer service.Close(ctx)
-	defer g.Wait()
+	defer require.NoError(t, g.Wait())
 	defer cancel()
 
 	g.Go(func() error {
@@ -372,7 +373,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-		defer g.Wait()
+		defer require.NoError(t, g.Wait())
 		defer cancel()
 
 		g.Go(func() error {
@@ -392,7 +393,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-		defer g.Wait()
+		defer require.NoError(t, g.Wait())
 		defer cancel()
 
 		g.Go(func() error {
@@ -449,7 +450,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-		defer g.Wait()
+		defer require.NoError(t, g.Wait())
 		defer cancel()
 
 		g.Go(func() error {
@@ -478,7 +479,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-		defer g.Wait()
+		defer require.NoError(t, g.Wait())
 		defer cancel()
 
 		g.Go(func() error {
