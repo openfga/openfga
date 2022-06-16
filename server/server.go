@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -69,8 +70,8 @@ type Dependencies struct {
 
 type Config struct {
 	ServiceName            string
-	RPCPort                int
-	HTTPPort               int
+	GRPCServer             GRPCServerConfig
+	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
@@ -78,10 +79,24 @@ type Config struct {
 	RequestTimeout         time.Duration
 }
 
+type GRPCServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
+}
+
+type HTTPServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
+}
+
+type TLSConfig struct {
+	CertPath string
+	KeyPath  string
+}
+
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-
 	tokenEncoder := dependencies.TokenEncoder
 	if tokenEncoder == nil {
 		tokenEncoder = encoder.NewBase64Encoder()
@@ -112,7 +127,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				if serverErrors.IsValidEncodedError(actualCode) {
@@ -389,10 +403,18 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 // Run starts server execution, and blocks until complete, returning any server errors. To close the
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(s.config.UnaryInterceptors...))
+	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(s.config.UnaryInterceptors...)}
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
 
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
+	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Addr)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -409,16 +431,27 @@ func (s *Server) Run(ctx context.Context) error {
 	// Set a request timeout.
 	runtime.DefaultContextTimeout = s.config.RequestTimeout
 
-	muxOpts := []runtime.ServeMuxOption{}
+	var muxOpts []runtime.ServeMuxOption
 	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
 	muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
 
 	mux := runtime.NewServeMux(muxOpts...)
 
-	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-	}); err != nil {
+	dialOpts := []grpc.DialOption{
+		grpc.WithBlock(),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+	}
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+		if err != nil {
+			return err
+		}
+		dialOpts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		dialOpts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, dialOpts); err != nil {
 		return err
 	}
 
@@ -430,7 +463,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPPort),
+		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Addr),
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -442,8 +475,13 @@ func (s *Server) Run(ctx context.Context) error {
 
 	go func() {
 		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-		err := httpServer.ListenAndServe()
 
+		var err error
+		if s.config.HTTPServer.TLSConfig != nil {
+			err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
 		if err != http.ErrServerClosed {
 			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
 		}
