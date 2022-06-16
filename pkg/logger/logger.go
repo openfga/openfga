@@ -101,7 +101,7 @@ func NewTextLogger() (*ZapLogger, error) {
 	config.Encoding = "console"
 	config.DisableCaller = true
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	development, err := config.Build()
+	development, err := config.Build(zap.AddStacktrace(zap.ErrorLevel))
 	if err != nil {
 		return nil, err
 	}
