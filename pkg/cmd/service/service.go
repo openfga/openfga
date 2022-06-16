@@ -1,13 +1,10 @@
-package main
+package service
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log"
-	"os/signal"
-	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -23,33 +20,15 @@ import (
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/postgres"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
-
-	errInvalidGRPCTLSConfig = errors.New("'OPENFGA_GRPC_TLS_CERT_PATH' and 'OPENFGA_GRPC_TLS_KEY_PATH' env variables must be set")
-	errInvalidHTTPTLSConfig = errors.New("'OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH' and 'OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH' env variables must be set")
+	ErrInvalidGRPCTLSConfig = errors.New("'OPENFGA_GRPC_TLS_CERT_PATH' and 'OPENFGA_GRPC_TLS_KEY_PATH' env variables must be set")
+	ErrInvalidHTTPTLSConfig = errors.New("'OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH' and 'OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH' env variables must be set")
 )
 
-type service struct {
-	server        *server.Server
-	datastore     storage.OpenFGADatastore
-	authenticator authentication.Authenticator
-}
-
-func (s *service) Close(ctx context.Context) error {
-	s.authenticator.Close()
-
-	return s.datastore.Close(ctx)
-}
-
-type svcConfig struct {
+type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 	DatastoreEngine               string `default:"memory" split_words:"true"`
 	DatastoreConnectionURI        string `split_words:"true"`
@@ -88,50 +67,8 @@ type svcConfig struct {
 	LogFormat string `default:"text" split_words:"true"`
 }
 
-func main() {
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	logger, err := buildLogger()
-	if err != nil {
-		log.Fatalf("failed to initialize logger: %v", err)
-	}
-
-	service, err := buildService(logger)
-	if err != nil {
-		logger.Fatal("failed to initialize openfga server", zap.Error(err))
-	}
-
-	logger.Info(
-		"🚀 starting openfga service...",
-		zap.String("version", version),
-		zap.String("date", date),
-		zap.String("commit", commit),
-		zap.String("go-version", runtime.Version()),
-	)
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return service.server.Run(ctx)
-	})
-
-	if err := g.Wait(); err != nil {
-		logger.Error("failed to run openfga server", zap.Error(err))
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := service.Close(ctx); err != nil {
-		logger.Error("failed to gracefully shutdown the service", zap.Error(err))
-	}
-
-	logger.Info("Server exiting. Goodbye 👋")
-}
-
-func getServiceConfig() svcConfig {
-	var config svcConfig
+func GetServiceConfig() Config {
+	var config Config
 
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
 		log.Fatalf("failed to process server config: %v", err)
@@ -139,15 +76,29 @@ func getServiceConfig() svcConfig {
 	return config
 }
 
-func buildService(logger logger.Logger) (*service, error) {
-	var err error
-	var datastore storage.OpenFGADatastore
-	config := getServiceConfig()
+type service struct {
+	server        *server.Server
+	datastore     storage.OpenFGADatastore
+	authenticator authentication.Authenticator
+}
 
+func (s *service) Close(ctx context.Context) error {
+	s.authenticator.Close()
+
+	return s.datastore.Close(ctx)
+}
+
+func (s *service) Run(ctx context.Context) error {
+	return s.server.Run(ctx)
+}
+
+func BuildService(config Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
+	var datastore storage.OpenFGADatastore
+	var err error
 	switch config.DatastoreEngine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
@@ -170,7 +121,7 @@ func buildService(logger logger.Logger) (*service, error) {
 	var grpcTLSConfig *server.TLSConfig
 	if config.GRPCTLSEnabled {
 		if config.GRPCTLSCertPath == "" || config.GRPCTLSKeyPath == "" {
-			return nil, errInvalidGRPCTLSConfig
+			return nil, ErrInvalidGRPCTLSConfig
 		}
 		grpcTLSConfig = &server.TLSConfig{
 			CertPath: config.GRPCTLSCertPath,
@@ -184,7 +135,7 @@ func buildService(logger logger.Logger) (*service, error) {
 	var httpTLSConfig *server.TLSConfig
 	if config.HTTPTLSEnabled {
 		if config.HTTPTLSCertPath == "" || config.HTTPTLSKeyPath == "" {
-			return nil, errInvalidHTTPTLSConfig
+			return nil, ErrInvalidHTTPTLSConfig
 		}
 		httpTLSConfig = &server.TLSConfig{
 			CertPath: config.HTTPTLSCertPath,
@@ -248,25 +199,4 @@ func buildService(logger logger.Logger) (*service, error) {
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
-}
-
-func buildLogger() (logger.Logger, error) {
-	openfgaLogger, err := logger.NewTextLogger()
-	if err != nil {
-		return nil, err
-	}
-
-	config := getServiceConfig()
-	if config.LogFormat == "json" {
-		openfgaLogger, err = logger.NewJSONLogger()
-		if err != nil {
-			return nil, err
-		}
-		openfgaLogger.With(
-			zap.String("build.version", version),
-			zap.String("build.commit", commit),
-		)
-	}
-
-	return openfgaLogger, err
 }
