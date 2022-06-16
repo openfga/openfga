@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os/signal"
@@ -31,6 +32,9 @@ var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
+
+	errInvalidGRPCTLSConfig = errors.New("'OPENFGA_GRPC_TLS_CERT_PATH' and 'OPENFGA_GRPC_TLS_KEY_PATH' env variables must be set")
+	errInvalidHTTPTLSConfig = errors.New("'OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH' and 'OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH' env variables must be set")
 )
 
 type service struct {
@@ -48,7 +52,7 @@ func (s *service) Close(ctx context.Context) error {
 
 type svcConfig struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
-	DatastoreEngine               string `default:"memory" split_words:"true" required:"true"`
+	DatastoreEngine               string `default:"memory" split_words:"true"`
 	DatastoreConnectionURI        string `split_words:"true"`
 	DatastoreMaxCacheSize         int    `default:"100000" split_words:"true"`
 	ServiceName                   string `default:"openfga" split_words:"true"`
@@ -62,6 +66,14 @@ type svcConfig struct {
 	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
+
+	GRPCTLSEnabled  bool   `default:"false" envconfig:"GRPC_TLS_ENABLED"`
+	GRPCTLSCertPath string `envconfig:"GRPC_TLS_CERT_PATH"`
+	GRPCTLSKeyPath  string `envconfig:"GRPC_TLS_KEY_PATH"`
+
+	HTTPTLSEnabled  bool   `default:"false" envconfig:"HTTP_TLS_ENABLED"`
+	HTTPTLSCertPath string `envconfig:"HTTP_TLS_CERT_PATH"`
+	HTTPTLSKeyPath  string `envconfig:"HTTP_TLS_KEY_PATH"`
 
 	// Authentication. Possible options: none,preshared,oidc
 	AuthMethod string `default:"none" split_words:"true"`
@@ -157,8 +169,36 @@ func buildService(logger logger.Logger) (*service, error) {
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatastoreEngine))
 
-	var authenticator authentication.Authenticator
+	
+	var grpcTLSConfig *server.TLSConfig
+	if config.GRPCTLSEnabled {
+		if config.GRPCTLSCertPath == "" || config.GRPCTLSKeyPath == "" {
+			return nil, errInvalidGRPCTLSConfig
+		}
+		grpcTLSConfig = &server.TLSConfig{
+			CertPath: config.GRPCTLSCertPath,
+			KeyPath:  config.GRPCTLSKeyPath,
+		}
+		logger.Info("GRPC TLS enabled, serving connections using the provided certificate")
+	} else {
+		logger.Warn("GRPC TLS is disabled, falling back to insecure plaintext")
+	}
 
+	var httpTLSConfig *server.TLSConfig
+	if config.HTTPTLSEnabled {
+		if config.HTTPTLSCertPath == "" || config.HTTPTLSKeyPath == "" {
+			return nil, errInvalidHTTPTLSConfig
+		}
+		httpTLSConfig = &server.TLSConfig{
+			CertPath: config.HTTPTLSCertPath,
+			KeyPath:  config.HTTPTLSKeyPath,
+		}
+		logger.Info("HTTP TLS enabled, serving connections using the provided certificate")
+	} else {
+		logger.Warn("HTTP TLS is disabled, falling back to insecure plaintext")
+	}
+
+	var authenticator authentication.Authenticator
 	switch config.AuthMethod {
 	case "none":
 		authenticator = authentication.NoopAuthenticator{}
@@ -186,9 +226,15 @@ func buildService(logger logger.Logger) (*service, error) {
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
-		ServiceName:            config.ServiceName,
-		RPCPort:                config.RPCPort,
-		HTTPPort:               config.HTTPPort,
+		ServiceName: config.ServiceName,
+		GRPCServer: server.GRPCServerConfig{
+			Addr:      config.RPCPort,
+			TLSConfig: grpcTLSConfig,
+		},
+		HTTPServer: server.HTTPServerConfig{
+			Addr:      config.HTTPPort,
+			TLSConfig: httpTLSConfig,
+		},
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		UnaryInterceptors:      interceptors,
