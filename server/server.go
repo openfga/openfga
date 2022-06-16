@@ -44,7 +44,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
-	*grpc.Server
+
 	tracer    trace.Tracer
 	meter     metric.Meter
 	logger    logger.Logger
@@ -97,16 +97,6 @@ type TLSConfig struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(config.UnaryInterceptors...)}
-	if config.GRPCServer.TLSConfig != nil {
-		creds, err := credentials.NewServerTLSFromFile(config.GRPCServer.TLSConfig.CertPath, config.GRPCServer.TLSConfig.KeyPath)
-		if err != nil {
-			return nil, err
-		}
-		opts = append(opts, grpc.Creds(creds))
-	}
-	grpcServer := grpc.NewServer(opts...)
-
 	tokenEncoder := dependencies.TokenEncoder
 	if tokenEncoder == nil {
 		tokenEncoder = encoder.NewBase64Encoder()
@@ -128,7 +118,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:    grpcServer,
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
@@ -148,8 +137,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 			}),
 		},
 	}
-
-	openfgapb.RegisterOpenFGAServiceServer(grpcServer, server)
 
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
@@ -413,14 +400,20 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	return q.Execute(ctx, req)
 }
 
-// Close gracefully stops this server, blocking any subsequent requests and waiting for
-// any existing ones to complete before returning.
-func (s *Server) Close() {
-	s.GracefulStop()
-}
-
-// Run starts server execution, and blocks until complete, returning any serverErrors.
+// Run starts server execution, and blocks until complete, returning any server errors. To close the
+// server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
+	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(s.config.UnaryInterceptors...)}
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	grpcServer := grpc.NewServer(opts...)
+	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
+
 	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Addr)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
@@ -428,7 +421,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil {
 			s.logger.Error("failed to start grpc server", logger.Error(err))
 		}
 	}()
@@ -444,7 +437,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	mux := runtime.NewServeMux(muxOpts...)
 
-	opts := []grpc.DialOption{
+	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 	}
@@ -453,12 +446,12 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		opts = append(opts, grpc.WithTransportCredentials(creds))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, opts); err != nil {
+	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, dialOpts); err != nil {
 		return err
 	}
 
@@ -479,10 +472,6 @@ func (s *Server) Run(ctx context.Context) error {
 				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
 		}).Handler(mux),
 	}
-
-	httpServer.RegisterOnShutdown(func() {
-		s.Stop()
-	})
 
 	go func() {
 		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
@@ -508,6 +497,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
 		return err
 	}
+
+	grpcServer.GracefulStop()
 
 	return nil
 }
