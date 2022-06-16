@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -441,9 +442,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.Close(ctx)
 
-		go func() {
-			_ = service.server.Run(ctx)
-		}()
+		g := new(errgroup.Group)
+		defer g.Wait()
+
+		g.Go(func() error {
+			return service.server.Run(ctx)
+		})
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		conn, err := grpc.Dial("localhost:8081", opts...)
@@ -468,9 +472,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.Close(ctx)
 
-		go func() {
-			_ = service.server.Run(ctx)
-		}()
+		g := new(errgroup.Group)
+		defer g.Wait()
+
+		g.Go(func() error {
+			return service.server.Run(ctx)
+		})
 
 		creds, err := credentials.NewClientTLSFromFile(certFile, "")
 		require.NoError(t, err)
