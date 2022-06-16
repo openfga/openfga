@@ -163,14 +163,11 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	g := new(errgroup.Group)
 
 	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
-	defer service.Close(ctx)
-	defer require.NoError(t, g.Wait())
-	defer cancel()
 
+	g := new(errgroup.Group)
 	g.Go(func() error {
 		return service.server.Run(ctx)
 	})
@@ -222,6 +219,9 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 		})
 	}
 
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
@@ -234,14 +234,11 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	g := new(errgroup.Group)
 
 	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
-	defer service.Close(ctx)
-	defer require.NoError(t, g.Wait())
-	defer cancel()
 
+	g := new(errgroup.Group)
 	g.Go(func() error {
 		return service.server.Run(ctx)
 	})
@@ -292,6 +289,10 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 			}
 		})
 	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
 }
 
 func ensureServiceUp(t *testing.T) {
@@ -368,19 +369,20 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
-		defer require.NoError(t, g.Wait())
-		defer cancel()
 
+		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.server.Run(ctx)
 		})
 
 		ensureServiceUp(t)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
@@ -388,14 +390,11 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
-		defer require.NoError(t, g.Wait())
-		defer cancel()
 
+		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.server.Run(ctx)
 		})
@@ -432,6 +431,10 @@ func TestHTTPServingTLS(t *testing.T) {
 			backoffPolicy,
 		)
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
 }
@@ -445,14 +448,11 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
-		defer require.NoError(t, g.Wait())
-		defer cancel()
 
+		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.server.Run(ctx)
 		})
@@ -465,23 +465,22 @@ func TestGRPCServingTLS(t *testing.T) {
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
 	t.Run("enable gRPC TLS is true will serve gRPC TLS", func(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
-		os.Setenv("OPENFGA_RPC_PORT", "8082")
-
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
-		defer require.NoError(t, g.Wait())
-		defer cancel()
 
+		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.server.Run(ctx)
 		})
@@ -490,12 +489,16 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
-		conn, err := grpc.Dial("localhost:8082", opts...)
+		conn, err := grpc.Dial("localhost:8081", opts...)
 		require.NoError(t, err)
 		defer conn.Close()
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 }
