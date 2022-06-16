@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/openfga/openfga/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
