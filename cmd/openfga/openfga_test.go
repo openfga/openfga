@@ -459,6 +459,8 @@ func TestGRPCServingTLS(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
+		os.Setenv("OPENFGA_RPC_PORT", "8082")
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -474,7 +476,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
-		conn, err := grpc.Dial("localhost:8081", opts...)
+		conn, err := grpc.Dial("localhost:8082", opts...)
 		require.NoError(t, err)
 		defer conn.Close()
 
