@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
@@ -77,29 +78,33 @@ type Config struct {
 	// OIDC authentication
 	AuthOIDCIssuer   string `default:"" split_words:"true"`
 	AuthOIDCAudience string `default:"" split_words:"true"`
+
+	// Logging. Possible options: text,json
+	LogFormat string `default:"text" split_words:"true"`
+}
+
+func getServiceConfig() svcConfig {
+	var config svcConfig
+
+	if err := envconfig.Process("OPENFGA", &config); err != nil {
+		log.Fatalf("failed to process server config: %v", err)
+	}
+	return config
 }
 
 func BuildService(logger logger.Logger) (*service, error) {
-	var config Config
-	var err error
-	var datastore storage.OpenFGADatastore
-
-	if err := envconfig.Process("OPENFGA", &config); err != nil {
-		return nil, fmt.Errorf("failed to process server config: %v", err)
-	}
+	config := getServiceConfig()
 
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
+	var err error
+	var datastore storage.OpenFGADatastore
 	switch config.DatastoreEngine {
 	case "memory":
-		logger.Info("using 'memory' storage engine")
-
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
-		logger.Info("using 'postgres' storage engine")
-
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),
@@ -112,6 +117,8 @@ func BuildService(logger logger.Logger) (*service, error) {
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
+
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatastoreEngine))
 
 	var grpcTLSConfig *server.TLSConfig
 	if config.GRPCTLSEnabled {
@@ -144,11 +151,13 @@ func BuildService(logger logger.Logger) (*service, error) {
 	var authenticator authentication.Authenticator
 	switch config.AuthMethod {
 	case "none":
+		logger.Warn("using 'none' authentication")
 		authenticator = authentication.NoopAuthenticator{}
 	case "preshared":
+		logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
-
 	case "oidc":
+		logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
 	default:
 		return nil, fmt.Errorf("unsupported authenticator type: %v", config.AuthMethod)
@@ -192,4 +201,25 @@ func BuildService(logger logger.Logger) (*service, error) {
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
+}
+
+func buildLogger() (logger.Logger, error) {
+	openfgaLogger, err := logger.NewTextLogger()
+	if err != nil {
+		return nil, err
+	}
+
+	config := getServiceConfig()
+	if config.LogFormat == "json" {
+		openfgaLogger, err = logger.NewJSONLogger()
+		if err != nil {
+			return nil, err
+		}
+		openfgaLogger.With(
+			zap.String("build.version", version),
+			zap.String("build.commit", commit),
+		)
+	}
+
+	return openfgaLogger, err
 }
