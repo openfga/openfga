@@ -6,7 +6,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -43,7 +43,7 @@ func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester[s
 		t.Run(test._name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 
-			query := queries.NewReadAssertionsQuery(datastore, logger)
+			query := commands.NewReadAssertionsQuery(datastore, logger)
 			test.request.StoreId = store
 			actualResponse, actualError := query.Execute(ctx, test.request.StoreId, test.request.AuthorizationModelId)
 

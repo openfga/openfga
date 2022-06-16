@@ -1,8 +1,8 @@
 name: FOSSA
 on:
+  pull_request:
   push:
     branches:
-      - master
       - main
 
 jobs:
@@ -10,9 +10,29 @@ jobs:
     runs-on: ubuntu-latest
     if: (github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      - id: go-cache-paths
+        run: |
+          echo "::set-output name=go-build::$(go env GOCACHE)"
+          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+      # Cache go mod cache, used to speedup builds
+      - uses: actions/cache@v3
+        with:
+          path: ${{ steps.go-cache-paths.outputs.go-mod }}
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+      - name: Build
+        run: make build
       - name: Run FOSSA scan and upload build data
         uses: fossas/fossa-action@main
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
+          branch: ${{ github.ref_name }}
+      - name: Run FOSSA tests
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          run-tests: true
