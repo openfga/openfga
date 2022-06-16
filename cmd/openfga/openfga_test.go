@@ -436,14 +436,13 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-
-		g := new(errgroup.Group)
 		defer g.Wait()
+		defer cancel()
 
 		g.Go(func() error {
 			return service.server.Run(ctx)
@@ -466,14 +465,13 @@ func TestGRPCServingTLS(t *testing.T) {
 		os.Setenv("OPENFGA_RPC_PORT", "8082")
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
-
-		g := new(errgroup.Group)
 		defer g.Wait()
+		defer cancel()
 
 		g.Go(func() error {
 			return service.server.Run(ctx)
