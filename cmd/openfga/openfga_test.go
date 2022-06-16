@@ -29,9 +29,8 @@ const (
 
 func TestBuildServerWithNoAuth(t *testing.T) {
 	service, err := buildService(logger.NewNoopLogger())
-	defer service.Close(context.Background())
-
 	require.NoError(t, err, "Failed to build server and/or datastore")
+	service.Close(context.Background())
 }
 
 func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
