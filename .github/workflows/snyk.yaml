@@ -1,5 +1,6 @@
 name: Snyk
 on:
+  pull_request:
   push:
     branches:
       - main
@@ -9,8 +10,20 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-v1
+      - name: Build
+        run: make build
       - name: Run Snyk to monitor for vulnerabilities
         uses: snyk/actions/golang@master
         env:
