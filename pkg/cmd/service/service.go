@@ -28,22 +28,6 @@ var (
 	ErrInvalidHTTPTLSConfig = errors.New("'OPENFGA_HTTP_GATEWAY_TLS_CERT_PATH' and 'OPENFGA_HTTP_GATEWAY_TLS_KEY_PATH' env variables must be set")
 )
 
-type service struct {
-	server        *server.Server
-	datastore     storage.OpenFGADatastore
-	authenticator authentication.Authenticator
-}
-
-func (s *service) Close(ctx context.Context) error {
-	s.authenticator.Close()
-
-	return s.datastore.Close(ctx)
-}
-
-func (s *service) Run(ctx context.Context) error {
-	return s.server.Run(ctx)
-}
-
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 	DatastoreEngine               string `default:"memory" split_words:"true"`
@@ -83,8 +67,8 @@ type Config struct {
 	LogFormat string `default:"text" split_words:"true"`
 }
 
-func getServiceConfig() svcConfig {
-	var config svcConfig
+func GetServiceConfig() Config {
+	var config Config
 
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
 		log.Fatalf("failed to process server config: %v", err)
@@ -92,15 +76,29 @@ func getServiceConfig() svcConfig {
 	return config
 }
 
-func BuildService(logger logger.Logger) (*service, error) {
-	config := getServiceConfig()
+type service struct {
+	server        *server.Server
+	datastore     storage.OpenFGADatastore
+	authenticator authentication.Authenticator
+}
 
+func (s *service) Close(ctx context.Context) error {
+	s.authenticator.Close()
+
+	return s.datastore.Close(ctx)
+}
+
+func (s *service) Run(ctx context.Context) error {
+	return s.server.Run(ctx)
+}
+
+func BuildService(config Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
-	var err error
 	var datastore storage.OpenFGADatastore
+	var err error
 	switch config.DatastoreEngine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
@@ -201,25 +199,4 @@ func BuildService(logger logger.Logger) (*service, error) {
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
-}
-
-func buildLogger() (logger.Logger, error) {
-	openfgaLogger, err := logger.NewTextLogger()
-	if err != nil {
-		return nil, err
-	}
-
-	config := getServiceConfig()
-	if config.LogFormat == "json" {
-		openfgaLogger, err = logger.NewJSONLogger()
-		if err != nil {
-			return nil, err
-		}
-		openfgaLogger.With(
-			zap.String("build.version", version),
-			zap.String("build.commit", commit),
-		)
-	}
-
-	return openfgaLogger, err
 }

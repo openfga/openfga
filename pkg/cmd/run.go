@@ -34,17 +34,14 @@ func run(_ *cobra.Command, _ []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger, err := logger.NewZapLogger()
+	config := service.GetServiceConfig()
+
+	logger, err := buildLogger(config.LogFormat)
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
 
-	logger.With(
-		zap.String("build.version", version),
-		zap.String("build.commit", commit),
-	)
-
-	service, err := service.BuildService(logger)
+	service, err := service.BuildService(config, logger)
 	if err != nil {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
@@ -74,4 +71,24 @@ func run(_ *cobra.Command, _ []string) {
 	}
 
 	logger.Info("Server exiting. Goodbye 👋")
+}
+
+func buildLogger(logFormat string) (logger.Logger, error) {
+	openfgaLogger, err := logger.NewTextLogger()
+	if err != nil {
+		return nil, err
+	}
+
+	if logFormat == "json" {
+		openfgaLogger, err = logger.NewJSONLogger()
+		if err != nil {
+			return nil, err
+		}
+		openfgaLogger.With(
+			zap.String("build.version", version),
+			zap.String("build.commit", commit),
+		)
+	}
+
+	return openfgaLogger, err
 }
