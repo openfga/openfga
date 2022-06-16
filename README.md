@@ -14,7 +14,7 @@ The following section aims to help you get started quickly. Please look at our o
 
 ## Setup and Installation
 
-> ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment.
+> ℹ️ The following sections set up an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment.
 >
 > For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
 
@@ -38,7 +38,6 @@ If you haven't cloned the repository you can get the `docker-compose.yaml` file 
 
 ```bash
 curl -LO https://openfga.dev/docker-compose.yaml
-
 ```
 
 ### Pre-compiled Binaries
@@ -47,7 +46,7 @@ Download your platform's [latest release](https://github.com/openfga/openfga/rel
 with the command:
 
 ```bash
-./bin/openfga
+./openfga
 ```
 
 ### Source
