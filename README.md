@@ -51,6 +51,11 @@ You can install from source using Go modules (make sure `$GOBIN` is on your shel
 
 ```bash
 export PATH=$PATH:$(go env GOBIN)
+```
+
+Then:
+
+```bash
 go install github.com/openfga/openfga/cmd/openfga
 ```
 
