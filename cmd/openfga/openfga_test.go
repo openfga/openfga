@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -11,8 +12,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/openfga/openfga/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 )
@@ -43,19 +44,13 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
 
 	_, err := buildService(noopLogger)
-	if err == nil {
-		t.Fatal("Expected to fail with error")
-	}
-
-	expectedError := "invalid auth configuration, please specify at least one key"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Fatalf("Expected to fail with error %v but got %v", expectedError, err.Error())
-	}
+	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
@@ -120,7 +115,8 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	noopLogger := logger.NewNoopLogger()
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
@@ -188,7 +184,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	}
 }
 
-func ensureServiceUp(t testing.TB) {
+func ensureServiceUp(t *testing.T) {
 	t.Helper()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
@@ -203,7 +199,7 @@ func ensureServiceUp(t testing.TB) {
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("waiting for OK status")
+				return errors.New("waiting for OK status")
 			}
 
 			return nil
