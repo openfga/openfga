@@ -45,7 +45,6 @@ type service struct {
 
 func (s *service) Close(ctx context.Context) error {
 	s.authenticator.Close()
-	s.server.Close()
 
 	return s.datastore.Close(ctx)
 }
@@ -104,8 +103,6 @@ func main() {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-
 	logger.Info(
 		"🚀 starting openfga service...",
 		zap.String("version", version),
@@ -114,6 +111,7 @@ func main() {
 		zap.String("go-version", runtime.Version()),
 	)
 
+	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		return service.server.Run(ctx)
 	})
