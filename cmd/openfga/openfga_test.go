@@ -14,7 +14,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 type authTest struct {
@@ -64,11 +63,12 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	require.NoError(t, err, "Failed to build server and/or datastore")
 	defer service.Close(ctx)
 
-	g, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	g.Go(func() error {
-		return service.server.Run(ctx)
-	})
+	go func() {
+		service.server.Run(ctx)
+	}()
 
 	ensureServiceUp(t)
 
@@ -134,11 +134,12 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	require.NoError(t, err)
 	defer service.Close(ctx)
 
-	g, ctx := errgroup.WithContext(ctx)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	g.Go(func() error {
-		return service.server.Run(ctx)
-	})
+	go func() {
+		service.server.Run(ctx)
+	}()
 
 	ensureServiceUp(t)
 
