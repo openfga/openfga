@@ -45,7 +45,6 @@ type service struct {
 
 func (s *service) Close(ctx context.Context) error {
 	s.authenticator.Close()
-	s.server.Close()
 
 	return s.datastore.Close(ctx)
 }
@@ -84,6 +83,9 @@ type svcConfig struct {
 	// OIDC authentication
 	AuthOIDCIssuer   string `default:"" split_words:"true"`
 	AuthOIDCAudience string `default:"" split_words:"true"`
+
+	// Logging. Possible options: text,json
+	LogFormat string `default:"text" split_words:"true"`
 }
 
 func main() {
@@ -91,22 +93,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	logger, err := logger.NewZapLogger()
+	logger, err := buildLogger()
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
-
-	logger.With(
-		zap.String("build.version", version),
-		zap.String("build.commit", commit),
-	)
 
 	service, err := buildService(logger)
 	if err != nil {
 		logger.Fatal("failed to initialize openfga server", zap.Error(err))
 	}
-
-	g, ctx := errgroup.WithContext(ctx)
 
 	logger.Info(
 		"🚀 starting openfga service...",
@@ -116,6 +111,7 @@ func main() {
 		zap.String("go-version", runtime.Version()),
 	)
 
+	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		return service.server.Run(ctx)
 	})
@@ -134,14 +130,19 @@ func main() {
 	logger.Info("Server exiting. Goodbye 👋")
 }
 
-func buildService(logger logger.Logger) (*service, error) {
+func getServiceConfig() svcConfig {
 	var config svcConfig
-	var err error
-	var datastore storage.OpenFGADatastore
 
 	if err := envconfig.Process("OPENFGA", &config); err != nil {
-		return nil, fmt.Errorf("failed to process server config: %v", err)
+		log.Fatalf("failed to process server config: %v", err)
 	}
+	return config
+}
+
+func buildService(logger logger.Logger) (*service, error) {
+	var err error
+	var datastore storage.OpenFGADatastore
+	config := getServiceConfig()
 
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
@@ -149,12 +150,8 @@ func buildService(logger logger.Logger) (*service, error) {
 
 	switch config.DatastoreEngine {
 	case "memory":
-		logger.Info("using 'memory' storage engine")
-
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
-		logger.Info("using 'postgres' storage engine")
-
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),
@@ -167,6 +164,8 @@ func buildService(logger logger.Logger) (*service, error) {
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
+
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatastoreEngine))
 
 	var grpcTLSConfig *server.TLSConfig
 	if config.GRPCTLSEnabled {
@@ -199,11 +198,13 @@ func buildService(logger logger.Logger) (*service, error) {
 	var authenticator authentication.Authenticator
 	switch config.AuthMethod {
 	case "none":
+		logger.Warn("using 'none' authentication")
 		authenticator = authentication.NoopAuthenticator{}
 	case "preshared":
+		logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
-
 	case "oidc":
+		logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
 	default:
 		return nil, fmt.Errorf("unsupported authenticator type: %v", config.AuthMethod)
@@ -247,4 +248,25 @@ func buildService(logger logger.Logger) (*service, error) {
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
+}
+
+func buildLogger() (logger.Logger, error) {
+	openfgaLogger, err := logger.NewTextLogger()
+	if err != nil {
+		return nil, err
+	}
+
+	config := getServiceConfig()
+	if config.LogFormat == "json" {
+		openfgaLogger, err = logger.NewJSONLogger()
+		if err != nil {
+			return nil, err
+		}
+		openfgaLogger.With(
+			zap.String("build.version", version),
+			zap.String("build.commit", commit),
+		)
+	}
+
+	return openfgaLogger, err
 }
