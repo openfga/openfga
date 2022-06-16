@@ -140,12 +140,8 @@ func buildService(logger logger.Logger) (*service, error) {
 
 	switch config.DatastoreEngine {
 	case "memory":
-		logger.Info("using 'memory' storage engine")
-
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
-		logger.Info("using 'postgres' storage engine")
-
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),
@@ -159,14 +155,14 @@ func buildService(logger logger.Logger) (*service, error) {
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatastoreEngine)
 	}
 
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatastoreEngine))
+
 	var authenticator authentication.Authenticator
 
 	switch config.AuthMethod {
 	case "none":
-		logger.Info("using no authentication")
 		authenticator = authentication.NoopAuthenticator{}
 	case "preshared":
-		logger.Info("using preshared key authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
 	case "oidc":
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthOIDCIssuer, config.AuthOIDCAudience)
@@ -176,6 +172,8 @@ func buildService(logger logger.Logger) (*service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize authenticator: %v", err)
 	}
+
+	logger.Info(fmt.Sprintf("using '%v' authentication", config.AuthMethod))
 
 	interceptors := []grpc.UnaryServerInterceptor{
 		middleware.NewAuthenticationInterceptor(authenticator),
@@ -208,18 +206,14 @@ func buildService(logger logger.Logger) (*service, error) {
 	}, nil
 }
 
-func buildLogger() (*logger.ZapLogger, error) {
-	var err error
-	var openfgaLogger *logger.ZapLogger
+func buildLogger() (logger.Logger, error) {
+	openfgaLogger, err := logger.NewDevelopmentLogger()
+	if err != nil {
+		return nil, err
+	}
 
 	config := getServiceConfig()
-
-	if config.DevelopmentLogging {
-		openfgaLogger, err = logger.NewDevelopmentLogger()
-		if err != nil {
-			return nil, err
-		}
-	} else {
+	if !config.DevelopmentLogging {
 		openfgaLogger, err = logger.NewProductionLogger()
 		if err != nil {
 			return nil, err
