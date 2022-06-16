@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -186,10 +185,9 @@ func TestHTTPServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			return service.server.Run(ctx)
-		})
+		go func() {
+			_ = service.server.Run(ctx)
+		}()
 
 		ensureServiceUp(t)
 	})
@@ -205,10 +203,9 @@ func TestHTTPServingTLS(t *testing.T) {
 		require.NoError(t, err, "failed to build service")
 		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			return service.server.Run(ctx)
-		})
+		go func() {
+			_ = service.server.Run(ctx)
+		}()
 
 		certPool := x509.NewCertPool()
 		if ok := certPool.AppendCertsFromPEM([]byte(caCert)); !ok {
@@ -261,10 +258,9 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			return service.server.Run(ctx)
-		})
+		go func() {
+			_ = service.server.Run(ctx)
+		}()
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		conn, err := grpc.Dial("localhost:8081", opts...)
@@ -287,10 +283,9 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
-		g.Go(func() error {
-			return service.server.Run(ctx)
-		})
+		go func() {
+			_ = service.server.Run(ctx)
+		}()
 
 		creds, err := credentials.NewClientTLSFromFile(certFile, "")
 		require.NoError(t, err)

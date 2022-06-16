@@ -28,38 +28,30 @@ const (
 )
 
 func TestBuildServerWithNoAuth(t *testing.T) {
-	noopLogger := logger.NewNoopLogger()
-
-	service, err := buildService(noopLogger)
-	require.NoError(t, err, "Failed to build server and/or datastore")
-
+	service, err := buildService(logger.NewNoopLogger())
 	defer service.Close(context.Background())
+
+	require.NoError(t, err, "Failed to build server and/or datastore")
 }
 
 func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	noopLogger := logger.NewNoopLogger()
-
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
 
-	_, err := buildService(noopLogger)
+	_, err := buildService(logger.NewNoopLogger())
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
-	noopLogger := logger.NewNoopLogger()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 
-	service, err := buildService(noopLogger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err, "Failed to build server and/or datastore")
 	defer service.Close(ctx)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	go func() {
 		_ = service.server.Run(ctx)
@@ -114,10 +106,6 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
-	noopLogger := logger.NewNoopLogger()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
 	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
@@ -126,12 +114,12 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
 	require.NoError(t, err)
 
-	service, err := buildService(noopLogger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
 	defer service.Close(ctx)
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	go func() {
 		_ = service.server.Run(ctx)

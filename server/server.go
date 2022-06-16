@@ -407,7 +407,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.config.GRPCServer.TLSConfig != nil {
 		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
@@ -446,9 +446,9 @@ func (s *Server) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		dialOpts = append(opts, grpc.WithTransportCredentials(creds))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 	} else {
-		dialOpts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, dialOpts); err != nil {
