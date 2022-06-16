@@ -95,8 +95,9 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewDevelopmentLogger() (*ZapLogger, error) {
+func NewTextLogger() (*ZapLogger, error) {
 	config := zap.NewDevelopmentConfig()
+	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
 	config.Encoding = "console"
 	config.DisableCaller = true
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -109,7 +110,7 @@ func NewDevelopmentLogger() (*ZapLogger, error) {
 	}, nil
 }
 
-func NewProductionLogger() (*ZapLogger, error) {
+func NewJSONLogger() (*ZapLogger, error) {
 	production, err := zap.NewProduction()
 	if err != nil {
 		return nil, err

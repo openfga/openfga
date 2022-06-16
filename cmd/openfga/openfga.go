@@ -85,8 +85,8 @@ type svcConfig struct {
 	AuthOIDCIssuer   string `default:"" split_words:"true"`
 	AuthOIDCAudience string `default:"" split_words:"true"`
 
-	// Logging
-	DevelopmentLogging bool `default:"true" split_words:"true"`
+	// Logging. Possible options: text,json
+	LogFormat string `default:"text" split_words:"true"`
 }
 
 func main() {
@@ -252,14 +252,14 @@ func buildService(logger logger.Logger) (*service, error) {
 }
 
 func buildLogger() (logger.Logger, error) {
-	openfgaLogger, err := logger.NewDevelopmentLogger()
+	openfgaLogger, err := logger.NewTextLogger()
 	if err != nil {
 		return nil, err
 	}
 
 	config := getServiceConfig()
-	if !config.DevelopmentLogging {
-		openfgaLogger, err = logger.NewProductionLogger()
+	if config.LogFormat == "json" {
+		openfgaLogger, err = logger.NewJSONLogger()
 		if err != nil {
 			return nil, err
 		}
