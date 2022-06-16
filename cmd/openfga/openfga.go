@@ -169,7 +169,6 @@ func buildService(logger logger.Logger) (*service, error) {
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatastoreEngine))
 
-	
 	var grpcTLSConfig *server.TLSConfig
 	if config.GRPCTLSEnabled {
 		if config.GRPCTLSCertPath == "" || config.GRPCTLSKeyPath == "" {
