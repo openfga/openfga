@@ -117,7 +117,7 @@ func main() {
 		playgroundPort := config.PlaygroundPort
 		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
 
-		logger.Info(fmt.Sprintf("🛝 starting openfga playground on '%s'...", playgroundAddr))
+		logger.Info(fmt.Sprintf("🛝 starting openfga playground on 'http://localhost:%s/playground'...", playgroundAddr))
 
 		tmpl, err := template.ParseFiles("./static/playground/index.html")
 		if err != nil {
