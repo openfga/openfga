@@ -163,15 +163,17 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	g := new(errgroup.Group)
 
 	service, err := buildService(logger.NewNoopLogger())
-	require.NoError(t, err, "Failed to build server and/or datastore")
+	require.NoError(t, err)
 	defer service.Close(ctx)
+	defer g.Wait()
+	defer cancel()
 
-	go func() {
-		_ = service.server.Run(ctx)
-	}()
+	g.Go(func() error {
+		return service.server.Run(ctx)
+	})
 
 	ensureServiceUp(t)
 
@@ -231,15 +233,17 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	g := new(errgroup.Group)
 
 	service, err := buildService(logger.NewNoopLogger())
 	require.NoError(t, err)
 	defer service.Close(ctx)
+	defer g.Wait()
+	defer cancel()
 
-	go func() {
-		_ = service.server.Run(ctx)
-	}()
+	g.Go(func() error {
+		return service.server.Run(ctx)
+	})
 
 	ensureServiceUp(t)
 
@@ -363,15 +367,17 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
 		require.NoError(t, err)
 		defer service.Close(ctx)
+		defer g.Wait()
+		defer cancel()
 
-		go func() {
-			_ = service.server.Run(ctx)
-		}()
+		g.Go(func() error {
+			return service.server.Run(ctx)
+		})
 
 		ensureServiceUp(t)
 	})
@@ -381,15 +387,17 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		g := new(errgroup.Group)
 
 		service, err := buildService(logger)
-		require.NoError(t, err, "failed to build service")
+		require.NoError(t, err)
 		defer service.Close(ctx)
+		defer g.Wait()
+		defer cancel()
 
-		go func() {
-			_ = service.server.Run(ctx)
-		}()
+		g.Go(func() error {
+			return service.server.Run(ctx)
+		})
 
 		certPool := x509.NewCertPool()
 		if ok := certPool.AppendCertsFromPEM([]byte(caCert)); !ok {
