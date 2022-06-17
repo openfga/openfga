@@ -8,17 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
-)
-
-const (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
 )
 
 func NewRunCommand() *cobra.Command {
@@ -48,9 +43,9 @@ func run(_ *cobra.Command, _ []string) {
 
 	logger.Info(
 		"🚀 starting openfga service...",
-		zap.String("version", version),
-		zap.String("date", date),
-		zap.String("commit", commit),
+		zap.String("version", build.Version),
+		zap.String("date", build.Date),
+		zap.String("commit", build.Commit),
 		zap.String("go-version", runtime.Version()),
 	)
 
@@ -85,8 +80,8 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 			return nil, err
 		}
 		openfgaLogger.With(
-			zap.String("build.version", version),
-			zap.String("build.commit", commit),
+			zap.String("build.version", build.Version),
+			zap.String("build.commit", build.Commit),
 		)
 	}
 
