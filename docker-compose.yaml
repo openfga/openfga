@@ -18,6 +18,7 @@ services:
 
   openfga:
     image: openfga/openfga:latest
+    command: run
     container_name: openfga
     networks:
       - default
