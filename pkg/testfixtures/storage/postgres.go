@@ -29,9 +29,9 @@ var createTableStmts = []string{
 		inserted_at TIMESTAMPTZ NOT NULL,
 		PRIMARY KEY (store, object_type, object_id, relation, _user)
 	)`,
-	`CREATE INDEX IF NOT EXISTS partial_user_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user'`,
-	`CREATE INDEX IF NOT EXISTS partial_userset_idx ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset'`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS ulid_idx ON tuple (ulid)`,
+	`CREATE INDEX IF NOT EXISTS idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user'`,
+	`CREATE INDEX IF NOT EXISTS idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset'`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_tuple_ulid ON tuple (ulid)`,
 	`CREATE TABLE IF NOT EXISTS authorization_model (
 		store TEXT NOT NULL,
 		authorization_model_id TEXT NOT NULL,
