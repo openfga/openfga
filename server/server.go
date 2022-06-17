@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
+	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -403,7 +404,16 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 // Run starts server execution, and blocks until complete, returning any server errors. To close the
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
-	opts := []grpc.ServerOption{grpc.ChainUnaryInterceptor(s.config.UnaryInterceptors...)}
+
+	interceptors := []grpc.UnaryServerInterceptor{
+		grpc_validator.UnaryServerInterceptor(),
+	}
+	interceptors = append(interceptors, s.config.UnaryInterceptors...)
+
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(interceptors...),
+	}
+
 	if s.config.GRPCServer.TLSConfig != nil {
 		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
 		if err != nil {
