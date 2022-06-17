@@ -105,7 +105,7 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 3. Run the server with:
 
    ```bash
-   ./openfga
+   ./openfga run
    ```
 
 ## Verifying the Installation
