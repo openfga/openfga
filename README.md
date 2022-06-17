@@ -27,10 +27,14 @@ The following section aims to help you get started quickly. Please look at our o
 
 ### Docker
 
-Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the following command:
+OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the in-memory datastore by running the following commands:
 
 ```bash
-docker run -p 8080:8080 openfga/openfga:latest
+docker pull openfga:openfga
+```
+
+```bash
+docker run -p 8080:8080 openfga/openfga
 ```
 
 ### Docker Compose
@@ -84,7 +88,7 @@ go build cmd/openfga/openfga.go
 
 ## Verifying the Installation
 
-Now that you have [Setup and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store).
+Now that you have [Set up and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store).
 
 ```bash
 curl -X POST 'localhost:8080/stores' \
