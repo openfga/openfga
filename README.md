@@ -83,7 +83,7 @@ You can install from source using Go modules:
 3. Run the server with:
 
    ```bash
-   ./openfga
+   ./openfga run
    ```
 
 #### b. Building from source with `go build`
