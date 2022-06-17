@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2022-06-16
+### Added
+* TLS support for both the grpc and HTTP servers
+* Configurable logging formats including `text` and `json` formats
+* OpenFGA CLI with a preliminary `run` command to run the server
+
 ## [0.1.0] - 2022-06-08
 ### Added
 * Initial working implementation of OpenFGA APIs (Check, Expand, Write, Read, Authorization Models, etc..)
@@ -13,5 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/openfga/openfga/releases/tag/v0.1.1
 [0.1.0]: https://github.com/openfga/openfga/releases/tag/v0.1.0
