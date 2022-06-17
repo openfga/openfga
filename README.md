@@ -79,7 +79,7 @@ Or you can build it with the source by cloning the project and then building it.
 git clone https://github.com/openfga/openfga.git && cd openfga
 go build cmd/openfga/openfga.go
 
-./openfga
+./openfga run
 ```
 
 ## Verifying the Installation
