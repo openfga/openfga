@@ -146,15 +146,15 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authentication.OidcCon
 	if err != nil {
 		return nil, errors.Errorf("error getting OIDC: %v", err)
 	}
-
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, errors.Errorf("error reading response body: %v", err)
-	}
 
 	if res.StatusCode != http.StatusOK {
 		return nil, errors.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, errors.Errorf("error reading response body: %v", err)
 	}
 
 	oidcConfig := &authentication.OidcConfig{}
