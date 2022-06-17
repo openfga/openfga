@@ -127,9 +127,9 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			CertPath: config.GRPCTLSCertPath,
 			KeyPath:  config.GRPCTLSKeyPath,
 		}
-		logger.Info("GRPC TLS enabled, serving connections using the provided certificate")
+		logger.Info("TLS is enabled, serving grpc connections using the provided certificate")
 	} else {
-		logger.Warn("GRPC TLS is disabled, falling back to insecure plaintext")
+		logger.Warn("TLS is disabled, serving grpc connections using insecure plaintext")
 	}
 
 	var httpTLSConfig *server.TLSConfig
