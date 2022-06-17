@@ -60,7 +60,7 @@ with the command:
 
 ### Building from Source
 
-There are two recommended options for building from OpenFGA source code:
+There are two recommended options for building OpenFGA from source code:
 
 #### a. Building from source with `go install`
 
