@@ -88,7 +88,7 @@ go build cmd/openfga/openfga.go
 
 ### Running with Postgres
 
-This section assumes that you have cloned the repository and have `psql` [installed](https://www.timescale.com/blog/how-to-install-psql-on-mac-ubuntu-debian-windows/).
+This section assumes that you have cloned the repository.
 
 To run OpenFGA with the Postgres datastore engine, simply run the following commands:
 ```bash

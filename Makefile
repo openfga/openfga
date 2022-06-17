@@ -31,7 +31,6 @@ run: build ## Run the OpenFGA server with in-memory storage
 
 .PHONY: run-postgres
 run-postgres: build ## Run the OpenFGA server with Postgres
-	psql -f ./storage/postgres/migrations/20220617_initialize_schema.up.sql 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
 	OPENFGA_DATASTORE_ENGINE=postgres OPENFGA_DATASTORE_CONNECTION_URI='postgres://postgres:password@localhost:5432/postgres?sslmode=disable' make run
 
 .PHONY: go-generate
