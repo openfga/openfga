@@ -30,7 +30,7 @@ The following section aims to help you get started quickly. Please look at our o
 OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the in-memory datastore by running the following commands:
 
 ```bash
-docker pull openfga:openfga
+docker pull openfga/openfga
 ```
 
 ```bash
