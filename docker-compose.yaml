@@ -19,6 +19,7 @@ services:
   openfga:
     image: openfga/openfga:latest
     container_name: openfga
+    command: run
     networks:
       - default
     ports:

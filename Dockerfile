@@ -9,4 +9,3 @@ FROM alpine as final
 EXPOSE 8080
 COPY --from=builder /app/openfga /app/openfga
 ENTRYPOINT ["/app/openfga"]
-CMD ["run"]

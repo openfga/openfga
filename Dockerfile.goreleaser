@@ -1,4 +1,3 @@
 FROM scratch
 COPY openfga /
 ENTRYPOINT ["/openfga"]
-CMD ["run"]

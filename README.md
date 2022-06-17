@@ -34,7 +34,7 @@ docker pull openfga/openfga
 ```
 
 ```bash
-docker run -p 8080:8080 openfga/openfga
+docker run -p 8080:8080 openfga/openfga run
 ```
 
 ### Docker Compose
