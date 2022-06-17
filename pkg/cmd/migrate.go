@@ -18,7 +18,7 @@ const (
 
 func NewMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "migrate [revision]",
+		Use:   "migrate [flags] [revision]",
 		Short: "Run database schema migrations needed for the OpenFGA server",
 		Long:  `The migrate command is used to migrate up to a specific revision of the database schema needed for OpenFGA. If the revision is omitted the latest, or "HEAD", revision of the schema will be used.`,
 		Args:  cobra.MaximumNArgs(1),
