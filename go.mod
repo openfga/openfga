@@ -17,6 +17,7 @@ require (
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/oklog/ulid/v2 v2.0.2
+	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.8.2
 	github.com/spf13/cobra v1.4.0
 	github.com/stretchr/testify v1.7.2

@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
 	"github.com/openfga/openfga/pkg/logger"
+	_ "github.com/pressly/goose"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
