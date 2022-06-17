@@ -442,7 +442,7 @@ func TestHTTPServingTLS(t *testing.T) {
 func TestGRPCServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
-	t.Run("enable gRPC TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
+	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
 		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
@@ -471,7 +471,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, service.Close(ctx))
 	})
 
-	t.Run("enable gRPC TLS is true will serve gRPC TLS", func(t *testing.T) {
+	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 

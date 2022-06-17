@@ -130,7 +130,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				if serverErrors.IsValidEncodedError(actualCode) {
-					dependencies.Logger.ErrorWithContext(c, "gRPC error", logger.Error(e), logger.String("request_url", r.URL.String()))
+					dependencies.Logger.ErrorWithContext(c, "grpc error", logger.Error(e), logger.String("request_url", r.URL.String()))
 				}
 
 				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
@@ -426,7 +426,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	s.logger.Info(fmt.Sprintf("gRPC server listening on '%s'...", rpcAddr))
+	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
 
 	// Set a request timeout.
 	runtime.DefaultContextTimeout = s.config.RequestTimeout
