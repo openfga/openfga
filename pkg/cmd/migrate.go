@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/spf13/cobra"
 )
 
@@ -51,18 +48,22 @@ func runMigration(cmd *cobra.Command, args []string) error {
 			return errors.New("a datastore uri is required to be specified for the postgres datastore option")
 		}
 
-		m, err := migrate.New(
-			"file://storage/postgres/migrations",
-			uri)
-		if err != nil {
-			return fmt.Errorf("error applying migration: %w", err)
-		}
+		_ = steps // so it doesn't complain about not using steps
 
-		if steps > 0 {
-			return m.Steps(steps)
-		}
+		return nil
 
-		return m.Up()
+		//m, err := migrate.New(
+		//	"file://storage/postgres/migrations",
+		//	uri)
+		//if err != nil {
+		//	return fmt.Errorf("error applying migration: %w", err)
+		//}
+		//
+		//if steps > 0 {
+		//	return m.Steps(steps)
+		//}
+		//
+		//return m.Up()
 	}
 
 	return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
