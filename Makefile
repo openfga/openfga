@@ -30,10 +30,8 @@ run: build ## Run the OpenFGA server with in-memory storage
 	./bin/openfga run
 
 .PHONY: run-postgres
-run-postgres: build ## Run the OpenFGA server with Postgres storage
-	docker-compose down
-	docker-compose up -d postgres
-	$(test_backend) make run
+run-postgres: build ## Run the OpenFGA server with Postgres
+	OPENFGA_DATASTORE_ENGINE=postgres OPENFGA_DATASTORE_CONNECTION_URI='postgres://postgres:password@localhost:5432/postgres?sslmode=disable' make run
 
 .PHONY: go-generate
 go-generate: install-tools
