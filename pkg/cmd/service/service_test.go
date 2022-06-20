@@ -447,11 +447,10 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
 		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -460,12 +459,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		conn, err := grpc.Dial("localhost:8081", opts...)
 		require.NoError(t, err)
-		defer conn.Close()
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
 
+		conn.Close()
 		cancel()
 		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
@@ -475,11 +474,10 @@ func TestGRPCServingTLS(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
 		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -491,12 +489,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 		conn, err := grpc.Dial("localhost:8081", opts...)
 		require.NoError(t, err)
-		defer conn.Close()
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
 
+		conn.Close()
 		cancel()
 		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
