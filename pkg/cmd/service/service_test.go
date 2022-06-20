@@ -444,14 +444,14 @@ func TestGRPCServingTLS(t *testing.T) {
 
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
-		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		service, err := BuildService(GetServiceConfig(), logger)
+		config := GetServiceConfig()
+		config.GRPCTLSEnabled = false
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -475,11 +475,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
-		service, err := BuildService(GetServiceConfig(), logger)
+		config := GetServiceConfig()
+		config.RPCPort = 8082
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -489,7 +490,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, err)
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
-		conn, err := grpc.Dial("localhost:8081", opts...)
+		conn, err := grpc.Dial("localhost:8082", opts...)
 		require.NoError(t, err)
 		defer conn.Close()
 
