@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -94,7 +95,22 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewZapLogger() (*ZapLogger, error) {
+func NewTextLogger() (*ZapLogger, error) {
+	config := zap.NewDevelopmentConfig()
+	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
+	config.Encoding = "console"
+	config.DisableCaller = true
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	development, err := config.Build(zap.AddStacktrace(zap.ErrorLevel))
+	if err != nil {
+		return nil, err
+	}
+	return &ZapLogger{
+		development,
+	}, nil
+}
+
+func NewJSONLogger() (*ZapLogger, error) {
 	production, err := zap.NewProduction()
 	if err != nil {
 		return nil, err

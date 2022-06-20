@@ -1,18 +1,21 @@
-package main
+package service
 
 import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/errgroup"
@@ -131,6 +134,192 @@ func createKeys(t *testing.T) string {
 	return certFile.Name()
 }
 
+type authTest struct {
+	_name         string
+	authHeader    string
+	expectedError string
+}
+
+const (
+	openFgaServerURL = "http://localhost:8080"
+)
+
+func TestBuildServerWithNoAuth(t *testing.T) {
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err, "Failed to build server and/or datastore")
+	service.Close(context.Background())
+}
+
+func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
+	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
+
+	_, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
+}
+
+func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
+	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t)
+
+	tests := []authTest{{
+		_name:         "Header with incorrect key fails",
+		authHeader:    "Bearer incorrectkey",
+		expectedError: "unauthorized",
+	}, {
+		_name:         "Missing header fails",
+		authHeader:    "",
+		expectedError: "missing bearer token",
+	}, {
+		_name:         "Correct key one succeeds",
+		authHeader:    "Bearer KEYONE",
+		expectedError: "",
+	}, {
+		_name:         "Correct key two succeeds",
+		authHeader:    "Bearer KEYTWO",
+		expectedError: "",
+	}}
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			payload := strings.NewReader(`{"name": "some-store-name"}`)
+			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			require.NoError(t, err, "Failed to construct request")
+			req.Header.Set("content-type", "application/json")
+			req.Header.Set("authorization", test.authHeader)
+			retryClient := http.Client{}
+			res, err := retryClient.Do(req)
+			require.NoError(t, err, "Failed to execute request")
+
+			defer res.Body.Close()
+			body, err := ioutil.ReadAll(res.Body)
+			require.NoError(t, err, "Failed to read response")
+
+			stringBody := string(body)
+
+			if test.expectedError == "" && strings.Contains(stringBody, "code") {
+				t.Fatalf("Expected no error but got %v", stringBody)
+			}
+
+			if !strings.Contains(stringBody, test.expectedError) && test.expectedError != "" {
+				t.Fatalf("Expected %v to contain %v", stringBody, test.expectedError)
+			}
+		})
+	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
+}
+
+func TestBuildServerWithOidcAuthentication(t *testing.T) {
+	const localOidcServerURL = "http://localhost:8083"
+	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
+	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
+	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
+
+	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t)
+
+	trustedToken, err := trustedIssuerServer.GetToken(openFgaServerURL, "some-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []authTest{{
+		_name:         "Header with invalid token fails",
+		authHeader:    "Bearer incorrecttoken",
+		expectedError: "error parsing token",
+	}, {
+		_name:         "Missing header fails",
+		authHeader:    "",
+		expectedError: "missing bearer token",
+	}, {
+		_name:         "Correct token succeeds",
+		authHeader:    "Bearer " + trustedToken,
+		expectedError: "",
+	}}
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			payload := strings.NewReader(`{"name": "some-store-name"}`)
+			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			require.NoError(t, err, "Failed to construct request")
+			req.Header.Set("content-type", "application/json")
+			req.Header.Set("authorization", test.authHeader)
+			retryClient := http.Client{}
+			res, err := retryClient.Do(req)
+			require.NoError(t, err, "Failed to execute request")
+
+			defer res.Body.Close()
+			body, err := ioutil.ReadAll(res.Body)
+			require.NoError(t, err, "Failed to read response")
+
+			stringBody := string(body)
+			if test.expectedError == "" && strings.Contains(stringBody, "code") {
+				t.Fatalf("Expected no error but got %v", stringBody)
+			}
+
+			if !strings.Contains(stringBody, test.expectedError) && test.expectedError != "" {
+				t.Fatalf("Expected %v to contain %v", stringBody, test.expectedError)
+			}
+		})
+	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
+}
+
+func ensureServiceUp(t *testing.T) {
+	t.Helper()
+
+	backoffPolicy := backoff.NewExponentialBackOff()
+	backoffPolicy.MaxElapsedTime = 2 * time.Second
+
+	err := backoff.Retry(
+		func() error {
+			resp, err := http.Get(fmt.Sprintf("%s/healthz", openFgaServerURL))
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				return errors.New("waiting for OK status")
+			}
+
+			return nil
+		},
+		backoffPolicy,
+	)
+	require.NoError(t, err)
+}
+
 func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
@@ -139,8 +328,8 @@ func TestTLSFailureSettings(t *testing.T) {
 		require.NoError(t, os.Setenv(httpTLSKeyPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
-		_, err := buildService(logger)
-		require.ErrorIs(t, err, errInvalidHTTPTLSConfig)
+		_, err := BuildService(GetServiceConfig(), logger)
+		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
 	})
 
 	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
@@ -148,8 +337,8 @@ func TestTLSFailureSettings(t *testing.T) {
 		require.NoError(t, os.Setenv(grpcTLSKeyPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
-		_, err := buildService(logger)
-		require.ErrorIs(t, err, errInvalidGRPCTLSConfig)
+		_, err := BuildService(GetServiceConfig(), logger)
+		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
 	})
 
 	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
@@ -157,8 +346,8 @@ func TestTLSFailureSettings(t *testing.T) {
 		require.NoError(t, os.Setenv(httpTLSCertPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
-		_, err := buildService(logger)
-		require.ErrorIs(t, err, errInvalidHTTPTLSConfig)
+		_, err := BuildService(GetServiceConfig(), logger)
+		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
 	})
 
 	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
@@ -166,8 +355,8 @@ func TestTLSFailureSettings(t *testing.T) {
 		require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, "some/path"), "failed to set env var")
 		defer os.Clearenv()
 
-		_, err := buildService(logger)
-		require.ErrorIs(t, err, errInvalidGRPCTLSConfig)
+		_, err := BuildService(GetServiceConfig(), logger)
+		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
 	})
 }
 
@@ -180,18 +369,20 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		service, err := buildService(logger)
+		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
+		g := new(errgroup.Group)
 		g.Go(func() error {
-			return service.server.Run(ctx)
+			return service.Run(ctx)
 		})
 
 		ensureServiceUp(t)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
@@ -199,15 +390,13 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		service, err := buildService(logger)
-		require.NoError(t, err, "failed to build service")
-		defer service.Close(ctx)
+		service, err := BuildService(GetServiceConfig(), logger)
+		require.NoError(t, err)
 
-		g, ctx := errgroup.WithContext(ctx)
+		g := new(errgroup.Group)
 		g.Go(func() error {
-			return service.server.Run(ctx)
+			return service.Run(ctx)
 		})
 
 		certPool := x509.NewCertPool()
@@ -242,6 +431,10 @@ func TestHTTPServingTLS(t *testing.T) {
 			backoffPolicy,
 		)
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
 }
@@ -249,21 +442,19 @@ func TestHTTPServingTLS(t *testing.T) {
 func TestGRPCServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
-	t.Run("enable gRPC TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
+	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		createKeys(t)
 		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		service, err := buildService(logger)
+		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
+		g := new(errgroup.Group)
 		g.Go(func() error {
-			return service.server.Run(ctx)
+			return service.Run(ctx)
 		})
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
@@ -274,22 +465,24 @@ func TestGRPCServingTLS(t *testing.T) {
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 
-	t.Run("enable gRPC TLS is true will serve gRPC TLS", func(t *testing.T) {
+	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
 
-		service, err := buildService(logger)
+		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
-		defer service.Close(ctx)
 
-		g, ctx := errgroup.WithContext(ctx)
+		g := new(errgroup.Group)
 		g.Go(func() error {
-			return service.server.Run(ctx)
+			return service.Run(ctx)
 		})
 
 		creds, err := credentials.NewClientTLSFromFile(certFile, "")
@@ -303,5 +496,9 @@ func TestGRPCServingTLS(t *testing.T) {
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
+
+		cancel()
+		require.NoError(t, g.Wait())
+		require.NoError(t, service.Close(ctx))
 	})
 }

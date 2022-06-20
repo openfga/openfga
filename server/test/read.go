@@ -27,7 +27,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 		response        *openfgapb.ReadResponse
 	}
 
-	// TODO: review which of these tests should be moved to validation/types in gRPC rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/auth0/sandcastle/issues/13
+	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/auth0/sandcastle/issues/13
 	var tests = []readQueryTest{
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",

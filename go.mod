@@ -18,6 +18,7 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/oklog/ulid/v2 v2.0.2
 	github.com/rs/cors v1.8.2
+	github.com/spf13/cobra v1.4.0
 	github.com/stretchr/testify v1.7.2
 	go.buf.build/openfga/go/openfga/api v1.1.16
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0
@@ -39,6 +40,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
+	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.12.1 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
@@ -54,6 +56,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.7.0 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 // indirect
 	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
