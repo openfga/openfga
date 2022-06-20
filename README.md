@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
 [![Container Image](https://img.shields.io/github/v/release/openfga/openfga?color=blueviolet&label=container&logo=docker "Container Image")](https://hub.docker.com/r/openfga/openfga/tags)
-![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey) <!-- render new line with double space here -->  
+![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey)  <!-- render new line with double space here -->  
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 ![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
@@ -113,14 +113,17 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 
 This section assumes that you have cloned the repository.
 
-To run OpenFGA with the Postgres storage engine, simply run the following commands:
+To run OpenFGA with the Postgres datastore engine, simply run the following commands:
+
 ```bash
 docker compose up -d postgres
 make run-postgres
 ```
+
 This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
+
 ```bash
 docker compose down
 ```
