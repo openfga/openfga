@@ -86,6 +86,21 @@ go build cmd/openfga/openfga.go
 ./openfga run
 ```
 
+### Running with Postgres
+
+This section assumes that you have cloned the repository.
+
+To run OpenFGA with the Postgres datastore engine, simply run the following commands:
+```bash
+docker compose up -d postgres
+make run-postgres
+```
+This should start a Postgres container, write the database schema, and start the OpenFGA server.
+
+When you are done you can stop the Postgres container with:
+```bash
+docker compose down
+
 ## Verifying the Installation
 
 Now that you have [Set up and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store).
