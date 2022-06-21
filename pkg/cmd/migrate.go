@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strconv"
 
+	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/pressly/goose"
 	"github.com/spf13/cobra"
 )
 
@@ -29,14 +32,16 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(cmd *cobra.Command, args []string) error {
+	const dir = "storage/postgres/migrations"
+
 	engine, err := cmd.Flags().GetString(datastoreEngineFlagName)
 	if err != nil {
 		return err
 	}
 
-	var steps int
+	var steps int64
 	if len(args) > 0 {
-		steps, err = strconv.Atoi(args[0])
+		steps, err = strconv.ParseInt(args[0], 10, 64)
 		if err != nil {
 			return errors.New("revision must be an integer")
 		}
@@ -48,22 +53,20 @@ func runMigration(cmd *cobra.Command, args []string) error {
 			return errors.New("a datastore uri is required to be specified for the postgres datastore option")
 		}
 
-		_ = steps // so it doesn't complain about not using steps
+		db, err := sql.Open("pgx", uri)
+		if err != nil {
+			return fmt.Errorf("failed to parse config from uri: %v", err)
+		}
 
-		return nil
+		if err := goose.SetDialect("postgres"); err != nil {
+			panic(err)
+		}
 
-		//m, err := migrate.New(
-		//	"file://storage/postgres/migrations",
-		//	uri)
-		//if err != nil {
-		//	return fmt.Errorf("error applying migration: %w", err)
-		//}
-		//
-		//if steps > 0 {
-		//	return m.Steps(steps)
-		//}
-		//
-		//return m.Up()
+		if steps > 0 {
+			return goose.UpTo(db, dir, steps)
+		}
+
+		return goose.Up(db, dir)
 	}
 
 	return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
