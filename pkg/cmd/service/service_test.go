@@ -139,7 +139,7 @@ type certChain struct {
 }
 
 func (c certChain) Clean() {
-	os.Remove(c.serverKeyFile)
+	os.Remove(c.serverCertFile)
 	os.Remove(c.serverKeyFile)
 }
 
