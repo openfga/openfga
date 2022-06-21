@@ -234,7 +234,7 @@ func TestSettingCORS(t *testing.T) {
 	corsAllowedOrigins := GetServiceConfig().CORSAllowedOrigins
 	expectedCORSAllowedOrigins := []string{"http://openfga.dev", "http://localhost"}
 	if !reflect.DeepEqual(corsAllowedOrigins, expectedCORSAllowedOrigins) {
-		t.Fatalf("Unexpected CORSAllowedOrigin expected %v, actual %v", corsAllowedOrigins, expectedCORSAllowedOrigins)
+		t.Fatalf("Unexpected CORSAllowedOrigin expected %v, actual %v", expectedCORSAllowedOrigins, corsAllowedOrigins)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
