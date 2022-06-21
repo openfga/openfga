@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2022-06-20
+### Added
+* Request validation middleware
+* Postgres startup script
+
 ## [0.1.1] - 2022-06-16
 ### Added
 * TLS support for both the grpc and HTTP servers
@@ -19,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/openfga/openfga/releases/tag/v0.1.2
 [0.1.1]: https://github.com/openfga/openfga/releases/tag/v0.1.1
 [0.1.0]: https://github.com/openfga/openfga/releases/tag/v0.1.0

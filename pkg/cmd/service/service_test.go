@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +223,112 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	cancel()
 	require.NoError(t, g.Wait())
 	require.NoError(t, service.Close(ctx))
+}
+
+func TestSettingCORS(t *testing.T) {
+	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+	os.Setenv("OPENFGA_CORS_ALLOWED_ORIGINS", "http://openfga.dev,http://localhost")
+	os.Setenv("OPENFGA_CORS_ALLOWED_HEADERS", "Origin,Accept,Content-Type,X-Requested-With,Authorization,X-Custom-Header")
+
+	corsAllowedOrigins := GetServiceConfig().CORSAllowedOrigins
+	expectedCORSAllowedOrigins := []string{"http://openfga.dev", "http://localhost"}
+	if !reflect.DeepEqual(corsAllowedOrigins, expectedCORSAllowedOrigins) {
+		t.Fatalf("Unexpected CORSAllowedOrigin expected %v, actual %v", expectedCORSAllowedOrigins, corsAllowedOrigins)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t)
+
+	type args struct {
+		origin string
+		header string
+	}
+	type want struct {
+		origin string
+		header string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "Good Origin",
+			args: args{
+				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
+			},
+			want: want{
+				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
+			},
+		},
+		{
+			name: "Bad Origin",
+			args: args{
+				origin: "http://openfga.example",
+				header: "X-Custom-Header",
+			},
+			want: want{
+				origin: "",
+				header: "",
+			},
+		},
+		{
+			name: "Bad Header",
+			args: args{
+				origin: "http://localhost",
+				header: "Bad-Custom-Header",
+			},
+			want: want{
+				origin: "",
+				header: "",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload := strings.NewReader(`{"name": "some-store-name"}`)
+			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			require.NoError(t, err, "Failed to construct request")
+			req.Header.Set("content-type", "application/json")
+			req.Header.Set("authorization", "Bearer KEYTWO")
+			req.Header.Set("Origin", test.args.origin)
+			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
+			req.Header.Set("Access-Control-Request-Headers", test.args.header)
+			retryClient := http.Client{}
+			res, err := retryClient.Do(req)
+			require.NoError(t, err, "Failed to execute request")
+
+			origin := res.Header.Get("Access-Control-Allow-Origin")
+			acceptedHeader := res.Header.Get("Access-Control-Allow-Headers")
+			require.Equal(t, test.want.origin, origin,
+				"Want Access-Control-Allow-Origin to be %v actual %v", test.want.origin, origin)
+
+			require.Equal(t, test.want.header, acceptedHeader,
+				"Want Access-Control-Allow-Headers to be %v actual %v", test.want.header, acceptedHeader)
+
+			defer res.Body.Close()
+			_, err = ioutil.ReadAll(res.Body)
+			require.NoError(t, err, "Failed to read response")
+
+		})
+	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
+
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
@@ -447,11 +554,10 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
 		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -460,12 +566,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 		conn, err := grpc.Dial("localhost:8081", opts...)
 		require.NoError(t, err)
-		defer conn.Close()
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
 
+		conn.Close()
 		cancel()
 		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
@@ -475,11 +581,10 @@ func TestGRPCServingTLS(t *testing.T) {
 		certFile := createKeys(t)
 		defer os.Clearenv()
 
-		ctx, cancel := context.WithCancel(context.Background())
-
 		service, err := BuildService(GetServiceConfig(), logger)
 		require.NoError(t, err)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			return service.Run(ctx)
@@ -491,12 +596,12 @@ func TestGRPCServingTLS(t *testing.T) {
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
 		conn, err := grpc.Dial("localhost:8081", opts...)
 		require.NoError(t, err)
-		defer conn.Close()
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 		_, err = client.ListStores(ctx, &openfgapb.ListStoresRequest{})
 		require.NoError(t, err)
 
+		conn.Close()
 		cancel()
 		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
