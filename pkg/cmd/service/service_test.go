@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -222,6 +223,18 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	cancel()
 	require.NoError(t, g.Wait())
 	require.NoError(t, service.Close(ctx))
+}
+
+func TestSettingCORSAllowedOrigins(t *testing.T) {
+	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+	os.Setenv("OPENFGA_CORS_ALLOWED_ORIGINS", "http://openfga.dev,http://localhost")
+
+	corsAllowedOrigins := GetServiceConfig().CORSAllowedOrigins
+	expectedCORSAllowedOrigins := []string{"http://openfga.dev", "http://localhost"}
+	if !reflect.DeepEqual(corsAllowedOrigins, expectedCORSAllowedOrigins) {
+		t.Fatalf("Unexpected CORSAllowedOrigin expected %v, actual %v", corsAllowedOrigins, expectedCORSAllowedOrigins)
+	}
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
