@@ -312,14 +312,11 @@ func TestSettingCORS(t *testing.T) {
 
 			origin := res.Header.Get("Access-Control-Allow-Origin")
 			acceptedHeader := res.Header.Get("Access-Control-Allow-Headers")
-			if origin != test.want.origin {
-				t.Fatalf("Want Access-Control-Allow-Origin to be %v actual %v", test.want.origin, origin)
-			}
+			require.Equal(t, test.want.origin, origin,
+				"Want Access-Control-Allow-Origin to be %v actual %v", test.want.origin, origin)
 
-			if acceptedHeader != test.want.header {
-				t.Fatalf("Want Access-Control-Allow-Headers to be %v actual %v", test.want.header, acceptedHeader)
-
-			}
+			require.Equal(t, test.want.header, acceptedHeader,
+				"Want Access-Control-Allow-Headers to be %v actual %v", test.want.header, acceptedHeader)
 
 			defer res.Body.Close()
 			_, err = ioutil.ReadAll(res.Body)
