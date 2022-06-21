@@ -89,6 +89,7 @@ type HTTPServerConfig struct {
 	Addr               int
 	TLSConfig          *TLSConfig
 	CORSAllowedOrigins []string
+	CORSAllowedHeaders []string
 }
 
 type TLSConfig struct {
@@ -478,7 +479,7 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
 			AllowCredentials: true,
-			AllowedHeaders:   []string{"*"},
+			AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
 			AllowedMethods: []string{http.MethodGet, http.MethodPost,
 				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
 		}).Handler(mux),

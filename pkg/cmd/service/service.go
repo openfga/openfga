@@ -66,8 +66,9 @@ type Config struct {
 	// Logging. Possible options: text,json
 	LogFormat string `default:"text" split_words:"true"`
 
-	// CORS Allowed Origins
+	// CORS configuration
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
+	CORSAllowedHeaders []string `default:"*" split_words:"true"`
 }
 
 func GetServiceConfig() Config {
@@ -187,6 +188,7 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			Addr:               config.HTTPPort,
 			TLSConfig:          httpTLSConfig,
 			CORSAllowedOrigins: config.CORSAllowedOrigins,
+			CORSAllowedHeaders: config.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,

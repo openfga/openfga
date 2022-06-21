@@ -225,10 +225,11 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	require.NoError(t, service.Close(ctx))
 }
 
-func TestSettingCORSAllowedOrigins(t *testing.T) {
+func TestSettingCORS(t *testing.T) {
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 	os.Setenv("OPENFGA_CORS_ALLOWED_ORIGINS", "http://openfga.dev,http://localhost")
+	os.Setenv("OPENFGA_CORS_ALLOWED_HEADERS", "Origin,Accept,Content-Type,X-Requested-With,Authorization,X-Custom-Header")
 
 	corsAllowedOrigins := GetServiceConfig().CORSAllowedOrigins
 	expectedCORSAllowedOrigins := []string{"http://openfga.dev", "http://localhost"}
@@ -249,43 +250,75 @@ func TestSettingCORSAllowedOrigins(t *testing.T) {
 
 	type args struct {
 		origin string
+		header string
+	}
+	type want struct {
+		origin string
+		header string
 	}
 	tests := []struct {
 		name string
 		args args
-		want string
+		want want
 	}{
 		{
 			name: "Good Origin",
 			args: args{
 				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
 			},
-			want: "http://localhost",
+			want: want{
+				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
+			},
 		},
 		{
 			name: "Bad Origin",
 			args: args{
 				origin: "http://openfga.example",
+				header: "X-Custom-Header",
 			},
-			want: "",
+			want: want{
+				origin: "",
+				header: "",
+			},
+		},
+		{
+			name: "Bad Header",
+			args: args{
+				origin: "http://localhost",
+				header: "Bad-Custom-Header",
+			},
+			want: want{
+				origin: "",
+				header: "",
+			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", "Bearer KEYTWO")
 			req.Header.Set("Origin", test.args.origin)
+			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
+			req.Header.Set("Access-Control-Request-Headers", test.args.header)
 			retryClient := http.Client{}
 			res, err := retryClient.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 
 			origin := res.Header.Get("Access-Control-Allow-Origin")
-			if origin != test.want {
-				t.Fatalf("Want Access-Control-Allow-Origin to be %v actual %v", test.want, origin)
+			acceptedHeader := res.Header.Get("Access-Control-Allow-Headers")
+			if origin != test.want.origin {
+				t.Fatalf("Want Access-Control-Allow-Origin to be %v actual %v", test.want.origin, origin)
+			}
+
+			if acceptedHeader != test.want.header {
+				t.Fatalf("Want Access-Control-Allow-Headers to be %v actual %v", test.want.header, acceptedHeader)
+
 			}
 
 			defer res.Body.Close()
