@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -108,7 +107,7 @@ p2CIcm9oUH1iG9P/ELWz/it0RUbfy7GuBsUJn9MOdiO58uTiDBE7Kg==
 -----END RSA PRIVATE KEY-----`
 )
 
-func createKeys(t *testing.T) string {
+func createKeys(t *testing.T) (string, string) {
 	certFile, err := ioutil.TempFile("", "server_cert")
 	require.NoError(t, err, "error creating pem file")
 	defer certFile.Close()
@@ -123,15 +122,7 @@ func createKeys(t *testing.T) string {
 	_, err = keyFile.Write([]byte(serverKey))
 	require.NoError(t, err, "failed to write pem")
 
-	require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
-	require.NoError(t, os.Setenv(httpTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
-	require.NoError(t, os.Setenv(httpTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
-
-	require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "true"), "failed to set env var")
-	require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, certFile.Name()), "failed to set env var")
-	require.NoError(t, os.Setenv(grpcTLSKeyPathEnvVar, keyFile.Name()), "failed to set env var")
-
-	return certFile.Name()
+	return certFile.Name(), keyFile.Name()
 }
 
 type authTest struct {
@@ -144,27 +135,33 @@ const (
 	openFgaServerURL = "http://localhost:8080"
 )
 
-func TestBuildServerWithNoAuth(t *testing.T) {
+func TestBuildServiceWithNoAuth(t *testing.T) {
 	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
 	require.NoError(t, err, "Failed to build server and/or datastore")
 	service.Close(context.Background())
 }
 
-func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
+func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
 
-	_, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	config := GetServiceConfig()
+	config.AuthnConfig.Method = "preshared"
+	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+
+	_, err := BuildService(config, logger.NewNoopLogger())
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
-func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
-	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
-	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
+
+	config := GetServiceConfig()
+	config.AuthnConfig.Method = "preshared"
+	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+		Keys: []string{"KEYONE", "KEYTWO"},
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	service, err := BuildService(config, logger.NewNoopLogger())
 	require.NoError(t, err)
 
 	g := new(errgroup.Group)
@@ -224,18 +221,22 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	require.NoError(t, service.Close(ctx))
 }
 
-func TestBuildServerWithOidcAuthentication(t *testing.T) {
+func TestBuildServiceWithOidcAuthentication(t *testing.T) {
 	const localOidcServerURL = "http://localhost:8083"
-	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
-	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
-	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
+
+	config := GetServiceConfig()
+	config.AuthnConfig.Method = "oidc"
+	config.AuthnOIDCConfig = &AuthnOIDCConfig{
+		Audience: openFgaServerURL,
+		Issuer:   localOidcServerURL,
+	}
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	service, err := BuildService(config, logger.NewNoopLogger())
 	require.NoError(t, err)
 
 	g := new(errgroup.Group)
@@ -324,38 +325,46 @@ func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(httpTLSKeyPathEnvVar, "some/path"), "failed to set env var")
-		defer os.Clearenv()
+		config := GetServiceConfig()
+		config.HTTPConfig.TLS = TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
 
-		_, err := BuildService(GetServiceConfig(), logger)
+		_, err := BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
 	})
 
 	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(grpcTLSKeyPathEnvVar, "some/path"), "failed to set env var")
-		defer os.Clearenv()
+		config := GetServiceConfig()
+		config.GRPCConfig.TLS = TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
 
-		_, err := BuildService(GetServiceConfig(), logger)
+		_, err := BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
 	})
 
 	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(httpTLSCertPathEnvVar, "some/path"), "failed to set env var")
-		defer os.Clearenv()
+		config := GetServiceConfig()
+		config.HTTPConfig.TLS = TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
 
-		_, err := BuildService(GetServiceConfig(), logger)
+		_, err := BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
 	})
 
 	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
-		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "true"), "failed to set env var")
-		require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, "some/path"), "failed to set env var")
-		defer os.Clearenv()
+		config := GetServiceConfig()
+		config.GRPCConfig.TLS = TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
 
-		_, err := BuildService(GetServiceConfig(), logger)
+		_, err := BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
 	})
 }
@@ -364,13 +373,17 @@ func TestHTTPServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
-		createKeys(t)
-		require.NoError(t, os.Setenv(httpTLSEnabledEnvVar, "false"), "failed to set env var") // override
-		defer os.Clearenv()
+		certPath, keyPath := createKeys(t)
+
+		config := GetServiceConfig()
+		config.HTTPConfig.TLS = TLSConfig{
+			CertPath: certPath,
+			KeyPath:  keyPath,
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		service, err := BuildService(GetServiceConfig(), logger)
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
 		g := new(errgroup.Group)
@@ -386,12 +399,18 @@ func TestHTTPServingTLS(t *testing.T) {
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
-		createKeys(t)
-		defer os.Clearenv()
+		certPath, keyPath := createKeys(t)
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		service, err := BuildService(GetServiceConfig(), logger)
+		config := GetServiceConfig()
+		config.HTTPConfig.TLS = TLSConfig{
+			Enabled:  true,
+			CertPath: certPath,
+			KeyPath:  keyPath,
+		}
+
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
 		g := new(errgroup.Group)
@@ -443,11 +462,15 @@ func TestGRPCServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
-		createKeys(t)
-		require.NoError(t, os.Setenv(grpcTLSEnabledEnvVar, "false"), "failed to set env var") // override
-		defer os.Clearenv()
+		certPath, keyPath := createKeys(t)
 
-		service, err := BuildService(GetServiceConfig(), logger)
+		config := GetServiceConfig()
+		config.GRPCConfig.TLS = TLSConfig{
+			CertPath: certPath,
+			KeyPath:  keyPath,
+		}
+
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -471,10 +494,16 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
-		certFile := createKeys(t)
-		defer os.Clearenv()
+		certPath, keyPath := createKeys(t)
 
-		service, err := BuildService(GetServiceConfig(), logger)
+		config := GetServiceConfig()
+		config.GRPCConfig.TLS = TLSConfig{
+			Enabled:  true,
+			CertPath: certPath,
+			KeyPath:  keyPath,
+		}
+
+		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -483,7 +512,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		creds, err := credentials.NewClientTLSFromFile(certFile, "")
+		creds, err := credentials.NewClientTLSFromFile(certPath, "")
 		require.NoError(t, err)
 
 		opts := []grpc.DialOption{grpc.WithTransportCredentials(creds)}
