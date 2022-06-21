@@ -221,7 +221,114 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	require.NoError(t, service.Close(ctx))
 }
 
-func TestBuildServiceWithOidcAuthentication(t *testing.T) {
+func TestHTTPServerWithCORS(t *testing.T) {
+
+	config, err := GetServiceConfig()
+	require.NoError(t, err)
+
+	config.AuthnConfig.Method = "preshared"
+	config.AuthnConfig.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+		Keys: []string{"KEYONE", "KEYTWO"},
+	}
+	config.HTTPConfig.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
+	config.HTTPConfig.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	service, err := BuildService(config, logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t)
+
+	type args struct {
+		origin string
+		header string
+	}
+	type want struct {
+		origin string
+		header string
+	}
+	tests := []struct {
+		name string
+		args args
+		want want
+	}{
+		{
+			name: "Good Origin",
+			args: args{
+				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
+			},
+			want: want{
+				origin: "http://localhost",
+				header: "Authorization, X-Custom-Header",
+			},
+		},
+		{
+			name: "Bad Origin",
+			args: args{
+				origin: "http://openfga.example",
+				header: "X-Custom-Header",
+			},
+			want: want{
+				origin: "",
+				header: "",
+			},
+		},
+		{
+			name: "Bad Header",
+			args: args{
+				origin: "http://localhost",
+				header: "Bad-Custom-Header",
+			},
+			want: want{
+				origin: "",
+				header: "",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload := strings.NewReader(`{"name": "some-store-name"}`)
+			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			require.NoError(t, err, "Failed to construct request")
+			req.Header.Set("content-type", "application/json")
+			req.Header.Set("authorization", "Bearer KEYTWO")
+			req.Header.Set("Origin", test.args.origin)
+			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
+			req.Header.Set("Access-Control-Request-Headers", test.args.header)
+			retryClient := http.Client{}
+			res, err := retryClient.Do(req)
+			require.NoError(t, err, "Failed to execute request")
+
+			origin := res.Header.Get("Access-Control-Allow-Origin")
+			acceptedHeader := res.Header.Get("Access-Control-Allow-Headers")
+			require.Equal(t, test.want.origin, origin,
+				"Want Access-Control-Allow-Origin to be %v actual %v", test.want.origin, origin)
+
+			require.Equal(t, test.want.header, acceptedHeader,
+				"Want Access-Control-Allow-Headers to be %v actual %v", test.want.header, acceptedHeader)
+
+			defer res.Body.Close()
+			_, err = ioutil.ReadAll(res.Body)
+			require.NoError(t, err, "Failed to read response")
+
+		})
+	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
+
+}
+
+func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	const localOidcServerURL = "http://localhost:8083"
 
 	config, err := GetServiceConfig()

@@ -45,6 +45,9 @@ type HTTPConfig struct {
 	Enabled bool
 	Port    int
 	TLS     TLSConfig
+
+	CORSAllowedOrigins []string `default:"*" split_words:"true"`
+	CORSAllowedHeaders []string `default:"*" split_words:"true"`
 }
 
 // TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
@@ -114,9 +117,11 @@ func GetServiceConfig() (Config, error) {
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTPConfig: HTTPConfig{
-			Enabled: true,
-			Port:    8080,
-			TLS:     TLSConfig{Enabled: false},
+			Enabled:            true,
+			Port:               8080,
+			TLS:                TLSConfig{Enabled: false},
+			CORSAllowedOrigins: []string{"*"},
+			CORSAllowedHeaders: []string{"*"},
 		},
 		AuthnConfig: AuthnConfig{
 			Method: "none",
@@ -257,8 +262,10 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Port:      config.HTTPConfig.Port,
-			TLSConfig: httpTLSConfig,
+			Port:               config.HTTPConfig.Port,
+			TLSConfig:          httpTLSConfig,
+			CORSAllowedOrigins: config.HTTPConfig.CORSAllowedOrigins,
+			CORSAllowedHeaders: config.HTTPConfig.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
