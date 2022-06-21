@@ -29,7 +29,10 @@ func run(_ *cobra.Command, _ []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	config := service.GetServiceConfig()
+	config, err := service.GetServiceConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	logger, err := buildLogger(config.LogConfig.Format)
 	if err != nil {

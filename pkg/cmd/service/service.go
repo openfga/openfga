@@ -27,44 +27,53 @@ var (
 	ErrInvalidHTTPTLSConfig = errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
 )
 
+// DatabaseConfig defines OpenFGA server configurations for database specific settings.
 type DatabaseConfig struct {
 	Engine string
 	URI    string
 }
 
+// GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
 type GRPCConfig struct {
 	Enabled bool
 	Port    int
 	TLS     TLSConfig
 }
 
+// HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
 type HTTPConfig struct {
 	Enabled bool
 	Port    int
 	TLS     TLSConfig
 }
 
+// TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
 type TLSConfig struct {
 	Enabled  bool
 	CertPath string
 	KeyPath  string
 }
 
+// AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
 	Method                   string
 	*AuthnOIDCConfig         `mapstructure:"oidc"`
 	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
 }
 
+// AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
 type AuthnOIDCConfig struct {
 	Issuer   string
 	Audience string
 }
 
+// AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
 	Keys []string
 }
 
+// LogConfig defines OpenFGA server configurations for log specific settings. For production we
+// recommend using the 'json' log format.
 type LogConfig struct {
 	Format string
 }
@@ -90,7 +99,10 @@ type Config struct {
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 }
 
-func GetServiceConfig() Config {
+// GetServiceConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
+// The 'config.yaml' file is loaded from '/etc/openfga', '$HOME/.openfga', or the current working directory. If no configuration
+// file is present, the default values are returned.
+func GetServiceConfig() (Config, error) {
 
 	config := Config{
 		DatabaseConfig: DatabaseConfig{
@@ -127,18 +139,18 @@ func GetServiceConfig() Config {
 	if err != nil {
 		_, ok := err.(viper.ConfigFileNotFoundError)
 		if ok {
-			//logger.Fatal(fmt.Sprintf("config not found in paths [%s]", strings.Join(configPaths, ",")))
+			// if the server config is not found then return the defaults
+			return config, nil
 		}
 
-		//logger.Fatal(fmt.Sprintf("failed to load server config: %v", err))
+		return config, fmt.Errorf("failed to load server config: %w", err)
 	}
 
 	if err := viper.Unmarshal(&config); err != nil {
-		// handle error
-		panic(err)
+		return config, fmt.Errorf("failed to unmarshal server config: %w", err)
 	}
 
-	return config
+	return config, nil
 }
 
 type service struct {
