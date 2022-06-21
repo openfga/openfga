@@ -70,7 +70,6 @@ type Dependencies struct {
 }
 
 type Config struct {
-	ServiceName            string
 	GRPCServer             GRPCServerConfig
 	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
@@ -81,12 +80,12 @@ type Config struct {
 }
 
 type GRPCServerConfig struct {
-	Addr      int
+	Port      int
 	TLSConfig *TLSConfig
 }
 
 type HTTPServerConfig struct {
-	Addr      int
+	Port      int
 	TLSConfig *TLSConfig
 }
 
@@ -424,7 +423,7 @@ func (s *Server) Run(ctx context.Context) error {
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
 
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Addr)
+	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Port)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -473,7 +472,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Addr),
+		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Port),
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,

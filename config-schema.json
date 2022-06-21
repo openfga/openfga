@@ -1,0 +1,127 @@
+{
+    "properties": {
+        "database": {
+            "engine": {
+                "description": "The database engine that will be used for persistence.",
+                "type": "string",
+                "enum": ["memory", "postgres"],
+                "default": "memory"
+            },
+            "uri": {
+                "description": "The connection uri to use to connect to the database (for any engine other than 'memory').",
+                "type": "string",
+                "examples": [
+                    "postgres://user:pass@host:port/database?opts"
+                ]
+            }
+        },
+        "authn": {
+            "type": "object",
+            "properties": {
+                "method": {
+                    "description": "The authentication method to use.",
+                    "type": "string",
+                    "enum": ["none", "preshared", "oidc"],
+                    "default": "none"
+                },
+                "preshared": {
+                    "description": "One or more preshared keys to use for authentication. This must be set if `authn.method=preshared'.",
+                    "$ref": "#/definitions/preshared"
+                },
+                "oidc": {
+                    "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'."
+                    "$ref": "#/definitions/oidc"
+                }
+
+            }
+        },
+        "grpc": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enables or disables the OpenFGA grpc server. If 'http.enabled' is set to true, then this must be set to true.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "port": {
+                    "description": "The tcp port to serve the grpc server on.",
+                    "type": "integer",
+                    "default": 8081
+                },
+                "tls": {
+                    "$ref": "#/definitions/tls"
+                }
+            }
+        },
+        "http": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enables or disables the OpenFGA HTTP server. If this is set to true then 'grpc.enabled' must be set to true.",
+                    "type": "boolean",
+                    "default": true
+                },
+                "port": {
+                    "description": "The tcp port to serve the HTTP server on.",
+                    "type": "integer",
+                    "default": 8080
+                },
+                "tls": {
+                    "$ref": "#/definitions/tls"
+                }
+            }
+        },
+        "log": {
+            "type": "object",
+            "properties": {
+                "format": {
+                    "description": "The log format to output logs in. For production we recommend 'json' format.",
+                    "type": "string",
+                    "enum": ["text", "json"],
+                    "default": "text"
+                }
+            }
+        }
+    },
+    "definitions": {
+        "tls": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enables or disables transport layer security (TLS).",
+                    "type": "boolean",
+                    "default": false
+                },
+                "cert": {
+                    "description": "The (absolute) file path of the certificate to use for the TLS connection.",
+                    "type": "string"
+                },
+                "key": {
+                    "description": "The (absolute) file path of the TLS key that should be used for the TLS connection."
+                }
+            },
+            "required": ["enabled", "cert", "key"]
+        },
+        "oidc": {
+            "type": "object",
+            "properties": {
+                "issuer": {},
+                "audience": {}
+            },
+            "required": ["issuer", "audience"]
+        },
+        "preshared": {
+            "type": "object",
+            "properties": {
+                "keys": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "minItems": 1
+                }
+            },
+            "required": ["keys"]
+        }
+    }
+}

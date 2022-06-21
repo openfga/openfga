@@ -31,7 +31,7 @@ func run(_ *cobra.Command, _ []string) {
 
 	config := service.GetServiceConfig()
 
-	logger, err := buildLogger(config.LogFormat)
+	logger, err := buildLogger(config.LogConfig.Format)
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
