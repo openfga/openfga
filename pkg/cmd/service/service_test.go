@@ -235,6 +235,70 @@ func TestSettingCORSAllowedOrigins(t *testing.T) {
 	if !reflect.DeepEqual(corsAllowedOrigins, expectedCORSAllowedOrigins) {
 		t.Fatalf("Unexpected CORSAllowedOrigin expected %v, actual %v", corsAllowedOrigins, expectedCORSAllowedOrigins)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t)
+
+	type args struct {
+		origin string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "Good Origin",
+			args: args{
+				origin: "http://localhost",
+			},
+			want: "http://localhost",
+		},
+		{
+			name: "Bad Origin",
+			args: args{
+				origin: "http://openfga.example",
+			},
+			want: "",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			payload := strings.NewReader(`{"name": "some-store-name"}`)
+			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			require.NoError(t, err, "Failed to construct request")
+			req.Header.Set("content-type", "application/json")
+			req.Header.Set("authorization", "Bearer KEYTWO")
+			req.Header.Set("Origin", test.args.origin)
+			retryClient := http.Client{}
+			res, err := retryClient.Do(req)
+			require.NoError(t, err, "Failed to execute request")
+
+			origin := res.Header.Get("Access-Control-Allow-Origin")
+			if origin != test.want {
+				t.Fatalf("Want Access-Control-Allow-Origin to be %v actual %v", test.want, origin)
+			}
+
+			defer res.Body.Close()
+			_, err = ioutil.ReadAll(res.Body)
+			require.NoError(t, err, "Failed to read response")
+
+		})
+	}
+
+	cancel()
+	require.NoError(t, g.Wait())
+	require.NoError(t, service.Close(ctx))
+
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
