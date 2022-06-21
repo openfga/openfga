@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"html/template"
 	"log"
+	"net/http"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -54,12 +58,77 @@ func run(_ *cobra.Command, _ []string) {
 		return service.Run(ctx)
 	})
 
+	var playground *http.Server
+	if config.PlaygroundEnabled {
+		playgroundPort := config.PlaygroundPort
+		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
+
+		logger.Info(fmt.Sprintf("🛝 starting openfga playground on 'http://localhost:%d/playground'...", playgroundPort))
+
+		tmpl, err := template.ParseFiles("./static/playground/index.html")
+		if err != nil {
+			logger.Fatal("failed to parse Playground index.html as Go template", zap.Error(err))
+		}
+
+		fileServer := http.FileServer(http.Dir("./static"))
+
+		mux := http.NewServeMux()
+		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+			if strings.HasPrefix(r.URL.Path, "/playground") {
+				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
+					tmpl.Execute(w, struct {
+						HTTPServerURL string
+					}{
+						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPPort),
+					})
+
+					return
+				}
+
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+
+			http.NotFound(w, r)
+			return
+		}))
+
+		playground = &http.Server{Addr: playgroundAddr, Handler: mux}
+
+		g.Go(func() error {
+
+			var errCh chan (error)
+
+			go func() {
+				err = playground.ListenAndServe()
+				if err != http.ErrServerClosed {
+					errCh <- err
+				}
+			}()
+
+			select {
+			case err := <-errCh:
+				logger.Fatal("failed to start or shutdown playground server", zap.Error(err))
+			case <-ctx.Done():
+			}
+
+			return nil
+		})
+	}
+
 	if err := g.Wait(); err != nil {
 		logger.Error("failed to run openfga server", zap.Error(err))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	if playground != nil {
+		if err := playground.Shutdown(ctx); err != nil {
+			logger.Error("failed to gracefully shutdown playground server", zap.Error(err))
+		}
+	}
 
 	if err := service.Close(ctx); err != nil {
 		logger.Error("failed to gracefully shutdown the service", zap.Error(err))
