@@ -157,10 +157,10 @@ func (c certHandle) Clean() {
 	os.Remove(c.serverKeyFile)
 }
 
-// createKeys generates a self-signed root CA certificate and a server certificate and server key. It will write
+// createCertsAndKeys generates a self-signed root CA certificate and a server certificate and server key. It will write
 // the PEM encoded server certificate and server key to temporary files. It is the responsibility of the caller
 // to delete these files by calling `Clean` on the returned `certHandle`.
-func createKeys(t *testing.T) certHandle {
+func createCertsAndKeys(t *testing.T) certHandle {
 	caCert, _, caKey, err := genCACert()
 	require.NoError(t, err)
 
@@ -504,8 +504,8 @@ func TestHTTPServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
-		chain := createKeys(t)
-		defer chain.Clean()
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
 		defer os.Clearenv()
 
 		config := GetServiceConfig()
@@ -527,8 +527,8 @@ func TestHTTPServingTLS(t *testing.T) {
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
-		chain := createKeys(t)
-		defer chain.Clean()
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
 		defer os.Clearenv()
 
 		service, err := BuildService(GetServiceConfig(), logger)
@@ -541,7 +541,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		})
 
 		certPool := x509.NewCertPool()
-		certPool.AddCert(chain.caCert)
+		certPool.AddCert(certsAndKeys.caCert)
 		client := retryablehttp.NewWithClient(http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
@@ -564,8 +564,8 @@ func TestGRPCServingTLS(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
-		chain := createKeys(t)
-		defer chain.Clean()
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
 		defer os.Clearenv()
 
 		config := GetServiceConfig()
@@ -597,8 +597,8 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
-		chain := createKeys(t)
-		defer chain.Clean()
+		certsAndKeys := createCertsAndKeys(t)
+		defer certsAndKeys.Clean()
 		defer os.Clearenv()
 
 		service, err := BuildService(GetServiceConfig(), logger)
@@ -611,7 +611,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		})
 
 		certPool := x509.NewCertPool()
-		certPool.AddCert(chain.caCert)
+		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
 		opts := []grpc.DialOption{
