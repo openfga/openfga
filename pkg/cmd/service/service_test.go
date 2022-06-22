@@ -16,6 +16,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authentication/mocks"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -160,6 +161,8 @@ func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) 
 }
 
 func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
+	retryClient := retryablehttp.New().StandardClient()
+
 	os.Setenv("OPENFGA_AUTH_METHOD", "preshared")
 	os.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
 
@@ -200,7 +203,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
-			retryClient := http.Client{}
+
 			res, err := retryClient.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 
@@ -332,6 +335,8 @@ func TestSettingCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOidcAuthentication(t *testing.T) {
+	retryClient := retryablehttp.New().StandardClient()
+
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
 	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
@@ -378,7 +383,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
-			retryClient := http.Client{}
+
 			res, err := retryClient.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 
@@ -405,26 +410,15 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 func ensureServiceUp(t *testing.T) {
 	t.Helper()
 
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 2 * time.Second
+	retryClient := retryablehttp.New().StandardClient()
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFgaServerURL), nil)
+	resp, err := retryClient.Do(req)
+	require.NoError(t, err, "Failed to execute request")
+	defer resp.Body.Close()
 
-	err := backoff.Retry(
-		func() error {
-			resp, err := http.Get(fmt.Sprintf("%s/healthz", openFgaServerURL))
-			if err != nil {
-				return err
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				return errors.New("waiting for OK status")
-			}
-
-			return nil
-		},
-		backoffPolicy,
-	)
-	require.NoError(t, err)
+	if resp.StatusCode != http.StatusOK || err != nil {
+		t.Fatalf("failed to start service")
+	}
 }
 
 func TestTLSFailureSettings(t *testing.T) {
