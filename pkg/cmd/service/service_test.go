@@ -340,7 +340,7 @@ func TestSettingCORS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerURL), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", "Bearer KEYTWO")
