@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	openFgaServerURL      = "http://localhost:8080"
+	openFGAServerURL      = "http://localhost:8080"
 	grpcTLSEnabledEnvVar  = "OPENFGA_GRPC_TLS_ENABLED"
 	grpcTLSCertPathEnvVar = "OPENFGA_GRPC_TLS_CERT_PATH"
 	grpcTLSKeyPathEnvVar  = "OPENFGA_GRPC_TLS_KEY_PATH"
@@ -236,7 +236,7 @@ func TestBuildServerWithPresharedKeyAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerURL), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -269,7 +269,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	const localOidcServerURL = "http://localhost:8083"
 	os.Setenv("OPENFGA_AUTH_METHOD", "oidc")
 	os.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
-	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFgaServerURL)
+	os.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFGAServerURL)
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
 	require.NoError(t, err)
@@ -286,7 +286,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 
 	ensureServiceUp(t)
 
-	trustedToken, err := trustedIssuerServer.GetToken(openFgaServerURL, "some-user")
+	trustedToken, err := trustedIssuerServer.GetToken(openFGAServerURL, "some-user")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFgaServerURL), payload)
+			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerURL), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -344,7 +344,7 @@ func ensureServiceUp(t *testing.T) {
 
 	err := backoff.Retry(
 		func() error {
-			resp, err := http.Get(fmt.Sprintf("%s/healthz", openFgaServerURL))
+			resp, err := http.Get(fmt.Sprintf("%s/healthz", openFGAServerURL))
 			if err != nil {
 				return err
 			}
