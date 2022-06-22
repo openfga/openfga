@@ -15,6 +15,11 @@ builds:
       - linux
       - windows
       - darwin
+    ldflags:
+      - "-s -w"
+      - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
+      - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
 
 dockers:
   -

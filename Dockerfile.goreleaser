@@ -1,3 +1,3 @@
 FROM scratch
-ENTRYPOINT ["/openfga"]
 COPY openfga /
+ENTRYPOINT ["/openfga"]
