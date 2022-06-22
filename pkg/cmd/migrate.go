@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/pressly/goose"
+	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 )
 
