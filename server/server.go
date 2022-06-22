@@ -86,8 +86,10 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Addr      int
-	TLSConfig *TLSConfig
+	Addr               int
+	TLSConfig          *TLSConfig
+	CORSAllowedOrigins []string
+	CORSAllowedHeaders []string
 }
 
 type TLSConfig struct {
@@ -475,9 +477,9 @@ func (s *Server) Run(ctx context.Context) error {
 	httpServer := &http.Server{
 		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Addr),
 		Handler: cors.New(cors.Options{
-			AllowedOrigins:   []string{"*"},
+			AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
 			AllowCredentials: true,
-			AllowedHeaders:   []string{"*"},
+			AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
 			AllowedMethods: []string{http.MethodGet, http.MethodPost,
 				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
 		}).Handler(mux),
