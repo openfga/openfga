@@ -132,21 +132,21 @@ func writeToTempFile(data []byte) (*os.File, error) {
 	return file, nil
 }
 
-type certChain struct {
+type certHandle struct {
 	caCert         *x509.Certificate
 	serverCertFile string
 	serverKeyFile  string
 }
 
-func (c certChain) Clean() {
+func (c certHandle) Clean() {
 	os.Remove(c.serverCertFile)
 	os.Remove(c.serverKeyFile)
 }
 
 // createKeys generates a self-signed root CA certificate and a server certificate and server key. It will write
 // the PEM encoded server certificate and server key to temporary files. It is the responsibility of the caller
-// to delete these files by calling `Clean` on the returned `certChain`.
-func createKeys(t *testing.T) certChain {
+// to delete these files by calling `Clean` on the returned `certHandle`.
+func createKeys(t *testing.T) certHandle {
 	caCert, _, caKey, err := genCACert()
 	require.NoError(t, err)
 
@@ -172,7 +172,7 @@ func createKeys(t *testing.T) certChain {
 	require.NoError(t, os.Setenv(grpcTLSCertPathEnvVar, serverCertFile.Name()), "failed to set env var")
 	require.NoError(t, os.Setenv(grpcTLSKeyPathEnvVar, serverKeyFile.Name()), "failed to set env var")
 
-	return certChain{
+	return certHandle{
 		caCert:         caCert,
 		serverCertFile: serverCertFile.Name(),
 		serverKeyFile:  serverKeyFile.Name(),
