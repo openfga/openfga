@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -19,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authentication/mocks"
@@ -41,6 +39,20 @@ const (
 	httpTLSCertPathEnvVar = "OPENFGA_HTTP_TLS_CERT_PATH"
 	httpTLSKeyPathEnvVar  = "OPENFGA_HTTP_TLS_KEY_PATH"
 )
+
+func ensureServiceUp(t *testing.T) {
+	t.Helper()
+
+	retryClient := retryablehttp.New().StandardClient()
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFGAServerURL), nil)
+	resp, err := retryClient.Do(req)
+	require.NoError(t, err, "Failed to execute request")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK || err != nil {
+		t.Fatalf("failed to start service")
+	}
+}
 
 func genCert(template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte, error) {
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, pub, priv)
@@ -448,20 +460,6 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	require.NoError(t, service.Close(ctx))
 }
 
-func ensureServiceUp(t *testing.T) {
-	t.Helper()
-
-	retryClient := retryablehttp.New().StandardClient()
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/healthz", openFGAServerURL), nil)
-	resp, err := retryClient.Do(req)
-	require.NoError(t, err, "Failed to execute request")
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK || err != nil {
-		t.Fatalf("failed to start service")
-	}
-}
-
 func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
@@ -544,32 +542,15 @@ func TestHTTPServingTLS(t *testing.T) {
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(chain.caCert)
-		client := &http.Client{
+		client := retryablehttp.NewWithClient(http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					RootCAs: certPool,
 				},
 			},
-		}
+		})
 
-		backoffPolicy := backoff.NewExponentialBackOff()
-		backoffPolicy.MaxElapsedTime = 2 * time.Second
-		err = backoff.Retry(
-			func() error {
-				resp, err := client.Get("https://localhost:8080/healthz")
-				if err != nil {
-					return err
-				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode != http.StatusOK {
-					return errors.New("waiting for OK status")
-				}
-
-				return nil
-			},
-			backoffPolicy,
-		)
+		_, err = client.Get("https://localhost:8080/healthz")
 		require.NoError(t, err)
 
 		cancel()
