@@ -31,26 +31,24 @@ OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), s
 
 ```bash
 docker pull openfga/openfga
-```
-
-```bash
 docker run -p 8080:8080 openfga/openfga run
 ```
 
 ### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a storage engine yet.
 
-```bash
-docker compose up openfga
-```
+1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
-If you haven't cloned the repository you can get the `docker-compose.yaml` file with the following command:
+   ```bash
+   curl -LO https://openfga.dev/docker-compose.yaml
+   ```
 
-```bash
-curl -LO https://openfga.dev/docker-compose.yaml
+2. Then, run the following command:
 
-```
+   ```bash
+   docker compose up openfga
+   ```
 
 ### Pre-compiled Binaries
 
@@ -61,45 +59,74 @@ with the command:
 ./bin/openfga run
 ```
 
-### Source
+### Building from Source
+
+There are two recommended options for building OpenFGA from source code:
+
+#### Building from source with `go install`
 
 > Make sure you have Go 1.18 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
-You can install from source using Go modules (make sure `$GOBIN` is on your shell `$PATH`).
+You can install from source using Go modules:
 
-```bash
-export PATH=$PATH:$(go env GOBIN)
-```
+1. First, make sure `$GOBIN` is on your shell `$PATH`:
 
-Then:
+   ```bash
+   export PATH=$PATH:$(go env GOBIN)
+   ```
 
-```bash
-go install github.com/openfga/openfga/cmd/openfga
-```
+2. Then use the install command:
 
-Or you can build it with the source by cloning the project and then building it.
+   ```bash
+   go install github.com/openfga/openfga/cmd/openfga
+   ```
 
-```bash
-git clone https://github.com/openfga/openfga.git && cd openfga
-go build cmd/openfga/openfga.go
+3. Run the server with:
 
-./openfga run
-```
+   ```bash
+   ./openfga run
+   ```
+
+#### Building from source with `go build`
+
+Alternatively you can build OpenFGA by cloning the project from this Github repo, and then building it with the `go build` command:
+
+1. Clone the repo to a local directory, and navigate to that directory:
+
+   ```bash
+   git clone https://github.com/openfga/openfga.git && cd openfga
+   ```
+
+2. Then use the build command:
+
+   ```bash
+   go build cmd/openfga/openfga.go
+   ```
+
+3. Run the server with:
+
+   ```bash
+   ./openfga run
+   ```
 
 ### Running with Postgres
 
 This section assumes that you have cloned the repository.
 
 To run OpenFGA with the Postgres datastore engine, simply run the following commands:
+
 ```bash
 docker compose up -d postgres
 make run-postgres
 ```
-This should start a Postgres container, write the database schema, and start the OpenFGA server.
+
+This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
+
 ```bash
 docker compose down
+```
 
 ## Verifying the Installation
 

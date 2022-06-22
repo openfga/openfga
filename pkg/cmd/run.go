@@ -19,8 +19,8 @@ import (
 func NewRunCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "run",
-		Short: "run the OpenFGA server",
-		Long:  "run the OpenFGA server",
+		Short: "Run the OpenFGA server",
+		Long:  "Run the OpenFGA server.",
 		Run:   run,
 	}
 }
