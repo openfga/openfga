@@ -30,12 +30,12 @@ The following section aims to help you get started quickly. Please look at our o
 Given OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga) you can quickly start it using the in-memory datastore by running the following command:
 
 ```bash
-docker run -p 8080:8080 openfga/openfga:latest
+docker run -p 8080:8080 openfga/openfga:latest run
 ```
 
 ### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet.
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a storage engine yet.
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
@@ -62,7 +62,7 @@ with the command:
 
 There are two recommended options for building OpenFGA from source code:
 
-#### a. Building from source with `go install`
+#### Building from source with `go install`
 
 > Make sure you have Go 1.18 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
@@ -86,7 +86,7 @@ You can install from source using Go modules:
    ./openfga run
    ```
 
-#### b. Building from source with `go build`
+#### Building from source with `go build`
 
 Alternatively you can build OpenFGA by cloning the project from this Github repo, and then building it with the `go build` command:
 
