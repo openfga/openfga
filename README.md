@@ -114,7 +114,7 @@ This should start a Postgres container, write the database schema, and start the
 
 When you are done you can stop the Postgres container with:
 
-````bash
+```bash
 docker compose down
 
 ### Verifying the Installation
