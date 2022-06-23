@@ -34,7 +34,7 @@ The following section aims to help you get started quickly. Please look at our o
 
 ### Setup and Installation
 
-> ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment.
+> ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment. Data written to an OpenFGA instance with default configurations will *not* persist after the service is stopped.
 >
 > For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
 
@@ -44,12 +44,12 @@ OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), s
 
 ```bash
 docker pull openfga/openfga
-docker run -p 8080:8080 openfga/openfga run
+docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
 #### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a storage engine yet.
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`.
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
@@ -165,26 +165,15 @@ If everything is running correctly, you should get a response with information a
 ```
 
 ## Playground
+The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instace.
 
-OpenFGA includes a playground use to facilitate the creation and visualisation of authorization models and tuples within your running local instance.
+Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
-Once OpenFGA is running, the playground can be accessed at [http://localhost:3000/playground].
-
-In the event that a port other than the default `:3000` is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set when starting the instance. E.g.,
-
-**Pre-compiled Binaries**
+In the event that a port other than the default port is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set to change it. For example,
 
 ```sh
-OPENFGA_PLAYGROUND_PORT=3001 ./bin/openfga
+OPENFGA_PLAYGROUND_PORT=3001 ./bin/openfga run
 ```
-
-**Source**
-
-```sh
-OPENFGA_PLAYGROUND_PORT=3001 ./openfga
-```
-
-**Note: The default OpenFGA instance uses in-memory storage. Authorization models and tuples will not persist after the service is stopped.**
 
 ## Next Steps
 
