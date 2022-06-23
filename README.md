@@ -127,7 +127,6 @@ curl -X POST 'localhost:8080/stores' \
 --data-raw '{
     "name": "openfga-demo"
 }'
-````
 
 If everything is running correctly, you should get a response with information about the newly created store, for example:
 
