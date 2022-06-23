@@ -77,11 +77,15 @@ func run(_ *cobra.Command, _ []string) {
 
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
-					tmpl.Execute(w, struct {
+					err = tmpl.Execute(w, struct {
 						HTTPServerURL string
 					}{
 						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPPort),
 					})
+					if err != nil {
+						w.WriteHeader(http.StatusInternalServerError)
+						logger.Error("failed to execute/render the Playground web template", zap.Error(err))
+					}
 
 					return
 				}
@@ -91,7 +95,6 @@ func run(_ *cobra.Command, _ []string) {
 			}
 
 			http.NotFound(w, r)
-			return
 		}))
 
 		playground = &http.Server{Addr: playgroundAddr, Handler: mux}
