@@ -1,4 +1,4 @@
 FROM scratch
 COPY static/playground /static/playground
-ENTRYPOINT ["/openfga"]
 COPY openfga /
+ENTRYPOINT ["/openfga"]

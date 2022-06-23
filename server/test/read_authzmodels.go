@@ -8,8 +8,8 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -83,7 +83,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				}
 			}
 
-			query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+			query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 			resp, err := query.Execute(ctx, test.request)
 
 			require.NoError(err)
@@ -127,7 +127,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	encoder, err := encoder.NewTokenEncrypter("key")
 	require.NoError(err)
 
-	query := queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+	query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -194,7 +194,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 	encoder, err := encoder.NewTokenEncrypter("key")
 	require.NoError(err)
 
-	_, err = queries.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
+	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -18,7 +19,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -44,7 +45,7 @@ var (
 // a GRPC and HTTP server.
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
-	*grpc.Server
+
 	tracer    trace.Tracer
 	meter     metric.Meter
 	logger    logger.Logger
@@ -70,8 +71,8 @@ type Dependencies struct {
 
 type Config struct {
 	ServiceName            string
-	RPCPort                int
-	HTTPPort               int
+	GRPCServer             GRPCServerConfig
+	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
@@ -79,11 +80,24 @@ type Config struct {
 	RequestTimeout         time.Duration
 }
 
+type GRPCServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
+}
+
+type HTTPServerConfig struct {
+	Addr      int
+	TLSConfig *TLSConfig
+}
+
+type TLSConfig struct {
+	CertPath string
+	KeyPath  string
+}
+
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(config.UnaryInterceptors...))
-
 	tokenEncoder := dependencies.TokenEncoder
 	if tokenEncoder == nil {
 		tokenEncoder = encoder.NewBase64Encoder()
@@ -105,7 +119,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:    grpcServer,
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
@@ -115,19 +128,16 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				if serverErrors.IsValidEncodedError(actualCode) {
-					dependencies.Logger.ErrorWithContext(c, "gRPC error", logger.Error(e), logger.String("request_url", r.URL.String()))
+					dependencies.Logger.ErrorWithContext(c, "grpc error", logger.Error(e), logger.String("request_url", r.URL.String()))
 				}
 
 				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
 			}),
 		},
 	}
-
-	openfgapb.RegisterOpenFGAServiceServer(grpcServer, server)
 
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
@@ -151,7 +161,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -168,7 +178,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := queries.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -210,7 +220,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	q := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
@@ -244,7 +254,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewExpandQuery(s.datastore, s.tracer, s.logger)
+	q := commands.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -259,7 +269,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
-	q := queries.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -286,7 +296,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := queries.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
 	return c.Execute(ctx, req)
 }
 
@@ -328,7 +338,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 		return nil, err
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-	q := queries.NewReadAssertionsQuery(s.datastore, s.logger)
+	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
@@ -339,7 +349,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := queries.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -379,7 +389,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (
 	))
 	defer span.End()
 
-	q := queries.NewGetStoreQuery(s.datastore, s.logger)
+	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -387,47 +397,71 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := queries.NewListStoresQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
 
-// Close gracefully stops this server, blocking any subsequent requests and waiting for
-// any existing ones to complete before returning.
-func (s *Server) Close() error {
-	s.GracefulStop()
-
-	return nil
-}
-
-// Run starts server execution, and blocks until complete, returning any serverErrors.
+// Run starts server execution, and blocks until complete, returning any server errors. To close the
+// server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
-	rpcAddr := fmt.Sprintf(":%d", s.config.RPCPort)
+
+	interceptors := []grpc.UnaryServerInterceptor{
+		grpc_validator.UnaryServerInterceptor(),
+	}
+	interceptors = append(interceptors, s.config.UnaryInterceptors...)
+
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(interceptors...),
+	}
+
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	grpcServer := grpc.NewServer(opts...)
+	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
+
+	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Addr)
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil {
 			s.logger.Error("failed to start grpc server", logger.Error(err))
 		}
 	}()
 
-	s.logger.Info(fmt.Sprintf("gRPC server listening on '%s'...", rpcAddr))
+	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
 
 	// Set a request timeout.
 	runtime.DefaultContextTimeout = s.config.RequestTimeout
 
-	muxOpts := []runtime.ServeMuxOption{}
+	var muxOpts []runtime.ServeMuxOption
 	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
 	muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
 
 	mux := runtime.NewServeMux(muxOpts...)
 
-	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-	}); err != nil {
+	dialOpts := []grpc.DialOption{
+		grpc.WithBlock(),
+		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+	}
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+		if err != nil {
+			return err
+		}
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+	} else {
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
+	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, dialOpts); err != nil {
 		return err
 	}
 
@@ -438,10 +472,8 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 
-	httpAddr := fmt.Sprintf(":%d", s.config.HTTPPort)
-
 	httpServer := &http.Server{
-		Addr: httpAddr,
+		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Addr),
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   []string{"*"},
 			AllowCredentials: true,
@@ -451,15 +483,17 @@ func (s *Server) Run(ctx context.Context) error {
 		}).Handler(mux),
 	}
 
-	httpServer.RegisterOnShutdown(func() {
-		s.Stop()
-	})
-
-	s.logger.Info(fmt.Sprintf("http gateway server listening on '%s'...", httpAddr))
-
 	go func() {
-		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			s.logger.Error("failed to start gateway http server", logger.Error(err))
+		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
+
+		var err error
+		if s.config.HTTPServer.TLSConfig != nil {
+			err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
+		} else {
+			err = httpServer.ListenAndServe()
+		}
+		if err != http.ErrServerClosed {
+			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
 		}
 	}()
 
@@ -473,6 +507,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
 		return err
 	}
+
+	grpcServer.GracefulStop()
 
 	return nil
 }

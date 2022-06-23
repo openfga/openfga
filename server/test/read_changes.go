@@ -11,8 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -124,7 +124,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 		if err != nil {
 			t.Fatal(err)
 		}
-		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -184,7 +184,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -201,12 +201,12 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 2)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
 
-func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *queries.ReadChangesQuery) {
+func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.Tuple{}, openfgapb.TupleKey{}, openfgapb.TupleChange{})
 	ignoreTimestampOpts := cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp")
 
@@ -254,7 +254,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	readChangesQuery := queries.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	if err != nil {

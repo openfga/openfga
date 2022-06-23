@@ -10,6 +10,8 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
+    volumes:
+      - ./storage/postgres/migrations/20220617_initialize_schema.up.sql:/docker-entrypoint-initdb.d/db.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
@@ -17,10 +19,9 @@ services:
       retries: 5
 
   openfga:
-    build:
-      context: ./
-      dockerfile: ./Dockerfile
+    image: openfga/openfga:latest
     container_name: openfga
+    command: run
     networks:
       - default
     ports:

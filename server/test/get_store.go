@@ -10,7 +10,6 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester[storag
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 
-			query := queries.NewGetStoreQuery(datastore, logger)
+			query := commands.NewGetStoreQuery(datastore, logger)
 			actualResponse, actualError := query.Execute(ctx, test.request)
 
 			if test.err != nil {
@@ -90,7 +89,7 @@ func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester[sto
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)
 	}
-	query := queries.NewGetStoreQuery(datastore, logger)
+	query := commands.NewGetStoreQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
 
 	if actualError != nil {
