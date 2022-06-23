@@ -3,11 +3,11 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
 [![Container Image](https://img.shields.io/github/v/release/openfga/openfga?color=blueviolet&label=container&logo=docker "Container Image")](https://hub.docker.com/r/openfga/openfga/tags)
-![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey) <!-- render new line with double space here -->  
+![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 ![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
-![Snyk Vulnerabilities for GitHub Repo](https://img.shields.io/snyk/vulnerabilities/github/openfga/openfga?color=orange) <!-- render new line with double space here -->  
+![Snyk Vulnerabilities for GitHub Repo](https://img.shields.io/snyk/vulnerabilities/github/openfga/openfga?color=orange)
 [![Discord Server](https://img.shields.io/discord/759188666072825867?color=7289da&logo=discord "Discord Server")](https://discord.com/channels/759188666072825867/930524706854031421)
 [![Twitter](https://img.shields.io/twitter/follow/openfga?color=%23179CF0&logo=twitter&style=flat-square "@openfga on Twitter")](https://twitter.com/openfga)
 
@@ -44,26 +44,24 @@ OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), s
 
 ```bash
 docker pull openfga/openfga
-```
-
-```bash
 docker run -p 8080:8080 openfga/openfga run
 ```
 
 #### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a storage engine yet.
 
-```bash
-docker compose up openfga
-```
+1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
-If you haven't cloned the repository you can get the `docker-compose.yaml` file with the following command:
+   ```bash
+   curl -LO https://openfga.dev/docker-compose.yaml
+   ```
 
-```bash
-curl -LO https://openfga.dev/docker-compose.yaml
+2. Then, run the following command:
 
-```
+   ```bash
+   docker compose up openfga
+   ```
 
 #### Pre-compiled Binaries
 
@@ -74,30 +72,55 @@ with the command:
 ./bin/openfga run
 ```
 
-### Source
+### Building from Source
+
+There are two recommended options for building OpenFGA from source code:
+
+#### Building from source with `go install`
 
 > Make sure you have Go 1.18 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
-You can install from source using Go modules (make sure `$GOBIN` is on your shell `$PATH`).
+You can install from source using Go modules:
 
-```bash
-export PATH=$PATH:$(go env GOBIN)
-```
+1. First, make sure `$GOBIN` is on your shell `$PATH`:
 
-Then:
+   ```bash
+   export PATH=$PATH:$(go env GOBIN)
+   ```
 
-```bash
-go install github.com/openfga/openfga/cmd/openfga
-```
+2. Then use the install command:
 
-Or you can build it with the source by cloning the project and then building it.
+   ```bash
+   go install github.com/openfga/openfga/cmd/openfga
+   ```
 
-```bash
-git clone https://github.com/openfga/openfga.git && cd openfga
-go build cmd/openfga/openfga.go
+3. Run the server with:
 
-./openfga run
-```
+   ```bash
+   ./openfga run
+   ```
+
+#### Building from source with `go build`
+
+Alternatively you can build OpenFGA by cloning the project from this Github repo, and then building it with the `go build` command:
+
+1. Clone the repo to a local directory, and navigate to that directory:
+
+   ```bash
+   git clone https://github.com/openfga/openfga.git && cd openfga
+   ```
+
+2. Then use the build command:
+
+   ```bash
+   go build cmd/openfga/openfga.go
+   ```
+
+3. Run the server with:
+
+   ```bash
+   ./openfga run
+   ```
 
 ### Running with Postgres
 
@@ -110,12 +133,13 @@ docker compose up -d postgres
 make run-postgres
 ```
 
-This should start a Postgres container, write the database schema, and start the OpenFGA server.
+This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
 
-````bash
+```bash
 docker compose down
+```
 
 ### Verifying the Installation
 
@@ -127,7 +151,7 @@ curl -X POST 'localhost:8080/stores' \
 --data-raw '{
     "name": "openfga-demo"
 }'
-````
+```
 
 If everything is running correctly, you should get a response with information about the newly created store, for example:
 
