@@ -19,12 +19,12 @@ OpenFGA is designed to make it easy for developers to model their application pe
 
 - [Getting Started](#getting-started)
   - [Setup and Installation](#setup-and-installation)
-    - [Docker compose](#docker-compose)
+    - [Docker](#docker)
     - [Pre-compiled Binaries](#pre-compiled-binaries)
-    - [Source](#source)
+    - [Source](#building-from-source)
   - [Verifying the Installation](#verifying-the-installation)
   - [Next Steps](#next-steps)
-- [Playground]()
+- [Playground](#playground)
 - [Production Readiness](#production-readiness)
 - [Contributing](#contributing)
 
