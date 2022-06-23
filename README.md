@@ -145,7 +145,7 @@ OpenFGA includes a playground use to facilitate the creation and visualisation o
 
 Once OpenFGA is running, the playground can be accessed at [http://localhost:3000/playground].
 
-In the event that a port other than the default `:3000` is required, the `OPENFGA_PLAYGROUND_PORT` environment can be set when starting the instance.
+In the event that a port other than the default `:3000` is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set when starting the instance.
 
 eg:
 
