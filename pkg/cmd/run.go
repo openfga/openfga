@@ -83,7 +83,7 @@ func run(_ *cobra.Command, _ []string) {
 					err = tmpl.Execute(w, struct {
 						HTTPServerURL string
 					}{
-						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPPort),
+						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPConfig.Port),
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)
