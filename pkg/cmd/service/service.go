@@ -66,6 +66,9 @@ type Config struct {
 	// Logging. Possible options: text,json
 	LogFormat string `default:"text" split_words:"true"`
 
+	PlaygroundEnabled bool `default:"true" split_words:"true"`
+	PlaygroundPort    int  `default:"3000" split_words:"true"`
+
 	// CORS configuration
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
