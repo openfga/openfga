@@ -9,7 +9,7 @@ on:
 jobs:
   fossa:
     runs-on: ubuntu-latest
-    if: (github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
+    if: (github.repository_owner == 'openfga')
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
