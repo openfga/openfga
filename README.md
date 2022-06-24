@@ -15,19 +15,6 @@ A high-performance and flexible authorization/permission engine built for develo
 
 OpenFGA is designed to make it easy for developers to model their application permissions and add and integrate fine-grained authorization into their applications.
 
-## Table of Contents
-
-- [Getting Started](#getting-started)
-  - [Setup and Installation](#setup-and-installation)
-    - [Docker](#docker)
-    - [Pre-compiled Binaries](#pre-compiled-binaries)
-    - [Source](#building-from-source)
-  - [Verifying the Installation](#verifying-the-installation)
-  - [Next Steps](#next-steps)
-- [Playground](#playground)
-- [Production Readiness](#production-readiness)
-- [Contributing](#contributing)
-
 ## Getting Started
 
 The following section aims to help you get started quickly. Please look at our official [documentation](https://openfga.dev/) for in-depth information.
