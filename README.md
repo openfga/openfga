@@ -3,11 +3,11 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/openfga/openfga.svg)](https://pkg.go.dev/github.com/openfga/openfga)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/openfga/openfga?sort=semver&color=green)
 [![Container Image](https://img.shields.io/github/v/release/openfga/openfga?color=blueviolet&label=container&logo=docker "Container Image")](https://hub.docker.com/r/openfga/openfga/tags)
-![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey)  <!-- render new line with double space here -->  
+![Downloads](https://img.shields.io/github/downloads/openfga/openfga/total.svg?style=flat&color=lightgrey)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
 ![Codecov](https://img.shields.io/codecov/c/github/openfga/openfga)
 [![Go Report](https://goreportcard.com/badge/github.com/openfga/openfga)](https://goreportcard.com/report/github.com/openfga/openfga)
-![Snyk Vulnerabilities for GitHub Repo](https://img.shields.io/snyk/vulnerabilities/github/openfga/openfga?color=orange)  <!-- render new line with double space here -->  
+![Snyk Vulnerabilities for GitHub Repo](https://img.shields.io/snyk/vulnerabilities/github/openfga/openfga?color=orange)
 [![Discord Server](https://img.shields.io/discord/759188666072825867?color=7289da&logo=discord "Discord Server")](https://discord.com/channels/759188666072825867/930524706854031421)
 [![Twitter](https://img.shields.io/twitter/follow/openfga?color=%23179CF0&logo=twitter&style=flat-square "@openfga on Twitter")](https://twitter.com/openfga)
 
@@ -15,44 +15,42 @@ A high-performance and flexible authorization/permission engine built for develo
 
 OpenFGA is designed to make it easy for developers to model their application permissions and add and integrate fine-grained authorization into their applications.
 
-# Getting Started
+## Getting Started
 
 The following section aims to help you get started quickly. Please look at our official [documentation](https://openfga.dev/) for in-depth information.
 
-## Setup and Installation
+### Setup and Installation
 
-> ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment.
+> ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment. Data written to an OpenFGA instance using the default configuration with the memory storage engine will *not* persist after the service is stopped.
 >
 > For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
 
-### Docker
+#### Docker
 
 OpenFGA is available on [Dockerhub](https://hub.docker.com/r/openfga/openfga), so you can quickly start it using the in-memory datastore by running the following commands:
 
 ```bash
 docker pull openfga/openfga
+docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 ```
 
-```bash
-docker run -p 8080:8080 openfga/openfga run
-```
+#### Docker Compose
 
-### Docker Compose
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`.
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`. It launches PostgreSQL too, but it's not wired up to use it as a datastore yet:
+1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
-```bash
-docker compose up openfga
-```
+   ```bash
+   curl -LO https://openfga.dev/docker-compose.yaml
+   ```
 
-If you haven't cloned the repository you can get the `docker-compose.yaml` file with the following command:
+2. Then, run the following command:
 
-```bash
-curl -LO https://openfga.dev/docker-compose.yaml
+   ```bash
+   docker compose up openfga
+   ```
 
-```
-
-### Pre-compiled Binaries
+#### Pre-compiled Binaries
 
 Download your platform's [latest release](https://github.com/openfga/openfga/releases/latest) and extract it. Then run the binary
 with the command:
@@ -61,47 +59,76 @@ with the command:
 ./bin/openfga run
 ```
 
-### Source
+### Building from Source
+
+There are two recommended options for building OpenFGA from source code:
+
+#### Building from source with `go install`
 
 > Make sure you have Go 1.18 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
-You can install from source using Go modules (make sure `$GOBIN` is on your shell `$PATH`).
+You can install from source using Go modules:
 
-```bash
-export PATH=$PATH:$(go env GOBIN)
-```
+1. First, make sure `$GOBIN` is on your shell `$PATH`:
 
-Then:
+   ```bash
+   export PATH=$PATH:$(go env GOBIN)
+   ```
 
-```bash
-go install github.com/openfga/openfga/cmd/openfga
-```
+2. Then use the install command:
 
-Or you can build it with the source by cloning the project and then building it.
+   ```bash
+   go install github.com/openfga/openfga/cmd/openfga
+   ```
 
-```bash
-git clone https://github.com/openfga/openfga.git && cd openfga
-go build cmd/openfga/openfga.go
+3. Run the server with:
 
-./openfga run
-```
+   ```bash
+   ./openfga run
+   ```
+
+#### Building from source with `go build`
+
+Alternatively you can build OpenFGA by cloning the project from this Github repo, and then building it with the `go build` command:
+
+1. Clone the repo to a local directory, and navigate to that directory:
+
+   ```bash
+   git clone https://github.com/openfga/openfga.git && cd openfga
+   ```
+
+2. Then use the build command:
+
+   ```bash
+   go build cmd/openfga/openfga.go
+   ```
+
+3. Run the server with:
+
+   ```bash
+   ./openfga run
+   ```
 
 ### Running with Postgres
 
 This section assumes that you have cloned the repository.
 
 To run OpenFGA with the Postgres datastore engine, simply run the following commands:
+
 ```bash
 docker compose up -d postgres
 make run-postgres
 ```
-This should start a Postgres container, write the database schema, and start the OpenFGA server.
+
+This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
+
 ```bash
 docker compose down
+```
 
-## Verifying the Installation
+### Verifying the Installation
 
 Now that you have [Set up and Installed](#setup-and-installation) OpenFGA, you can test your installation by [creating an OpenFGA Store](https://openfga.dev/docs/getting-started/create-store).
 
@@ -124,6 +151,17 @@ If everything is running correctly, you should get a response with information a
 }
 ```
 
+## Playground
+The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instace.
+
+Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
+
+In the event that a port other than the default port is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set to change it. For example,
+
+```sh
+OPENFGA_PLAYGROUND_PORT=3001 ./bin/openfga run
+```
+
 ## Next Steps
 
 Take a look at examples of how to:
@@ -143,7 +181,7 @@ OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA and does no
 
 The OpenFGA team will do its best to address all production issues with high priority.
 
-# Contributing
+## Contributing
 
 See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
 

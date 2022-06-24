@@ -100,6 +100,13 @@ type Config struct {
 	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
+
+	PlaygroundEnabled bool `default:"true" split_words:"true"`
+	PlaygroundPort    int  `default:"3000" split_words:"true"`
+
+	// CORS configuration
+	CORSAllowedOrigins []string `default:"*" split_words:"true"`
+	CORSAllowedHeaders []string `default:"*" split_words:"true"`
 }
 
 // GetServiceConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
