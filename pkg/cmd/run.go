@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"os/signal"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
 	"github.com/openfga/openfga/pkg/logger"
@@ -72,6 +74,21 @@ func run(_ *cobra.Command, _ []string) {
 
 		fileServer := http.FileServer(http.Dir("./static"))
 
+		policy := backoff.NewExponentialBackOff()
+		policy.MaxElapsedTime = 3 * time.Second
+
+		var conn net.Conn
+		err = backoff.Retry(
+			func() error {
+				conn, err = net.Dial("tcp", config.HTTPAddr)
+				return err
+			},
+			policy,
+		)
+		if err != nil {
+			logger.Fatal("failed to establish Playground connection to HTTP server", zap.Error(err))
+		}
+
 		mux := http.NewServeMux()
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -80,7 +97,7 @@ func run(_ *cobra.Command, _ []string) {
 					err = tmpl.Execute(w, struct {
 						HTTPServerURL string
 					}{
-						HTTPServerURL: fmt.Sprintf("localhost:%d", config.HTTPPort),
+						HTTPServerURL: conn.RemoteAddr().String(),
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)
