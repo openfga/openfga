@@ -423,6 +423,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
+	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
 
