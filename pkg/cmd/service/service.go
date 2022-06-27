@@ -34,8 +34,8 @@ type Config struct {
 	DatastoreConnectionURI        string `split_words:"true"`
 	DatastoreMaxCacheSize         int    `default:"100000" split_words:"true"`
 	ServiceName                   string `default:"openfga" split_words:"true"`
-	HTTPPort                      int    `default:"8080" split_words:"true"`
-	RPCPort                       int    `default:"8081" split_words:"true"`
+	HTTPAddr                      string `default:":8080" split_words:"true"`
+	GRPCAddr                      string `default:":8081" split_words:"true"`
 	MaxTuplesPerWrite             int    `default:"100" split_words:"true"`
 	MaxTypesPerAuthorizationModel int    `default:"100" split_words:"true"`
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
@@ -184,11 +184,11 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}, &server.Config{
 		ServiceName: config.ServiceName,
 		GRPCServer: server.GRPCServerConfig{
-			Addr:      config.RPCPort,
+			Addr:      config.GRPCAddr,
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Addr:               config.HTTPPort,
+			Addr:               config.HTTPAddr,
 			TLSConfig:          httpTLSConfig,
 			CORSAllowedOrigins: config.CORSAllowedOrigins,
 			CORSAllowedHeaders: config.CORSAllowedHeaders,
