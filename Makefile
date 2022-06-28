@@ -47,6 +47,17 @@ unit-test: go-generate ## Run unit tests
 			-count=1 \
 			./...
 
+
+.PHONY: functional-test
+functional-test: docker-build
+	go test $(gotest_extra_flags) -v \
+			-coverprofile=coveragefunctional.out \
+			-coverpkg=$(COVERPKG) \
+			-covermode=atomic -race \
+			-count=1 \
+			-tags=functional \
+			./cmd/openfga/...
+
 .PHONY: bench
 bench: go-generate
 	go test ./... -bench=. -run=XXX -benchmem
