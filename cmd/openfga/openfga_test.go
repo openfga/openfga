@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/openfga/openfga/pkg/id"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -159,13 +160,6 @@ func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) 
 	}, nil
 }
 
-func randomID(t *testing.T) string {
-	id, err := id.NewString()
-	require.NoError(t, err)
-
-	return id
-}
-
 func TestFunctionalGRPC(t *testing.T) {
 
 	require := require.New(t)
@@ -289,7 +283,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (extra chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId: randomID(t) + "A",
+				StoreId: testutils.RandomID(t) + "A",
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -319,8 +313,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			storeID := randomID(t)
-			modelID := randomID(t)
+			storeID := testutils.RandomID(t)
+			modelID := testutils.RandomID(t)
 
 			if test.bootstrap != nil {
 				test.bootstrap.storeID = storeID
