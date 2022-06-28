@@ -49,7 +49,7 @@ unit-test: go-generate ## Run unit tests
 
 
 .PHONY: functional-test
-functional-test: docker-build
+functional-test: 
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coveragefunctional.out \
 			-coverpkg=$(COVERPKG) \
