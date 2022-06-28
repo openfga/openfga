@@ -86,7 +86,7 @@ jobs:
           with:
             file: Dockerfile
             push: false
-            tags: openfga/openfga:latest
+            tags: "openfga/openfga:latest"
 
         - name: Functional Tests
           run: make functional-test
