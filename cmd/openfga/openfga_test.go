@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -134,9 +135,16 @@ func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) 
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 
-			_ = timeoutCtx
-			_ = err
-			// todo: use grpc health check here
+			uri := fmt.Sprintf("http://localhost:%s/healthz", httpPort)
+			req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, uri, nil)
+			require.NoError(t, err)
+
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("not ready")
+			}
 
 			return nil
 		},
