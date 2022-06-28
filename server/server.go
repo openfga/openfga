@@ -86,6 +86,7 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
+	Enabled            bool
 	Addr               string
 	TLSConfig          *TLSConfig
 	CORSAllowedOrigins []string
@@ -475,30 +476,33 @@ func (s *Server) Run(ctx context.Context) error {
 		return err
 	}
 
-	httpServer := &http.Server{
-		Addr: s.config.HTTPServer.Addr,
-		Handler: cors.New(cors.Options{
-			AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
-			AllowCredentials: true,
-			AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
-			AllowedMethods: []string{http.MethodGet, http.MethodPost,
-				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-		}).Handler(mux),
+	var httpServer *http.Server
+	if s.config.HTTPServer.Enabled {
+		httpServer = &http.Server{
+			Addr: s.config.HTTPServer.Addr,
+			Handler: cors.New(cors.Options{
+				AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
+				AllowCredentials: true,
+				AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
+				AllowedMethods: []string{http.MethodGet, http.MethodPost,
+					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+			}).Handler(mux),
+		}
+
+		go func() {
+			s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
+
+			var err error
+			if s.config.HTTPServer.TLSConfig != nil {
+				err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
+			} else {
+				err = httpServer.ListenAndServe()
+			}
+			if err != http.ErrServerClosed {
+				s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+			}
+		}()
 	}
-
-	go func() {
-		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-
-		var err error
-		if s.config.HTTPServer.TLSConfig != nil {
-			err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
-		} else {
-			err = httpServer.ListenAndServe()
-		}
-		if err != http.ErrServerClosed {
-			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
-		}
-	}()
 
 	<-ctx.Done()
 	s.logger.InfoWithContext(ctx, "Termination signal received! Gracefully shutting down")
@@ -506,9 +510,11 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
-		return err
+	if httpServer != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
+			s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
+			return err
+		}
 	}
 
 	grpcServer.GracefulStop()
