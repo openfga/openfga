@@ -641,3 +641,47 @@ func TestGRPCServingTLS(t *testing.T) {
 		require.NoError(t, service.Close(ctx))
 	})
 }
+
+func TestHTTPServerDisabled(t *testing.T) {
+	t.Setenv("OPENFGA_HTTP_ENABLED", "false")
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t, nil)
+
+	_, err = http.Get("http://localhost:8080/healthz")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
+
+	cancel()
+}
+
+func TestHTTPServerEnabled(t *testing.T) {
+	t.Setenv("OPENFGA_HTTP_ENABLED", "true")
+
+	service, err := BuildService(GetServiceConfig(), logger.NewNoopLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	g := new(errgroup.Group)
+	g.Go(func() error {
+		return service.Run(ctx)
+	})
+
+	ensureServiceUp(t, nil)
+
+	resp, err := http.Get("http://localhost:8080/healthz")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	cancel()
+}

@@ -50,6 +50,7 @@ type Config struct {
 	GRPCTLSCertPath string `envconfig:"OPENFGA_GRPC_TLS_CERT_PATH"`
 	GRPCTLSKeyPath  string `envconfig:"OPENFGA_GRPC_TLS_KEY_PATH"`
 
+	HTTPEnabled     bool   `default:"true" envconfig:"OPENFGA_HTTP_ENABLED"`
 	HTTPTLSEnabled  bool   `default:"false" envconfig:"OPENFGA_HTTP_TLS_ENABLED"`
 	HTTPTLSCertPath string `envconfig:"OPENFGA_HTTP_TLS_CERT_PATH"`
 	HTTPTLSKeyPath  string `envconfig:"OPENFGA_HTTP_TLS_KEY_PATH"`
@@ -189,6 +190,7 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
+			Enabled:            config.HTTPEnabled,
 			Addr:               config.HTTPAddr,
 			TLSConfig:          httpTLSConfig,
 			CORSAllowedOrigins: config.CORSAllowedOrigins,

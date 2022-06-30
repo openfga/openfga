@@ -62,6 +62,10 @@ func run(_ *cobra.Command, _ []string) {
 
 	var playground *http.Server
 	if config.PlaygroundEnabled {
+		if !config.HTTPEnabled {
+			logger.Fatal("the HTTP server must be enabled to run the OpenFGA Playground")
+		}
+
 		playgroundPort := config.PlaygroundPort
 		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
 

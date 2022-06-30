@@ -91,6 +91,7 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
+	Enabled            bool
 	Addr               string
 	TLSConfig          *TLSConfig
 	CORSAllowedOrigins []string
@@ -462,70 +463,73 @@ func (s *Server) Run(ctx context.Context) error {
 
 	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
 
-	// Set a request timeout.
-	runtime.DefaultContextTimeout = s.config.RequestTimeout
+	var httpServer *http.Server
+	if s.config.HTTPServer.Enabled {
+		// Set a request timeout.
+		runtime.DefaultContextTimeout = s.config.RequestTimeout
 
-	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-	}
-	if s.config.GRPCServer.TLSConfig != nil {
-		creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+		dialOpts := []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		}
+		if s.config.GRPCServer.TLSConfig != nil {
+			creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+			if err != nil {
+				return err
+			}
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+		} else {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+
+		conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
 		if err != nil {
 			return err
 		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
+		defer conn.Close()
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+		healthClient := healthv1pb.NewHealthClient(conn)
 
-	conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	healthClient := healthv1pb.NewHealthClient(conn)
-
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithHealthzEndpoint(healthClient),
-	}
-	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
-	muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
-
-	mux := runtime.NewServeMux(muxOpts...)
-
-	if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
-		return err
-	}
-
-	httpServer := &http.Server{
-		Addr: s.config.HTTPServer.Addr,
-		Handler: cors.New(cors.Options{
-			AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
-			AllowCredentials: true,
-			AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
-			AllowedMethods: []string{http.MethodGet, http.MethodPost,
-				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-		}).Handler(mux),
-	}
-
-	go func() {
-		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-
-		var err error
-		if s.config.HTTPServer.TLSConfig != nil {
-			err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
-		} else {
-			err = httpServer.ListenAndServe()
+		muxOpts := []runtime.ServeMuxOption{
+			runtime.WithHealthzEndpoint(healthClient),
 		}
-		if err != http.ErrServerClosed {
-			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+		muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
+		muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
+
+		mux := runtime.NewServeMux(muxOpts...)
+
+		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
+			return err
 		}
-	}()
+
+		httpServer = &http.Server{
+			Addr: s.config.HTTPServer.Addr,
+			Handler: cors.New(cors.Options{
+				AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
+				AllowCredentials: true,
+				AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
+				AllowedMethods: []string{http.MethodGet, http.MethodPost,
+					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+			}).Handler(mux),
+		}
+
+		go func() {
+			s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
+
+			var err error
+			if s.config.HTTPServer.TLSConfig != nil {
+				err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
+			} else {
+				err = httpServer.ListenAndServe()
+			}
+			if err != http.ErrServerClosed {
+				s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+			}
+		}()
+	}
 
 	// start the health checks last to avoid a race with the HTTP server startup process
 	go func() {
@@ -537,12 +541,14 @@ func (s *Server) Run(ctx context.Context) error {
 	<-ctx.Done()
 	s.logger.InfoWithContext(ctx, "Termination signal received! Gracefully shutting down")
 
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
-		return err
+	if httpServer != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
+			s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
+			return err
+		}
 	}
 
 	grpcServer.GracefulStop()
