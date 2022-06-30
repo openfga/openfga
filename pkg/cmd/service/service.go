@@ -36,14 +36,14 @@ type DatabaseConfig struct {
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
 type GRPCConfig struct {
 	Enabled bool
-	Port    int
+	Addr    string
 	TLS     TLSConfig
 }
 
 // HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
 type HTTPConfig struct {
 	Enabled bool
-	Port    int
+	Addr    string
 	TLS     TLSConfig
 
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
@@ -120,12 +120,12 @@ func GetServiceConfig() (Config, error) {
 		},
 		GRPCConfig: GRPCConfig{
 			Enabled: true,
-			Port:    8081,
+			Addr:    ":8081",
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTPConfig: HTTPConfig{
 			Enabled:            true,
-			Port:               8080,
+			Addr:               ":8080",
 			TLS:                TLSConfig{Enabled: false},
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedHeaders: []string{"*"},
@@ -265,11 +265,11 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
 		GRPCServer: server.GRPCServerConfig{
-			Port:      config.GRPCConfig.Port,
+			Addr:      config.GRPCConfig.Addr,
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Port:               config.HTTPConfig.Port,
+			Addr:               config.HTTPConfig.Addr,
 			TLSConfig:          httpTLSConfig,
 			CORSAllowedOrigins: config.HTTPConfig.CORSAllowedOrigins,
 			CORSAllowedHeaders: config.HTTPConfig.CORSAllowedHeaders,

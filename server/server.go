@@ -80,12 +80,12 @@ type Config struct {
 }
 
 type GRPCServerConfig struct {
-	Port      int
+	Addr      string
 	TLSConfig *TLSConfig
 }
 
 type HTTPServerConfig struct {
-	Port               int
+	Addr               string
 	TLSConfig          *TLSConfig
 	CORSAllowedOrigins []string
 	CORSAllowedHeaders []string
@@ -422,10 +422,11 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		opts = append(opts, grpc.Creds(creds))
 	}
+	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
 
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.GRPCServer.Port)
+	rpcAddr := s.config.GRPCServer.Addr
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
@@ -474,7 +475,7 @@ func (s *Server) Run(ctx context.Context) error {
 	}
 
 	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPServer.Port),
+		Addr: s.config.HTTPServer.Addr,
 		Handler: cors.New(cors.Options{
 			AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
 			AllowCredentials: true,

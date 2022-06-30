@@ -171,6 +171,17 @@ func createCertsAndKeys(t *testing.T) certHandle {
 	))
 	require.NoError(t, err)
 
+<<<<<<< HEAD
+=======
+	t.Setenv(httpTLSEnabledEnvVar, "true")
+	t.Setenv(httpTLSCertPathEnvVar, serverCertFile.Name())
+	t.Setenv(httpTLSKeyPathEnvVar, serverKeyFile.Name())
+
+	t.Setenv(grpcTLSEnabledEnvVar, "true")
+	t.Setenv(grpcTLSCertPathEnvVar, serverCertFile.Name())
+	t.Setenv(grpcTLSKeyPathEnvVar, serverKeyFile.Name())
+
+>>>>>>> main
 	return certHandle{
 		caCert:         caCert,
 		serverCertFile: serverCertFile.Name(),
@@ -193,6 +204,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	service.Close(context.Background())
 }
 
+<<<<<<< HEAD
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
 
 	config, err := GetServiceConfig()
@@ -200,6 +212,11 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 
 	config.AuthnConfig.Method = "preshared"
 	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+=======
+func TestBuildServerWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
+	t.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	t.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "")
+>>>>>>> main
 
 	_, err = BuildService(config, logger.NewNoopLogger())
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
@@ -208,8 +225,13 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	retryClient := retryablehttp.New().StandardClient()
 
+<<<<<<< HEAD
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
+=======
+	t.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	t.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+>>>>>>> main
 
 	config.AuthnConfig.Method = "preshared"
 	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
@@ -277,10 +299,18 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	require.NoError(t, service.Close(ctx))
 }
 
+<<<<<<< HEAD
 func TestHTTPServerWithCORS(t *testing.T) {
 
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
+=======
+func TestSettingCORS(t *testing.T) {
+	t.Setenv("OPENFGA_AUTH_METHOD", "preshared")
+	t.Setenv("OPENFGA_AUTH_PRESHARED_KEYS", "KEYONE,KEYTWO")
+	t.Setenv("OPENFGA_CORS_ALLOWED_ORIGINS", "http://openfga.dev,http://localhost")
+	t.Setenv("OPENFGA_CORS_ALLOWED_HEADERS", "Origin,Accept,Content-Type,X-Requested-With,Authorization,X-Custom-Header")
+>>>>>>> main
 
 	config.AuthnConfig.Method = "preshared"
 	config.AuthnConfig.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
@@ -388,6 +418,7 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 	retryClient := retryablehttp.New().StandardClient()
 
 	const localOidcServerURL = "http://localhost:8083"
+<<<<<<< HEAD
 
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
@@ -397,6 +428,11 @@ func TestBuildServerWithOidcAuthentication(t *testing.T) {
 		Audience: openFGAServerURL,
 		Issuer:   localOidcServerURL,
 	}
+=======
+	t.Setenv("OPENFGA_AUTH_METHOD", "oidc")
+	t.Setenv("OPENFGA_AUTH_OIDC_ISSUER", localOidcServerURL)
+	t.Setenv("OPENFGA_AUTH_OIDC_AUDIENCE", openFGAServerURL)
+>>>>>>> main
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOidcServerURL)
 	require.NoError(t, err)
@@ -467,8 +503,13 @@ func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
+<<<<<<< HEAD
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
+=======
+		t.Setenv(httpTLSEnabledEnvVar, "true")
+		t.Setenv(httpTLSKeyPathEnvVar, "some/path")
+>>>>>>> main
 
 		config.HTTPConfig.TLS = TLSConfig{
 			Enabled: true,
@@ -480,6 +521,7 @@ func TestTLSFailureSettings(t *testing.T) {
 	})
 
 	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
+<<<<<<< HEAD
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
@@ -487,12 +529,17 @@ func TestTLSFailureSettings(t *testing.T) {
 			Enabled: true,
 			KeyPath: "some/path",
 		}
+=======
+		t.Setenv(grpcTLSEnabledEnvVar, "true")
+		t.Setenv(grpcTLSKeyPathEnvVar, "some/path")
+>>>>>>> main
 
 		_, err = BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
 	})
 
 	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
+<<<<<<< HEAD
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
@@ -500,14 +547,23 @@ func TestTLSFailureSettings(t *testing.T) {
 			Enabled:  true,
 			CertPath: "some/path",
 		}
+=======
+		t.Setenv(httpTLSEnabledEnvVar, "true")
+		t.Setenv(httpTLSCertPathEnvVar, "some/path")
+>>>>>>> main
 
 		_, err = BuildService(config, logger)
 		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
 	})
 
 	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
+<<<<<<< HEAD
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
+=======
+		t.Setenv(grpcTLSEnabledEnvVar, "true")
+		t.Setenv(grpcTLSCertPathEnvVar, "some/path")
+>>>>>>> main
 
 		config.GRPCConfig.TLS = TLSConfig{
 			Enabled:  true,
@@ -525,7 +581,6 @@ func TestHTTPServingTLS(t *testing.T) {
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
-		defer os.Clearenv()
 
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
@@ -554,7 +609,6 @@ func TestHTTPServingTLS(t *testing.T) {
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
-		defer os.Clearenv()
 
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
@@ -600,7 +654,6 @@ func TestGRPCServingTLS(t *testing.T) {
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
-		defer os.Clearenv()
 
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
@@ -639,7 +692,6 @@ func TestGRPCServingTLS(t *testing.T) {
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
-		defer os.Clearenv()
 
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
