@@ -696,3 +696,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 
 	return res, []byte(continuationToken), nil
 }
+
+func (s *MemoryBackend) IsReady(ctx context.Context) (bool, error) {
+	return true, nil
+}

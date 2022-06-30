@@ -7,14 +7,15 @@ import (
 	"log"
 	"time"
 
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/kelseyhightower/envconfig"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
-	"github.com/openfga/openfga/server/authentication"
-	"github.com/openfga/openfga/server/authentication/oidc"
-	"github.com/openfga/openfga/server/authentication/presharedkey"
+	"github.com/openfga/openfga/server/authn"
+	"github.com/openfga/openfga/server/authn/oidc"
+	"github.com/openfga/openfga/server/authn/presharedkey"
 	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
@@ -45,14 +46,14 @@ type Config struct {
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
 
-	GRPCTLSEnabled  bool   `default:"false" envconfig:"GRPC_TLS_ENABLED"`
-	GRPCTLSCertPath string `envconfig:"GRPC_TLS_CERT_PATH"`
-	GRPCTLSKeyPath  string `envconfig:"GRPC_TLS_KEY_PATH"`
+	GRPCTLSEnabled  bool   `default:"false" envconfig:"OPENFGA_GRPC_TLS_ENABLED"`
+	GRPCTLSCertPath string `envconfig:"OPENFGA_GRPC_TLS_CERT_PATH"`
+	GRPCTLSKeyPath  string `envconfig:"OPENFGA_GRPC_TLS_KEY_PATH"`
 
-	HTTPEnabled     bool   `default:"true" envconfig:"HTTP_ENABLED"`
-	HTTPTLSEnabled  bool   `default:"false" envconfig:"HTTP_TLS_ENABLED"`
-	HTTPTLSCertPath string `envconfig:"HTTP_TLS_CERT_PATH"`
-	HTTPTLSKeyPath  string `envconfig:"HTTP_TLS_KEY_PATH"`
+	HTTPEnabled     bool   `default:"true" envconfig:"OPENFGA_HTTP_ENABLED"`
+	HTTPTLSEnabled  bool   `default:"false" envconfig:"OPENFGA_HTTP_TLS_ENABLED"`
+	HTTPTLSCertPath string `envconfig:"OPENFGA_HTTP_TLS_CERT_PATH"`
+	HTTPTLSKeyPath  string `envconfig:"OPENFGA_HTTP_TLS_KEY_PATH"`
 
 	// Authentication. Possible options: none,preshared,oidc
 	AuthMethod string `default:"none" split_words:"true"`
@@ -87,7 +88,7 @@ func GetServiceConfig() Config {
 type service struct {
 	server        *server.Server
 	datastore     storage.OpenFGADatastore
-	authenticator authentication.Authenticator
+	authenticator authn.Authenticator
 }
 
 func (s *service) Close(ctx context.Context) error {
@@ -135,9 +136,9 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			CertPath: config.GRPCTLSCertPath,
 			KeyPath:  config.GRPCTLSKeyPath,
 		}
-		logger.Info("TLS is enabled, serving grpc connections using the provided certificate")
+		logger.Info("grpc TLS is enabled, serving grpc connections using the provided certificate")
 	} else {
-		logger.Warn("TLS is disabled, serving grpc connections using insecure plaintext")
+		logger.Warn("grpc TLS is disabled, serving grpc connections using insecure plaintext")
 	}
 
 	var httpTLSConfig *server.TLSConfig
@@ -149,16 +150,16 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			CertPath: config.HTTPTLSCertPath,
 			KeyPath:  config.HTTPTLSKeyPath,
 		}
-		logger.Info("HTTP TLS enabled, serving connections using the provided certificate")
+		logger.Info("HTTP TLS is enabled, serving HTTP connections using the provided certificate")
 	} else {
-		logger.Warn("HTTP TLS is disabled, falling back to insecure plaintext")
+		logger.Warn("HTTP TLS is disabled, serving HTTP connections using insecure plaintext")
 	}
 
-	var authenticator authentication.Authenticator
+	var authenticator authn.Authenticator
 	switch config.AuthMethod {
 	case "none":
 		logger.Warn("using 'none' authentication")
-		authenticator = authentication.NoopAuthenticator{}
+		authenticator = authn.NoopAuthenticator{}
 	case "preshared":
 		logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthPresharedKeys)
@@ -173,7 +174,7 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	interceptors := []grpc.UnaryServerInterceptor{
-		middleware.NewAuthenticationInterceptor(authenticator),
+		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
