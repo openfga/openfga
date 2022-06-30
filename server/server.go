@@ -41,7 +41,8 @@ const (
 )
 
 var (
-	ErrNilTransport = fmt.Errorf("transport must be a non-nil interface value")
+	ErrNilTokenEncoder = fmt.Errorf("tokenEncoder must be a non-nil interface value")
+	ErrNilTransport    = fmt.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -105,6 +106,16 @@ type TLSConfig struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
+	tokenEncrypter := dependencies.TokenEncrypter
+	if tokenEncrypter == nil {
+		tokenEncrypter = encoder.NewBase64Encrypter()
+	} else {
+		t := reflect.TypeOf(tokenEncrypter)
+		if reflect.ValueOf(tokenEncrypter) == reflect.Zero(t) {
+			return nil, ErrNilTokenEncoder
+		}
+	}
+
 	transport := dependencies.Transport
 	if transport == nil {
 		transport = gateway.NewRPCTransport(dependencies.Logger)
