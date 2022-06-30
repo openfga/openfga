@@ -463,48 +463,48 @@ func (s *Server) Run(ctx context.Context) error {
 
 	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
 
-	// Set a request timeout.
-	runtime.DefaultContextTimeout = s.config.RequestTimeout
+	var httpServer *http.Server
+	if s.config.HTTPServer.Enabled {
+		// Set a request timeout.
+		runtime.DefaultContextTimeout = s.config.RequestTimeout
 
-	dialOpts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-	}
-	if s.config.GRPCServer.TLSConfig != nil {
-		creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+		dialOpts := []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		}
+		if s.config.GRPCServer.TLSConfig != nil {
+			creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+			if err != nil {
+				return err
+			}
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+		} else {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}
+
+		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+
+		conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
 		if err != nil {
 			return err
 		}
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-	} else {
-		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
+		defer conn.Close()
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+		healthClient := healthv1pb.NewHealthClient(conn)
 
-	conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
+		muxOpts := []runtime.ServeMuxOption{
+			runtime.WithHealthzEndpoint(healthClient),
+		}
+		muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
+		muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
 
-	healthClient := healthv1pb.NewHealthClient(conn)
+		mux := runtime.NewServeMux(muxOpts...)
 
-	muxOpts := []runtime.ServeMuxOption{
-		runtime.WithHealthzEndpoint(healthClient),
-	}
-	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
-	muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
+		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
+			return err
+		}
 
-	mux := runtime.NewServeMux(muxOpts...)
-
-	if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
-		return err
-	}
-
-	var httpServer *http.Server
-	if s.config.HTTPServer.Enabled {
 		httpServer = &http.Server{
 			Addr: s.config.HTTPServer.Addr,
 			Handler: cors.New(cors.Options{
@@ -541,7 +541,7 @@ func (s *Server) Run(ctx context.Context) error {
 	<-ctx.Done()
 	s.logger.InfoWithContext(ctx, "Termination signal received! Gracefully shutting down")
 
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if httpServer != nil {
