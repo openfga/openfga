@@ -27,7 +27,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encrypter := encoder.NewNoopEncrypterEncoder()
+	encrypter := encoder.NewBase64Encrypter()
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()

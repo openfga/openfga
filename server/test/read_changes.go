@@ -184,7 +184,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encrypter(), 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -201,7 +201,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 2)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encrypter(), 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
@@ -254,7 +254,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 0)
+	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encrypter(), 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	if err != nil {

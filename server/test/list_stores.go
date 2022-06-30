@@ -23,7 +23,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encrypter := encoder.NewNoopEncrypterEncoder()
+	encrypter := encoder.NewBase64Encrypter()
 
 	// clean up all stores from other tests
 	getStoresQuery := commands.NewListStoresQuery(datastore, encrypter, logger)

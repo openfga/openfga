@@ -22,7 +22,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
-	encrypter := encoder.NewNoopEncrypterEncoder()
+	encrypter := encoder.NewBase64Encrypter()
 	ctx := context.Background()
 
 	datastore, err := dbTester.New()

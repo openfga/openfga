@@ -15,8 +15,8 @@ func NewNoopEncrypter(encoder Encoder) *NoopEncrypter {
 	return &NoopEncrypter{encoder: encoder}
 }
 
-func NewNoopEncrypterEncoder() *NoopEncrypter {
-	return &NoopEncrypter{encoder: NoopEncoder{}}
+func NewBase64Encrypter() *NoopEncrypter {
+	return &NoopEncrypter{encoder: NewBase64Encoder()}
 }
 
 func (e *NoopEncrypter) Decrypt(s string) ([]byte, error) {

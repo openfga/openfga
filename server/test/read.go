@@ -552,7 +552,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encrypter := encoder.NewNoopEncrypterEncoder()
+	encrypter := encoder.NewBase64Encrypter()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
