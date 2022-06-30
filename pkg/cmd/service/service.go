@@ -109,12 +109,9 @@ type Config struct {
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
 }
 
-// GetServiceConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
-// The 'config.yaml' file is loaded from '/etc/openfga', '$HOME/.openfga', or the current working directory. If no configuration
-// file is present, the default values are returned.
-func GetServiceConfig() (Config, error) {
-
-	config := Config{
+// DefaultConfig returns the OpenFGA server default configurations.
+func DefaultConfig() Config {
+	return Config{
 		DatabaseConfig: DatabaseConfig{
 			Engine: "memory",
 		},
@@ -137,6 +134,14 @@ func GetServiceConfig() (Config, error) {
 			Format: "text",
 		},
 	}
+}
+
+// GetServiceConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
+// The 'config.yaml' file is loaded from '/etc/openfga', '$HOME/.openfga', or the current working directory. If no configuration
+// file is present, the default values are returned.
+func GetServiceConfig() (Config, error) {
+
+	config := DefaultConfig()
 
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
