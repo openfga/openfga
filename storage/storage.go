@@ -136,5 +136,9 @@ type OpenFGADatastore interface {
 	AssertionsBackend
 	ChangelogBackend
 
+	// IsReady reports whether the datastore is ready to accept traffic.
+	IsReady(ctx context.Context) (bool, error)
+
+	// Close closes the datastore and cleans up any residual resources.
 	Close(ctx context.Context) error
 }

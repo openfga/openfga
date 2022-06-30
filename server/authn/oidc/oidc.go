@@ -14,7 +14,7 @@ import (
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/retryablehttp"
 
-	"github.com/openfga/openfga/server/authentication"
+	"github.com/openfga/openfga/server/authn"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -31,8 +31,8 @@ var (
 	JWKRefreshInterval, _ = time.ParseDuration("48h")
 )
 
-var _ authentication.Authenticator = (*RemoteOidcAuthenticator)(nil)
-var _ authentication.OidcAuthenticator = (*RemoteOidcAuthenticator)(nil)
+var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
+var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
 func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
 	oidc := &RemoteOidcAuthenticator{
@@ -47,7 +47,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 	return oidc, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context, requestParameters any) (*authentication.AuthClaims, error) {
+func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
 		return nil, errors.New("missing bearer token")
@@ -88,7 +88,7 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 		}
 	}
 
-	principal := &authentication.AuthClaims{
+	principal := &authn.AuthClaims{
 		Subject: subject,
 		Scopes:  make(map[string]bool),
 	}
@@ -135,7 +135,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	return jwks, nil
 }
 
-func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authentication.OidcConfig, error) {
+func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, error) {
 	wellKnown := strings.TrimSuffix(oidc.IssuerURL, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
@@ -157,7 +157,7 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authentication.OidcCon
 		return nil, errors.Errorf("error reading response body: %v", err)
 	}
 
-	oidcConfig := &authentication.OidcConfig{}
+	oidcConfig := &authn.OidcConfig{}
 	if err := json.Unmarshal(body, oidcConfig); err != nil {
 		return nil, errors.Errorf("failed parsing document: %v", err)
 	}
