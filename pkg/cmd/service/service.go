@@ -29,6 +29,8 @@ var (
 
 // DatabaseConfig defines OpenFGA server configurations for database specific settings.
 type DatabaseConfig struct {
+
+	// Engine is the database storage engine to use (e.g. 'memory', 'postgres')
 	Engine string
 	URI    string
 }
@@ -59,6 +61,8 @@ type TLSConfig struct {
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
+
+	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared', 'oidc')
 	Method                   string
 	*AuthnOIDCConfig         `mapstructure:"oidc"`
 	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
@@ -72,46 +76,70 @@ type AuthnOIDCConfig struct {
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
+
+	// Keys define the preshared keys to verify authn tokens against.
 	Keys []string
 }
 
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
 // recommend using the 'json' log format.
 type LogConfig struct {
+
+	// Format is the log format to use in the log output (e.g. 'text' or 'json')
 	Format string
+}
+
+type SomeConfig struct {
+}
+
+// PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
+type PlaygroundConfig struct {
+	Enabled bool
+	Port    int
+}
+
+// OpenFGAConfig defines server configurations specific to the OpenFGA server itself.
+type OpenFGAConfig struct {
+
+	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
+	MaxTuplesPerWrite int
+
+	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per authorization model for the WriteAuthorizationModel endpoint.
+	MaxTypesPerAuthorizationModel int
+
+	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
+	ChangelogHorizonOffset int
+
+	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
+	ResolveNodeLimit uint32
 }
 
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
-	DatabaseConfig `mapstructure:"database"`
-	GRPCConfig     `mapstructure:"grpc"`
-	HTTPConfig     `mapstructure:"http"`
-	AuthnConfig    `mapstructure:"authn"`
-	LogConfig      `mapstructure:"log"`
+	OpenFGAConfig    `mapstructure:"openfga"`
+	DatabaseConfig   `mapstructure:"database"`
+	GRPCConfig       `mapstructure:"grpc"`
+	HTTPConfig       `mapstructure:"http"`
+	AuthnConfig      `mapstructure:"authn"`
+	LogConfig        `mapstructure:"log"`
+	PlaygroundConfig `mapstructure:"playground"`
 
 	DatastoreMaxCacheSize int `default:"100000" split_words:"true"`
 
-	MaxTuplesPerWrite             int `default:"100" split_words:"true"`
-	MaxTypesPerAuthorizationModel int `default:"100" split_words:"true"`
-	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
-	ChangelogHorizonOffset int `default:"0" split_words:"true" `
-	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
-	ResolveNodeLimit uint32 `default:"25" split_words:"true"`
 	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
 	RequestTimeout time.Duration `default:"0s" split_words:"true"`
-
-	PlaygroundEnabled bool `default:"true" split_words:"true"`
-	PlaygroundPort    int  `default:"3000" split_words:"true"`
-
-	// CORS configuration
-	CORSAllowedOrigins []string `default:"*" split_words:"true"`
-	CORSAllowedHeaders []string `default:"*" split_words:"true"`
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() Config {
 	return Config{
+		OpenFGAConfig: OpenFGAConfig{
+			MaxTuplesPerWrite:             100,
+			MaxTypesPerAuthorizationModel: 100,
+			ChangelogHorizonOffset:        0,
+			ResolveNodeLimit:              25,
+		},
 		DatabaseConfig: DatabaseConfig{
 			Engine: "memory",
 		},
@@ -132,6 +160,10 @@ func DefaultConfig() Config {
 		},
 		LogConfig: LogConfig{
 			Format: "text",
+		},
+		PlaygroundConfig: PlaygroundConfig{
+			Enabled: false,
+			Port:    3000,
 		},
 	}
 }
