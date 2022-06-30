@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -28,7 +27,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encoder := encoder.NewNoopEncoder()
+	encrypter := encoder.NewNoopEncrypterEncoder()
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -49,7 +48,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
 	}
 
-	cmd := commands.NewReadTuplesQuery(datastore, encoder, logger)
+	cmd := commands.NewReadTuplesQuery(datastore, encrypter, logger)
 
 	writes := []*openfgapb.TupleKey{
 		{
@@ -132,16 +131,10 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatalf("Error creating encoder: %v", err)
-	}
-
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	state := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -150,15 +143,16 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
-		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	require.NoError(err)
 
-	q := commands.NewReadTuplesQuery(datastore, encoder, logger)
-	if _, err := q.Execute(ctx, &openfgapb.ReadTuplesRequest{
+	encrypter, err := encoder.NewGCMEncrypter("key", encoder.NewBase64Encoder())
+	require.NoError(err)
+
+	q := commands.NewReadTuplesQuery(datastore, encrypter, logger)
+	_, err = q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
-	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
-		t.Errorf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)
-	}
+	})
+	require.ErrorIs(err, serverErrors.InvalidContinuationToken)
 }

@@ -14,23 +14,23 @@ import (
 // A ReadTuplesQuery can be used to read tuples from a store
 // THIS IS ONLY FOR THE PLAYGROUND, DO NOT EXPOSE THIS IN PRODUCTION ENVIRONMENTS
 type ReadTuplesQuery struct {
-	backend storage.TupleBackend
-	encoder encoder.Encoder
-	logger  logger.Logger
+	backend   storage.TupleBackend
+	encrypter encoder.Encrypter
+	logger    logger.Logger
 }
 
 // NewReadTuplesQuery creates a ReadTuplesQuery with specified `tupleBackend` to use for storage
-func NewReadTuplesQuery(backend storage.TupleBackend, encoder encoder.Encoder, logger logger.Logger) *ReadTuplesQuery {
+func NewReadTuplesQuery(backend storage.TupleBackend, encrypter encoder.Encrypter, logger logger.Logger) *ReadTuplesQuery {
 	return &ReadTuplesQuery{
-		backend: backend,
-		encoder: encoder,
-		logger:  logger,
+		backend:   backend,
+		encrypter: encrypter,
+		logger:    logger,
 	}
 }
 
 // Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store
 func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
+	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -42,7 +42,7 @@ func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuples
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := q.encoder.Encode(continuationToken)
+	encodedToken, err := q.encrypter.Encrypt(continuationToken)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
 	}

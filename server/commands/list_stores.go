@@ -13,20 +13,20 @@ import (
 
 type ListStoresQuery struct {
 	logger        logger.Logger
-	encoder       encoder.Encoder
+	encrypter     encoder.Encrypter
 	storesBackend storage.StoresBackend
 }
 
-func NewListStoresQuery(storesBackend storage.StoresBackend, encoder encoder.Encoder, logger logger.Logger) *ListStoresQuery {
+func NewListStoresQuery(storesBackend storage.StoresBackend, encrypter encoder.Encrypter, logger logger.Logger) *ListStoresQuery {
 	return &ListStoresQuery{
 		logger:        logger,
-		encoder:       encoder,
+		encrypter:     encrypter,
 		storesBackend: storesBackend,
 	}
 }
 
 func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStoresRequest) (*openfgapb.ListStoresResponse, error) {
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
+	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -38,7 +38,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStores
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := q.encoder.Encode(continuationToken)
+	encodedToken, err := q.encrypter.Encrypt(continuationToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

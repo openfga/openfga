@@ -552,7 +552,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encoder := encoder.NewNoopEncoder()
+	encrypter := encoder.NewNoopEncrypterEncoder()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -572,7 +572,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 				}
 			}
 
-			cmd := commands.NewReadQuery(datastore, tracer, logger, encoder)
+			cmd := commands.NewReadQuery(datastore, tracer, logger, encrypter)
 			req := &openfgapb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,

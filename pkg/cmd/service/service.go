@@ -104,7 +104,7 @@ func (s *service) Run(ctx context.Context) error {
 func BuildService(config Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
-	tokenEncoder := encoder.NewBase64Encoder()
+	tokenEncrypter := encoder.NewNoopEncrypter(encoder.NewBase64Encoder())
 
 	var datastore storage.OpenFGADatastore
 	var err error
@@ -178,11 +178,11 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
-		Tracer:       tracer,
-		Logger:       logger,
-		Meter:        meter,
-		TokenEncoder: tokenEncoder,
+		Datastore:      caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
+		Tracer:         tracer,
+		Logger:         logger,
+		Meter:          meter,
+		TokenEncrypter: tokenEncrypter,
 	}, &server.Config{
 		ServiceName: config.ServiceName,
 		GRPCServer: server.GRPCServerConfig{

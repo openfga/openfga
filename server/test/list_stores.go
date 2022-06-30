@@ -23,13 +23,10 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	fakeEncoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatal(err)
-	}
+	encrypter := encoder.NewNoopEncrypterEncoder()
 
 	// clean up all stores from other tests
-	getStoresQuery := commands.NewListStoresQuery(datastore, fakeEncoder, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore, encrypter, logger)
 	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {

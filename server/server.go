@@ -41,8 +41,7 @@ const (
 )
 
 var (
-	ErrNilTokenEncoder error = fmt.Errorf("tokenEncoder must be a non-nil interface value")
-	ErrNilTransport    error = fmt.Errorf("transport must be a non-nil interface value")
+	ErrNilTransport = fmt.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -55,7 +54,7 @@ type Server struct {
 	meter         metric.Meter
 	logger        logger.Logger
 	datastore     storage.OpenFGADatastore
-	encoder       encoder.Encoder
+	encrypter     encoder.Encrypter
 	config        *Config
 	transport     gateway.Transport
 
@@ -68,10 +67,10 @@ type Dependencies struct {
 	Meter     metric.Meter
 	Logger    logger.Logger
 
-	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
+	// TokenEncrypter is the encypter used to encrypt continuation tokens for paginated views.
 	// Defaults to Base64Encoder if none is provided.
-	TokenEncoder encoder.Encoder
-	Transport    gateway.Transport
+	TokenEncrypter encoder.Encrypter
+	Transport      gateway.Transport
 }
 
 type Config struct {
@@ -106,16 +105,6 @@ type TLSConfig struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	tokenEncoder := dependencies.TokenEncoder
-	if tokenEncoder == nil {
-		tokenEncoder = encoder.NewBase64Encoder()
-	} else {
-		t := reflect.TypeOf(tokenEncoder)
-		if reflect.ValueOf(tokenEncoder) == reflect.Zero(t) {
-			return nil, ErrNilTokenEncoder
-		}
-	}
-
 	transport := dependencies.Transport
 	if transport == nil {
 		transport = gateway.NewRPCTransport(dependencies.Logger)
@@ -131,7 +120,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
 		datastore: dependencies.Datastore,
-		encoder:   tokenEncoder,
+		encrypter: dependencies.TokenEncrypter,
 		transport: transport,
 		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
@@ -173,7 +162,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encrypter)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -190,7 +179,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := commands.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewReadTuplesQuery(s.datastore, s.encrypter, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -308,7 +297,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.encrypter, s.logger)
 	return c.Execute(ctx, req)
 }
 
@@ -361,7 +350,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encrypter, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -409,7 +398,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewListStoresQuery(s.datastore, s.encrypter, s.logger)
 	return q.Execute(ctx, req)
 }
 

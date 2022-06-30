@@ -15,6 +15,7 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -120,11 +121,10 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		encoder, err := encoder.NewTokenEncrypter("key")
-		if err != nil {
-			t.Fatal(err)
-		}
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
+		encrypter, err := encoder.NewGCMEncrypter("key", encoder.NewBase64Encoder())
+		require.NoError(t, err)
+
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encrypter, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -184,7 +184,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -201,7 +201,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 2)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
@@ -254,7 +254,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
+	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewNoopEncrypterEncoder(), 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	if err != nil {

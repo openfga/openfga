@@ -12,21 +12,21 @@ import (
 )
 
 type ReadAuthorizationModelsQuery struct {
-	backend storage.AuthorizationModelReadBackend
-	encoder encoder.Encoder
-	logger  logger.Logger
+	backend   storage.AuthorizationModelReadBackend
+	encrypter encoder.Encrypter
+	logger    logger.Logger
 }
 
-func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, encoder encoder.Encoder, logger logger.Logger) *ReadAuthorizationModelsQuery {
+func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, encrypter encoder.Encrypter, logger logger.Logger) *ReadAuthorizationModelsQuery {
 	return &ReadAuthorizationModelsQuery{
-		backend: backend,
-		encoder: encoder,
-		logger:  logger,
+		backend:   backend,
+		encrypter: encrypter,
+		logger:    logger,
 	}
 }
 
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
+	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -38,7 +38,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encoder.Encode(contToken)
+	encodedContToken, err := q.encrypter.Encrypt(contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

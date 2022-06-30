@@ -22,7 +22,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
-	encoder := encoder.NewNoopEncoder()
+	encrypter := encoder.NewNoopEncrypterEncoder()
 	ctx := context.Background()
 
 	datastore, err := dbTester.New()
@@ -83,7 +83,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				}
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+			query := commands.NewReadAuthorizationModelsQuery(datastore, encrypter, logger)
 			resp, err := query.Execute(ctx, test.request)
 
 			require.NoError(err)
@@ -124,10 +124,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 		t.Fatal(err)
 	}
 
-	encoder, err := encoder.NewTokenEncrypter("key")
+	encrypter, err := encoder.NewGCMEncrypter("key", encoder.NewBase64Encoder())
 	require.NoError(err)
 
-	query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+	query := commands.NewReadAuthorizationModelsQuery(datastore, encrypter, logger)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -177,9 +177,8 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	tds := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -188,13 +187,13 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
-		t.Fatal(err)
-	}
-	encoder, err := encoder.NewTokenEncrypter("key")
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
-	_, err = commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	encrypter, err := encoder.NewGCMEncrypter("key", encoder.NewBase64Encoder())
+	require.NoError(err)
+
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, encrypter, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})
