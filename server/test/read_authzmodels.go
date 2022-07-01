@@ -77,9 +77,9 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				for store, state := range test.backendState {
 					modelID, err := id.NewString()
 					require.NoError(err)
-					if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
-						t.Fatalf("WriteAuthorizationModel(%s), err = %v, want nil", store, err)
-					}
+
+					err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+					require.NoError(err)
 				}
 			}
 
@@ -113,16 +113,14 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	modelID1, err := id.NewString()
 	require.NoError(err)
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds); err != nil {
-		t.Fatal(err)
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, tds)
+	require.NoError(err)
+
 	modelID2, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, tds); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds)
+	require.NoError(err)
 
 	encoder, err := encoder.NewTokenEncrypter("key")
 	require.NoError(err)
@@ -177,9 +175,8 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	tds := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -188,9 +185,9 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
-		t.Fatal(err)
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
+	require.NoError(err)
+		
 	encoder, err := encoder.NewTokenEncrypter("key")
 	require.NoError(err)
 
