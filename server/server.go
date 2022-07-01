@@ -131,7 +131,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
 		datastore: dependencies.Datastore,
-		encrypter: dependencies.TokenEncrypter,
+		encrypter: tokenEncrypter,
 		transport: transport,
 		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
