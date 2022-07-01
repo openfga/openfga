@@ -187,7 +187,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
-		
+
 	encoder, err := encoder.NewTokenEncrypter("key")
 	require.NoError(err)
 
