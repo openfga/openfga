@@ -81,7 +81,6 @@ type Config struct {
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
-	RequestTimeout         time.Duration
 }
 
 type GRPCServerConfig struct {
@@ -90,11 +89,12 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Enabled            bool
-	Addr               string
-	TLSConfig          *TLSConfig
-	CORSAllowedOrigins []string
-	CORSAllowedHeaders []string
+	Enabled                bool
+	Addr                   string
+	UpstreamRequestTimeout time.Duration
+	TLSConfig              *TLSConfig
+	CORSAllowedOrigins     []string
+	CORSAllowedHeaders     []string
 }
 
 type TLSConfig struct {
@@ -408,8 +408,6 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	time.Sleep(2 * time.Second)
-
 	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -467,7 +465,7 @@ func (s *Server) Run(ctx context.Context) error {
 	var httpServer *http.Server
 	if s.config.HTTPServer.Enabled {
 		// Set a request timeout.
-		runtime.DefaultContextTimeout = 3 * time.Second //s.config.RequestTimeout
+		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamRequestTimeout
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),

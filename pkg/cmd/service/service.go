@@ -310,17 +310,17 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Enabled:            config.HTTP.Enabled,
-			Addr:               config.HTTP.Addr,
-			TLSConfig:          httpTLSConfig,
-			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
-			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
+			Enabled:                config.HTTP.Enabled,
+			Addr:                   config.HTTP.Addr,
+			TLSConfig:              httpTLSConfig,
+			UpstreamRequestTimeout: config.HTTP.UpstreamRequestTimeout,
+			CORSAllowedOrigins:     config.HTTP.CORSAllowedOrigins,
+			CORSAllowedHeaders:     config.HTTP.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
-		RequestTimeout:         config.HTTP.UpstreamRequestTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)
