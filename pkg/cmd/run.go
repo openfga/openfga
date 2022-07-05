@@ -35,9 +35,12 @@ func run(_ *cobra.Command, _ []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	config := service.GetServiceConfig()
+	config, err := service.GetServiceConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	logger, err := buildLogger(config.LogFormat)
+	logger, err := buildLogger(config.Log.Format)
 	if err != nil {
 		log.Fatalf("failed to initialize logger: %v", err)
 	}
@@ -61,12 +64,12 @@ func run(_ *cobra.Command, _ []string) {
 	})
 
 	var playground *http.Server
-	if config.PlaygroundEnabled {
-		if !config.HTTPEnabled {
+	if config.Playground.Enabled {
+		if !config.HTTP.Enabled {
 			logger.Fatal("the HTTP server must be enabled to run the OpenFGA Playground")
 		}
 
-		playgroundPort := config.PlaygroundPort
+		playgroundPort := config.Playground.Port
 		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
 
 		logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost:%d/playground", playgroundPort))
@@ -84,7 +87,7 @@ func run(_ *cobra.Command, _ []string) {
 		var conn net.Conn
 		err = backoff.Retry(
 			func() error {
-				conn, err = net.Dial("tcp", config.HTTPAddr)
+				conn, err = net.Dial("tcp", config.HTTP.Addr)
 				return err
 			},
 			policy,
