@@ -134,8 +134,8 @@ type Config struct {
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
-func DefaultConfig() Config {
-	return Config{
+func DefaultConfig() *Config {
+	return &Config{
 		OpenFGA: OpenFGAConfig{
 			MaxTuplesPerWrite:             100,
 			MaxTypesPerAuthorizationModel: 100,
@@ -175,7 +175,7 @@ func DefaultConfig() Config {
 // GetServiceConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
 // The 'config.yaml' file is loaded from '/etc/openfga', '$HOME/.openfga', or the current working directory. If no configuration
 // file is present, the default values are returned.
-func GetServiceConfig() (Config, error) {
+func GetServiceConfig() (*Config, error) {
 
 	config := DefaultConfig()
 
@@ -196,11 +196,11 @@ func GetServiceConfig() (Config, error) {
 			return config, nil
 		}
 
-		return config, fmt.Errorf("failed to load server config: %w", err)
+		return nil, fmt.Errorf("failed to load server config: %w", err)
 	}
 
-	if err := viper.Unmarshal(&config); err != nil {
-		return config, fmt.Errorf("failed to unmarshal server config: %w", err)
+	if err := viper.Unmarshal(config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal server config: %w", err)
 	}
 
 	return config, nil
@@ -222,7 +222,7 @@ func (s *service) Run(ctx context.Context) error {
 	return s.server.Run(ctx)
 }
 
-func BuildService(config Config, logger logger.Logger) (*service, error) {
+func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
