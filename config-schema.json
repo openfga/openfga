@@ -1,5 +1,45 @@
 {
     "properties": {
+        "openfga": {
+            "type": "object",
+            "properties": {
+                "maxTuplesPerWrite": {
+                    "description": "The maximum allowed number of tuples per Write transaction.",
+                    "type": "integer",
+                    "default": 100
+                },
+                "maxTypesPerAuthorizationModel": {
+                    "description": "The maximum allowed number of type definitions per authorization model.",
+                    "type": "integer",
+                    "default": 100
+                },
+                "changelogHorizonOffset": {
+                    "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
+                    "type": "integer",
+                    "default": 0
+                },
+                "resolveNodeLimit": {
+                    "description": "Defines how deeply nested an authorization model can be.",
+                    "type": "integer",
+                    "default": 25
+                }
+            }
+        },
+        "playground": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable/disable the OpenFGA Playground.",
+                    "type": "boolean",
+                    "default": false
+                },
+                "port": {
+                    "description": "The port to serve the local OpenFGA Playground on.",
+                    "type": "integer",
+                    "default": 3000
+                }
+            }
+        },
         "database": {
             "engine": {
                 "description": "The database engine that will be used for persistence.",
@@ -13,6 +53,11 @@
                 "examples": [
                     "postgres://user:pass@host:port/database?opts"
                 ]
+            },
+            "maxCacheSize": {
+                "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
+                "type": "integer",
+                "default": 100000
             }
         },
         "authn": {
@@ -29,7 +74,7 @@
                     "$ref": "#/definitions/preshared"
                 },
                 "oidc": {
-                    "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'."
+                    "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'.",
                     "$ref": "#/definitions/oidc"
                 }
 
@@ -43,10 +88,10 @@
                     "type": "boolean",
                     "default": true
                 },
-                "port": {
-                    "description": "The tcp port to serve the grpc server on.",
-                    "type": "integer",
-                    "default": 8081
+                "addr": {
+                    "description": "The host:port address to serve the grpc server on.",
+                    "type": "string",
+                    "default": ":8081"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"
@@ -61,13 +106,32 @@
                     "type": "boolean",
                     "default": true
                 },
-                "port": {
-                    "description": "The tcp port to serve the HTTP server on.",
-                    "type": "integer",
-                    "default": 8080
+                "addr": {
+                    "description": "The host:port address to serve the HTTP server on.",
+                    "type": "string",
+                    "default": ":8080"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"
+                },
+                "upstreamRequestTimeout": {
+                    "description": "The timeout duration for proxying HTTP requests upstream to the grpc endpoint.",
+                    "type": "string",
+                    "default": "3s"
+                },
+                "corsAllowedOrigins": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": ["*"]
+                },
+                "corsAllowedHeaders": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": ["*"]
                 }
             }
         },
@@ -105,8 +169,14 @@
         "oidc": {
             "type": "object",
             "properties": {
-                "issuer": {},
-                "audience": {}
+                "issuer": {
+                    "description": "The OIDC issuer (authorization server) signing the tokens.",
+                    "type": "string"
+                },
+                "audience": {
+                    "description": "The OIDC audience of the tokens being signed by the authorization server.",
+                    "type": "string"
+                }
             },
             "required": ["issuer", "audience"]
         },
