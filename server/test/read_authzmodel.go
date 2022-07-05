@@ -74,28 +74,20 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
-		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
-	}
+	require.NoError(err)
+
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	require.NoError(err)
+
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
 	})
 
-	if actualResponse == nil {
-		t.Fatal("ReadAuthorizationModelRequest response was nil")
-	}
-	if actualResponse.AuthorizationModel.Id != modelID {
-		t.Fatalf("ReadAuthorizationModelRequest id = %v, want %v", actualResponse.AuthorizationModel.Id, modelID)
-	}
-
-	if actualError != nil {
-		t.Fatalf("ReadAuthorizationModelRequest err = %v, want nil", err)
-	}
+	require.NotNil(actualResponse)
+	require.Equal(actualResponse.AuthorizationModel.Id, modelID)
+	require.Nil(actualError)
 }
 
 func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
@@ -112,20 +104,15 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, emptyState); err != nil {
-		t.Fatalf("WriteAuthorizationModel err = %v, want nil", err)
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, emptyState)
+	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
 	_, err = query.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
 		StoreId: store,
 		Id:      modelID,
 	})
-	if err.Error() != serverErrors.AuthorizationModelNotFound(modelID).Error() {
-		t.Fatalf("got '%v', wanted '%v'", err, serverErrors.AuthorizationModelNotFound(modelID))
-	}
+	require.ErrorContains(err, serverErrors.AuthorizationModelNotFound(modelID).Error())
 }

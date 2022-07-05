@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
-	"github.com/openfga/openfga/server/authentication"
-	"github.com/openfga/openfga/server/authentication/oidc"
-	"github.com/openfga/openfga/server/authentication/presharedkey"
+	"github.com/openfga/openfga/server/authn"
+	"github.com/openfga/openfga/server/authn/oidc"
+	"github.com/openfga/openfga/server/authn/presharedkey"
 	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
@@ -87,9 +88,6 @@ type LogConfig struct {
 
 	// Format is the log format to use in the log output (e.g. 'text' or 'json')
 	Format string
-}
-
-type SomeConfig struct {
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -205,7 +203,7 @@ func GetServiceConfig() (Config, error) {
 type service struct {
 	server        *server.Server
 	datastore     storage.OpenFGADatastore
-	authenticator authentication.Authenticator
+	authenticator authn.Authenticator
 }
 
 func (s *service) Close(ctx context.Context) error {
@@ -267,16 +265,16 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			CertPath: config.HTTPConfig.TLS.CertPath,
 			KeyPath:  config.HTTPConfig.TLS.KeyPath,
 		}
-		logger.Info("HTTP TLS enabled, serving connections using the provided certificate")
+		logger.Info("HTTP TLS is enabled, serving HTTP connections using the provided certificate")
 	} else {
 		logger.Warn("HTTP TLS is disabled, serving connections using insecure plaintext")
 	}
 
-	var authenticator authentication.Authenticator
+	var authenticator authn.Authenticator
 	switch config.AuthnConfig.Method {
 	case "none":
 		logger.Warn("authentication is disabled")
-		authenticator = authentication.NoopAuthenticator{}
+		authenticator = authn.NoopAuthenticator{}
 	case "preshared":
 		logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthnConfig.Keys)
@@ -291,7 +289,7 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	interceptors := []grpc.UnaryServerInterceptor{
-		middleware.NewAuthenticationInterceptor(authenticator),
+		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
@@ -306,6 +304,7 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
+			Enabled:            config.HTTPConfig.Enabled,
 			Addr:               config.HTTPConfig.Addr,
 			TLSConfig:          httpTLSConfig,
 			CORSAllowedOrigins: config.HTTPConfig.CORSAllowedOrigins,

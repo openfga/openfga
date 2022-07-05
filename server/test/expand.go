@@ -733,16 +733,14 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
 			modelID, err := setUp(ctx, store, datastore, test.typeDefinitions, test.tuples)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
+
 			query := commands.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			got, err := query.Execute(ctx, test.request)
-			if err != nil {
-				t.Fatalf("%s: Execute() err = %v, want nil", test.name, err)
-			}
+			require.NoError(err)
+
 			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
 				t.Fatalf("%s: Execute() (-want, +got):\n%s", test.name, diff)
 			}
@@ -847,9 +845,7 @@ func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[st
 			store := testutils.CreateRandomString(20)
 
 			modelID, err := setUp(ctx, store, datastore, test.typeDefinitions, test.tuples)
-			if err != nil {
-				t.Fatalf("'%s': setUp() error was %s, want nil", test.name, err)
-			}
+			require.NoError(err)
 
 			query := commands.NewExpandQuery(datastore, tracer, logger)
 			test.request.StoreId = store

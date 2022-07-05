@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -32,9 +31,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
 
 	backendState := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -45,11 +42,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	}
 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, backendState)
-	if err != nil {
-		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
-	}
-
-	cmd := commands.NewReadTuplesQuery(datastore, encoder, logger)
+	require.NoError(err)
 
 	writes := []*openfgapb.TupleKey{
 		{
@@ -68,45 +61,34 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 			User:     "github|jon.allie@auth0.com",
 		},
 	}
-	if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes); err != nil {
-		return
-	}
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
+	require.NoError(err)
+
+	cmd := commands.NewReadTuplesQuery(datastore, encoder, logger)
+
 	firstRequest := &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		PageSize:          wrapperspb.Int32(1),
 		ContinuationToken: "",
 	}
 	firstResponse, err := cmd.Execute(ctx, firstRequest)
-	if err != nil {
-		t.Errorf("Query.Execute(), err = %v, want nil", err)
-	}
+	require.NoError(err)
 
-	if len(firstResponse.Tuples) != 1 {
-		t.Errorf("Expected 1 tuple got %d", len(firstResponse.Tuples))
-	}
+	require.Len(firstResponse.Tuples, 1)
+	require.NotEmpty(firstResponse.ContinuationToken)
 
-	if firstResponse.ContinuationToken == "" {
-		t.Error("Expected continuation token")
-	}
-
-	receivedTuples := []*openfgapb.TupleKey{}
+	var receivedTuples []*openfgapb.TupleKey
 	for _, tuple := range firstResponse.Tuples {
 		receivedTuples = append(receivedTuples, tuple.Key)
 	}
 
 	secondRequest := &openfgapb.ReadTuplesRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
 	secondResponse, err := cmd.Execute(ctx, secondRequest)
-	if err != nil {
-		t.Fatalf("Query.Execute(), err = %v, want nil", err)
-	}
-	if len(secondResponse.Tuples) != 2 {
-		t.Fatal("Expected 2 tuples")
-	}
+	require.NoError(err)
+	require.Len(secondResponse.Tuples, 2)
 
 	// no token <=> no more results
-	if secondResponse.ContinuationToken != "" {
-		t.Fatal("Expected empty continuation token")
-	}
+	require.Empty(secondResponse.ContinuationToken)
 
 	for _, tuple := range secondResponse.Tuples {
 		receivedTuples = append(receivedTuples, tuple.Key)
@@ -133,15 +115,12 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	require.NoError(err)
 
 	encoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatalf("Error creating encoder: %v", err)
-	}
+	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	state := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -150,15 +129,13 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
-		t.Fatalf("First WriteAuthorizationModel err = %v, want nil", err)
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	require.NoError(err)
 
 	q := commands.NewReadTuplesQuery(datastore, encoder, logger)
-	if _, err := q.Execute(ctx, &openfgapb.ReadTuplesRequest{
+	_, err = q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
-	}); !errors.Is(err, serverErrors.InvalidContinuationToken) {
-		t.Errorf("expected '%v', got '%v'", serverErrors.InvalidContinuationToken, err)
-	}
+	})
+	require.ErrorIs(err, serverErrors.InvalidContinuationToken)
 }
