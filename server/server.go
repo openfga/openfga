@@ -75,14 +75,12 @@ type Dependencies struct {
 }
 
 type Config struct {
-	ServiceName            string
 	GRPCServer             GRPCServerConfig
 	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
-	RequestTimeout         time.Duration
 }
 
 type GRPCServerConfig struct {
@@ -91,11 +89,12 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Enabled            bool
-	Addr               string
-	TLSConfig          *TLSConfig
-	CORSAllowedOrigins []string
-	CORSAllowedHeaders []string
+	Enabled                bool
+	Addr                   string
+	UpstreamRequestTimeout time.Duration
+	TLSConfig              *TLSConfig
+	CORSAllowedOrigins     []string
+	CORSAllowedHeaders     []string
 }
 
 type TLSConfig struct {
@@ -466,7 +465,7 @@ func (s *Server) Run(ctx context.Context) error {
 	var httpServer *http.Server
 	if s.config.HTTPServer.Enabled {
 		// Set a request timeout.
-		runtime.DefaultContextTimeout = s.config.RequestTimeout
+		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamRequestTimeout
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
