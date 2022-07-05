@@ -63,7 +63,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	require.NoError(err)
 
-	cmd := commands.NewReadTuplesQuery(datastore, logger, encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder())
+	cmd := commands.NewReadTuplesQuery(datastore, logger, encoder.NewBase64Encoder())
 
 	firstRequest := &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
@@ -113,6 +113,11 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
+	encrypter, err := encrypter.NewGCMEncrypter("key")
+	require.NoError(err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	require.NoError(err)
@@ -128,10 +133,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
 	require.NoError(err)
 
-	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(err)
-
-	q := commands.NewReadTuplesQuery(datastore, logger, encrypter, encoder.NewBase64Encoder())
+	q := commands.NewReadTuplesQuery(datastore, logger, encoder)
 	_, err = q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",

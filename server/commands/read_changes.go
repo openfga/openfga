@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -19,18 +18,16 @@ type ReadChangesQuery struct {
 	backend       storage.ChangelogBackend
 	logger        logger.Logger
 	tracer        trace.Tracer
-	encrypter     encrypter.Encrypter
 	encoder       encoder.Encoder
 	horizonOffset time.Duration
 }
 
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
+func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
 	return &ReadChangesQuery{
 		backend:       backend,
 		logger:        logger,
 		tracer:        tracer,
-		encrypter:     encrypter,
 		encoder:       encoder,
 		horizonOffset: time.Duration(horizonOffset) * time.Minute,
 	}
@@ -38,7 +35,7 @@ func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, 
 
 // Execute the ReadChangesQuery, returning paginated `openfga.TupleChange`(s) and a possibly non-empty continuation token.
 func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
-	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -55,7 +52,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
+	encodedContToken, err := q.encoder.Encode(contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

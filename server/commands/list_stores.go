@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -15,21 +14,19 @@ import (
 type ListStoresQuery struct {
 	storesBackend storage.StoresBackend
 	logger        logger.Logger
-	encrypter     encrypter.Encrypter
 	encoder       encoder.Encoder
 }
 
-func NewListStoresQuery(storesBackend storage.StoresBackend, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ListStoresQuery {
+func NewListStoresQuery(storesBackend storage.StoresBackend, logger logger.Logger, encoder encoder.Encoder) *ListStoresQuery {
 	return &ListStoresQuery{
 		storesBackend: storesBackend,
 		logger:        logger,
-		encrypter:     encrypter,
 		encoder:       encoder,
 	}
 }
 
 func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStoresRequest) (*openfgapb.ListStoresResponse, error) {
-	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -42,7 +39,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStores
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, continuationToken)
+	encodedToken, err := q.encoder.Encode(continuationToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

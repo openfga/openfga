@@ -66,6 +66,11 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	ctx, backend, tracer, err := setup(store, dbTester)
 	require.NoError(t, err)
 
+	encrypter, err := encrypter.NewGCMEncrypter("key")
+	require.NoError(t, err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
 	t.Run("read changes without type", func(t *testing.T) {
 		testCases := []testCase{
 			{
@@ -120,10 +125,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		encrypter, err := encrypter.NewGCMEncrypter("key")
-		require.NoError(t, err)
-
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encrypter, encoder.NewBase64Encoder(), 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -183,7 +185,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder(), 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -200,7 +202,7 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder(), 2)
+		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
@@ -252,7 +254,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	ctx, backend, tracer, err := setup(store, dbTester)
 	require.NoError(t, err)
 
-	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder(), 0)
+	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	require.NoError(t, err)

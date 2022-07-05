@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
@@ -24,17 +23,15 @@ type ReadQuery struct {
 	datastore storage.OpenFGADatastore
 	tracer    trace.Tracer
 	logger    logger.Logger
-	encrypter encrypter.Encrypter
 	encoder   encoder.Encoder
 }
 
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
-func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ReadQuery {
+func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
 	return &ReadQuery{
 		datastore: datastore,
 		tracer:    tracer,
 		logger:    logger,
-		encrypter: encrypter,
 		encoder:   encoder,
 	}
 }
@@ -45,7 +42,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
 
-	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -64,7 +61,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
+	encodedContToken, err := q.encoder.Encode(contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

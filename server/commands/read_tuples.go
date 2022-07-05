@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -14,25 +13,23 @@ import (
 
 // ReadTuplesQuery can be used to read tuples from a store.
 type ReadTuplesQuery struct {
-	backend   storage.TupleBackend
-	logger    logger.Logger
-	encrypter encrypter.Encrypter
-	encoder   encoder.Encoder
+	backend storage.TupleBackend
+	logger  logger.Logger
+	encoder encoder.Encoder
 }
 
 // NewReadTuplesQuery creates a ReadTuplesQuery with specified `tupleBackend` to use for storage.
-func NewReadTuplesQuery(backend storage.TupleBackend, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ReadTuplesQuery {
+func NewReadTuplesQuery(backend storage.TupleBackend, logger logger.Logger, encoder encoder.Encoder) *ReadTuplesQuery {
 	return &ReadTuplesQuery{
-		backend:   backend,
-		logger:    logger,
-		encrypter: encrypter,
-		encoder:   encoder,
+		backend: backend,
+		logger:  logger,
+		encoder: encoder,
 	}
 }
 
 // Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store.
 func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
-	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -45,7 +42,7 @@ func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuples
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, continuationToken)
+	encodedToken, err := q.encoder.Encode(continuationToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -13,23 +12,21 @@ import (
 )
 
 type ReadAuthorizationModelsQuery struct {
-	backend   storage.AuthorizationModelReadBackend
-	logger    logger.Logger
-	encrypter encrypter.Encrypter
-	encoder   encoder.Encoder
+	backend storage.AuthorizationModelReadBackend
+	logger  logger.Logger
+	encoder encoder.Encoder
 }
 
-func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ReadAuthorizationModelsQuery {
+func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger, encoder encoder.Encoder) *ReadAuthorizationModelsQuery {
 	return &ReadAuthorizationModelsQuery{
-		backend:   backend,
-		logger:    logger,
-		encrypter: encrypter,
-		encoder:   encoder,
+		backend: backend,
+		logger:  logger,
+		encoder: encoder,
 	}
 }
 
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
-	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
+	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -42,7 +39,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
+	encodedContToken, err := q.encoder.Encode(contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

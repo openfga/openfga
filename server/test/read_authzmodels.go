@@ -23,7 +23,6 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
-	encrypter := encrypter.NewNoopEncrypter()
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 
@@ -85,7 +84,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				}
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encrypter, encoder)
+			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 			resp, err := query.Execute(ctx, test.request)
 
 			require.NoError(err)
@@ -127,7 +126,9 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	encrypter, err := encrypter.NewGCMEncrypter("key")
 	require.NoError(err)
 
-	query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encrypter, encoder.NewBase64Encoder())
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
+	query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -175,9 +176,6 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(err)
-
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	require.NoError(err)
@@ -193,7 +191,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
-	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encrypter, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})

@@ -15,7 +15,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/commands"
@@ -56,7 +55,6 @@ type Server struct {
 	meter         metric.Meter
 	logger        logger.Logger
 	datastore     storage.OpenFGADatastore
-	encrypter     encrypter.Encrypter
 	encoder       encoder.Encoder
 	config        *Config
 	transport     gateway.Transport
@@ -71,9 +69,9 @@ type Dependencies struct {
 	Logger    logger.Logger
 	Transport gateway.Transport
 
-	// TokenEncrypter is the encrypter used to encrypt continuation tokens for paginated views.
-	// Defaults to a noop encrypter if none is provided.
-	TokenEncrypter encrypter.Encrypter
+	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
+	// Defaults to a base64 encoder if none is provided.
+	TokenEncoder encoder.Encoder
 }
 
 type Config struct {
@@ -108,12 +106,12 @@ type TLSConfig struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	tokenEncrypter := dependencies.TokenEncrypter
-	if tokenEncrypter == nil {
-		tokenEncrypter = encrypter.NewNoopEncrypter()
+	tokenEncoder := dependencies.TokenEncoder
+	if tokenEncoder == nil {
+		tokenEncoder = encoder.NewBase64Encoder()
 	} else {
-		t := reflect.TypeOf(tokenEncrypter)
-		if reflect.ValueOf(tokenEncrypter) == reflect.Zero(t) {
+		t := reflect.TypeOf(tokenEncoder)
+		if reflect.ValueOf(tokenEncoder) == reflect.Zero(t) {
 			return nil, ErrNilTokenEncoder
 		}
 	}
@@ -133,8 +131,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
 		datastore: dependencies.Datastore,
-		encrypter: tokenEncrypter,
-		encoder:   encoder.NewBase64Encoder(),
+		encoder:   tokenEncoder,
 		transport: transport,
 		config:    config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
@@ -176,7 +173,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encrypter, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -193,7 +190,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encrypter, s.encoder)
+	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 
@@ -311,7 +308,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encrypter, s.encoder)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
 
@@ -364,7 +361,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encrypter, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -412,7 +409,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encrypter, s.encoder)
+	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 

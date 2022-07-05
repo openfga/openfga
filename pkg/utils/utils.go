@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 )
 
@@ -126,32 +124,4 @@ func (r *ResolutionMetadata) Fork() *ResolutionMetadata {
 // LogDBStats will call the logger to log the number of reads and writes for the feature
 func LogDBStats(ctx context.Context, log logger.Logger, method string, reads uint32, writes uint32) {
 	log.InfoWithContext(ctx, "db_stats", logger.String("method", method), logger.Uint32("reads", reads), logger.Uint32("writes", writes))
-}
-
-func DecodeAndDecrypt(encrypter encrypter.Encrypter, encoder encoder.Encoder, s string) ([]byte, error) {
-	decoded, err := encoder.Decode(s)
-	if err != nil {
-		return nil, err
-	}
-
-	decrypted, err := encrypter.Decrypt(decoded)
-	if err != nil {
-		return nil, err
-	}
-
-	return decrypted, nil
-}
-
-func EncryptAndEncode(encrypter encrypter.Encrypter, encoder encoder.Encoder, data []byte) (string, error) {
-	encrypted, err := encrypter.Encrypt(data)
-	if err != nil {
-		return "", err
-	}
-
-	encoded, err := encoder.Encode(encrypted)
-	if err != nil {
-		return "", err
-	}
-
-	return encoded, nil
 }
