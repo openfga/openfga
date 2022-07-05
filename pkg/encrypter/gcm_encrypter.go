@@ -7,13 +7,10 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
-
-	encoder2 "github.com/openfga/openfga/pkg/encoder"
 )
 
 type GCMEncrypter struct {
 	cipherMode cipher.AEAD
-	encoder    encoder2.Encoder
 }
 
 var _ Encrypter = (*GCMEncrypter)(nil)
