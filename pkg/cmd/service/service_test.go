@@ -32,14 +32,8 @@ import (
 )
 
 const (
-	openFGAServerAddr     = "http://localhost:8080"
-	openFGAGRPCAddr       = "localhost:8081"
-	grpcTLSEnabledEnvVar  = "OPENFGA_GRPC_TLS_ENABLED"
-	grpcTLSCertPathEnvVar = "OPENFGA_GRPC_TLS_CERT_PATH"
-	grpcTLSKeyPathEnvVar  = "OPENFGA_GRPC_TLS_KEY_PATH"
-	httpTLSEnabledEnvVar  = "OPENFGA_HTTP_TLS_ENABLED"
-	httpTLSCertPathEnvVar = "OPENFGA_HTTP_TLS_CERT_PATH"
-	httpTLSKeyPathEnvVar  = "OPENFGA_HTTP_TLS_KEY_PATH"
+	openFGAServerAddr = "http://localhost:8080"
+	openFGAGRPCAddr   = "localhost:8081"
 )
 
 func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
