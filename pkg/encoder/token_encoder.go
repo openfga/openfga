@@ -11,7 +11,7 @@ type TokenEncoder struct {
 
 var _ Encoder = (*TokenEncoder)(nil)
 
-// NewTokenEncoder constructs an Encoder that includes an encrypter and encoder.
+// NewTokenEncoder constructs a TokenEncoder with the provided encrypter and encoder.
 func NewTokenEncoder(encrypter encrypter.Encrypter, encoder Encoder) *TokenEncoder {
 	return &TokenEncoder{
 		encrypter: encrypter,
