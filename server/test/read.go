@@ -558,18 +558,14 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 		t.Run(test._name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 			modelID, err := id.NewString()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
+
 			err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
-			if err != nil {
-				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
-			}
+			require.NoError(err)
 
 			if test.tuples != nil {
-				if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples); err != nil {
-					t.Fatalf("[%s] failed to write test tuples: %v", test._name, err)
-				}
+				err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples)
+				require.NoError(err)
 			}
 
 			cmd := commands.NewReadQuery(datastore, tracer, logger, encrypter)
