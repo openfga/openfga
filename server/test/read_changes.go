@@ -15,6 +15,7 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -62,9 +63,7 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, tracer, err := setup(store, dbTester)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	t.Run("read changes without type", func(t *testing.T) {
 		testCases := []testCase{
@@ -121,9 +120,8 @@ func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 		}
 
 		encoder, err := encoder.NewTokenEncrypter("key")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+
 		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
@@ -251,24 +249,17 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, tracer, err := setup(store, dbTester)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.Noop{}, 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", res1.GetContinuationToken(), storage.DefaultPageSize))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if res1.ContinuationToken != res2.ContinuationToken {
-		t.Errorf("expected ==, but got %s != %s", res1.ContinuationToken, res2.ContinuationToken)
-	}
+	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
 func setup(store string, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {

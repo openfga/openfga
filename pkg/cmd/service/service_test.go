@@ -88,33 +88,26 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 		return nil
 	}, policy)
 	require.NoError(t, err)
-
 }
 
-func genCert(template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte, error) {
+func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
 	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, pub, priv)
-	if err != nil {
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 
 	cert, err := x509.ParseCertificate(certBytes)
-	if err != nil {
-		return nil, nil, err
-	}
+	require.NoError(t, err)
 
 	block := &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: certBytes,
 	}
 
-	return cert, pem.EncodeToMemory(block), nil
+	return cert, pem.EncodeToMemory(block)
 }
 
-func genCACert() (*x509.Certificate, []byte, *rsa.PrivateKey, error) {
+func genCACert(t *testing.T) (*x509.Certificate, []byte, *rsa.PrivateKey) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	require.NoError(t, err)
 
 	var rootTemplate = &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -132,19 +125,14 @@ func genCACert() (*x509.Certificate, []byte, *rsa.PrivateKey, error) {
 		DNSNames: []string{"localhost"},
 	}
 
-	rootCert, rootPEM, err := genCert(rootTemplate, rootTemplate, &priv.PublicKey, priv)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	rootCert, rootPEM := genCert(t, rootTemplate, rootTemplate, &priv.PublicKey, priv)
 
-	return rootCert, rootPEM, priv, nil
+	return rootCert, rootPEM, priv
 }
 
-func genServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey) (*x509.Certificate, []byte, *rsa.PrivateKey, error) {
+func genServerCert(t *testing.T, caCert *x509.Certificate, caKey *rsa.PrivateKey) (*x509.Certificate, []byte, *rsa.PrivateKey) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	require.NoError(t, err)
 
 	var template = &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -161,26 +149,19 @@ func genServerCert(caCert *x509.Certificate, caKey *rsa.PrivateKey) (*x509.Certi
 		DNSNames: []string{"localhost"},
 	}
 
-	serverCert, serverPEM, err := genCert(template, caCert, &priv.PublicKey, caKey)
-	if err != nil {
-		return nil, nil, nil, err
-	}
+	serverCert, serverPEM := genCert(t, template, caCert, &priv.PublicKey, caKey)
 
-	return serverCert, serverPEM, priv, nil
+	return serverCert, serverPEM, priv
 }
 
-func writeToTempFile(data []byte) (*os.File, error) {
+func writeToTempFile(t *testing.T, data []byte) *os.File {
 	file, err := os.CreateTemp("", "openfga_tls_test")
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
 	_, err = file.Write(data)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 
-	return file, nil
+	return file
 }
 
 type certHandle struct {
@@ -198,22 +179,15 @@ func (c certHandle) Clean() {
 // the PEM encoded server certificate and server key to temporary files. It is the responsibility of the caller
 // to delete these files by calling `Clean` on the returned `certHandle`.
 func createCertsAndKeys(t *testing.T) certHandle {
-	caCert, _, caKey, err := genCACert()
-	require.NoError(t, err)
-
-	_, serverPEM, serverKey, err := genServerCert(caCert, caKey)
-	require.NoError(t, err)
-
-	serverCertFile, err := writeToTempFile(serverPEM)
-	require.NoError(t, err)
-
-	serverKeyFile, err := writeToTempFile(pem.EncodeToMemory(
+	caCert, _, caKey := genCACert(t)
+	_, serverPEM, serverKey := genServerCert(t, caCert, caKey)
+	serverCertFile := writeToTempFile(t, serverPEM)
+	serverKeyFile := writeToTempFile(t, pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "RSA PRIVATE KEY",
 			Bytes: x509.MarshalPKCS1PrivateKey(serverKey),
 		},
 	))
-	require.NoError(t, err)
 
 	return certHandle{
 		caCert:         caCert,
@@ -434,9 +408,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	ensureServiceUp(t, nil)
 
 	trustedToken, err := trustedIssuerServer.GetToken(openFGAServerAddr, "some-user")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	tests := []authTest{{
 		_name:         "Header with invalid token fails",
