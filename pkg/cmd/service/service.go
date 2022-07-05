@@ -34,6 +34,11 @@ type DatabaseConfig struct {
 	// Engine is the database storage engine to use (e.g. 'memory', 'postgres')
 	Engine string
 	URI    string
+
+	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
+	// old keys. The storage cache is used to cache query results for various static resources
+	// such as type definitions.
+	MaxCacheSize int
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
@@ -48,6 +53,10 @@ type HTTPConfig struct {
 	Enabled bool
 	Addr    string
 	TLS     TLSConfig
+
+	// UpstreamRequestTimeout is the timeout duration for proxying HTTP requests upstream
+	// to the grpc endpoint.
+	UpstreamRequestTimeout time.Duration
 
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
@@ -115,51 +124,48 @@ type OpenFGAConfig struct {
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
-	OpenFGAConfig    `mapstructure:"openfga"`
-	DatabaseConfig   `mapstructure:"database"`
-	GRPCConfig       `mapstructure:"grpc"`
-	HTTPConfig       `mapstructure:"http"`
-	AuthnConfig      `mapstructure:"authn"`
-	LogConfig        `mapstructure:"log"`
-	PlaygroundConfig `mapstructure:"playground"`
-
-	DatastoreMaxCacheSize int `default:"100000" split_words:"true"`
-
-	// RequestTimeout is a limit on the time a request may take. If the value is 0, then there is no timeout.
-	RequestTimeout time.Duration `default:"0s" split_words:"true"`
+	OpenFGA    OpenFGAConfig
+	Database   DatabaseConfig
+	GRPC       GRPCConfig
+	HTTP       HTTPConfig
+	Authn      AuthnConfig
+	Log        LogConfig
+	Playground PlaygroundConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() Config {
 	return Config{
-		OpenFGAConfig: OpenFGAConfig{
+		OpenFGA: OpenFGAConfig{
 			MaxTuplesPerWrite:             100,
 			MaxTypesPerAuthorizationModel: 100,
 			ChangelogHorizonOffset:        0,
 			ResolveNodeLimit:              25,
 		},
-		DatabaseConfig: DatabaseConfig{
-			Engine: "memory",
+		Database: DatabaseConfig{
+			Engine:       "memory",
+			MaxCacheSize: 100000,
 		},
-		GRPCConfig: GRPCConfig{
+		GRPC: GRPCConfig{
 			Enabled: true,
 			Addr:    ":8081",
 			TLS:     TLSConfig{Enabled: false},
 		},
-		HTTPConfig: HTTPConfig{
-			Enabled:            true,
-			Addr:               ":8080",
-			TLS:                TLSConfig{Enabled: false},
-			CORSAllowedOrigins: []string{"*"},
-			CORSAllowedHeaders: []string{"*"},
+		HTTP: HTTPConfig{
+			Enabled:                true,
+			Addr:                   ":8080",
+			TLS:                    TLSConfig{Enabled: false},
+			UpstreamRequestTimeout: 3 * time.Second,
+			CORSAllowedOrigins:     []string{"*"},
+			CORSAllowedHeaders:     []string{"*"},
 		},
-		AuthnConfig: AuthnConfig{
+		Authn: AuthnConfig{
 			Method: "none",
 		},
-		LogConfig: LogConfig{
+		Log: LogConfig{
 			Format: "text",
 		},
-		PlaygroundConfig: PlaygroundConfig{
+		Playground: PlaygroundConfig{
 			Enabled: false,
 			Port:    3000,
 		},
@@ -223,33 +229,33 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 
 	var datastore storage.OpenFGADatastore
 	var err error
-	switch config.DatabaseConfig.Engine {
+	switch config.Database.Engine {
 	case "memory":
-		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+		datastore = memory.New(tracer, config.OpenFGA.MaxTuplesPerWrite, config.OpenFGA.MaxTypesPerAuthorizationModel)
 	case "postgres":
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
 			postgres.WithTracer(tracer),
 		}
 
-		datastore, err = postgres.NewPostgresDatastore(config.DatabaseConfig.URI, opts...)
+		datastore, err = postgres.NewPostgresDatastore(config.Database.URI, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize postgres datastore: %v", err)
 		}
 	default:
-		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.DatabaseConfig.Engine)
+		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Database.Engine)
 	}
 
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.DatabaseConfig.Engine))
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Database.Engine))
 
 	var grpcTLSConfig *server.TLSConfig
-	if config.GRPCConfig.TLS.Enabled {
-		if config.GRPCConfig.TLS.CertPath == "" || config.GRPCConfig.TLS.KeyPath == "" {
+	if config.GRPC.TLS.Enabled {
+		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
 			return nil, ErrInvalidGRPCTLSConfig
 		}
 		grpcTLSConfig = &server.TLSConfig{
-			CertPath: config.GRPCConfig.TLS.CertPath,
-			KeyPath:  config.GRPCConfig.TLS.KeyPath,
+			CertPath: config.GRPC.TLS.CertPath,
+			KeyPath:  config.GRPC.TLS.KeyPath,
 		}
 		logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
 	} else {
@@ -257,13 +263,13 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	var httpTLSConfig *server.TLSConfig
-	if config.HTTPConfig.TLS.Enabled {
-		if config.HTTPConfig.TLS.CertPath == "" || config.HTTPConfig.TLS.KeyPath == "" {
+	if config.HTTP.TLS.Enabled {
+		if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
 			return nil, ErrInvalidHTTPTLSConfig
 		}
 		httpTLSConfig = &server.TLSConfig{
-			CertPath: config.HTTPConfig.TLS.CertPath,
-			KeyPath:  config.HTTPConfig.TLS.KeyPath,
+			CertPath: config.HTTP.TLS.CertPath,
+			KeyPath:  config.HTTP.TLS.KeyPath,
 		}
 		logger.Info("HTTP TLS is enabled, serving HTTP connections using the provided certificate")
 	} else {
@@ -271,18 +277,18 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	var authenticator authn.Authenticator
-	switch config.AuthnConfig.Method {
+	switch config.Authn.Method {
 	case "none":
 		logger.Warn("authentication is disabled")
 		authenticator = authn.NoopAuthenticator{}
 	case "preshared":
 		logger.Info("using 'preshared' authentication")
-		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.AuthnConfig.Keys)
+		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
 		logger.Info("using 'oidc' authentication")
-		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.AuthnConfig.Issuer, config.AuthnConfig.Audience)
+		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
 	default:
-		return nil, fmt.Errorf("unsupported authentication method '%v'", config.AuthnConfig.Method)
+		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize authenticator: %v", err)
@@ -293,28 +299,28 @@ func BuildService(config Config, logger logger.Logger) (*service, error) {
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.DatastoreMaxCacheSize),
+		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Database.MaxCacheSize),
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
 		GRPCServer: server.GRPCServerConfig{
-			Addr:      config.GRPCConfig.Addr,
+			Addr:      config.GRPC.Addr,
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Enabled:            config.HTTPConfig.Enabled,
-			Addr:               config.HTTPConfig.Addr,
+			Enabled:            config.HTTP.Enabled,
+			Addr:               config.HTTP.Addr,
 			TLSConfig:          httpTLSConfig,
-			CORSAllowedOrigins: config.HTTPConfig.CORSAllowedOrigins,
-			CORSAllowedHeaders: config.HTTPConfig.CORSAllowedHeaders,
+			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
+			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
 		},
-		ResolveNodeLimit:       config.ResolveNodeLimit,
-		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
+		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
-		RequestTimeout:         config.RequestTimeout,
+		RequestTimeout:         config.HTTP.UpstreamRequestTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)

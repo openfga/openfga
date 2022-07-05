@@ -209,8 +209,8 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.AuthnConfig.Method = "preshared"
-	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+	config.Authn.Method = "preshared"
+	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
 	_, err = BuildService(config, logger.NewNoopLogger())
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
@@ -222,8 +222,8 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.AuthnConfig.Method = "preshared"
-	config.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	config.Authn.Method = "preshared"
+	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
@@ -293,12 +293,12 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.AuthnConfig.Method = "preshared"
-	config.AuthnConfig.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	config.Authn.Method = "preshared"
+	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
-	config.HTTPConfig.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
-	config.HTTPConfig.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
+	config.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
+	config.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -399,8 +399,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.AuthnConfig.Method = "oidc"
-	config.AuthnOIDCConfig = &AuthnOIDCConfig{
+	config.Authn.Method = "oidc"
+	config.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
 		Audience: openFGAServerAddr,
 		Issuer:   localOIDCServerURL,
 	}
@@ -475,7 +475,7 @@ func TestTLSFailureSettings(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.HTTPConfig.TLS = TLSConfig{
+		config.HTTP.TLS = TLSConfig{
 			Enabled: true,
 			KeyPath: "some/path",
 		}
@@ -488,7 +488,7 @@ func TestTLSFailureSettings(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.GRPCConfig.TLS = TLSConfig{
+		config.GRPC.TLS = TLSConfig{
 			Enabled: true,
 			KeyPath: "some/path",
 		}
@@ -501,7 +501,7 @@ func TestTLSFailureSettings(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.HTTPConfig.TLS = TLSConfig{
+		config.HTTP.TLS = TLSConfig{
 			Enabled:  true,
 			CertPath: "some/path",
 		}
@@ -514,7 +514,7 @@ func TestTLSFailureSettings(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.GRPCConfig.TLS = TLSConfig{
+		config.GRPC.TLS = TLSConfig{
 			Enabled:  true,
 			CertPath: "some/path",
 		}
@@ -534,7 +534,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.HTTPConfig.TLS = TLSConfig{
+		config.HTTP.TLS = TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -562,7 +562,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.HTTPConfig.TLS = TLSConfig{
+		config.HTTP.TLS = TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -609,7 +609,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.GRPCConfig.TLS = TLSConfig{
+		config.GRPC.TLS = TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -637,7 +637,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		config, err := GetServiceConfig()
 		require.NoError(t, err)
 
-		config.GRPCConfig.TLS = TLSConfig{
+		config.GRPC.TLS = TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -668,7 +668,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.HTTPConfig.Enabled = false
+	config.HTTP.Enabled = false
 
 	service, err := BuildService(config, logger.NewNoopLogger())
 	require.NoError(t, err)
@@ -692,7 +692,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
-	config.HTTPConfig.Enabled = true
+	config.HTTP.Enabled = true
 
 	service, err := BuildService(config, logger.NewNoopLogger())
 	require.NoError(t, err)

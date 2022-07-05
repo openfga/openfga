@@ -408,6 +408,8 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
+	time.Sleep(2 * time.Second)
+
 	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -465,7 +467,7 @@ func (s *Server) Run(ctx context.Context) error {
 	var httpServer *http.Server
 	if s.config.HTTPServer.Enabled {
 		// Set a request timeout.
-		runtime.DefaultContextTimeout = s.config.RequestTimeout
+		runtime.DefaultContextTimeout = 3 * time.Second //s.config.RequestTimeout
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
