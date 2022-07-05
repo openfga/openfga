@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -548,11 +549,11 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
+	encrypter := encrypter.NewNoopEncrypter()
+	encoder := encoder.NewBase64Encoder()
 
 	datastore, err := dbTester.New()
 	require.NoError(err)
-
-	encrypter := encoder.NewBase64Encrypter()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -568,7 +569,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 				require.NoError(err)
 			}
 
-			cmd := commands.NewReadQuery(datastore, tracer, logger, encrypter)
+			cmd := commands.NewReadQuery(datastore, tracer, logger, encrypter, encoder)
 			req := &openfgapb.ReadRequest{
 				StoreId:              store,
 				AuthorizationModelId: modelID,

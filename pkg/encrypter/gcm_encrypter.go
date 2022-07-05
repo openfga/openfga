@@ -1,4 +1,4 @@
-package encoder
+package encrypter
 
 import (
 	"crypto/aes"
@@ -7,16 +7,18 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io"
+
+	encoder2 "github.com/openfga/openfga/pkg/encoder"
 )
 
 type GCMEncrypter struct {
 	cipherMode cipher.AEAD
-	encoder    Encoder
+	encoder    encoder2.Encoder
 }
 
 var _ Encrypter = (*GCMEncrypter)(nil)
 
-func NewGCMEncrypter(key string, encoder Encoder) (*GCMEncrypter, error) {
+func NewGCMEncrypter(key string) (*GCMEncrypter, error) {
 	c, err := aes.NewCipher(create32ByteKey(key))
 	if err != nil {
 		return nil, err
@@ -27,20 +29,13 @@ func NewGCMEncrypter(key string, encoder Encoder) (*GCMEncrypter, error) {
 		return nil, err
 	}
 
-	return &GCMEncrypter{
-		cipherMode: gcm,
-		encoder:    encoder,
-	}, nil
+	return &GCMEncrypter{cipherMode: gcm}, nil
 }
 
-func (e *GCMEncrypter) Decrypt(s string) ([]byte, error) {
-	if s == "" {
-		return []byte{}, nil
-	}
-
-	data, err := e.encoder.Decode(s)
-	if err != nil {
-		return nil, err
+// Decrypt decrypts an GCM encrypted byte array
+func (e *GCMEncrypter) Decrypt(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
 	}
 
 	nonceSize := e.cipherMode.NonceSize()
@@ -52,20 +47,18 @@ func (e *GCMEncrypter) Decrypt(s string) ([]byte, error) {
 	return e.cipherMode.Open(nil, nonce, ciphertext, nil)
 }
 
-func (e *GCMEncrypter) Encrypt(data []byte) (string, error) {
+// Encrypt encrypts the given byte array using cipher.NewGCM block cipher
+func (e *GCMEncrypter) Encrypt(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return "", nil
+		return data, nil
 	}
 
 	nonce := make([]byte, e.cipherMode.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", err
+		return nil, err
 	}
 
-	encrypted := e.cipherMode.Seal(nonce, nonce, data, nil)
-
-	return e.encoder.Encode(encrypted)
-
+	return e.cipherMode.Seal(nonce, nonce, data, nil), nil
 }
 
 // create32ByteKey creates a 32 byte key by taking the hex representation of the sha256 hash of a string.

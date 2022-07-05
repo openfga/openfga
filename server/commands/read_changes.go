@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -15,34 +16,36 @@ import (
 )
 
 type ReadChangesQuery struct {
-	changelogBackend storage.ChangelogBackend
-	encrypter        encoder.Encrypter
-	logger           logger.Logger
-	tracer           trace.Tracer
-	horizonOffset    time.Duration
+	backend       storage.ChangelogBackend
+	logger        logger.Logger
+	tracer        trace.Tracer
+	encrypter     encrypter.Encrypter
+	encoder       encoder.Encoder
+	horizonOffset time.Duration
 }
 
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadChangesQuery(changelogBackend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encrypter encoder.Encrypter, horizonOffset int) *ReadChangesQuery {
+func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
 	return &ReadChangesQuery{
-		changelogBackend: changelogBackend,
-		encrypter:        encrypter,
-		logger:           logger,
-		tracer:           tracer,
-		horizonOffset:    time.Duration(horizonOffset) * time.Minute,
+		backend:       backend,
+		logger:        logger,
+		tracer:        tracer,
+		encrypter:     encrypter,
+		encoder:       encoder,
+		horizonOffset: time.Duration(horizonOffset) * time.Minute,
 	}
 }
 
 // Execute the ReadChangesQuery, returning paginated `openfga.TupleChange`(s) and a possibly non-empty continuation token.
 func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
-	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
+	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadChanges", 1, 0)
 
-	changes, contToken, err := q.changelogBackend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgapb.ReadChangesResponse{
@@ -52,7 +55,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encrypter.Encrypt(contToken)
+	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

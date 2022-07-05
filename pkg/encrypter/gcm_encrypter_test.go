@@ -1,4 +1,4 @@
-package encoder
+package encrypter
 
 import (
 	"testing"
@@ -7,28 +7,28 @@ import (
 )
 
 func TestEmptyDecrypt(t *testing.T) {
-	encrypter, err := NewGCMEncrypter("key", NoopEncoder{})
+	encrypter, err := NewGCMEncrypter("foo")
 	require.NoError(t, err)
 
-	got, err := encrypter.Decrypt("")
+	got, err := encrypter.Decrypt(nil)
 	require.NoError(t, err)
-	require.Equal(t, []byte{}, got)
+	require.Empty(t, got)
 }
 
 func TestEmptyEncrypt(t *testing.T) {
-	encrypter, err := NewGCMEncrypter("key", NoopEncoder{})
+	encrypter, err := NewGCMEncrypter("bar")
 	require.NoError(t, err)
 
-	got, err := encrypter.Encrypt([]byte{})
+	got, err := encrypter.Encrypt(nil)
 	require.NoError(t, err)
-	require.Equal(t, "", got)
+	require.Empty(t, got)
 }
 
 func TestEncryptDecrypt(t *testing.T) {
-	encrypter, err := NewGCMEncrypter("key", NoopEncoder{})
+	encrypter, err := NewGCMEncrypter("baz")
 	require.NoError(t, err)
 
-	want := []byte("a random string")
+	want := []byte("some random string")
 
 	encoded, err := encrypter.Encrypt(want)
 	require.NoError(t, err)

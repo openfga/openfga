@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
@@ -23,10 +24,8 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encrypter := encoder.NewBase64Encrypter()
-
 	// clean up all stores from other tests
-	getStoresQuery := commands.NewListStoresQuery(datastore, encrypter, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder())
 	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {

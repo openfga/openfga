@@ -9,7 +9,7 @@ import (
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
@@ -104,7 +104,7 @@ func (s *service) Run(ctx context.Context) error {
 func BuildService(config Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
-	tokenEncrypter := encoder.NewNoopEncrypter(encoder.NewBase64Encoder())
+	tokenEncrypter := encrypter.NewNoopEncrypter()
 
 	var datastore storage.OpenFGADatastore
 	var err error

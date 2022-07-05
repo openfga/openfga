@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -13,23 +14,26 @@ import (
 
 type ReadAuthorizationModelsQuery struct {
 	backend   storage.AuthorizationModelReadBackend
-	encrypter encoder.Encrypter
 	logger    logger.Logger
+	encrypter encrypter.Encrypter
+	encoder   encoder.Encoder
 }
 
-func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, encrypter encoder.Encrypter, logger logger.Logger) *ReadAuthorizationModelsQuery {
+func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ReadAuthorizationModelsQuery {
 	return &ReadAuthorizationModelsQuery{
 		backend:   backend,
-		encrypter: encrypter,
 		logger:    logger,
+		encrypter: encrypter,
+		encoder:   encoder,
 	}
 }
 
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
-	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
+	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadAuthzModels", 1, 0)
 
@@ -38,7 +42,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encrypter.Encrypt(contToken)
+	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

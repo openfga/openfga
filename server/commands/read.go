@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
@@ -20,19 +21,21 @@ import (
 // a given object ID or userset in a type, optionally
 // constrained by a relation name.
 type ReadQuery struct {
-	logger    logger.Logger
-	tracer    trace.Tracer
 	datastore storage.OpenFGADatastore
-	encrypter encoder.Encrypter
+	tracer    trace.Tracer
+	logger    logger.Logger
+	encrypter encrypter.Encrypter
+	encoder   encoder.Encoder
 }
 
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
-func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encrypter encoder.Encrypter) *ReadQuery {
+func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encrypter encrypter.Encrypter, encoder encoder.Encoder) *ReadQuery {
 	return &ReadQuery{
-		logger:    logger,
-		tracer:    tracer,
 		datastore: datastore,
+		tracer:    tracer,
+		logger:    logger,
 		encrypter: encrypter,
+		encoder:   encoder,
 	}
 }
 
@@ -41,7 +44,8 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
-	decodedContToken, err := q.encrypter.Decrypt(req.GetContinuationToken())
+
+	decodedContToken, err := utils.DecodeAndDecrypt(q.encrypter, q.encoder, req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
@@ -60,7 +64,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	encodedContToken, err := q.encrypter.Encrypt(contToken)
+	encodedContToken, err := utils.EncryptAndEncode(q.encrypter, q.encoder, contToken)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
