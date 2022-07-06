@@ -349,7 +349,42 @@ func GRPCListStoresTest(t *testing.T, tester OpenFGATester) {
 }
 
 func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
+	conn := connect(t, tester)
+	defer conn.Close()
 
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	response1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	response2, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+		StoreId: response1.Id,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, response1.Id, response2.Id)
+
+	_, err = client.DeleteStore(context.Background(), &openfgapb.DeleteStoreRequest{
+		StoreId: response1.Id,
+	})
+	require.NoError(t, err)
+
+	response3, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+		StoreId: response1.Id,
+	})
+	require.Nil(t, response3)
+
+	s, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), s.Code())
+
+	// delete is idempotent, so if the store does not exist it's a noop
+	_, err = client.DeleteStore(context.Background(), &openfgapb.DeleteStoreRequest{
+		StoreId: testutils.RandomID(t),
+	})
+	require.NoError(t, err)
 }
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
