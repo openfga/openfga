@@ -18,7 +18,7 @@ type ReadTuplesQuery struct {
 	encoder encoder.Encoder
 }
 
-// NewReadTuplesQuery creates a ReadTuplesQuery with specified `tupleBackend` to use for storage.
+// NewReadTuplesQuery constructs a ReadTuplesQuery with the provided storage backend.
 func NewReadTuplesQuery(backend storage.TupleBackend, logger logger.Logger, encoder encoder.Encoder) *ReadTuplesQuery {
 	return &ReadTuplesQuery{
 		backend: backend,
