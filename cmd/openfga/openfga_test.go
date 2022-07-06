@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type OpenFGATester interface {
@@ -192,12 +193,47 @@ func TestFunctionalGRPC(t *testing.T) {
 	defer tester.Cleanup()
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
+	t.Run("TestListStores", func(t *testing.T) { GRPCListStoresTest(t, tester) })
+	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, tester) })
+
+	t.Run("TestWrite", func(t *testing.T) { GRPCWriteTest(t, tester) })
+	t.Run("TestRead", func(t *testing.T) { GRPCReadTest(t, tester) })
+	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
+	t.Run("TestExpand", func(t *testing.T) { GRPCExpandTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, tester) })
+}
+
+// connect connects to the underlying grpc server of the OpenFGATester and
+// returns the client connection.
+func connect(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
+	t.Helper()
+
+	conn, err := grpc.Dial(
+		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
+		[]grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}...,
+	)
+	require.NoError(t, err)
+
+	return conn
+}
+
+func GRPCWriteTest(t *testing.T, tester OpenFGATester) {
+
+}
+
+func GRPCReadTest(t *testing.T, tester OpenFGATester) {
+
+}
+
+func GRPCReadChangesTest(t *testing.T, tester OpenFGATester) {
+
 }
 
 func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
@@ -251,13 +287,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 		},
 	}
 
-	conn, err := grpc.Dial(
-		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
-		[]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
+	conn := connect(t, tester)
 	defer conn.Close()
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
@@ -276,6 +306,50 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
+}
+
+func GRPCListStoresTest(t *testing.T, tester OpenFGATester) {
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	_, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+
+	response1, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
+		PageSize: wrapperspb.Int32(1),
+	})
+	require.NoError(t, err)
+
+	require.NotEmpty(t, response1.ContinuationToken)
+
+	var received []*openfgapb.Store
+	received = append(received, response1.Stores...)
+
+	response2, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: response1.ContinuationToken,
+	})
+	require.NoError(t, err)
+
+	require.Empty(t, response2.ContinuationToken)
+
+	received = append(received, response2.Stores...)
+
+	require.Len(t, received, 2)
+	// todo: add assertions on the actual Store objects received
+}
+
+func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
+
 }
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
@@ -414,13 +488,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 	}
 
-	conn, err := grpc.Dial(
-		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
-		[]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
+	conn := connect(t, tester)
 	defer conn.Close()
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
@@ -459,6 +527,10 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
+}
+
+func GRPCExpandTest(t *testing.T, tester OpenFGATester) {
+
 }
 
 func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
@@ -517,13 +589,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 	}
 
-	conn, err := grpc.Dial(
-		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
-		[]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
+	conn := connect(t, tester)
 	defer conn.Close()
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
@@ -654,13 +720,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 	}
 
-	conn, err := grpc.Dial(
-		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
-		[]grpc.DialOption{
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		}...,
-	)
-	require.NoError(t, err)
+	conn := connect(t, tester)
 	defer conn.Close()
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
