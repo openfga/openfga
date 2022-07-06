@@ -355,6 +355,8 @@ go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 h1:A1OduCnmHrcb3X//F
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43/go.mod h1:bAq6RDrSP9x2I9Rb+1NzQ1/0AbFkiLx1RwIcWTw4lWI=
 go.buf.build/openfga/go/openfga/api v1.1.20 h1:+iPu7c5pmOhovvcUjTBH/iMAVxYtnJS9nf437XLqHRY=
 go.buf.build/openfga/go/openfga/api v1.1.20/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
+go.buf.build/openfga/go/openfga/api v1.1.21 h1:tnb+r7flRTWZ12ILT2wYO+vr+UkLEvu4OEXn+Xy7/3s=
+go.buf.build/openfga/go/openfga/api v1.1.21/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=

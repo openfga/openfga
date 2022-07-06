@@ -195,7 +195,9 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
 
+	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
+	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, tester) })
 }
 
 func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
@@ -538,6 +540,142 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			if test.output.errorCode == codes.OK {
 				_ = response // use response for assertions
 				//require.Equal(t, test.output.resp.Allowed, response.Allowed)
+			}
+		})
+	}
+}
+
+func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
+
+}
+
+func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
+
+	type output struct {
+		resp      *openfgapb.WriteAuthorizationModelResponse
+		errorCode codes.Code
+	}
+
+	tests := []struct {
+		name   string
+		input  *openfgapb.WriteAuthorizationModelRequest
+		output output
+	}{
+		{
+			name:  "empty request",
+			input: &openfgapb.WriteAuthorizationModelRequest{},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid storeID (too short)",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "1",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid storeID (extra chars)",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t) + "A",
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing type definitions",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid type definition (empty type name)",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t),
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid type definition (too many chars in name)",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t),
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: testutils.CreateRandomString(255),
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid type definition (invalid chars in name)",
+			input: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t),
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "some type",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+	}
+
+	conn, err := grpc.Dial(
+		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
+		[]grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}...,
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response, err := client.WriteAuthorizationModel(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if test.output.errorCode == codes.OK {
+				_, err = id.Parse(response.AuthorizationModelId)
+				require.NoError(t, err)
 			}
 		})
 	}
