@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	migrationsDir           = "storage/postgres/migrations"
 	datastoreEngineFlagName = "datastore-engine"
 	datastoreURIFlagName    = "datastore-uri"
 )
@@ -32,7 +33,6 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(cmd *cobra.Command, args []string) error {
-	const dir = "storage/postgres/migrations"
 
 	engine, err := cmd.Flags().GetString(datastoreEngineFlagName)
 	if err != nil {
@@ -64,10 +64,10 @@ func runMigration(cmd *cobra.Command, args []string) error {
 		}
 
 		if steps > 0 {
-			return goose.UpTo(db, dir, steps)
+			return goose.UpTo(db, migrationsDir, steps)
 		}
 
-		return goose.Up(db, dir)
+		return goose.Up(db, migrationsDir)
 	default:
 		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 	}
