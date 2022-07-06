@@ -6,14 +6,14 @@ import (
 	"github.com/go-errors/errors"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 
-	"github.com/openfga/openfga/server/authentication"
+	"github.com/openfga/openfga/server/authn"
 )
 
 type PresharedKeyAuthenticator struct {
 	ValidKeys map[string]struct{}
 }
 
-var _ authentication.Authenticator = (*PresharedKeyAuthenticator)(nil)
+var _ authn.Authenticator = (*PresharedKeyAuthenticator)(nil)
 
 func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticator, error) {
 	if len(validKeys) < 1 {
@@ -27,14 +27,14 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 	return &PresharedKeyAuthenticator{ValidKeys: vKeys}, nil
 }
 
-func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context, requestParameters any) (*authentication.AuthClaims, error) {
+func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
 		return nil, errors.New("missing bearer token")
 	}
 
 	if _, found := pka.ValidKeys[authHeader]; found {
-		return &authentication.AuthClaims{
+		return &authn.AuthClaims{
 			Subject: "", // no user information in this auth method
 		}, nil
 	}
@@ -42,6 +42,4 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context, requestP
 	return nil, errors.New("unauthorized")
 }
 
-func (pka *PresharedKeyAuthenticator) Close() {
-	// do nothing
-}
+func (pka *PresharedKeyAuthenticator) Close() {}

@@ -36,6 +36,9 @@ dockers:
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
 
+    extra_files:
+      - static/playground
+
 release:
   github:
     owner: openfga

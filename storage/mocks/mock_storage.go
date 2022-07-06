@@ -732,6 +732,21 @@ func (mr *MockOpenFGADatastoreMockRecorder) GetStore(ctx, id interface{}) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStore", reflect.TypeOf((*MockOpenFGADatastore)(nil).GetStore), ctx, id)
 }
 
+// IsReady mocks base method.
+func (m *MockOpenFGADatastore) IsReady(ctx context.Context) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsReady", ctx)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsReady indicates an expected call of IsReady.
+func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsReady", reflect.TypeOf((*MockOpenFGADatastore)(nil).IsReady), ctx)
+}
+
 // ListStores mocks base method.
 func (m *MockOpenFGADatastore) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	m.ctrl.T.Helper()
