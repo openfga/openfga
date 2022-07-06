@@ -47,7 +47,8 @@ func runMigration(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if engine == "postgres" {
+	switch engine {
+	case "postgres":
 		uri, err := cmd.Flags().GetString(datastoreURIFlagName)
 		if err != nil || uri == "" {
 			return errors.New("a datastore uri is required to be specified for the postgres datastore option")
@@ -67,7 +68,7 @@ func runMigration(cmd *cobra.Command, args []string) error {
 		}
 
 		return goose.Up(db, dir)
+	default:
+		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 	}
-
-	return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 }
