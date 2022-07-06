@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"testing"
 	"time"
 
@@ -20,8 +19,10 @@ import (
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
+	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 )
 
@@ -53,6 +54,7 @@ func (s *serverHandle) Cleanup() func() {
 // exposed for testing purposes. Before running functional tests it is assumed
 // the openfga/openfga container is already built and available to the docker engine.
 func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) {
+	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
@@ -126,29 +128,50 @@ func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) 
 	}
 	grpcPort := m[0].HostPort
 
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	creds := insecure.NewCredentials()
+	// if transportCredentials != nil {
+	// 	creds = transportCredentials
+	// }
+
+	dialOpts := []grpc.DialOption{
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(creds),
+		grpc.WithConnectParams(grpc.ConnectParams{Backoff: grpcbackoff.DefaultConfig}),
+	}
+
+	conn, err := grpc.DialContext(
+		timeoutCtx,
+		fmt.Sprintf("localhost:%s", grpcPort),
+		dialOpts...,
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := healthv1pb.NewHealthClient(conn)
+
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
 
-	err = backoff.Retry(
-		func() error {
-			var err error
+	err = backoff.Retry(func() error {
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
 
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
+		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
+			Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+		})
+		if err != nil {
+			return err
+		}
 
-			uri := fmt.Sprintf("http://localhost:%s/healthz", httpPort)
-			req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, uri, nil)
-			require.NoError(t, err)
+		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
+			return fmt.Errorf("not serving")
+		}
 
-			resp, err := http.DefaultClient.Do(req)
-			require.NoError(t, err)
-
-			if resp.StatusCode != http.StatusOK {
-				return fmt.Errorf("not ready")
-			}
-
-			return nil
-		},
+		return nil
+	},
 		backoffPolicy,
 	)
 	require.NoError(t, err)
@@ -171,6 +194,8 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
+
+	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
 }
 
 func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
@@ -253,16 +278,23 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
+	type testData struct {
+		storeID         string
+		modelID         string
+		tuples          *openfgapb.TupleKeys
+		typeDefinitions *openfgapb.TypeDefinitions
+	}
+
 	type output struct {
 		resp      *openfgapb.CheckResponse
 		errorCode codes.Code
 	}
 
 	tests := []struct {
-		name      string
-		input     *openfgapb.CheckRequest
-		output    output
-		bootstrap *bootstrap
+		name     string
+		input    *openfgapb.CheckRequest
+		output   output
+		testData *testData
 	}{
 		{
 			name:  "empty request",
@@ -274,7 +306,9 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (too short)",
 			input: &openfgapb.CheckRequest{
-				StoreId: "1",
+				StoreId:              "1",
+				AuthorizationModelId: testutils.RandomID(t),
+				TupleKey:             tuple("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -283,7 +317,9 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (extra chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId: testutils.RandomID(t) + "A",
+				StoreId:              testutils.RandomID(t) + "A",
+				AuthorizationModelId: testutils.RandomID(t),
+				TupleKey:             tuple("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -292,7 +328,186 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (invalid chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				AuthorizationModelId: testutils.RandomID(t),
+				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid authorization model ID (extra chars)",
+			input: &openfgapb.CheckRequest{
+				StoreId:              testutils.RandomID(t),
+				AuthorizationModelId: testutils.RandomID(t) + "A",
+				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid authorization model ID (invalid chars)",
+			input: &openfgapb.CheckRequest{
+				StoreId:              testutils.RandomID(t),
+				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
+				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "missing tuplekey field",
+			input: &openfgapb.CheckRequest{
+				StoreId:              testutils.RandomID(t),
+				AuthorizationModelId: testutils.RandomID(t),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "blerb",
+			input: &openfgapb.CheckRequest{
+				StoreId: testutils.RandomID(t),
+				// AuthorizationModelId is generated automatically during testData bootstrap
+				TupleKey: tuple("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+				Trace:    true,
+			},
+			output: output{
+				resp: &openfgapb.CheckResponse{
+					Allowed:    true,
+					Resolution: ".union.0(direct).",
+				},
+			},
+			testData: &testData{
+				typeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "repo",
+							Relations: map[string]*openfgapb.Userset{
+								"admin": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
+											{
+												Userset: &openfgapb.Userset_This{
+													This: &openfgapb.DirectUserset{},
+												},
+											},
+										}},
+									},
+								},
+							},
+						},
+					},
+				},
+				tuples: &openfgapb.TupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+					},
+				},
+			},
+		},
+	}
+
+	conn, err := grpc.Dial(
+		fmt.Sprintf("localhost:%s", tester.GetGRPCPort()),
+		[]grpc.DialOption{
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		}...,
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			storeID := test.input.StoreId
+			modelID := test.input.AuthorizationModelId
+			if test.testData != nil {
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					TypeDefinitions: test.testData.typeDefinitions,
+				})
+				require.NoError(t, err)
+
+				modelID = resp.GetAuthorizationModelId()
+
+				_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes:               test.testData.tuples,
+				})
+				require.NoError(t, err)
+			}
+
+			response, err := client.Check(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if test.output.errorCode == codes.OK {
+				require.Equal(t, test.output.resp.Allowed, response.Allowed)
+				require.Equal(t, test.output.resp.Resolution, response.Resolution)
+			}
+		})
+	}
+}
+
+func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
+
+	type output struct {
+		resp      *openfgapb.ReadAuthorizationModelResponse
+		errorCode codes.Code
+	}
+
+	type testData struct {
+		typeDefinitions *openfgapb.TypeDefinitions
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgapb.ReadAuthorizationModelRequest
+		output   output
+		testData *testData
+	}{
+		{
+			name:  "empty request",
+			input: &openfgapb.ReadAuthorizationModelRequest{},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid storeID (too short)",
+			input: &openfgapb.ReadAuthorizationModelRequest{
+				StoreId: "1",
+				Id:      testutils.RandomID(t),
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid storeID (extra chars)",
+			input: &openfgapb.ReadAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t) + "A",
+				Id:      testutils.CreateRandomString(26), // ulids aren't required at this time
+			},
+			output: output{
+				errorCode: codes.InvalidArgument,
+			},
+		},
+		{
+			name: "invalid authorization model ID (extra chars)",
+			input: &openfgapb.ReadAuthorizationModelRequest{
+				StoreId: testutils.RandomID(t),
+				Id:      testutils.CreateRandomString(27), // ulids aren't required at this time
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -313,24 +528,16 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			storeID := testutils.RandomID(t)
-			modelID := testutils.RandomID(t)
 
-			if test.bootstrap != nil {
-				test.bootstrap.storeID = storeID
-				test.bootstrap.modelID = modelID
-				bootstrapTest(t, test.bootstrap, client)
-			}
-
-			response, err := client.Check(context.Background(), test.input)
+			response, err := client.ReadAuthorizationModel(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
 			require.True(t, ok)
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
 			if test.output.errorCode == codes.OK {
-				require.Equal(t, test.output.resp.Allowed, response.Allowed)
-				require.Equal(t, test.output.resp.Resolution, response.Resolution)
+				_ = response // use response for assertions
+				//require.Equal(t, test.output.resp.Allowed, response.Allowed)
 			}
 		})
 	}
@@ -381,24 +588,10 @@ func HTTPExpandTest(t *testing.T) {
 
 }
 
-type bootstrap struct {
-	storeID         string
-	modelID         string
-	tuples          *openfgapb.TupleKeys
-	typeDefinitions *openfgapb.TypeDefinitions
-}
-
-func bootstrapTest(t *testing.T, b *bootstrap, client openfgapb.OpenFGAServiceClient) {
-	_, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
-		StoreId:         b.storeID,
-		TypeDefinitions: b.typeDefinitions,
-	})
-	require.NoError(t, err)
-
-	_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
-		StoreId:              b.storeID,
-		AuthorizationModelId: b.modelID,
-		Writes:               b.tuples,
-	})
-	require.NoError(t, err)
+func tuple(object, relation, user string) *openfgapb.TupleKey {
+	return &openfgapb.TupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
+	}
 }
