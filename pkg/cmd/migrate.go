@@ -55,11 +55,11 @@ func runMigration(cmd *cobra.Command, args []string) error {
 
 		db, err := sql.Open("pgx", uri)
 		if err != nil {
-			return fmt.Errorf("failed to parse config from uri: %v", err)
+			return fmt.Errorf("failed to parse config from uri: %w", err)
 		}
 
 		if err := goose.SetDialect("postgres"); err != nil {
-			panic(err)
+			return fmt.Errorf("failed to initialize migrate command: %w", err)
 		}
 
 		if steps > 0 {
