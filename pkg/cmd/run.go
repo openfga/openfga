@@ -228,8 +228,8 @@ func bindFlags(cmd *cobra.Command) {
 
 	cmd.Flags().String("authn-method", "none", "the authentication method to use")
 	cmdutil.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
-	cmd.Flags().StringSlice("authn-presharedkeys", nil, "one or more preshared keys to use for authentication")
-	cmdutil.MustBindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-presharedkeys"))
+	cmd.Flags().StringSlice("authn-preshared-keys", nil, "one or more preshared keys to use for authentication")
+	cmdutil.MustBindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-preshared-keys"))
 	cmd.Flags().String("authn-oidc-audience", "", "the OIDC audience of the tokens being signed by the authorization server")
 	cmdutil.MustBindPFlag("authn.oidc.audience", cmd.Flags().Lookup("authn-oidc-audience"))
 	cmd.Flags().String("authn-oidc-issuer", "", "the OIDC issuer (authorization server) signing the tokens")
