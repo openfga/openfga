@@ -12,16 +12,16 @@ import (
 )
 
 type ListStoresQuery struct {
+	storesBackend storage.StoresBackend
 	logger        logger.Logger
 	encoder       encoder.Encoder
-	storesBackend storage.StoresBackend
 }
 
-func NewListStoresQuery(storesBackend storage.StoresBackend, encoder encoder.Encoder, logger logger.Logger) *ListStoresQuery {
+func NewListStoresQuery(storesBackend storage.StoresBackend, logger logger.Logger, encoder encoder.Encoder) *ListStoresQuery {
 	return &ListStoresQuery{
+		storesBackend: storesBackend,
 		logger:        logger,
 		encoder:       encoder,
-		storesBackend: storesBackend,
 	}
 }
 
@@ -30,6 +30,7 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStores
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ListStores", 1, 0)
 

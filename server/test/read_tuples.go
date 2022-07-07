@@ -7,6 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -26,8 +27,6 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 
 	datastore, err := dbTester.New()
 	require.NoError(err)
-
-	encoder := encoder.NewNoopEncoder()
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -64,7 +63,7 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	require.NoError(err)
 
-	cmd := commands.NewReadTuplesQuery(datastore, encoder, logger)
+	cmd := commands.NewReadTuplesQuery(datastore, logger, encoder.NewBase64Encoder())
 
 	firstRequest := &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
@@ -114,8 +113,10 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	encoder, err := encoder.NewTokenEncrypter("key")
+	encrypter, err := encrypter.NewGCMEncrypter("key")
 	require.NoError(err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -132,7 +133,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
 	require.NoError(err)
 
-	q := commands.NewReadTuplesQuery(datastore, encoder, logger)
+	q := commands.NewReadTuplesQuery(datastore, logger, encoder)
 	_, err = q.Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
