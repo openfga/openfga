@@ -16,9 +16,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
+	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -193,48 +193,58 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("grpc-enabled", true, "enable/disable the OpenFGA grpc server")
-	viper.BindPFlag("grpc.enabled", cmd.Flags().Lookup("grpc-enabled"))
+	cmdutil.MustBindPFlag("grpc.enabled", cmd.Flags().Lookup("grpc-enabled"))
+
 	cmd.Flags().String("grpc-addr", ":8081", "the host:port address to serve the grpc server on")
-	viper.BindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
+	cmdutil.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
+
 	cmd.Flags().Bool("grpc-tls-enabled", false, "enable/disable transport layer security (TLS)")
-	viper.BindPFlag("grpc.tls.enabled", cmd.Flags().Lookup("grpc-tls-enabled"))
+	cmdutil.MustBindPFlag("grpc.tls.enabled", cmd.Flags().Lookup("grpc-tls-enabled"))
+
 	cmd.Flags().String("grpc-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection")
-	viper.BindPFlag("grpc.tls.cert", cmd.Flags().Lookup("grpc-tls-cert"))
+	cmdutil.MustBindPFlag("grpc.tls.cert", cmd.Flags().Lookup("grpc-tls-cert"))
+
 	cmd.Flags().String("grpc-tls-key", "", "the (absolute) file path of the TLS key that should be used for the TLS connection")
-	viper.BindPFlag("grpc.tls.key", cmd.Flags().Lookup("grpc-tls-key"))
+	cmdutil.MustBindPFlag("grpc.tls.key", cmd.Flags().Lookup("grpc-tls-key"))
+
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
 	cmd.Flags().Bool("http-enabled", true, "enable/disable the OpenFGA HTTP server")
-	viper.BindPFlag("http.enabled", cmd.Flags().Lookup("http-enabled"))
+	cmdutil.MustBindPFlag("http.enabled", cmd.Flags().Lookup("http-enabled"))
+
 	cmd.Flags().String("http-addr", ":8080", "the host:port address to serve the HTTP server on")
-	viper.BindPFlag("http.addr", cmd.Flags().Lookup("http-addr"))
+	cmdutil.MustBindPFlag("http.addr", cmd.Flags().Lookup("http-addr"))
+
 	cmd.Flags().Bool("http-tls-enabled", false, "enable/disable transport layer security (TLS)")
-	viper.BindPFlag("http.tls.enabled", cmd.Flags().Lookup("http-tls-enabled"))
+	cmdutil.MustBindPFlag("http.tls.enabled", cmd.Flags().Lookup("http-tls-enabled"))
+
 	cmd.Flags().String("http-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection")
-	viper.BindPFlag("http.tls.cert", cmd.Flags().Lookup("http-tls-cert"))
+	cmdutil.MustBindPFlag("http.tls.cert", cmd.Flags().Lookup("http-tls-cert"))
+
 	cmd.Flags().String("http-tls-key", "", "the (absolute) file path of the TLS key that should be used for the TLS connection")
-	viper.BindPFlag("http.tls.key", cmd.Flags().Lookup("http-tls-key"))
+	cmdutil.MustBindPFlag("http.tls.key", cmd.Flags().Lookup("http-tls-key"))
+
 	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
 
 	cmd.Flags().String("authn-method", "none", "the authentication method to use")
-	viper.BindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
+	cmdutil.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
 	cmd.Flags().StringSlice("authn-presharedkeys", nil, "one or more preshared keys to use for authentication")
-	viper.BindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-presharedkeys"))
+	cmdutil.MustBindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-presharedkeys"))
 	cmd.Flags().String("authn-oidc-audience", "", "the OIDC audience of the tokens being signed by the authorization server")
-	viper.BindPFlag("authn.oidc.audience", cmd.Flags().Lookup("authn-oidc-audience"))
+	cmdutil.MustBindPFlag("authn.oidc.audience", cmd.Flags().Lookup("authn-oidc-audience"))
 	cmd.Flags().String("authn-oidc-issuer", "", "the OIDC issuer (authorization server) signing the tokens")
-	viper.BindPFlag("authn.oidc.issuer", cmd.Flags().Lookup("authn-oidc-issuer"))
+	cmdutil.MustBindPFlag("authn.oidc.issuer", cmd.Flags().Lookup("authn-oidc-issuer"))
 
 	cmd.Flags().String("database-engine", "memory", "the database engine that will be used for persistence")
-	viper.BindPFlag("database.engine", cmd.Flags().Lookup("database-engine"))
+	cmdutil.MustBindPFlag("database.engine", cmd.Flags().Lookup("database-engine"))
 	cmd.Flags().String("database-uri", "", "the connection uri to use to connect to the database (for any engine other than 'memory')")
-	viper.BindPFlag("database.uri", cmd.Flags().Lookup("database-uri"))
+	cmdutil.MustBindPFlag("database.uri", cmd.Flags().Lookup("database-uri"))
 
 	cmd.Flags().Bool("playground-enabled", false, "enable/disable the OpenFGA Playground")
-	viper.BindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
+	cmdutil.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
 	cmd.Flags().Int("playground-port", 3000, "the port to serve the local OpenFGA Playground on")
-	viper.BindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
+	cmdutil.MustBindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
 
 	cmd.Flags().String("log-format", "text", "the log format to output logs in")
-	viper.BindPFlag("log.format", cmd.Flags().Lookup("log-format"))
+	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
 }
