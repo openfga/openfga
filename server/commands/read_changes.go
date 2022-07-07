@@ -15,21 +15,21 @@ import (
 )
 
 type ReadChangesQuery struct {
-	changelogBackend storage.ChangelogBackend
-	encoder          encoder.Encoder
-	logger           logger.Logger
-	tracer           trace.Tracer
-	horizonOffset    time.Duration
+	backend       storage.ChangelogBackend
+	logger        logger.Logger
+	tracer        trace.Tracer
+	encoder       encoder.Encoder
+	horizonOffset time.Duration
 }
 
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadChangesQuery(changelogBackend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
+func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
 	return &ReadChangesQuery{
-		changelogBackend: changelogBackend,
-		encoder:          encoder,
-		logger:           logger,
-		tracer:           tracer,
-		horizonOffset:    time.Duration(horizonOffset) * time.Minute,
+		backend:       backend,
+		logger:        logger,
+		tracer:        tracer,
+		encoder:       encoder,
+		horizonOffset: time.Duration(horizonOffset) * time.Minute,
 	}
 }
 
@@ -42,7 +42,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadChanges", 1, 0)
 
-	changes, contToken, err := q.changelogBackend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
+	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &openfgapb.ReadChangesResponse{

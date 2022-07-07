@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -22,7 +23,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
-	encoder := encoder.NewNoopEncoder()
+	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 
 	datastore, err := dbTester.New()
@@ -83,7 +84,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				}
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 			resp, err := query.Execute(ctx, test.request)
 
 			require.NoError(err)
@@ -122,10 +123,12 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds)
 	require.NoError(err)
 
-	encoder, err := encoder.NewTokenEncrypter("key")
+	encrypter, err := encrypter.NewGCMEncrypter("key")
 	require.NoError(err)
 
-	query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
+	query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -188,10 +191,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
-	encoder, err := encoder.NewTokenEncrypter("key")
-	require.NoError(err)
-
-	_, err = commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})
