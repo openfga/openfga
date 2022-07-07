@@ -31,11 +31,8 @@ run: build ## Run the OpenFGA server with in-memory storage
 
 .PHONY: migrate-postgres
 migrate-postgres: build
+	# nosemgrep: detected-username-and-password-in-uri
 	./bin/openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
-
-.PHONY: run-postgres
-run-postgres: migrate-postgres ## Run the OpenFGA server with Postgres
-	OPENFGA_DATASTORE_ENGINE=postgres OPENFGA_DATASTORE_CONNECTION_URI='postgres://postgres:password@localhost:5432/postgres?sslmode=disable' make run
 
 .PHONY: go-generate
 go-generate: install-tools

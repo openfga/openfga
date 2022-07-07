@@ -113,14 +113,19 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 
 This section assumes that you have cloned the repository.
 
-To run OpenFGA with the Postgres datastore engine, simply run the following commands:
-
-```bash
-docker compose up -d postgres
-make run-postgres
+To run OpenFGA with the Postgres datastore engine add the following lines to `config.yaml`:
 ```
-The first command will start a Postgres container. The second command will apply any needed migrations to the Postgres
-instance to get to the latest version, and then start the OpenFGA server.
+database:
+  engine: postgres
+  uri: postgres://postgres:password@localhost:5432/postgres?sslmode=disable
+```
+Then run the following commands:
+```bash
+docker compose up -d postgres  # start a Postgres container
+make migrate-postgres          # Apply migrations to Postgres up to the latest version 
+make run                       # Run OpenFGA
+```
+You should see `using 'postgres' storage engine` in the logs.
 
 When you are done you can stop the Postgres container with:
 
