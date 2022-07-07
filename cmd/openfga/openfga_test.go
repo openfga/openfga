@@ -195,6 +195,7 @@ func TestFunctionalGRPC(t *testing.T) {
 	defer tester.Cleanup()
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
+	t.Run("TestGetStore", func(t *testing.T) { GRPCGetStoreTest(t, tester) })
 	t.Run("TestListStores", GRPCListStoresTest) // run an isolated tester from the others so bootstrapped stores don't collide
 	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, tester) })
 
@@ -308,6 +309,32 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
+}
+
+func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	resp2, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+		StoreId: resp1.Id,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, resp1.Name, resp2.Name)
+	require.Equal(t, resp1.Id, resp2.Id)
+
+	resp3, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+		StoreId: testutils.RandomID(t),
+	})
+	require.Error(t, err)
+	require.Nil(t, resp3)
 }
 
 func GRPCListStoresTest(t *testing.T) {
@@ -653,6 +680,60 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	storeID := testutils.RandomID(t)
+
+	_, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: &openfgapb.TypeDefinitions{
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"editor": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	resp1, err := client.ReadAuthorizationModels(context.Background(), &openfgapb.ReadAuthorizationModelsRequest{
+		StoreId:  storeID,
+		PageSize: wrapperspb.Int32(1),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, resp1.AuthorizationModels, 1)
+	require.NotEmpty(t, resp1.ContinuationToken)
+
+	resp2, err := client.ReadAuthorizationModels(context.Background(), &openfgapb.ReadAuthorizationModelsRequest{
+		StoreId:           storeID,
+		ContinuationToken: resp1.ContinuationToken,
+	})
+	require.NoError(t, err)
+
+	require.Len(t, resp2.AuthorizationModels, 1)
+	require.Empty(t, resp2.ContinuationToken)
 }
 
 func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
