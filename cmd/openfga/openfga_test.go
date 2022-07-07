@@ -188,12 +188,14 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	require := require.New(t)
 
+	// tester can be shared across tests that aren't impacted
+	// by shared state
 	tester, err := newOpenFGATester(t, "presharedkey")
 	require.NoError(err)
 	defer tester.Cleanup()
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
-	t.Run("TestListStores", func(t *testing.T) { GRPCListStoresTest(t, tester) })
+	t.Run("TestListStores", GRPCListStoresTest) // run an isolated tester from the others so bootstrapped stores don't collide
 	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, tester) })
 
 	t.Run("TestWrite", func(t *testing.T) { GRPCWriteTest(t, tester) })
@@ -308,14 +310,17 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 	}
 }
 
-func GRPCListStoresTest(t *testing.T, tester OpenFGATester) {
+func GRPCListStoresTest(t *testing.T) {
+	tester, err := newOpenFGATester(t, "presharedkey")
+	require.NoError(t, err)
+	defer tester.Cleanup()
 
 	conn := connect(t, tester)
 	defer conn.Close()
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
 
-	_, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.NoError(t, err)
@@ -335,7 +340,7 @@ func GRPCListStoresTest(t *testing.T, tester OpenFGATester) {
 	received = append(received, response1.Stores...)
 
 	response2, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
-		PageSize:          wrapperspb.Int32(1),
+		PageSize:          wrapperspb.Int32(2),
 		ContinuationToken: response1.ContinuationToken,
 	})
 	require.NoError(t, err)
@@ -345,7 +350,7 @@ func GRPCListStoresTest(t *testing.T, tester OpenFGATester) {
 	received = append(received, response2.Stores...)
 
 	require.Len(t, received, 2)
-	// todo: add assertions on the actual Store objects received
+	// todo: add assertions on received Store objects
 }
 
 func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
