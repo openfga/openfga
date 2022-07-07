@@ -156,10 +156,10 @@ The Playground facilitates rapid development by allowing you to visualize and mo
 
 Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
-In the event that a port other than the default port is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set to change it. For example,
+In the event that a port other than the default port is required, the `--playground-port` flag can be set to change it. For example,
 
 ```sh
-OPENFGA_PLAYGROUND_PORT=3001 ./bin/openfga run
+./bin/openfga run --playground-port 3001
 ```
 
 ## Next Steps
