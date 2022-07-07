@@ -29,6 +29,7 @@ func NewRunCommand() *cobra.Command {
 		Short: "Run the OpenFGA server",
 		Long:  "Run the OpenFGA server.",
 		Run:   run,
+		Args:  cobra.NoArgs,
 	}
 
 	bindFlags(cmd)
