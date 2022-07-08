@@ -193,59 +193,62 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 // bindFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindFlags(cmd *cobra.Command) {
-	cmd.Flags().Bool("grpc-enabled", true, "enable/disable the OpenFGA grpc server")
+
+	defaultConfig := service.DefaultConfig()
+
+	cmd.Flags().Bool("grpc-enabled", defaultConfig.GRPC.Enabled, "enable/disable the OpenFGA grpc server")
 	cmdutil.MustBindPFlag("grpc.enabled", cmd.Flags().Lookup("grpc-enabled"))
 
-	cmd.Flags().String("grpc-addr", ":8081", "the host:port address to serve the grpc server on")
+	cmd.Flags().String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 	cmdutil.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
 
-	cmd.Flags().Bool("grpc-tls-enabled", false, "enable/disable transport layer security (TLS)")
+	cmd.Flags().Bool("grpc-tls-enabled", defaultConfig.GRPC.TLS.Enabled, "enable/disable transport layer security (TLS)")
 	cmdutil.MustBindPFlag("grpc.tls.enabled", cmd.Flags().Lookup("grpc-tls-enabled"))
 
-	cmd.Flags().String("grpc-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection")
+	cmd.Flags().String("grpc-tls-cert", defaultConfig.GRPC.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
 	cmdutil.MustBindPFlag("grpc.tls.cert", cmd.Flags().Lookup("grpc-tls-cert"))
 
-	cmd.Flags().String("grpc-tls-key", "", "the (absolute) file path of the TLS key that should be used for the TLS connection")
+	cmd.Flags().String("grpc-tls-key", defaultConfig.GRPC.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 	cmdutil.MustBindPFlag("grpc.tls.key", cmd.Flags().Lookup("grpc-tls-key"))
 
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
-	cmd.Flags().Bool("http-enabled", true, "enable/disable the OpenFGA HTTP server")
+	cmd.Flags().Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
 	cmdutil.MustBindPFlag("http.enabled", cmd.Flags().Lookup("http-enabled"))
 
-	cmd.Flags().String("http-addr", ":8080", "the host:port address to serve the HTTP server on")
+	cmd.Flags().String("http-addr", defaultConfig.HTTP.Addr, "the host:port address to serve the HTTP server on")
 	cmdutil.MustBindPFlag("http.addr", cmd.Flags().Lookup("http-addr"))
 
-	cmd.Flags().Bool("http-tls-enabled", false, "enable/disable transport layer security (TLS)")
+	cmd.Flags().Bool("http-tls-enabled", defaultConfig.HTTP.TLS.Enabled, "enable/disable transport layer security (TLS)")
 	cmdutil.MustBindPFlag("http.tls.enabled", cmd.Flags().Lookup("http-tls-enabled"))
 
-	cmd.Flags().String("http-tls-cert", "", "the (absolute) file path of the certificate to use for the TLS connection")
+	cmd.Flags().String("http-tls-cert", defaultConfig.HTTP.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
 	cmdutil.MustBindPFlag("http.tls.cert", cmd.Flags().Lookup("http-tls-cert"))
 
-	cmd.Flags().String("http-tls-key", "", "the (absolute) file path of the TLS key that should be used for the TLS connection")
+	cmd.Flags().String("http-tls-key", defaultConfig.HTTP.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 	cmdutil.MustBindPFlag("http.tls.key", cmd.Flags().Lookup("http-tls-key"))
 
 	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
 
-	cmd.Flags().String("authn-method", "none", "the authentication method to use")
+	cmd.Flags().String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 	cmdutil.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
-	cmd.Flags().StringSlice("authn-preshared-keys", nil, "one or more preshared keys to use for authentication")
+	cmd.Flags().StringSlice("authn-preshared-keys", defaultConfig.Authn.Keys, "one or more preshared keys to use for authentication")
 	cmdutil.MustBindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-preshared-keys"))
-	cmd.Flags().String("authn-oidc-audience", "", "the OIDC audience of the tokens being signed by the authorization server")
+	cmd.Flags().String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 	cmdutil.MustBindPFlag("authn.oidc.audience", cmd.Flags().Lookup("authn-oidc-audience"))
-	cmd.Flags().String("authn-oidc-issuer", "", "the OIDC issuer (authorization server) signing the tokens")
+	cmd.Flags().String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
 	cmdutil.MustBindPFlag("authn.oidc.issuer", cmd.Flags().Lookup("authn-oidc-issuer"))
 
-	cmd.Flags().String("database-engine", "memory", "the database engine that will be used for persistence")
+	cmd.Flags().String("database-engine", defaultConfig.Database.Engine, "the database engine that will be used for persistence")
 	cmdutil.MustBindPFlag("database.engine", cmd.Flags().Lookup("database-engine"))
-	cmd.Flags().String("database-uri", "", "the connection uri to use to connect to the database (for any engine other than 'memory')")
+	cmd.Flags().String("database-uri", defaultConfig.Database.URI, "the connection uri to use to connect to the database (for any engine other than 'memory')")
 	cmdutil.MustBindPFlag("database.uri", cmd.Flags().Lookup("database-uri"))
 
-	cmd.Flags().Bool("playground-enabled", false, "enable/disable the OpenFGA Playground")
+	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 	cmdutil.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
-	cmd.Flags().Int("playground-port", 3000, "the port to serve the local OpenFGA Playground on")
+	cmd.Flags().Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
 	cmdutil.MustBindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
 
-	cmd.Flags().String("log-format", "text", "the log format to output logs in")
+	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
 }

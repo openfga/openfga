@@ -161,7 +161,9 @@ func DefaultConfig() *Config {
 			CORSAllowedHeaders:     []string{"*"},
 		},
 		Authn: AuthnConfig{
-			Method: "none",
+			Method:                  "none",
+			AuthnPresharedKeyConfig: &AuthnPresharedKeyConfig{},
+			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
 			Format: "text",
@@ -192,12 +194,9 @@ func GetServiceConfig() (*Config, error) {
 	err := viper.ReadInConfig()
 	if err != nil {
 		_, ok := err.(viper.ConfigFileNotFoundError)
-		if ok {
-			// if the server config is not found then return the defaults
-			return config, nil
+		if !ok {
+			return nil, fmt.Errorf("failed to load server config: %w", err)
 		}
-
-		return nil, fmt.Errorf("failed to load server config: %w", err)
 	}
 
 	if err := viper.Unmarshal(config); err != nil {
