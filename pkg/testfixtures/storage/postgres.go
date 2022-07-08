@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 
@@ -17,6 +15,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -183,10 +182,9 @@ func (p *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
 	err = goose.SetDialect("postgres")
 	require.NoError(t, err)
 
-	_, f, _, _ := runtime.Caller(0)
-	basepath := filepath.Dir(f)
+	goose.SetBaseFS(assets.EmbedMigrations)
 
-	err = goose.Up(db, fmt.Sprintf("%s/%s", basepath, migrateDir))
+	err = goose.Up(db, "migrations/postgres")
 	require.NoError(t, err)
 
 	return initFunc("postgres", connectStr)

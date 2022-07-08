@@ -7,14 +7,14 @@ import (
 	"strconv"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 )
 
 const (
-	migrationsDir           = "storage/postgres/migrations"
-	datastoreEngineFlagName = "datastore-engine"
-	datastoreURIFlagName    = "datastore-uri"
+	databaseEngineFlagName = "database-engine"
+	databaseURIFlagName    = "database-uri"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -26,15 +26,15 @@ func NewMigrateCommand() *cobra.Command {
 		RunE:  runMigration,
 	}
 
-	cmd.Flags().String(datastoreEngineFlagName, "", "the database engine to run the migrations for: postgres")
-	cmd.Flags().String(datastoreURIFlagName, "", "the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	cmd.Flags().String(databaseEngineFlagName, "", "the database engine to run the migrations for")
+	cmd.Flags().String(databaseURIFlagName, "", "the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
 
 	return cmd
 }
 
 func runMigration(cmd *cobra.Command, args []string) error {
 
-	engine, err := cmd.Flags().GetString(datastoreEngineFlagName)
+	engine, err := cmd.Flags().GetString(databaseEngineFlagName)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func runMigration(cmd *cobra.Command, args []string) error {
 
 	switch engine {
 	case "postgres":
-		uri, err := cmd.Flags().GetString(datastoreURIFlagName)
+		uri, err := cmd.Flags().GetString(databaseURIFlagName)
 		if err != nil || uri == "" {
 			return errors.New("a datastore uri is required to be specified for the postgres datastore option")
 		}
@@ -59,15 +59,17 @@ func runMigration(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to parse config from uri: %w", err)
 		}
 
+		goose.SetBaseFS(assets.EmbedMigrations)
+
 		if err := goose.SetDialect("postgres"); err != nil {
 			return fmt.Errorf("failed to initialize migrate command: %w", err)
 		}
 
 		if steps > 0 {
-			return goose.UpTo(db, migrationsDir, steps)
+			return goose.UpTo(db, "migrations/postgres", steps)
 		}
 
-		return goose.Up(db, migrationsDir)
+		return goose.Up(db, "migrations/postgres")
 	default:
 		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 	}
