@@ -20,18 +20,18 @@ import (
 // a given object ID or userset in a type, optionally
 // constrained by a relation name.
 type ReadQuery struct {
-	logger    logger.Logger
-	tracer    trace.Tracer
 	datastore storage.OpenFGADatastore
+	tracer    trace.Tracer
+	logger    logger.Logger
 	encoder   encoder.Encoder
 }
 
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
 func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
 	return &ReadQuery{
-		logger:    logger,
-		tracer:    tracer,
 		datastore: datastore,
+		tracer:    tracer,
+		logger:    logger,
 		encoder:   encoder,
 	}
 }
@@ -41,6 +41,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
+
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken

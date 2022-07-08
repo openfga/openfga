@@ -41,8 +41,8 @@ const (
 )
 
 var (
-	ErrNilTokenEncoder error = fmt.Errorf("tokenEncoder must be a non-nil interface value")
-	ErrNilTransport    error = fmt.Errorf("transport must be a non-nil interface value")
+	ErrNilTokenEncoder = fmt.Errorf("tokenEncoder must be a non-nil interface value")
+	ErrNilTransport    = fmt.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -67,11 +67,11 @@ type Dependencies struct {
 	Tracer    trace.Tracer
 	Meter     metric.Meter
 	Logger    logger.Logger
+	Transport gateway.Transport
 
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
-	// Defaults to Base64Encoder if none is provided.
+	// Defaults to a base64 encoder if none is provided.
 	TokenEncoder encoder.Encoder
-	Transport    gateway.Transport
 }
 
 type Config struct {
@@ -189,7 +189,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := commands.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 
@@ -307,7 +307,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
 
@@ -408,7 +408,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := commands.NewListStoresQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 

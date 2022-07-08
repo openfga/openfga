@@ -8,6 +8,7 @@ import (
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
@@ -160,7 +161,9 @@ func DefaultConfig() *Config {
 			CORSAllowedHeaders:     []string{"*"},
 		},
 		Authn: AuthnConfig{
-			Method: "none",
+			Method:                  "none",
+			AuthnPresharedKeyConfig: &AuthnPresharedKeyConfig{},
+			AuthnOIDCConfig:         &AuthnOIDCConfig{},
 		},
 		Log: LogConfig{
 			Format: "text",
@@ -191,12 +194,9 @@ func GetServiceConfig() (*Config, error) {
 	err := viper.ReadInConfig()
 	if err != nil {
 		_, ok := err.(viper.ConfigFileNotFoundError)
-		if ok {
-			// if the server config is not found then return the defaults
-			return config, nil
+		if !ok {
+			return nil, fmt.Errorf("failed to load server config: %w", err)
 		}
-
-		return nil, fmt.Errorf("failed to load server config: %w", err)
 	}
 
 	if err := viper.Unmarshal(config); err != nil {
@@ -225,7 +225,7 @@ func (s *service) Run(ctx context.Context) error {
 func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
-	tokenEncoder := encoder.NewBase64Encoder()
+	tokenEncoder := encoder.NewTokenEncoder(encrypter.NewNoopEncrypter(), encoder.NewBase64Encoder())
 
 	var datastore storage.OpenFGADatastore
 	var err error

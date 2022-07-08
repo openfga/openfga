@@ -548,11 +548,10 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
+	encoder := encoder.NewBase64Encoder()
 
 	datastore, err := dbTester.New()
 	require.NoError(err)
-
-	encoder := encoder.NewNoopEncoder()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
