@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	migrateDir    = "../../../storage/postgres/migrations"
 	postgresImage = "postgres:14"
 )
 
