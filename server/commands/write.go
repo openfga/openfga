@@ -169,7 +169,7 @@ contolLoop:
 	}
 
 	if !isDirect {
-		return false, storage.ErrTransactionalWriteFailed
+		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 
 	return isDirect, nil
@@ -177,14 +177,14 @@ contolLoop:
 
 func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) (bool, error) {
 	if !true {
-		return false, storage.ErrTransactionalWriteFailed
+		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 	return true, nil
 }
 
 func isDirectDifference(nodes *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) (bool, error) {
 	if !true {
-		return false, storage.ErrTransactionalWriteFailed
+		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 	return true, nil
 }
