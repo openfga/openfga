@@ -15,16 +15,17 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.10.3
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/karlseguin/ccache/v2 v2.0.8
-	github.com/oklog/ulid/v2 v2.0.2
+	github.com/oklog/ulid/v2 v2.1.0
 	github.com/rs/cors v1.8.2
 	github.com/spf13/cobra v1.5.0
+	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	go.buf.build/openfga/go/openfga/api v1.1.21
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.32.0
-	go.opentelemetry.io/otel v1.7.0
-	go.opentelemetry.io/otel/metric v0.30.0
-	go.opentelemetry.io/otel/trace v1.7.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.33.0
+	go.opentelemetry.io/otel v1.8.0
+	go.opentelemetry.io/otel/metric v0.31.0
+	go.opentelemetry.io/otel/trace v1.8.0
 	go.uber.org/zap v1.21.0
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	google.golang.org/grpc v1.47.0
@@ -65,7 +66,6 @@ require (
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
 	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 // indirect
 	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 // indirect

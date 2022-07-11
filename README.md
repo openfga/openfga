@@ -120,7 +120,7 @@ docker compose up -d postgres
 make run-postgres
 ```
 
-This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
+This should start a Postgres container, run migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
 

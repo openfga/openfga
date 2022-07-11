@@ -11,7 +11,7 @@ import (
 // generated from a TestStorageBuilder
 type InitFunc[T any] func(engine, uri string) T
 
-// RunningEngineForTest represents an instance of a database engine running with its backing
+// RunningEngineForTest represents an instance of a datastore engine running with its backing
 // database/service, expressly for testing.
 type RunningEngineForTest[T any] interface {
 
