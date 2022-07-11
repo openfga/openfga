@@ -14,8 +14,6 @@ const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
 	versionFlag         = "version"
-
-	postgresMigrationsDir = "migrations/postgres"
 )
 
 func NewMigrateCommand() *cobra.Command {
