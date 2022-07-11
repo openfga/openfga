@@ -341,7 +341,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 }
 
 func GRPCListStoresTest(t *testing.T) {
-	tester, err := newOpenFGATester(t, "presharedkey")
+	tester, err := newOpenFGATester(t)
 	require.NoError(t, err)
 	defer tester.Cleanup()
 
@@ -869,7 +869,7 @@ func TestFunctionalHTTP(t *testing.T) {
 
 	require := require.New(t)
 
-	tester, err := newOpenFGATester(t, "presharedkey")
+	tester, err := newOpenFGATester(t)
 	require.NoError(err)
 	defer tester.Cleanup()
 
