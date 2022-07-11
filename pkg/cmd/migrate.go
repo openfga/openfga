@@ -2,9 +2,7 @@ package cmd
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
-	"strconv"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/openfga/openfga/assets"
@@ -13,63 +11,79 @@ import (
 )
 
 const (
-	databaseEngineFlagName = "database-engine"
-	databaseURIFlagName    = "database-uri"
+	datastoreEngineFlag = "datastore-engine"
+	datastoreURIFlag    = "datastore-uri"
+	versionFlag         = "version"
+
+	postgresMigrationsDir = "migrations/postgres"
 )
 
 func NewMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "migrate [flags] [revision]",
+		Use:   "migrate",
 		Short: "Run database schema migrations needed for the OpenFGA server",
-		Long:  `The migrate command is used to migrate up to a specific revision of the database schema needed for OpenFGA. If the revision is omitted the latest, or "HEAD", revision of the schema will be used.`,
-		Args:  cobra.MaximumNArgs(1),
+		Long:  `The migrate command is used to migrate the database schema needed for OpenFGA.`,
 		RunE:  runMigration,
 	}
 
-	cmd.Flags().String(databaseEngineFlagName, "", "the database engine to run the migrations for")
-	cmd.Flags().String(databaseURIFlagName, "", "the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	cmd.Flags().String(datastoreEngineFlag, "", "(required) the database engine to run the migrations for")
+	if err := cmd.MarkFlagRequired(datastoreEngineFlag); err != nil {
+		panic(err)
+	}
+
+	cmd.Flags().String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	if err := cmd.MarkFlagRequired(datastoreURIFlag); err != nil {
+		panic(err)
+	}
+
+	cmd.Flags().Int64(versionFlag, -1, `the version to migrate to. If omitted, the latest version of the schema will be used`)
 
 	return cmd
 }
 
-func runMigration(cmd *cobra.Command, args []string) error {
-
-	engine, err := cmd.Flags().GetString(databaseEngineFlagName)
+func runMigration(cmd *cobra.Command, _ []string) error {
+	engine, err := cmd.Flags().GetString(datastoreEngineFlag)
 	if err != nil {
 		return err
 	}
 
-	var steps int64
-	if len(args) > 0 {
-		steps, err = strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return errors.New("revision must be an integer")
-		}
+	uri, err := cmd.Flags().GetString(datastoreURIFlag)
+	if err != nil {
+		return err
+	}
+
+	version, err := cmd.Flags().GetInt64(versionFlag)
+	if err != nil {
+		return err
 	}
 
 	switch engine {
 	case "postgres":
-		uri, err := cmd.Flags().GetString(databaseURIFlagName)
-		if err != nil || uri == "" {
-			return errors.New("a datastore uri is required to be specified for the postgres datastore option")
-		}
-
 		db, err := sql.Open("pgx", uri)
 		if err != nil {
 			return fmt.Errorf("failed to parse config from uri: %w", err)
 		}
 
+		if err := goose.SetDialect("postgres"); err != nil {
+			return fmt.Errorf("failed to initialize the migrate command: %w", err)
+		}
+
 		goose.SetBaseFS(assets.EmbedMigrations)
 
-		if err := goose.SetDialect("postgres"); err != nil {
-			return fmt.Errorf("failed to initialize migrate command: %w", err)
+		if version >= 0 {
+			currentVersion, err := goose.GetDBVersion(db)
+			if err != nil {
+				return err
+			}
+
+			if version < currentVersion {
+				return goose.DownTo(db, postgresMigrationsDir, version)
+			}
+
+			return goose.UpTo(db, postgresMigrationsDir, version)
 		}
 
-		if steps > 0 {
-			return goose.UpTo(db, "migrations/postgres", steps)
-		}
-
-		return goose.Up(db, "migrations/postgres")
+		return goose.Up(db, postgresMigrationsDir)
 	default:
 		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 	}
