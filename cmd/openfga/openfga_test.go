@@ -54,11 +54,14 @@ func (s *serverHandle) Cleanup() func() {
 // newOpenFGATester spins up an openfga container with the default service ports
 // exposed for testing purposes. Before running functional tests it is assumed
 // the openfga/openfga container is already built and available to the docker engine.
-func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) {
+func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
+
+	cmd := []string{"run"}
+	cmd = append(cmd, args...)
 
 	containerCfg := container.Config{
 		Env: []string{},
@@ -68,7 +71,7 @@ func newOpenFGATester(t *testing.T, presharedKey string) (OpenFGATester, error) 
 			nat.Port("3000/tcp"): {},
 		},
 		Image: "openfga/openfga",
-		Cmd:   []string{"run"},
+		Cmd:   cmd,
 	}
 
 	hostCfg := container.HostConfig{
@@ -190,7 +193,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	// tester can be shared across tests that aren't impacted
 	// by shared state
-	tester, err := newOpenFGATester(t, "presharedkey")
+	tester, err := newOpenFGATester(t)
 	require.NoError(err)
 	defer tester.Cleanup()
 
