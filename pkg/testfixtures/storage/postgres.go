@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"testing"
 	"time"
 
@@ -183,8 +184,12 @@ func (p *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
-	err = goose.Up(db, "migrations/postgres")
+	// Goose logs stuff which interferes with the output of go-bench, so turn it off here.
+	writer := log.Writer()
+	log.SetOutput(io.Discard)
+	err = goose.Up(db, assets.PostgresMigrationDir)
 	require.NoError(t, err)
+	log.SetOutput(writer)
 
 	return initFunc("postgres", connectStr)
 }

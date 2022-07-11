@@ -77,13 +77,13 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 			}
 
 			if version < currentVersion {
-				return goose.DownTo(db, postgresMigrationsDir, version)
+				return goose.DownTo(db, assets.PostgresMigrationDir, version)
 			}
 
-			return goose.UpTo(db, postgresMigrationsDir, version)
+			return goose.UpTo(db, assets.PostgresMigrationDir, version)
 		}
 
-		return goose.Up(db, postgresMigrationsDir)
+		return goose.Up(db, assets.PostgresMigrationDir)
 	default:
 		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
 	}
