@@ -120,8 +120,8 @@ docker compose up -d postgres
 ```
 Then run the following commands:
 ```bash
-./bin/openfga migrate --database-engine postgres --database-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
-./bin/openfga run --database-engine postgres --database-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+./bin/openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+./bin/openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
 ```
 You should see `using 'postgres' storage engine` in the logs.
 
