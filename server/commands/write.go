@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -12,6 +13,16 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )
+
+// WriteError is used to categorize errors specific to write check logic
+type IndirectWriteError struct {
+	Reason   string
+	TupleKey *openfgapb.TupleKey
+}
+
+func (i *IndirectWriteError) Error() string {
+	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+}
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
@@ -60,8 +71,46 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		if _, err := tupleUtils.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter); err != nil {
+		tupleUserset, err := tupleUtils.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter)
+		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
+		}
+		c.logger.Info(fmt.Sprintf("%+v\n", tupleUserset))
+		switch usType := tupleUserset.Userset.(type) {
+		case *openfgapb.Userset_This:
+			continue // no need to check on Direct Relationship
+		case *openfgapb.Userset_Intersection:
+			isDirect, err := isDirectIntersection(usType, tk)
+			if err != nil {
+				return handleError(err)
+			}
+			// dead code: should not be reachable bc !isDirect <==> err != nil
+			if !isDirect {
+				return handleError(err)
+			}
+			continue
+		case *openfgapb.Userset_Union:
+			isDirect, err := isDirectUnion(usType, tk)
+			if err != nil {
+				return handleError(err)
+			}
+			// dead code: should not be reachable bc !isDirect <==> err != nil
+			if !isDirect {
+				return handleError(err)
+			}
+			continue
+		case *openfgapb.Userset_Difference:
+			isDirect, err := isDirectDifference(usType, tk)
+			if err != nil {
+				return handleError(err)
+			}
+			// dead code: should not be reachable bc !isDirect <==> err != nil
+			if !isDirect {
+				return handleError(err)
+			}
+			continue
+		default:
+			continue // To prevent breaking change, if unsure then continue unexpcted
 		}
 	}
 
@@ -103,4 +152,39 @@ func handleError(err error) error {
 	}
 
 	return serverErrors.HandleError("", err)
+}
+
+func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) (bool, error) {
+	isDirect := false
+contolLoop:
+	for _, userset := range nodes.Intersection.Child {
+		switch usType := userset.Userset.(type) {
+		case *openfgapb.Userset_This:
+			fmt.Println(usType.This)
+			isDirect = true
+			break contolLoop
+		default:
+			continue
+		}
+	}
+
+	if !isDirect {
+		return false, storage.ErrTransactionalWriteFailed
+	}
+
+	return isDirect, nil
+}
+
+func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) (bool, error) {
+	if !true {
+		return false, storage.ErrTransactionalWriteFailed
+	}
+	return true, nil
+}
+
+func isDirectDifference(nodes *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) (bool, error) {
+	if !true {
+		return false, storage.ErrTransactionalWriteFailed
+	}
+	return true, nil
 }
