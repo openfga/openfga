@@ -14,15 +14,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// WriteError is used to categorize errors specific to write check logic
-type IndirectWriteError struct {
-	Reason   string
-	TupleKey *openfgapb.TupleKey
-}
+// // WriteError is used to categorize errors specific to write check logic
+// type IndirectWriteError struct {
+// 	Reason   string
+// 	TupleKey *openfgapb.TupleKey
+// }
 
-func (i *IndirectWriteError) Error() string {
-	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
-}
+// func (i *IndirectWriteError) Error() string {
+// 	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+// }
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
@@ -157,7 +157,7 @@ contolLoop:
 	}
 
 	if !isDirect {
-		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &tupleUtils.IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 
 	return nil
@@ -177,7 +177,7 @@ contolLoop:
 		}
 	}
 	if !isDirect {
-		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &tupleUtils.IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 
 	return nil
@@ -198,7 +198,7 @@ contolLoop:
 		}
 	}
 	if !isDirect {
-		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &tupleUtils.IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 
 	return nil
