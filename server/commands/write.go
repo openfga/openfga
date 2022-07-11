@@ -176,14 +176,39 @@ contolLoop:
 }
 
 func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) (bool, error) {
-	if !true {
+	isDirect := false
+contolLoop:
+	for _, userset := range nodes.Union.Child {
+		switch usType := userset.Userset.(type) {
+		case *openfgapb.Userset_This:
+			fmt.Println(usType.This)
+			isDirect = true
+			break contolLoop
+		default:
+			continue
+		}
+	}
+	if !isDirect {
 		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 	return true, nil
 }
 
-func isDirectDifference(nodes *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) (bool, error) {
-	if !true {
+func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) (bool, error) {
+	isDirect := false
+	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
+contolLoop:
+	for _, userset := range sets {
+		switch usType := userset.Userset.(type) {
+		case *openfgapb.Userset_This:
+			fmt.Println(usType.This)
+			isDirect = true
+			break contolLoop
+		default:
+			continue
+		}
+	}
+	if !isDirect {
 		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 	return true, nil
