@@ -40,18 +40,18 @@
                 }
             }
         },
-        "database": {
+        "datastore": {
             "engine": {
-                "description": "The database engine that will be used for persistence.",
+                "description": "The datastore engine that will be used for persistence.",
                 "type": "string",
                 "enum": ["memory", "postgres"],
                 "default": "memory"
             },
             "uri": {
-                "description": "The connection uri to use to connect to the database (for any engine other than 'memory').",
+                "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
                 "type": "string",
                 "examples": [
-                    "postgres://user:pass@host:port/database?opts"
+                    "postgres://user:pass@host:port/datastore?opts"
                 ]
             },
             "maxCacheSize": {

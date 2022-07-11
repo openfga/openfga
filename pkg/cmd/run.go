@@ -239,10 +239,10 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
 	cmdutil.MustBindPFlag("authn.oidc.issuer", cmd.Flags().Lookup("authn-oidc-issuer"))
 
-	cmd.Flags().String("database-engine", defaultConfig.Database.Engine, "the database engine that will be used for persistence")
-	cmdutil.MustBindPFlag("database.engine", cmd.Flags().Lookup("database-engine"))
-	cmd.Flags().String("database-uri", defaultConfig.Database.URI, "the connection uri to use to connect to the database (for any engine other than 'memory')")
-	cmdutil.MustBindPFlag("database.uri", cmd.Flags().Lookup("database-uri"))
+	cmd.Flags().String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
+	cmdutil.MustBindPFlag("datastore.engine", cmd.Flags().Lookup("datastore-engine"))
+	cmd.Flags().String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
+	cmdutil.MustBindPFlag("datastore.uri", cmd.Flags().Lookup("datastore-uri"))
 
 	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 	cmdutil.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))

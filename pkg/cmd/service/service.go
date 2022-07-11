@@ -29,10 +29,10 @@ var (
 	ErrInvalidHTTPTLSConfig = errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
 )
 
-// DatabaseConfig defines OpenFGA server configurations for database specific settings.
-type DatabaseConfig struct {
+// DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
+type DatastoreConfig struct {
 
-	// Engine is the database storage engine to use (e.g. 'memory', 'postgres')
+	// Engine is the datastore engine to use (e.g. 'memory', 'postgres')
 	Engine string
 	URI    string
 
@@ -126,7 +126,7 @@ type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
 	OpenFGA    OpenFGAConfig
-	Database   DatabaseConfig
+	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
 	HTTP       HTTPConfig
 	Authn      AuthnConfig
@@ -143,7 +143,7 @@ func DefaultConfig() *Config {
 			ChangelogHorizonOffset:        0,
 			ResolveNodeLimit:              25,
 		},
-		Database: DatabaseConfig{
+		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
 		},
@@ -229,7 +229,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 
 	var datastore storage.OpenFGADatastore
 	var err error
-	switch config.Database.Engine {
+	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.OpenFGA.MaxTuplesPerWrite, config.OpenFGA.MaxTypesPerAuthorizationModel)
 	case "postgres":
@@ -238,15 +238,15 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			postgres.WithTracer(tracer),
 		}
 
-		datastore, err = postgres.NewPostgresDatastore(config.Database.URI, opts...)
+		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize postgres datastore: %v", err)
 		}
 	default:
-		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Database.Engine)
+		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Database.Engine))
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var grpcTLSConfig *server.TLSConfig
 	if config.GRPC.TLS.Enabled {
@@ -299,7 +299,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Database.MaxCacheSize),
+		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
