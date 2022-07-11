@@ -80,33 +80,21 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		case *openfgapb.Userset_This:
 			continue // no need to check on Direct Relationship
 		case *openfgapb.Userset_Intersection:
-			isDirect, err := isDirectIntersection(usType, tk)
+			err := isDirectIntersection(usType, tk)
 			if err != nil {
-				return handleError(err)
-			}
-			// dead code: should not be reachable bc !isDirect <==> err != nil
-			if !isDirect {
-				return handleError(err)
+				return serverErrors.HandleTupleValidateError(err)
 			}
 			continue
 		case *openfgapb.Userset_Union:
-			isDirect, err := isDirectUnion(usType, tk)
+			err := isDirectUnion(usType, tk)
 			if err != nil {
-				return handleError(err)
-			}
-			// dead code: should not be reachable bc !isDirect <==> err != nil
-			if !isDirect {
-				return handleError(err)
+				return serverErrors.HandleTupleValidateError(err)
 			}
 			continue
 		case *openfgapb.Userset_Difference:
-			isDirect, err := isDirectDifference(usType, tk)
+			err := isDirectDifference(usType, tk)
 			if err != nil {
-				return handleError(err)
-			}
-			// dead code: should not be reachable bc !isDirect <==> err != nil
-			if !isDirect {
-				return handleError(err)
+				return serverErrors.HandleTupleValidateError(err)
 			}
 			continue
 		default:
@@ -154,7 +142,7 @@ func handleError(err error) error {
 	return serverErrors.HandleError("", err)
 }
 
-func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) (bool, error) {
+func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) error {
 	isDirect := false
 contolLoop:
 	for _, userset := range nodes.Intersection.Child {
@@ -169,13 +157,13 @@ contolLoop:
 	}
 
 	if !isDirect {
-		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
 
-	return isDirect, nil
+	return nil
 }
 
-func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) (bool, error) {
+func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) error {
 	isDirect := false
 contolLoop:
 	for _, userset := range nodes.Union.Child {
@@ -189,12 +177,13 @@ contolLoop:
 		}
 	}
 	if !isDirect {
-		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
-	return true, nil
+
+	return nil
 }
 
-func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) (bool, error) {
+func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) error {
 	isDirect := false
 	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
 contolLoop:
@@ -209,7 +198,8 @@ contolLoop:
 		}
 	}
 	if !isDirect {
-		return false, &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
+		return &IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 	}
-	return true, nil
+
+	return nil
 }
