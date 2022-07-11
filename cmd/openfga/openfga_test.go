@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
@@ -212,6 +213,55 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, tester) })
+}
+
+func TestGRPCWithPresharedKey(t *testing.T) {
+	tester, err := newOpenFGATester(t, "--authn-method", "preshared", "--authn-preshared-keys", "key1,key2")
+	require.NoError(t, err)
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+
+	openfgaClient := openfgapb.NewOpenFGAServiceClient(conn)
+	healthClient := healthv1pb.NewHealthClient(conn)
+
+	resp, err := healthClient.Check(context.Background(), &healthv1pb.HealthCheckRequest{
+		Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+	})
+	require.NoError(t, err)
+	require.Equal(t, healthv1pb.HealthCheckResponse_SERVING, resp.Status)
+
+	_, err = openfgaClient.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.Error(t, err)
+
+	s, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Unauthenticated.String(), s.Code().String())
+
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key1")
+	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo1",
+	})
+	require.NoError(t, err)
+
+	ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key2")
+	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo2",
+	})
+	require.NoError(t, err)
+
+	ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key3")
+	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+		Name: "openfga-demo3",
+	})
+	require.Error(t, err)
+
+	s, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.PermissionDenied.String(), s.Code().String())
+
 }
 
 // connect connects to the underlying grpc server of the OpenFGATester and
