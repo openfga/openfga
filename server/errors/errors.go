@@ -151,7 +151,7 @@ func HandleTupleValidateError(err error) error {
 	case *tuple.RelationNotFoundError:
 		return RelationNotFound(t.Relation, t.TypeName, t.TupleKey)
 	case *tuple.IndirectWriteError:
-		return InvalidTuple(t.Reason, t.TupleKey)
+		return WriteToIndirectRelationError(t.Reason, t.TupleKey)
 	}
 
 	return HandleError("", err)
