@@ -21,6 +21,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
+	github.com/tidwall/gjson v1.14.1
 	go.buf.build/openfga/go/openfga/api v1.1.21
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.33.0
 	go.opentelemetry.io/otel v1.8.0
@@ -67,6 +68,8 @@ require (
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/subosito/gotenv v1.3.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 // indirect
 	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 // indirect
 	go.uber.org/atomic v1.7.0 // indirect

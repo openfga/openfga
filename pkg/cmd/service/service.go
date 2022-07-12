@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -189,6 +190,8 @@ func GetServiceConfig() (*Config, error) {
 	for _, path := range configPaths {
 		viper.AddConfigPath(path)
 	}
+	viper.SetEnvPrefix("OPENFGA")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	err := viper.ReadInConfig()

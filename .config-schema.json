@@ -41,23 +41,26 @@
             }
         },
         "datastore": {
-            "engine": {
-                "description": "The datastore engine that will be used for persistence.",
-                "type": "string",
-                "enum": ["memory", "postgres"],
-                "default": "memory"
-            },
-            "uri": {
-                "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
-                "type": "string",
-                "examples": [
-                    "postgres://user:pass@host:port/datastore?opts"
-                ]
-            },
-            "maxCacheSize": {
-                "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
-                "type": "integer",
-                "default": 100000
+            "type": "object",
+            "properties": {
+                "engine": {
+                    "description": "The datastore engine that will be used for persistence.",
+                    "type": "string",
+                    "enum": ["memory", "postgres"],
+                    "default": "memory"
+                },
+                "uri": {
+                    "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
+                    "type": "string",
+                    "examples": [
+                        "postgres://user:pass@host:port/datastore?opts"
+                    ]
+                },
+                "maxCacheSize": {
+                    "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
+                    "type": "integer",
+                    "default": 100000
+                }
             }
         },
         "authn": {
