@@ -90,20 +90,22 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 	name := fmt.Sprintf("openfga-%s", ulid)
 
-	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
+	ctx := context.Background()
+
+	cont, err := dockerClient.ContainerCreate(ctx, &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create openfga docker container")
 
 	stopContainer := func() {
 
 		timeout := 5 * time.Second
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, &timeout)
+		err := dockerClient.ContainerStop(ctx, cont.ID, &timeout)
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop openfga container: %v", err)
 		}
 	}
 
-	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
+	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
 	require.NoError(t, err)
 
 	t.Cleanup(stopContainer)
@@ -113,10 +115,10 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		time.Sleep(2 * time.Minute)
 
 		// swallow the error because by this point we've terminated
-		_ = dockerClient.ContainerStop(context.Background(), cont.ID, nil)
+		_ = dockerClient.ContainerStop(ctx, cont.ID, nil)
 	}()
 
-	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
+	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
 	require.NoError(t, err)
 
 	ports := containerJSON.NetworkSettings.Ports
@@ -133,13 +135,10 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	}
 	grpcPort := m[0].HostPort
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
-	// if transportCredentials != nil {
-	// 	creds = transportCredentials
-	// }
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithBlock(),
