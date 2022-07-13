@@ -170,7 +170,7 @@ func DefaultConfig() *Config {
 			Format: "text",
 		},
 		Playground: PlaygroundConfig{
-			Enabled: false,
+			Enabled: true,
 			Port:    3000,
 		},
 	}
