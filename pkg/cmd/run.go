@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
@@ -22,6 +24,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
