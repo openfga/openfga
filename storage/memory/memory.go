@@ -111,6 +111,15 @@ func (s *MemoryBackend) Close(ctx context.Context) error {
 	return nil
 }
 
+func (s *MemoryBackend) QueryRelationships(
+	ctx context.Context,
+	storeID string,
+	filter *storage.RelationshipFilter,
+	opts ...storage.QueryOptionsOption,
+) (storage.TupleIterator, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 // Read See storage.TupleBackend.Read
 func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := s.tracer.Start(ctx, "memory.Read")

@@ -101,6 +101,26 @@ func (mr *MockTupleBackendMockRecorder) MaxTuplesInWriteOperation() *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesInWriteOperation", reflect.TypeOf((*MockTupleBackend)(nil).MaxTuplesInWriteOperation))
 }
 
+// QueryRelationships mocks base method.
+func (m *MockTupleBackend) QueryRelationships(ctx context.Context, storeID string, filter *storage.RelationshipFilter, opts ...storage.QueryOptionsOption) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, storeID, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryRelationships", varargs...)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryRelationships indicates an expected call of QueryRelationships.
+func (mr *MockTupleBackendMockRecorder) QueryRelationships(ctx, storeID, filter interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, storeID, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryRelationships", reflect.TypeOf((*MockTupleBackend)(nil).QueryRelationships), varargs...)
+}
+
 // Read mocks base method.
 func (m *MockTupleBackend) Read(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
@@ -789,6 +809,26 @@ func (m *MockOpenFGADatastore) MaxTypesInTypeDefinition() int {
 func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesInTypeDefinition() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesInTypeDefinition", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTypesInTypeDefinition))
+}
+
+// QueryRelationships mocks base method.
+func (m *MockOpenFGADatastore) QueryRelationships(ctx context.Context, storeID string, filter *storage.RelationshipFilter, opts ...storage.QueryOptionsOption) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, storeID, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "QueryRelationships", varargs...)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// QueryRelationships indicates an expected call of QueryRelationships.
+func (mr *MockOpenFGADatastoreMockRecorder) QueryRelationships(ctx, storeID, filter interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, storeID, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryRelationships", reflect.TypeOf((*MockOpenFGADatastore)(nil).QueryRelationships), varargs...)
 }
 
 // Read mocks base method.

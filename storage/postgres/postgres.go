@@ -108,6 +108,38 @@ func (p *Postgres) Close(ctx context.Context) error {
 	return nil
 }
 
+func (p *Postgres) QueryRelationships(ctx context.Context, storeID string, filter *storage.RelationshipFilter, opts ...storage.QueryOptionsOption) (storage.TupleIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.QueryRelationships")
+	defer span.End()
+
+	sql := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store='%v'"
+	args := []interface{}{storeID}
+
+	if filter != nil {
+		if filter.ObjectType != "" {
+			sql += " AND object_type='%v'"
+			args = append(args, filter.ObjectType)
+		}
+
+		if filter.OptionalObjectID != "" {
+			sql += " AND object_id='%v'"
+			args = append(args, filter.OptionalObjectID)
+		}
+
+		if filter.OptionalRelation != "" {
+			sql += " AND relation='%v'"
+			args = append(args, filter.OptionalRelation)
+		}
+	}
+
+	rows, err := p.pool.Query(ctx, fmt.Sprintf(sql, args...))
+	if err != nil {
+		return nil, err
+	}
+
+	return &tupleIterator{rows: rows}, nil
+}
+
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.Read")
 	defer span.End()
