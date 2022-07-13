@@ -152,12 +152,12 @@ If everything is running correctly, you should get a response with information a
 ```
 
 ## Playground
-The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instace.
+The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instance.
 
-To run OpenFGA with the Playground enabled, provide the `--playground-enabled` flag.
+To run OpenFGA with the Playground disabled, provide the `--playground-enabled=false` flag.
 
 ```
-./bin/openfga run --playground-enabled
+./bin/openfga run --playground-enabled=false
 ```
 Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
