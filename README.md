@@ -56,7 +56,7 @@ Download your platform's [latest release](https://github.com/openfga/openfga/rel
 with the command:
 
 ```bash
-./bin/openfga run
+./openfga run
 ```
 
 ### Building from Source
