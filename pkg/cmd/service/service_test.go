@@ -13,6 +13,8 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"path"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +24,7 @@ import (
 	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authn/mocks"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
@@ -30,6 +33,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
 
 const (
 	openFGAServerAddr = "http://localhost:8080"
@@ -712,4 +724,82 @@ func TestHTTPServerEnabled(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	cancel()
+}
+
+func TestDefaultConfig(t *testing.T) {
+	config := DefaultConfig()
+
+	jsonSchema, err := ioutil.ReadFile(".config-schema.json")
+	require.NoError(t, err)
+
+	res := gjson.ParseBytes(jsonSchema)
+
+	val := res.Get("properties.datastore.properties.engine.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.Datastore.Engine)
+
+	val = res.Get("properties.datastore.properties.maxCacheSize.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.Datastore.MaxCacheSize)
+
+	val = res.Get("properties.grpc.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.GRPC.Enabled)
+
+	val = res.Get("properties.grpc.properties.addr.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.GRPC.Addr)
+
+	val = res.Get("properties.http.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.HTTP.Enabled)
+
+	val = res.Get("properties.http.properties.addr.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.HTTP.Addr)
+
+	val = res.Get("properties.playground.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.Playground.Enabled)
+
+	val = res.Get("properties.playground.properties.port.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.Playground.Port)
+
+	val = res.Get("properties.authn.properties.method.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.Authn.Method)
+
+	val = res.Get("properties.log.properties.format.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.Log.Format)
+
+	val = res.Get("properties.openfga.properties.maxTuplesPerWrite.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTuplesPerWrite)
+
+	val = res.Get("properties.openfga.properties.maxTypesPerAuthorizationModel.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTypesPerAuthorizationModel)
+
+	val = res.Get("properties.openfga.properties.changelogHorizonOffset.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.OpenFGA.ChangelogHorizonOffset)
+
+	val = res.Get("properties.openfga.properties.resolveNodeLimit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.OpenFGA.ResolveNodeLimit)
+
+	val = res.Get("properties.grpc.properties.tls.$ref")
+	require.True(t, val.Exists())
+	require.Equal(t, "#/definitions/tls", val.String())
+
+	val = res.Get("properties.http.properties.tls.$ref")
+	require.True(t, val.Exists())
+	require.Equal(t, "#/definitions/tls", val.String())
+
+	val = res.Get("definitions.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.GRPC.TLS.Enabled)
+	require.Equal(t, val.Bool(), config.HTTP.TLS.Enabled)
 }

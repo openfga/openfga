@@ -56,7 +56,7 @@ Download your platform's [latest release](https://github.com/openfga/openfga/rel
 with the command:
 
 ```bash
-./bin/openfga run
+./openfga run
 ```
 
 ### Building from Source
@@ -155,19 +155,19 @@ If everything is running correctly, you should get a response with information a
 ```
 
 ## Playground
-The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instace.
+The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instance.
 
-To run OpenFGA with the Playground enabled, provide the `--playground-enabled` flag.
+To run OpenFGA with the Playground disabled, provide the `--playground-enabled=false` flag.
 
 ```
-./bin/openfga run --playground-enabled
+./openfga run --playground-enabled=false
 ```
 Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
 In the event that a port other than the default port is required, the `--playground-port` flag can be set to change it. For example,
 
 ```sh
-./bin/openfga run --playground-enabled --playground-port 3001
+./openfga run --playground-enabled --playground-port 3001
 ```
 
 ## Next Steps

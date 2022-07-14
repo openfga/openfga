@@ -8,7 +8,7 @@ before:
 builds:
   - 
     main: ./cmd/openfga
-    binary: bin/openfga
+    binary: openfga
     env:
       - CGO_ENABLED=0
     goos:
@@ -51,6 +51,8 @@ archives:
       windows: Windows
       386: i386
       amd64: x86_64
+    files:
+      - static/playground
 
 checksum:
   name_template: 'checksums.txt'
