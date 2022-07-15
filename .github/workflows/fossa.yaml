@@ -1,18 +1,37 @@
 name: FOSSA
 on:
+  pull_request:
   push:
     branches:
-      - master
       - main
+      - master
 
 jobs:
   fossa:
     runs-on: ubuntu-latest
-    if: (github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
+    if: (github.repository_owner == 'openfga')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version-file: './go.mod'
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-v1
+      - name: Build
+        run: make build
       - name: Run FOSSA scan and upload build data
         uses: fossas/fossa-action@main
         with:
           api-key: ${{ secrets.FOSSA_API_KEY }}
+          branch: ${{ github.ref_name }}
+      - name: Run FOSSA tests
+        uses: fossas/fossa-action@main
+        with:
+          api-key: ${{ secrets.FOSSA_API_KEY }}
+          run-tests: true

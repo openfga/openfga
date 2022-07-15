@@ -9,7 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
+	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/internal/dispatch"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
@@ -20,7 +22,7 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
-	"github.com/openfga/openfga/server/queries"
+	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -29,7 +31,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
 
@@ -38,56 +43,72 @@ const (
 )
 
 var (
-	ErrNilTokenEncoder error = fmt.Errorf("tokenEncoder must be a non-nil interface value")
-	ErrNilTransport    error = fmt.Errorf("transport must be a non-nil interface value")
+	ErrNilTokenEncoder = fmt.Errorf("tokenEncoder must be a non-nil interface value")
+	ErrNilTransport    = fmt.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
 // a GRPC and HTTP server.
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
-	*grpc.Server
-	tracer     trace.Tracer
-	meter      metric.Meter
-	logger     logger.Logger
-	datastore  storage.OpenFGADatastore
-	encoder    encoder.Encoder
-	config     *Config
-	transport  gateway.Transport
-	dispatcher dispatch.Dispatcher
+
+	healthManager health.HealthCheckManager
+	tracer        trace.Tracer
+	meter         metric.Meter
+	logger        logger.Logger
+	datastore     storage.OpenFGADatastore
+	encoder       encoder.Encoder
+	config        *Config
+	transport     gateway.Transport
+	dispatcher    dispatch.Dispatcher
 
 	defaultServeMuxOpts []runtime.ServeMuxOption
 }
 
 type Dependencies struct {
-	Dispatcher dispatch.Dispatcher
 	Datastore  storage.OpenFGADatastore
 	Tracer     trace.Tracer
 	Meter      metric.Meter
 	Logger     logger.Logger
+	Transport  gateway.Transport
+	Dispatcher dispatch.Dispatcher
 
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
-	// Defaults to Base64Encoder if none is provided.
+	// Defaults to a base64 encoder if none is provided.
 	TokenEncoder encoder.Encoder
-	Transport    gateway.Transport
 }
 
 type Config struct {
-	ServiceName            string
-	RPCPort                int
-	HTTPPort               int
+	GRPCServer             GRPCServerConfig
+	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
-	RequestTimeout         time.Duration
+}
+
+type GRPCServerConfig struct {
+	Addr      string
+	TLSConfig *TLSConfig
+}
+
+type HTTPServerConfig struct {
+	Enabled                bool
+	Addr                   string
+	UpstreamRequestTimeout time.Duration
+	TLSConfig              *TLSConfig
+	CORSAllowedOrigins     []string
+	CORSAllowedHeaders     []string
+}
+
+type TLSConfig struct {
+	CertPath string
+	KeyPath  string
 }
 
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(config.UnaryInterceptors...))
-
 	tokenEncoder := dependencies.TokenEncoder
 	if tokenEncoder == nil {
 		tokenEncoder = encoder.NewBase64Encoder()
@@ -109,22 +130,20 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:     grpcServer,
 		tracer:     dependencies.Tracer,
 		meter:      dependencies.Meter,
 		logger:     dependencies.Logger,
-		dispatcher: dependencies.Dispatcher,
 		datastore:  dependencies.Datastore,
 		encoder:    tokenEncoder,
 		transport:  transport,
+		dispatcher: dependencies.Dispatcher,
 		config:     config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
 				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				if serverErrors.IsValidEncodedError(actualCode) {
-					dependencies.Logger.ErrorWithContext(c, "gRPC error", logger.Error(e), logger.String("request_url", r.URL.String()))
+					dependencies.Logger.ErrorWithContext(c, "grpc error", logger.Error(e), logger.String("request_url", r.URL.String()))
 				}
 
 				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
@@ -132,7 +151,9 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		},
 	}
 
-	openfgapb.RegisterOpenFGAServiceServer(grpcServer, server)
+	healthManager := NewOpenFGAServerHealthChecker(server)
+	healthManager.RegisterService(openfgapb.OpenFGAService_ServiceDesc.ServiceName)
+	server.healthManager = healthManager
 
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
@@ -156,7 +177,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:              store,
 		TupleKey:             tk,
@@ -173,7 +194,7 @@ func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesReques
 	))
 	defer span.End()
 
-	q := queries.NewReadTuplesQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 
@@ -246,7 +267,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := queries.NewExpandQuery(s.datastore, s.tracer, s.logger)
+	q := commands.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -261,7 +282,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
-	q := queries.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -288,7 +309,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := queries.NewReadAuthorizationModelsQuery(s.datastore, s.encoder, s.logger)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
 
@@ -330,7 +351,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 		return nil, err
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-	q := queries.NewReadAssertionsQuery(s.datastore, s.logger)
+	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
@@ -341,7 +362,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := queries.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -381,7 +402,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (
 	))
 	defer span.End()
 
-	q := queries.NewGetStoreQuery(s.datastore, s.logger)
+	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -389,76 +410,132 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := queries.NewListStoresQuery(s.datastore, s.encoder, s.logger)
+	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 
-// Close gracefully stops this server, blocking any subsequent requests and waiting for
-// any existing ones to complete before returning.
-func (s *Server) Close() {
-	s.GracefulStop()
+// IsReady reports whether this OpenFGA server instance is ready to accept
+// traffic.
+func (s *Server) IsReady(ctx context.Context) (bool, error) {
+
+	// for now we only depend on the datastore being ready, but in the future
+	// server readiness may also depend on other criteria in addition to the
+	// datastore being ready.
+	return s.datastore.IsReady(ctx)
 }
 
-// Run starts server execution, and blocks until complete, returning any serverErrors.
+// Run starts server execution, and blocks until complete, returning any server errors. To close the
+// server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
-	rpcAddr := fmt.Sprintf("localhost:%d", s.config.RPCPort)
+
+	interceptors := []grpc.UnaryServerInterceptor{
+		grpc_validator.UnaryServerInterceptor(),
+	}
+	interceptors = append(interceptors, s.config.UnaryInterceptors...)
+
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(interceptors...),
+	}
+
+	if s.config.GRPCServer.TLSConfig != nil {
+		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
+		if err != nil {
+			return err
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	// nosemgrep: grpc-server-insecure-connection
+	grpcServer := grpc.NewServer(opts...)
+	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
+	healthv1pb.RegisterHealthServer(grpcServer, s.healthManager.GetHealthServer())
+	reflection.Register(grpcServer)
+
+	rpcAddr := s.config.GRPCServer.Addr
 	lis, err := net.Listen("tcp", rpcAddr)
 	if err != nil {
 		return err
 	}
 
 	go func() {
-		if err := s.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil {
 			s.logger.Error("failed to start grpc server", logger.Error(err))
 		}
 	}()
 
-	s.logger.Info(fmt.Sprintf("gRPC server listening on '%s'...", rpcAddr))
+	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
 
-	// Set a request timeout.
-	runtime.DefaultContextTimeout = s.config.RequestTimeout
+	var httpServer *http.Server
+	if s.config.HTTPServer.Enabled {
+		// Set a request timeout.
+		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamRequestTimeout
 
-	muxOpts := []runtime.ServeMuxOption{}
-	muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
-	muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
+		dialOpts := []grpc.DialOption{
+			grpc.WithBlock(),
+			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
+		}
+		if s.config.GRPCServer.TLSConfig != nil {
+			creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
+			if err != nil {
+				return err
+			}
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
+		} else {
+			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		}
 
-	mux := runtime.NewServeMux(muxOpts...)
+		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
 
-	if err := openfgapb.RegisterOpenFGAServiceHandlerFromEndpoint(ctx, mux, rpcAddr, []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-	}); err != nil {
-		return err
+		conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
+		if err != nil {
+			return err
+		}
+		defer conn.Close()
+
+		healthClient := healthv1pb.NewHealthClient(conn)
+
+		muxOpts := []runtime.ServeMuxOption{
+			runtime.WithHealthzEndpoint(healthClient),
+		}
+		muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
+		muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
+
+		mux := runtime.NewServeMux(muxOpts...)
+
+		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
+			return err
+		}
+
+		httpServer = &http.Server{
+			Addr: s.config.HTTPServer.Addr,
+			Handler: cors.New(cors.Options{
+				AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
+				AllowCredentials: true,
+				AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
+				AllowedMethods: []string{http.MethodGet, http.MethodPost,
+					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
+			}).Handler(mux),
+		}
+
+		go func() {
+			s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
+
+			var err error
+			if s.config.HTTPServer.TLSConfig != nil {
+				err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
+			} else {
+				err = httpServer.ListenAndServe()
+			}
+			if err != http.ErrServerClosed {
+				s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+			}
+		}()
 	}
 
-	if err := mux.HandlePath(http.MethodGet, "/healthz", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-		w.WriteHeader(http.StatusOK)
-	}); err != nil {
-		s.logger.Error("failed to register /healthz endpoint (for server health)", logger.Error(err))
-		return err
-	}
-
-	httpServer := &http.Server{
-		Addr: fmt.Sprintf(":%d", s.config.HTTPPort),
-		Handler: cors.New(cors.Options{
-			AllowedOrigins:   []string{"*"},
-			AllowCredentials: true,
-			AllowedHeaders:   []string{"*"},
-			AllowedMethods: []string{http.MethodGet, http.MethodPost,
-				http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-		}).Handler(mux),
-	}
-
-	httpServer.RegisterOnShutdown(func() {
-		s.Stop()
-	})
-
+	// start the health checks last to avoid a race with the HTTP server startup process
 	go func() {
-		s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-		err := httpServer.ListenAndServe()
-
-		if err != http.ErrServerClosed {
-			s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
+		if err := s.healthManager.Check(ctx)(); err != nil {
+			s.logger.Fatal("server health checks failed", logger.Error(err))
 		}
 	}()
 
@@ -468,10 +545,14 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
-		return err
+	if httpServer != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
+			s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
+			return err
+		}
 	}
+
+	grpcServer.GracefulStop()
 
 	return nil
 }
@@ -499,4 +580,75 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
+}
+
+// serverHealthChecker implements the HealthCheckManager interface for an OpenFGA server
+// specifically.
+type serverHealthChecker struct {
+	healthServer  *health.AuthlessHealthServer
+	openfgaServer *Server
+	serviceNames  map[string]struct{}
+}
+
+var _ health.HealthCheckManager = &serverHealthChecker{}
+
+// NewOpenFGAServerHealthChecker constructs a HealthCheckManager that can be used
+// to report the health status of the provided OpenFGA server.
+func NewOpenFGAServerHealthChecker(s *Server) health.HealthCheckManager {
+	return &serverHealthChecker{
+		healthServer:  health.NewAuthlessHealthServer(),
+		openfgaServer: s,
+		serviceNames:  map[string]struct{}{},
+	}
+}
+
+// RegisterService registers the provided serviceName with this server health checker and
+// sets it's serving status to 'NOT SERVING'
+func (s *serverHealthChecker) RegisterService(serviceName string) {
+	s.serviceNames[serviceName] = struct{}{}
+	s.healthServer.Server.SetServingStatus(serviceName, healthv1pb.HealthCheckResponse_NOT_SERVING)
+}
+
+// GetHealthServer returns the underlying health server managed by this health
+// checker.
+func (s *serverHealthChecker) GetHealthServer() *health.AuthlessHealthServer {
+	return s.healthServer
+}
+
+// Check reports whether the server managed by this server health checker is
+// ready to accept traffic.
+func (s *serverHealthChecker) Check(ctx context.Context) func() error {
+	return func() error {
+
+		backoffPolicy := backoff.NewExponentialBackOff()
+		backoffPolicy.MaxElapsedTime = 1 * time.Minute
+		ticker := backoff.NewTicker(backoffPolicy)
+		defer ticker.Stop()
+
+		// continuously monitor health status on a ticker interval
+		for {
+
+			select {
+			case _, ok := <-ticker.C:
+				if !ok {
+					return fmt.Errorf("server healthcheck deadline exceeded")
+				}
+			case <-ctx.Done():
+				return nil
+			}
+
+			ready, err := s.openfgaServer.IsReady(ctx)
+			if err != nil {
+				s.openfgaServer.logger.Debug("server readiness check failed with an error", logger.Error(err))
+			}
+
+			if ready {
+				for service := range s.serviceNames {
+					s.healthServer.SetServingStatus(service, healthv1pb.HealthCheckResponse_SERVING)
+				}
+
+				return nil
+			}
+		}
+	}
 }

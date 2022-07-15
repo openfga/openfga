@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
-	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
@@ -24,13 +23,8 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	datastore, err := dbTester.New()
 	require.NoError(err)
 
-	fakeEncoder, err := encoder.NewTokenEncrypter("key")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// clean up all stores from other tests
-	getStoresQuery := queries.NewListStoresQuery(datastore, fakeEncoder, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
 	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {

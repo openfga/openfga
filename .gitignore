@@ -7,3 +7,5 @@ dist/
 coverage*.out
 *.swp
 *.pb.go
+
+openfga

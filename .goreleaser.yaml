@@ -8,13 +8,18 @@ before:
 builds:
   - 
     main: ./cmd/openfga
-    binary: bin/openfga
+    binary: openfga
     env:
       - CGO_ENABLED=0
     goos:
       - linux
       - windows
       - darwin
+    ldflags:
+      - "-s -w"
+      - "-X github.com/openfga/openfga/internal/build.Version=v{{ .Version }}"
+      - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
 
 dockers:
   -
@@ -31,6 +36,9 @@ dockers:
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}"
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
 
+    extra_files:
+      - static/playground
+
 release:
   github:
     owner: openfga
@@ -43,6 +51,8 @@ archives:
       windows: Windows
       386: i386
       amd64: x86_64
+    files:
+      - static/playground
 
 checksum:
   name_template: 'checksums.txt'

@@ -1,4 +1,5 @@
 .DEFAULT_GOAL := help
+COVERPKG := $(shell eval go list ./... | grep -v mocks |  paste -sd "," -)
 
 .PHONY: help
 help:
@@ -18,21 +19,20 @@ lint:  ## Lint Go source files
 
 .PHONY: clean
 clean: ## Clean files
-	rm ./bin/openfga
+	rm ./openfga
 
 .PHONY: build
 build: ## Build/compile the OpenFGA service
-	go build -o ./bin/openfga ./cmd/openfga
+	go build -o ./openfga ./cmd/openfga
 
 .PHONY: run
 run: build ## Run the OpenFGA server with in-memory storage
-	./bin/openfga
+	./openfga run
 
 .PHONY: run-postgres
-run-postgres: build ## Run the OpenFGA server with Postgres storage
-	docker-compose down
-	docker-compose up -d postgres
-	$(test_backend) make run
+run-postgres: build ## Run the OpenFGA server with Postgres
+	# nosemgrep: detected-username-and-password-in-uri
+	./openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres?sslmode=disable
 
 .PHONY: go-generate
 go-generate: install-tools
@@ -42,7 +42,7 @@ go-generate: install-tools
 unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coverageunit.out \
-			-coverpkg=./... \
+			-coverpkg=$(COVERPKG) \
 			-covermode=atomic -race \
 			-count=1 \
 			./...
