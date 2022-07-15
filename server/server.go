@@ -158,7 +158,11 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Lookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_LookupServer) error {
+func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*openfgapb.LookupResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_StreamedLookupServer) error {
 
 	storeID := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
@@ -210,7 +214,7 @@ func (s *Server) Lookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAServi
 				if resp.Allowed {
 					_, objectID := tuple.SplitObject(t.Key.Object)
 
-					err = srv.Send(&openfgapb.LookupResponse{
+					err = srv.Send(&openfgapb.StreamedLookupResponse{
 						ObjectId: objectID,
 					})
 					if err != nil {
