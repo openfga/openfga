@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/openfga/openfga/internal/dispatch"
+	datastoremw "github.com/openfga/openfga/internal/middleware/datastore"
 	dispatchpb "github.com/openfga/openfga/pkg/proto/dispatch/v1"
 	"github.com/openfga/openfga/pkg/tuple"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -12,7 +13,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/sync/errgroup"
 )
 
 var tracer = otel.Tracer("openfga/internal/graph/check")
@@ -21,7 +21,6 @@ var tracer = otel.Tracer("openfga/internal/graph/check")
 // delegates subproblems to the provided dispatch.Check dispatcher.
 type ConcurrentChecker struct {
 	dispatcher dispatch.Check
-	datastore  storage.OpenFGADatastore
 }
 
 // NewConcurrentChecker creates an instance of a ConcurrentChecker.
@@ -37,18 +36,21 @@ func (cc *ConcurrentChecker) Check(ctx context.Context, req *dispatchpb.Dispatch
 	reducerFunc := cc.reduce(ctx, req, rewrite)
 
 	resolved, err := any(ctx, []ReduceableCheckFunc{reducerFunc})
-	resolved.Metadata = addCallToResponseMetadata(resolved.Metadata)
+	resolved.Metadata = addCallToResponseMetadata(resolved.GetMetadata())
 
 	return resolved, err
 }
 
 // dispatch dispatches the provided request to the internal dispatcher and yields a value on
 // the result channel if the subproblem is successfully resolved or an error otherwise.
-func (cc *ConcurrentChecker) dispatch(req *dispatchpb.DispatchCheckRequest) ReduceableCheckFunc {
+func (cc *ConcurrentChecker) dispatch(ctx context.Context, req *dispatchpb.DispatchCheckRequest) ReduceableCheckFunc {
 	return func(ctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
 		result, err := cc.dispatcher.DispatchCheck(ctx, req)
+		if err != nil {
+			return err
+		}
 		resultChan <- result
-		return err
+		return nil
 	}
 }
 
@@ -62,23 +64,42 @@ func (cc *ConcurrentChecker) reduce(
 	ctx, span := tracer.Start(ctx, "reduce")
 	defer span.End()
 
+	checkTracer := CheckResolutionTracerFromContext(ctx)
+
 	switch rw := rewrite.Userset.(type) {
 	case nil, *openfgapb.Userset_This:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("this")})
 		return cc.checkDirect(ctx, req)
 	case *openfgapb.Userset_Union:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("union")})
-		return cc.checkSetOperation(ctx, req, rw.Union.GetChild(), any)
+		return cc.checkSetOperation(
+			WithCheckResolutionTraceContext(ctx, checkTracer.AppendUnion()),
+			req,
+			rw.Union.GetChild(),
+			any,
+		)
 	case *openfgapb.Userset_Intersection:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("intersection")})
-		return cc.checkSetOperation(ctx, req, rw.Intersection.GetChild(), all)
+		return cc.checkSetOperation(
+			WithCheckResolutionTraceContext(ctx, checkTracer.AppendIntersection(checkTracer.CreateIntersectionTracer())),
+			req,
+			rw.Intersection.GetChild(),
+			all,
+		)
 	case *openfgapb.Userset_Difference:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("difference")})
+
 		children := []*openfgapb.Userset{
 			rw.Difference.GetBase(),
 			rw.Difference.GetSubtract(),
 		}
-		return cc.checkSetOperation(ctx, req, children, difference)
+
+		return cc.checkSetOperation(
+			ctx,
+			req,
+			children,
+			difference,
+		)
 	case *openfgapb.Userset_ComputedUserset:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("computed")})
 		return cc.checkComputedUserset(ctx, req, rw)
@@ -94,101 +115,138 @@ func (cc *ConcurrentChecker) reduce(
 
 func (cc *ConcurrentChecker) checkDirect(ctx context.Context, req *dispatchpb.DispatchCheckRequest) ReduceableCheckFunc {
 
-	return func(ctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
-		g := new(errgroup.Group)
+	return func(cctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
+		checkTracer := CheckResolutionTracerFromContext(ctx)
 
-		g.Go(func() error {
+		datastore := datastoremw.MustFromContext(ctx)
 
-			tuple, err := cc.datastore.ReadUserTuple(ctx, req.WrappedRequest.StoreId, req.WrappedRequest.TupleKey)
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					resultChan <- &dispatchpb.DispatchCheckResponse{
-						Metadata: emptyMetadata,
-						WrappedResponse: &openfgapb.CheckResponse{
-							Allowed: false,
-						},
-					}
+		storeID := req.GetWrappedRequest().GetStoreId()
+		modelID := req.GetWrappedRequest().GetAuthorizationModelId()
+		tupleKey := req.GetWrappedRequest().GetTupleKey()
 
-					return nil
-				}
-
-				return err
-			}
-
-			_ = tuple // todo: append the resolution path to the tracer
-
-			resultChan <- &dispatchpb.DispatchCheckResponse{
-				WrappedResponse: &openfgapb.CheckResponse{
-					Allowed: true,
-				},
-			}
-
-			return nil
-		})
-
-		g.Go(func() error {
-			iter, err := cc.datastore.ReadUsersetTuples(ctx, req.WrappedRequest.StoreId, req.WrappedRequest.TupleKey)
-			if err != nil {
-				return err
-			}
-			defer iter.Stop()
-
-			var requestsToDispatch []ReduceableCheckFunc
-			for {
-				t, err := iter.Next()
+		resolved, err := any(cctx, []ReduceableCheckFunc{
+			func(cctx context.Context, r chan<- *dispatchpb.DispatchCheckResponse) error {
+				tuple, err := datastore.ReadUserTuple(ctx, storeID, tupleKey)
 				if err != nil {
-					if err == storage.TupleIteratorDone {
-						break
+					if errors.Is(err, storage.ErrNotFound) {
+						r <- checkResponse(false, emptyMetadata)
+						return nil
 					}
+
 					return err
 				}
 
-				tupleKey := t.GetKey()
-				object, relation := tuple.SplitObjectRelation(tupleKey.GetUser())
+				_ = tuple
 
-				requestsToDispatch = append(
-					requestsToDispatch,
-					cc.dispatch(&dispatchpb.DispatchCheckRequest{
-						Metadata: decrementDepth(req.GetMetadata()),
-						WrappedRequest: &openfgapb.CheckRequest{
-							StoreId: req.GetWrappedRequest().GetStoreId(),
-							TupleKey: &openfgapb.TupleKey{
-								Object:   object,
-								Relation: relation,
-								User:     req.GetWrappedRequest().GetTupleKey().GetUser(),
-							},
-						},
-					}),
-				)
-			}
-			iter.Stop()
+				responseMetadata := ensureMetadata(nil)
+				responseMetadata.ResolutionPath = checkTracer.AppendDirect().GetResolution()
 
-			resolved, err := any(ctx, requestsToDispatch)
-			if err != nil {
-				return err
-			}
+				r <- checkResponse(true, responseMetadata)
+				return nil
+			},
+			func(cctx context.Context, r chan<- *dispatchpb.DispatchCheckResponse) error {
+				iter, err := datastore.ReadUsersetTuples(ctx, storeID, tupleKey)
+				if err != nil {
+					return err
+				}
+				defer iter.Stop()
 
-			resultChan <- resolved
-			return nil
+				var requestsToDispatch []ReduceableCheckFunc
+				for {
+					t, err := iter.Next()
+					if err != nil {
+						if err == storage.TupleIteratorDone {
+							break
+						}
+
+						return err
+					}
+					defer iter.Stop()
+
+					tk := t.GetKey() // use other variable than tupleKey to avoid overlap
+
+					if tk.GetUser() == "*" {
+
+						responseMetadata := ensureMetadata(nil)
+						responseMetadata.ResolutionPath = checkTracer.AppendDirect().GetResolution()
+
+						r <- checkResponse(true, responseMetadata)
+						return nil
+					}
+
+					object, relation := tuple.SplitObjectRelation(tk.GetUser())
+
+					metadata := decrementDepth(req.GetMetadata())
+					metadata.ResolutionPath = checkTracer.AppendDirect().AppendString(tk.GetUser()).GetResolution()
+
+					requestsToDispatch = append(
+						requestsToDispatch,
+						cc.dispatch(
+							ctx,
+							&dispatchpb.DispatchCheckRequest{
+								Metadata: metadata,
+								WrappedRequest: &openfgapb.CheckRequest{
+									StoreId:              storeID,
+									AuthorizationModelId: modelID,
+									TupleKey: &openfgapb.TupleKey{
+										Object:   object,
+										Relation: relation,
+										User:     tupleKey.GetUser(),
+									},
+									Trace: req.GetWrappedRequest().GetTrace(),
+								},
+							}),
+					)
+				}
+
+				resolved, err := any(ctx, requestsToDispatch)
+				if err != nil {
+					return err
+				}
+
+				r <- resolved
+				return nil
+			},
 		})
+		if err != nil {
+			return err
+		}
 
-		return g.Wait()
-
+		resultChan <- resolved
+		return nil
 	}
 }
 
 func (cc *ConcurrentChecker) checkComputedUserset(ctx context.Context, req *dispatchpb.DispatchCheckRequest, rw *openfgapb.Userset_ComputedUserset) ReduceableCheckFunc {
-	return cc.dispatch(&dispatchpb.DispatchCheckRequest{
-		Metadata: decrementDepth(req.GetMetadata()),
-		WrappedRequest: &openfgapb.CheckRequest{
-			StoreId: req.GetWrappedRequest().GetStoreId(),
-			TupleKey: &openfgapb.TupleKey{
-				Object:   req.GetWrappedRequest().GetTupleKey().GetObject(),
-				Relation: rw.ComputedUserset.GetObject(),
-				User:     req.GetWrappedRequest().GetTupleKey().GetUser(),
+
+	checkTracer := CheckResolutionTracerFromContext(ctx)
+
+	object := req.GetWrappedRequest().GetTupleKey().GetObject()
+	relation := rw.ComputedUserset.GetRelation()
+
+	checkTracer = checkTracer.AppendComputed().AppendString(tuple.ToObjectRelationString(object, relation))
+
+	// have to reinject because we have a new reference
+	ctx = WithCheckResolutionTraceContext(ctx, checkTracer)
+
+	metadata := decrementDepth(req.GetMetadata())
+	metadata.ResolutionPath = checkTracer.GetResolution()
+
+	return cc.dispatch(
+		ctx,
+		&dispatchpb.DispatchCheckRequest{
+			Metadata: metadata,
+			WrappedRequest: &openfgapb.CheckRequest{
+				StoreId:              req.GetWrappedRequest().GetStoreId(),
+				AuthorizationModelId: req.GetWrappedRequest().GetAuthorizationModelId(),
+				TupleKey: &openfgapb.TupleKey{
+					Object:   object,
+					Relation: relation,
+					User:     req.GetWrappedRequest().GetTupleKey().GetUser(),
+				},
+				Trace: req.GetWrappedRequest().GetTrace(),
 			},
-		},
-	})
+		})
 }
 
 func (cc *ConcurrentChecker) checkTupleToUserset(
@@ -196,28 +254,37 @@ func (cc *ConcurrentChecker) checkTupleToUserset(
 	req *dispatchpb.DispatchCheckRequest,
 	rw *openfgapb.Userset_TupleToUserset,
 ) ReduceableCheckFunc {
+
+	checkTracer := CheckResolutionTracerFromContext(ctx)
+	_ = checkTracer // todo: use checkTracer
+
 	return func(ctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
+		datastore := datastoremw.MustFromContext(ctx)
 
 		relation := rw.TupleToUserset.GetTupleset().GetRelation()
 		if relation == "" {
 			relation = req.GetWrappedRequest().GetTupleKey().GetRelation()
 		}
 
+		object := req.GetWrappedRequest().GetTupleKey().GetObject()
+
+		checkTracer = checkTracer.AppendTupleToUserset().AppendString(tuple.ToObjectRelationString(object, relation))
+
+		iter, err := datastore.Read(
+			ctx,
+			req.GetWrappedRequest().GetStoreId(),
+			&openfgapb.TupleKey{
+				Object:   object,
+				Relation: relation,
+			},
+		)
+		if err != nil {
+			return err
+		}
+		defer iter.Stop()
+
 		var requestsToDispatch []ReduceableCheckFunc
 		for {
-			iter, err := cc.datastore.Read(
-				ctx,
-				req.GetWrappedRequest().GetStoreId(),
-				&openfgapb.TupleKey{
-					Object:   req.GetWrappedRequest().GetTupleKey().GetObject(),
-					Relation: relation,
-				},
-			)
-			if err != nil {
-				return err
-			}
-			defer iter.Stop()
-
 			t, err := iter.Next()
 			if err != nil {
 				if err == storage.TupleIteratorDone {
@@ -237,19 +304,31 @@ func (cc *ConcurrentChecker) checkTupleToUserset(
 				continue
 			}
 
+			checkTracer = checkTracer.AppendString(tuple.ToObjectRelationString(object, relation))
+
+			// have to reinject because we have a new reference
+			ctx = WithCheckResolutionTraceContext(ctx, checkTracer)
+
+			metadata := decrementDepth(req.GetMetadata())
+			metadata.ResolutionPath = checkTracer.GetResolution()
+
 			requestsToDispatch = append(
 				requestsToDispatch,
-				cc.dispatch(&dispatchpb.DispatchCheckRequest{
-					Metadata: decrementDepth(req.GetMetadata()),
-					WrappedRequest: &openfgapb.CheckRequest{
-						StoreId: req.GetWrappedRequest().GetStoreId(),
-						TupleKey: &openfgapb.TupleKey{
-							Object:   object,
-							Relation: relation,
-							User:     req.GetWrappedRequest().GetTupleKey().GetUser(),
+				cc.dispatch(
+					ctx,
+					&dispatchpb.DispatchCheckRequest{
+						Metadata: metadata,
+						WrappedRequest: &openfgapb.CheckRequest{
+							StoreId:              req.GetWrappedRequest().GetStoreId(),
+							AuthorizationModelId: req.GetWrappedRequest().GetAuthorizationModelId(),
+							TupleKey: &openfgapb.TupleKey{
+								Object:   object,
+								Relation: relation,
+								User:     req.GetWrappedRequest().GetTupleKey().GetUser(),
+							},
+							Trace: req.GetWrappedRequest().GetTrace(),
 						},
-					},
-				}),
+					}),
 			)
 		}
 
@@ -269,11 +348,16 @@ func (cc *ConcurrentChecker) checkSetOperation(
 	children []*openfgapb.Userset,
 	reducer CheckReducer,
 ) ReduceableCheckFunc {
-	return func(ctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
+
+	resolutionTracer := CheckResolutionTracerFromContext(ctx)
+
+	return func(cctx context.Context, resultChan chan<- *dispatchpb.DispatchCheckResponse) error {
 
 		var requestsToDispatch []ReduceableCheckFunc
-		for _, child := range children {
-			requestsToDispatch = append(requestsToDispatch, cc.reduce(ctx, req, child))
+		for i, child := range children {
+			resolutionCtx := WithCheckResolutionTraceContext(cctx, resolutionTracer.AppendIndex(i))
+
+			requestsToDispatch = append(requestsToDispatch, cc.reduce(resolutionCtx, req, child))
 		}
 
 		resolved, err := reducer(ctx, requestsToDispatch)
@@ -291,32 +375,24 @@ func (cc *ConcurrentChecker) checkSetOperation(
 func all(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.DispatchCheckResponse, error) {
 
 	if len(requests) == 0 {
-		// return empty CheckResult
+		return checkResponse(false, emptyMetadata), nil
 	}
 
 	responseMetadata := emptyMetadata
 
 	resultChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests))
 	errChan := make(chan error)
-	defer close(resultChan)
-	defer close(errChan)
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	g := new(errgroup.Group)
-
-	for _, req := range requests {
-		fn := func() error {
+	for _, r := range requests {
+		go func(req ReduceableCheckFunc) {
 			err := req(cctx, resultChan)
 			if err != nil {
 				errChan <- err
 			}
-
-			return err
-		}
-
-		g.Go(fn)
+		}(r)
 	}
 
 	for i := 0; i < len(requests); i++ {
@@ -325,26 +401,16 @@ func all(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 			responseMetadata = combineResponseMetadata(responseMetadata, result.Metadata)
 
 			if !result.WrappedResponse.Allowed {
-				return &dispatchpb.DispatchCheckResponse{
-					Metadata: responseMetadata,
-					WrappedResponse: &openfgapb.CheckResponse{
-						Allowed: false,
-					},
-				}, nil
+				return checkResponse(false, responseMetadata), nil
 			}
 		case err := <-errChan:
-			return &dispatchpb.DispatchCheckResponse{}, err
+			return checkResponse(false, responseMetadata), err
 		case <-ctx.Done():
-			// return request cancelled error
+			return checkResponse(false, responseMetadata), ctx.Err()
 		}
 	}
 
-	return &dispatchpb.DispatchCheckResponse{
-		Metadata: responseMetadata,
-		WrappedResponse: &openfgapb.CheckResponse{
-			Allowed: true,
-		},
-	}, nil
+	return checkResponse(true, responseMetadata), nil
 }
 
 // any defines a CheckReducer that returns a check result indicating if any of the checks passed, and
@@ -352,59 +418,42 @@ func all(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.Dispa
 func any(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchpb.DispatchCheckResponse, error) {
 
 	if len(requests) == 0 {
-		// return empty CheckResult
+		return checkResponse(false, emptyMetadata), nil
 	}
 
 	responseMetadata := emptyMetadata
 	resultChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests))
 	errChan := make(chan error)
-	defer close(resultChan)
-	defer close(errChan)
 
 	cctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	g := new(errgroup.Group)
+	for _, r := range requests {
 
-	for _, req := range requests {
-		fn := func() error {
+		go func(req ReduceableCheckFunc) {
 			err := req(cctx, resultChan)
 			if err != nil {
 				errChan <- err
 			}
-
-			return err
-		}
-
-		g.Go(fn)
+		}(r)
 	}
 
 	for i := 0; i < len(requests); i++ {
 		select {
 		case result := <-resultChan:
-			responseMetadata = combineResponseMetadata(responseMetadata, result.Metadata)
+			responseMetadata = combineResponseMetadata(responseMetadata, result.GetMetadata())
 
-			if result.WrappedResponse.Allowed {
-				return &dispatchpb.DispatchCheckResponse{
-					Metadata: responseMetadata,
-					WrappedResponse: &openfgapb.CheckResponse{
-						Allowed: true,
-					},
-				}, nil
+			if result.GetWrappedResponse().GetAllowed() {
+				return checkResponse(true, responseMetadata), nil
 			}
 		case err := <-errChan:
-			return &dispatchpb.DispatchCheckResponse{}, err
+			return checkResponse(false, responseMetadata), err
 		case <-ctx.Done():
-			// return err
+			return checkResponse(false, responseMetadata), ctx.Err()
 		}
 	}
 
-	return &dispatchpb.DispatchCheckResponse{
-		Metadata: responseMetadata,
-		WrappedResponse: &openfgapb.CheckResponse{
-			Allowed: false,
-		},
-	}, nil
+	return checkResponse(false, responseMetadata), nil
 }
 
 // difference defines a CheckReducer that returns a check result indicating if the base check passes and none of
@@ -414,39 +463,28 @@ func difference(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchp
 	defer cancel()
 
 	if len(requests) < 2 {
-		// return a non-nil error, because you need a base and subtract reducer
+		// todo: return a non-nil error, because you need a base and subtract reducer
 	}
 
 	responseMetadata := emptyMetadata
 	baseChan := make(chan *dispatchpb.DispatchCheckResponse, 1)
 	subtractChan := make(chan *dispatchpb.DispatchCheckResponse, len(requests)-1)
 	errChan := make(chan error, 1)
-	defer close(baseChan)
-	defer close(subtractChan)
-	defer close(errChan)
 
-	g := new(errgroup.Group)
-
-	g.Go(func() error {
+	go func() {
 		err := requests[0](cctx, baseChan)
 		if err != nil {
 			errChan <- err
 		}
+	}()
 
-		return err
-	})
-
-	for _, req := range requests[1:] {
-		fn := func() error {
+	for _, r := range requests[1:] {
+		go func(req ReduceableCheckFunc) {
 			err := req(cctx, subtractChan)
 			if err != nil {
 				errChan <- err
 			}
-
-			return err
-		}
-
-		g.Go(fn)
+		}(r)
 	}
 
 	for i := 0; i < len(requests); i++ {
@@ -455,46 +493,32 @@ func difference(ctx context.Context, requests []ReduceableCheckFunc) (*dispatchp
 			responseMetadata = combineResponseMetadata(responseMetadata, base.Metadata)
 
 			if !base.WrappedResponse.Allowed {
-				return &dispatchpb.DispatchCheckResponse{
-					Metadata: responseMetadata,
-					WrappedResponse: &openfgapb.CheckResponse{
-						Allowed: false,
-					},
-				}, nil
+				return checkResponse(false, responseMetadata), nil
 			}
 		case sub := <-subtractChan:
 			responseMetadata = combineResponseMetadata(responseMetadata, sub.Metadata)
 
 			if sub.WrappedResponse.Allowed {
-				return &dispatchpb.DispatchCheckResponse{
-					Metadata: responseMetadata,
-					WrappedResponse: &openfgapb.CheckResponse{
-						Allowed: false,
-					},
-				}, nil
+				return checkResponse(false, responseMetadata), nil
 			}
 
 		case err := <-errChan:
-			return &dispatchpb.DispatchCheckResponse{
-				Metadata: responseMetadata,
-				WrappedResponse: &openfgapb.CheckResponse{
-					Allowed: false,
-				},
-			}, err
+			return checkResponse(false, responseMetadata), err
 		case <-ctx.Done():
-			return &dispatchpb.DispatchCheckResponse{
-				Metadata: responseMetadata,
-				WrappedResponse: &openfgapb.CheckResponse{
-					Allowed: false,
-				},
-			}, ctx.Err()
+			return checkResponse(false, responseMetadata), ctx.Err()
 		}
 	}
 
+	return checkResponse(true, responseMetadata), nil
+}
+
+func checkResponse(allowed bool, responseMetadata *dispatchpb.ResponseMeta) *dispatchpb.DispatchCheckResponse {
+
 	return &dispatchpb.DispatchCheckResponse{
-		Metadata: responseMetadata,
+		Metadata: ensureMetadata(responseMetadata),
 		WrappedResponse: &openfgapb.CheckResponse{
-			Allowed: true,
+			Allowed:    allowed,
+			Resolution: responseMetadata.GetResolutionPath(),
 		},
-	}, nil
+	}
 }

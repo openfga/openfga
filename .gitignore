@@ -1,7 +1,9 @@
 bin
 .idea
+.vscode
 
 dist/
 
 coverage*.out
 *.swp
+*.pb.go

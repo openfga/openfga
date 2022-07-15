@@ -36,10 +36,12 @@ message DispatchExpandResponse {
 
 message ResolverMeta {
   uint32 depth_remaining = 1 [ (validate.rules).uint32.gt = 0 ];
+  string resolution_path = 2;
 }
 
 message ResponseMeta {
   uint32 dispatch_count = 1;
   uint32 depth_required = 2;
-  uint32 cached_dispatch_count = 3;
+  string resolution_path = 3;
+  uint32 cached_dispatch_count = 4;
 }

@@ -5,16 +5,20 @@ import (
 	"io/ioutil"
 	"testing"
 
+	"github.com/openfga/openfga/internal/dispatch/graph"
+	datastoremw "github.com/openfga/openfga/internal/middleware/datastore"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/server"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/queries"
 	"github.com/openfga/openfga/storage"
 	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -1314,199 +1318,275 @@ var checkQueryTests = []checkQueryTest{
 			Allowed: false,
 		},
 	},
-	{
-		_name:                   "RepeatedContextualTuplesShouldError",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "anne",
-				Relation: "reader",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					User:     "anne",
-					Relation: "reader",
-					Object:   "repo:auth0/express-jwt",
-				},
-				{
-					User:     "anne",
-					Relation: "reader",
-					Object:   "repo:auth0/express-jwt",
-				},
-			}},
-			Trace: true,
-		},
-		err: serverErrors.DuplicateContextualTuple(&openfgapb.TupleKey{
-			User:     "anne",
-			Relation: "reader",
-			Object:   "repo:auth0/express-jwt",
-		}),
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion1",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "anne",
-				Relation: "reader",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed:    true,
-			Resolution: ".union.0(direct).",
-		},
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion2",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "anne",
-				Relation: "triager",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed: false,
-		},
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion3",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "diane",
-				Relation: "admin",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed:    true,
-			Resolution: ".union.0(direct).team:auth0/iam#member.(direct).team:auth0/protocols#member.(direct).",
-		},
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion4",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "erik",
-				Relation: "reader",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#triager.union.1(computed-userset).repo:auth0/express-jwt#writer.union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.1(tuple-to-userset).repo:auth0/express-jwt#owner.org:auth0#repo_admin.(direct).org:auth0#member.union.0(direct).",
-		},
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion5",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "charles",
-				Relation: "writer",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.0(direct).team:auth0/iam#member.(direct).",
-		},
-	},
-	{
-		_name:                   "ContextualTuplesGitHubAssertion6",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "beth",
-				Relation: "admin",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
-			Trace:            true,
-		},
-		response: &openfgapb.CheckResponse{
-			Allowed: false,
-		},
-	},
-	{
-		_name:                   "ContextualTuplesWithEmptyUserFails",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "beth",
-				Relation: "admin",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				User:     "",
-				Relation: "member",
-				Object:   "org:auth0",
-			}}},
-			Trace: true,
-		},
-		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "", Relation: "member", Object: "org:auth0"}),
-	},
-	{
-		_name:                   "ContextualTuplesWithEmptyRelationFails",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "beth",
-				Relation: "admin",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				User:     "anne",
-				Relation: "",
-				Object:   "org:auth0",
-			}}},
-			Trace: true,
-		},
-		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "", Object: "org:auth0"}),
-	},
-	{
-		_name:                   "ContextualTuplesWithEmptyObjectFails",
-		useGitHubTypeDefinition: true,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		request: &openfgapb.CheckRequest{
-			TupleKey: &openfgapb.TupleKey{
-				User:     "beth",
-				Relation: "admin",
-				Object:   "repo:auth0/express-jwt",
-			},
-			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				User:     "anne",
-				Relation: "member",
-				Object:   "",
-			}}},
-			Trace: true,
-		},
-		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "member", Object: ""}),
-	},
+
+	// {
+	// 	_name:                   "RepeatedContextualTuplesShouldError",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "anne",
+	// 			Relation: "reader",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{
+	// 			{
+	// 				User:     "anne",
+	// 				Relation: "reader",
+	// 				Object:   "repo:auth0/express-jwt",
+	// 			},
+	// 			{
+	// 				User:     "anne",
+	// 				Relation: "reader",
+	// 				Object:   "repo:auth0/express-jwt",
+	// 			},
+	// 		}},
+	// 		Trace: true,
+	// 	},
+	// 	err: serverErrors.DuplicateContextualTuple(&openfgapb.TupleKey{
+	// 		User:     "anne",
+	// 		Relation: "reader",
+	// 		Object:   "repo:auth0/express-jwt",
+	// 	}),
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion1",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "anne",
+	// 			Relation: "reader",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed:    true,
+	// 		Resolution: ".union.0(direct).",
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion2",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "anne",
+	// 			Relation: "triager",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed: false,
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion3",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "diane",
+	// 			Relation: "admin",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed:    true,
+	// 		Resolution: ".union.0(direct).team:auth0/iam#member.(direct).team:auth0/protocols#member.(direct).",
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion4",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "erik",
+	// 			Relation: "reader",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed:    true,
+	// 		Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#triager.union.1(computed-userset).repo:auth0/express-jwt#writer.union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.1(tuple-to-userset).repo:auth0/express-jwt#owner.org:auth0#repo_admin.(direct).org:auth0#member.union.0(direct).",
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion5",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "charles",
+	// 			Relation: "writer",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed:    true,
+	// 		Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.0(direct).team:auth0/iam#member.(direct).",
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesGitHubAssertion6",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "beth",
+	// 			Relation: "admin",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
+	// 		Trace:            true,
+	// 	},
+	// 	response: &openfgapb.CheckResponse{
+	// 		Allowed: false,
+	// 	},
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesWithEmptyUserFails",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "beth",
+	// 			Relation: "admin",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+	// 			User:     "",
+	// 			Relation: "member",
+	// 			Object:   "org:auth0",
+	// 		}}},
+	// 		Trace: true,
+	// 	},
+	// 	err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "", Relation: "member", Object: "org:auth0"}),
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesWithEmptyRelationFails",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "beth",
+	// 			Relation: "admin",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+	// 			User:     "anne",
+	// 			Relation: "",
+	// 			Object:   "org:auth0",
+	// 		}}},
+	// 		Trace: true,
+	// 	},
+	// 	err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "", Object: "org:auth0"}),
+	// },
+	// {
+	// 	_name:                   "ContextualTuplesWithEmptyObjectFails",
+	// 	useGitHubTypeDefinition: true,
+	// 	resolveNodeLimit:        defaultResolveNodeLimit,
+	// 	request: &openfgapb.CheckRequest{
+	// 		TupleKey: &openfgapb.TupleKey{
+	// 			User:     "beth",
+	// 			Relation: "admin",
+	// 			Object:   "repo:auth0/express-jwt",
+	// 		},
+	// 		ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+	// 			User:     "anne",
+	// 			Relation: "member",
+	// 			Object:   "",
+	// 		}}},
+	// 		Trace: true,
+	// 	},
+	// 	err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "member", Object: ""}),
+	// },
+}
+
+func TestCheck(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+	data, err := ioutil.ReadFile(gitHubTestDataFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	if err := protojson.Unmarshal(data, &gitHubTypeDefinitions); err != nil {
+		t.Fatal(err)
+	}
+
+	datastore, err := dbTester.New()
+	require.NoError(t, err)
+
+	ctx := datastoremw.ContextWithDatastore(context.Background(), datastore)
+
+	for _, test := range checkQueryTests {
+		t.Run(test._name, func(t *testing.T) {
+			require := require.New(t)
+
+			store := testutils.CreateRandomString(20)
+			modelID, err := id.NewString()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.useGitHubTypeDefinition {
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions()})
+			} else {
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+			}
+			if err != nil {
+				t.Fatalf("%s: WriteAuthorizationModel: err was %v, want nil", test._name, err)
+			}
+
+			if test.tuples != nil {
+				if err := datastore.Write(ctx, store, nil, test.tuples); err != nil {
+					t.Fatalf("[%s] failed to write test tuples: %v", test._name, err)
+				}
+			}
+
+			test.request.StoreId = store
+			test.request.AuthorizationModelId = modelID
+
+			server, err := server.New(&server.Dependencies{
+				Datastore:  datastore,
+				Dispatcher: graph.NewLocalDispatcher(),
+				Tracer:     telemetry.NewNoopTracer(),
+				Logger:     logger.NewNoopLogger(),
+			}, &server.Config{
+				ResolveNodeLimit: test.resolveNodeLimit,
+			})
+			require.NoError(err)
+
+			resp, gotErr := server.Check(ctx, test.request)
+
+			if test.err != nil && gotErr == nil {
+				t.Fatalf("[%s] Expected error '%s', but got nil", test._name, test.err)
+			}
+
+			if test.err != nil && test.err.Error() != gotErr.Error() {
+				t.Fatalf("[%s] Expected error '%s', got '%s'", test._name, test.err, gotErr)
+			}
+
+			if test.response != nil {
+				require.NoError(gotErr)
+
+				require.Equal(test.response.Allowed, resp.Allowed)
+
+				if test.response.Allowed {
+					require.Equal(test.response.Resolution, resp.Resolution)
+				}
+			}
+		})
+	}
 }
 
 func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {

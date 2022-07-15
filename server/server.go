@@ -60,10 +60,11 @@ type Server struct {
 }
 
 type Dependencies struct {
-	Datastore storage.OpenFGADatastore
-	Tracer    trace.Tracer
-	Meter     metric.Meter
-	Logger    logger.Logger
+	Dispatcher dispatch.Dispatcher
+	Datastore  storage.OpenFGADatastore
+	Tracer     trace.Tracer
+	Meter      metric.Meter
+	Logger     logger.Logger
 
 	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
 	// Defaults to Base64Encoder if none is provided.
@@ -108,14 +109,15 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	}
 
 	server := &Server{
-		Server:    grpcServer,
-		tracer:    dependencies.Tracer,
-		meter:     dependencies.Meter,
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   tokenEncoder,
-		transport: transport,
-		config:    config,
+		Server:     grpcServer,
+		tracer:     dependencies.Tracer,
+		meter:      dependencies.Meter,
+		logger:     dependencies.Logger,
+		dispatcher: dependencies.Dispatcher,
+		datastore:  dependencies.Datastore,
+		encoder:    tokenEncoder,
+		transport:  transport,
+		config:     config,
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 
@@ -213,27 +215,18 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	resp, err := s.dispatcher.DispatchCheck(ctx, &dispatchpb.DispatchCheckRequest{})
-	if err != nil {
-		return resp.WrappedResponse, err
-	}
-
-	/*q := queries.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
-
-	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
-		StoreId:              store,
-		TupleKey:             tk,
-		ContextualTuples:     req.GetContextualTuples(),
-		AuthorizationModelId: modelID,
-		Trace:                req.GetTrace(),
+	resp, err := s.dispatcher.DispatchCheck(ctx, &dispatchpb.DispatchCheckRequest{
+		Metadata: &dispatchpb.ResolverMeta{
+			DepthRemaining: s.config.ResolveNodeLimit - 1, // the depth check is 0 based, so we decrement by 1
+		},
+		WrappedRequest: req,
 	})
 	if err != nil {
-		return nil, err
-	}*/
+		return resp.GetWrappedResponse(), err
+	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(resp.GetWrappedResponse().GetAllowed())})
-	return resp.WrappedResponse, nil
-	//return res, nil
+	return resp.GetWrappedResponse(), nil
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {

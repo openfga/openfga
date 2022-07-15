@@ -5,11 +5,10 @@ managed:
   enabled: true
   go_package_prefix:
     default: github.com/openfga/openfga/pkg/proto
-    except:
-      - buf.build/envoyproxy/protoc-gen-validate
   override:
     GO_PACKAGE:
       openfga/v1/openfga_service.proto: "go.buf.build/openfga/go/openfga/api/openfga/v1;openfgav1"
+      validate/validate.proto: "go.buf.build/openfga/go/envoyproxy/protoc-gen-validate/validate"
 plugins:
   - name: "go"
     out: "pkg/proto"

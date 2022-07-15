@@ -46,9 +46,9 @@ func CheckDepth(ctx context.Context, req HasResolverMetadata) error {
 		return fmt.Errorf("request is missing resolver metadata")
 	}
 
-	if metadata.DepthRemaining == 0 {
-		return ErrMaxResolutionDepth
+	if metadata.DepthRemaining > 0 {
+		return nil
 	}
 
-	return nil
+	return ErrMaxResolutionDepth
 }

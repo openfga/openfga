@@ -13,6 +13,7 @@ func TestAll(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGAD
 }
 
 func QueryTests(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+	t.Run("TestCheck", func(t *testing.T) { TestCheck(t, dbTester) })
 	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, dbTester) })
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, dbTester) })
 	t.Run("TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel",

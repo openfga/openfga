@@ -7,8 +7,10 @@ import (
 
 	"github.com/openfga/openfga/internal/dispatch"
 	"github.com/openfga/openfga/internal/graph"
+	datastoremw "github.com/openfga/openfga/internal/middleware/datastore"
 	dispatchpb "github.com/openfga/openfga/pkg/proto/dispatch/v1"
 	"github.com/openfga/openfga/pkg/tuple"
+	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -60,11 +62,23 @@ func (ld *localDispatcher) DispatchCheck(
 
 	err := dispatch.CheckDepth(ctx, req)
 	if err != nil {
-		//return serverErrors.AuthorizationModelResolutionTooComplex
-		return &dispatchpb.DispatchCheckResponse{Metadata: emptyMetadata}, nil
+		return &dispatchpb.DispatchCheckResponse{Metadata: emptyMetadata}, serverErrors.AuthorizationModelResolutionTooComplex
 	}
 
+	t := graph.NewNoopCheckResolutionTracer()
+	if req.GetWrappedRequest().GetTrace() {
+		// todo: initialize the resolution tracer with a concrete value
+		// init with the value from the request ResolverMetadata (if present)
+		t = graph.NewStringCheckResolutionTracer(req.GetMetadata().GetResolutionPath())
+	}
+	ctx = graph.WithCheckResolutionTraceContext(ctx, t)
+
 	// todo: validate the request inputs
+	tk := req.GetWrappedRequest().GetTupleKey()
+	err = validateAndPreprocessTuples(tk, req.GetWrappedRequest().GetContextualTuples().GetTupleKeys())
+	if err != nil {
+		return nil, err
+	}
 
 	rewrite, err := ld.lookupRelation(ctx, req)
 	if err != nil {
@@ -72,6 +86,36 @@ func (ld *localDispatcher) DispatchCheck(
 	}
 
 	return ld.checker.Check(ctx, req, rewrite)
+}
+
+func validateAndPreprocessTuples(keyToCheck *openfgapb.TupleKey, tupleKeys []*openfgapb.TupleKey) error {
+	if keyToCheck.GetUser() == "" || keyToCheck.GetRelation() == "" || keyToCheck.GetObject() == "" {
+		return serverErrors.InvalidCheckInput
+	}
+	if !tuple.IsValidUser(keyToCheck.GetUser()) {
+		return serverErrors.InvalidUser(keyToCheck.GetUser())
+	}
+
+	tupleMap := map[string]struct{}{}
+	usersets := map[string][]*openfgapb.TupleKey{}
+	for _, tk := range tupleKeys {
+		if _, ok := tupleMap[tk.String()]; ok {
+			return serverErrors.DuplicateContextualTuple(tk)
+		}
+		tupleMap[tk.String()] = struct{}{}
+
+		if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
+			return serverErrors.InvalidContextualTuple(tk)
+		}
+		if !tuple.IsValidUser(tk.GetUser()) {
+			return serverErrors.InvalidUser(tk.GetUser())
+		}
+
+		key := tuple.ToObjectRelationString(tk.GetObject(), tk.GetRelation())
+		usersets[key] = append(usersets[key], tk)
+	}
+
+	return nil
 }
 
 // DispatchExpand provides an implementation of the dispatch.Expand interface and implements
@@ -97,8 +141,7 @@ func (ld *localDispatcher) Close(ctx context.Context) error {
 // lookupRelation looks up the userset rewrite rule associated with the object and relation provided
 // in the request.
 func (ld *localDispatcher) lookupRelation(ctx context.Context, req *dispatchpb.DispatchCheckRequest) (*openfgapb.Userset, error) {
-	var datastore storage.OpenFGADatastore
-	//ds := datastoremw.MustFromContext(ctx).ReadTypeDefinition()
+	datastore := datastoremw.MustFromContext(ctx)
 
 	storeID := req.GetWrappedRequest().GetStoreId()
 	modelID := req.GetWrappedRequest().GetAuthorizationModelId()
@@ -121,7 +164,7 @@ func (ld *localDispatcher) lookupRelation(ctx context.Context, req *dispatchpb.D
 
 	rewrite, ok := typeDef.Relations[relation]
 	if !ok {
-		return nil, NewRelationNotFoundErr(tupleKey, relation, objectType)
+		return nil, serverErrors.RelationNotFound(relation, objectType, tupleKey)
 	}
 
 	return rewrite, nil
