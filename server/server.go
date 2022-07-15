@@ -159,7 +159,79 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 }
 
 func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*openfgapb.LookupResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+
+	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
+	targetObjectType := req.GetObjectType()
+	targetRelation := req.GetRelation()
+	targetUser := req.GetUser()
+
+	iter, err := s.datastore.QueryRelationships(ctx, storeID, &storage.RelationshipFilter{
+		ObjectType: targetObjectType,
+	})
+	if err != nil {
+		s.logger.Error("database query failed", logger.Error(err))
+		return nil, status.Errorf(codes.Internal, "An internal server error has occured")
+	}
+	defer iter.Stop()
+
+	g := new(errgroup.Group)
+	g.SetLimit(100) // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+
+	objectIDsChan := make(chan string, 100)
+
+	go func() {
+		for {
+			t, err := iter.Next()
+			if err != nil {
+				if err == storage.TupleIteratorDone {
+					break
+				}
+			}
+
+			fn := func() error {
+				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+
+				resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey: &openfgapb.TupleKey{
+						Object:   t.Key.Object,
+						Relation: targetRelation,
+						User:     targetUser,
+					},
+				})
+				if err != nil {
+					return err
+				}
+
+				if resp.Allowed {
+					_, objectID := tuple.SplitObject(t.Key.Object)
+					objectIDsChan <- objectID
+				}
+
+				return nil
+			}
+
+			g.Go(fn)
+		}
+
+		err := g.Wait()
+		if err != nil {
+			// todo: handle error
+		}
+
+		close(objectIDsChan)
+	}()
+
+	var objectIDs []string
+	for objectID := range objectIDsChan {
+		objectIDs = append(objectIDs, objectID)
+	}
+
+	return &openfgapb.LookupResponse{
+		ObjectIds: objectIDs,
+	}, nil
 }
 
 func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_StreamedLookupServer) error {
@@ -226,7 +298,6 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 			}
 
 			g.Go(fn)
-			time.Sleep(5 * time.Second)
 		}
 
 		err := g.Wait()
