@@ -163,8 +163,6 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 	storeID := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	targetObjectType := req.GetObjectType()
-	targetRelation := req.GetRelation()
-	targetUser := req.GetUser()
 
 	iter, err := s.datastore.QueryRelationships(ctx, storeID, &storage.RelationshipFilter{
 		ObjectType: targetObjectType,
@@ -197,9 +195,10 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 					AuthorizationModelId: modelID,
 					TupleKey: &openfgapb.TupleKey{
 						Object:   t.Key.Object,
-						Relation: targetRelation,
-						User:     targetUser,
+						Relation: req.GetRelation(),
+						User:     req.GetUser(),
 					},
+					ContextualTuples: req.GetContextualTuples(),
 				})
 				if err != nil {
 					return err
@@ -239,8 +238,6 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 	storeID := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	targetObjectType := req.GetObjectType()
-	targetRelation := req.GetRelation()
-	targetUser := req.GetUser()
 
 	ctx := context.Background()
 
@@ -275,9 +272,10 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 					AuthorizationModelId: modelID,
 					TupleKey: &openfgapb.TupleKey{
 						Object:   t.Key.Object,
-						Relation: targetRelation,
-						User:     targetUser,
+						Relation: req.GetRelation(),
+						User:     req.GetUser(),
 					},
+					ContextualTuples: req.GetContextualTuples(),
 				})
 				if err != nil {
 					return err
