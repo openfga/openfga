@@ -89,12 +89,12 @@ type GRPCServerConfig struct {
 }
 
 type HTTPServerConfig struct {
-	Enabled                bool
-	Addr                   string
-	UpstreamRequestTimeout time.Duration
-	TLSConfig              *TLSConfig
-	CORSAllowedOrigins     []string
-	CORSAllowedHeaders     []string
+	Enabled            bool
+	Addr               string
+	UpstreamTimeout    time.Duration
+	TLSConfig          *TLSConfig
+	CORSAllowedOrigins []string
+	CORSAllowedHeaders []string
 }
 
 type TLSConfig struct {
@@ -465,7 +465,7 @@ func (s *Server) Run(ctx context.Context) error {
 	var httpServer *http.Server
 	if s.config.HTTPServer.Enabled {
 		// Set a request timeout.
-		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamRequestTimeout
+		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamTimeout
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),

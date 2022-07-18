@@ -241,8 +241,8 @@ func bindFlags(cmd *cobra.Command) {
 
 	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
 
-	cmd.Flags().Duration("http-upstream-timeout", defaultConfig.HTTP.UpstreamRequestTimeout, "the timeout duration for proxying HTTP requests upstream to the grpc endpoint")
-	cmdutil.MustBindPFlag("http.upstreamRequestTimeout", cmd.Flags().Lookup("http-upstream-request-timeout"))
+	cmd.Flags().Duration("http-upstream-timeout", defaultConfig.HTTP.UpstreamTimeout, "the timeout duration for proxying HTTP requests upstream to the grpc endpoint")
+	cmdutil.MustBindPFlag("http.upstreamTimeout", cmd.Flags().Lookup("http-upstream-timeout"))
 
 	cmd.Flags().StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
 
@@ -275,8 +275,8 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("max-tuples-per-write", defaultConfig.OpenFGA.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	cmdutil.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
 
-	cmd.Flags().Int("max-types-per-authz-model", defaultConfig.OpenFGA.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
-	cmdutil.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authz-model"))
+	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.OpenFGA.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+	cmdutil.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authorization-model"))
 
 	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.OpenFGA.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 	cmdutil.MustBindPFlag("changelogHorizonOffset", cmd.Flags().Lookup("changelog-horizon-offset"))

@@ -112,7 +112,7 @@
                 "tls": {
                     "$ref": "#/definitions/tls"
                 },
-                "upstreamRequestTimeout": {
+                "upstreamTimeout": {
                     "description": "The timeout duration for proxying HTTP requests upstream to the grpc endpoint.",
                     "type": "string",
                     "default": "3s"
