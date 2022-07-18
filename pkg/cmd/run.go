@@ -245,8 +245,10 @@ func bindFlags(cmd *cobra.Command) {
 	cmdutil.MustBindPFlag("http.upstreamTimeout", cmd.Flags().Lookup("http-upstream-timeout"))
 
 	cmd.Flags().StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
+	cmdutil.MustBindPFlag("http.corsAllowedOrigins", cmd.Flags().Lookup("http-cors-allowed-origins"))
 
 	cmd.Flags().StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+	cmdutil.MustBindPFlag("http.corsAllowedHeaders", cmd.Flags().Lookup("http-cors-allowed-headers"))
 
 	cmd.Flags().String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 	cmdutil.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
