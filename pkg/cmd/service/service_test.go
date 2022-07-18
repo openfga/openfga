@@ -774,19 +774,19 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), config.Log.Format)
 
-	val = res.Get("properties.openfga.properties.maxTuplesPerWrite.default")
+	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTuplesPerWrite)
 
-	val = res.Get("properties.openfga.properties.maxTypesPerAuthorizationModel.default")
+	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTypesPerAuthorizationModel)
 
-	val = res.Get("properties.openfga.properties.changelogHorizonOffset.default")
+	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.ChangelogHorizonOffset)
 
-	val = res.Get("properties.openfga.properties.resolveNodeLimit.default")
+	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.ResolveNodeLimit)
 
