@@ -56,9 +56,9 @@ type HTTPConfig struct {
 	Addr    string
 	TLS     TLSConfig
 
-	// UpstreamRequestTimeout is the timeout duration for proxying HTTP requests upstream
+	// UpstreamTimeout is the timeout duration for proxying HTTP requests upstream
 	// to the grpc endpoint.
-	UpstreamRequestTimeout time.Duration
+	UpstreamTimeout time.Duration
 
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
@@ -154,12 +154,12 @@ func DefaultConfig() *Config {
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
-			Enabled:                true,
-			Addr:                   ":8080",
-			TLS:                    TLSConfig{Enabled: false},
-			UpstreamRequestTimeout: 3 * time.Second,
-			CORSAllowedOrigins:     []string{"*"},
-			CORSAllowedHeaders:     []string{"*"},
+			Enabled:            true,
+			Addr:               ":8080",
+			TLS:                TLSConfig{Enabled: false},
+			UpstreamTimeout:    3 * time.Second,
+			CORSAllowedOrigins: []string{"*"},
+			CORSAllowedHeaders: []string{"*"},
 		},
 		Authn: AuthnConfig{
 			Method:                  "none",
@@ -313,12 +313,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Enabled:                config.HTTP.Enabled,
-			Addr:                   config.HTTP.Addr,
-			TLSConfig:              httpTLSConfig,
-			UpstreamRequestTimeout: config.HTTP.UpstreamRequestTimeout,
-			CORSAllowedOrigins:     config.HTTP.CORSAllowedOrigins,
-			CORSAllowedHeaders:     config.HTTP.CORSAllowedHeaders,
+			Enabled:            config.HTTP.Enabled,
+			Addr:               config.HTTP.Addr,
+			TLSConfig:          httpTLSConfig,
+			UpstreamTimeout:    config.HTTP.UpstreamTimeout,
+			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
+			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,
