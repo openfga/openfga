@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [0.1.5] - 2022-07-18
-## Added
+### Added
 * Support for defining server configuration in `config.yaml`, CLI flags, or env variables (#63 #92 #100)
 
   `v0.1.5` introduces multiple ways to support a variety of server configuration strategies. You can configure the server with CLI flags, env variables, or a `config.yaml` file.
@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Configuration to enable/disable the HTTP server (#84)
 
   You can now enable/disable the HTTP server by setting `http.enabled=true/false`. It is enabled by default.
+
+### Changed
+* Env variables have a new mappings.
+
+  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
 
 ## [0.1.4] - 2022-06-27
 ### Added
