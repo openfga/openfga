@@ -1,29 +1,24 @@
 {
     "properties": {
-        "openfga": {
-            "type": "object",
-            "properties": {
-                "maxTuplesPerWrite": {
-                    "description": "The maximum allowed number of tuples per Write transaction.",
-                    "type": "integer",
-                    "default": 100
-                },
-                "maxTypesPerAuthorizationModel": {
-                    "description": "The maximum allowed number of type definitions per authorization model.",
-                    "type": "integer",
-                    "default": 100
-                },
-                "changelogHorizonOffset": {
-                    "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
-                    "type": "integer",
-                    "default": 0
-                },
-                "resolveNodeLimit": {
-                    "description": "Defines how deeply nested an authorization model can be.",
-                    "type": "integer",
-                    "default": 25
-                }
-            }
+        "maxTuplesPerWrite": {
+            "description": "The maximum allowed number of tuples per Write transaction.",
+            "type": "integer",
+            "default": 100
+        },
+        "maxTypesPerAuthorizationModel": {
+            "description": "The maximum allowed number of type definitions per authorization model.",
+            "type": "integer",
+            "default": 100
+        },
+        "changelogHorizonOffset": {
+            "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
+            "type": "integer",
+            "default": 0
+        },
+        "resolveNodeLimit": {
+            "description": "Defines how deeply nested an authorization model can be.",
+            "type": "integer",
+            "default": 25
         },
         "playground": {
             "type": "object",
