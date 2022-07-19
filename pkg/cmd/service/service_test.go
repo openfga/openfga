@@ -766,6 +766,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.Playground.Port)
 
+	val = res.Get("properties.profiler.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.Profiler.Enabled)
+
+	val = res.Get("properties.profiler.properties.addr.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.Profiler.Addr)
+
 	val = res.Get("properties.authn.properties.method.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), config.Authn.Method)
