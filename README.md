@@ -167,6 +167,19 @@ In the event that a port other than the default port is required, the `--playgro
 ./openfga run --playground-enabled --playground-port 3001
 ```
 
+## Profiler (pprof)
+Profiling through pprof can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
+
+```sh
+./openfga run --profiler-enabled
+```
+
+If you need to serve the profiler on a different address than the default `:3001`, you can do so by specifying the `--profiler-addr` flag. For example,
+
+```sh
+./openfga run --profiler-enabled --profiler-addr :3002
+```
+
 ## Next Steps
 
 Take a look at examples of how to:

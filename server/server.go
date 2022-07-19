@@ -560,8 +560,10 @@ func (s *Server) Run(ctx context.Context) error {
 // provide this field (which should be rate limited more aggressively) the in-flight requests won't be
 // affected and newer calls will use the updated authorization model.
 func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
-	var err error
+	ctx, span := s.tracer.Start(ctx, "resolveAuthorizationModelID")
+	defer span.End()
 
+	var err error
 	if modelID != "" {
 		if !id.IsValid(modelID) {
 			return "", serverErrors.AuthorizationModelNotFound(modelID)
