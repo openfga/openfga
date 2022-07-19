@@ -16,7 +16,7 @@ require (
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/pressly/goose/v3 v3.6.1
+	github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735
 	github.com/rs/cors v1.8.2
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/pflag v1.0.5

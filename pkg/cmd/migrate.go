@@ -6,6 +6,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/openfga/openfga/assets"
+	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 )
@@ -25,16 +26,12 @@ func NewMigrateCommand() *cobra.Command {
 	}
 
 	cmd.Flags().String(datastoreEngineFlag, "", "(required) the database engine to run the migrations for")
-	if err := cmd.MarkFlagRequired(datastoreEngineFlag); err != nil {
-		panic(err)
-	}
+	cmdutil.MustMarkFlagRequired(cmd, datastoreEngineFlag)
 
 	cmd.Flags().String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
-	if err := cmd.MarkFlagRequired(datastoreURIFlag); err != nil {
-		panic(err)
-	}
+	cmdutil.MustMarkFlagRequired(cmd, datastoreURIFlag)
 
-	cmd.Flags().Int64(versionFlag, -1, `the version to migrate to. If omitted, the latest version of the schema will be used`)
+	cmd.Flags().Uint(versionFlag, 0, `the version to migrate to. If omitted, the latest version of the schema will be used`)
 
 	return cmd
 }
@@ -50,7 +47,7 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	version, err := cmd.Flags().GetInt64(versionFlag)
+	version, err := cmd.Flags().GetUint(versionFlag)
 	if err != nil {
 		return err
 	}
@@ -59,7 +56,7 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 	case "postgres":
 		db, err := sql.Open("pgx", uri)
 		if err != nil {
-			return fmt.Errorf("failed to parse config from uri: %w", err)
+			return fmt.Errorf("failed to parse the config from the connection uri: %w", err)
 		}
 
 		if err := goose.SetDialect("postgres"); err != nil {
@@ -68,17 +65,18 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 
 		goose.SetBaseFS(assets.EmbedMigrations)
 
-		if version >= 0 {
+		if version > 0 {
 			currentVersion, err := goose.GetDBVersion(db)
 			if err != nil {
 				return err
 			}
 
-			if version < currentVersion {
-				return goose.DownTo(db, assets.PostgresMigrationDir, version)
+			int64Version := int64(version)
+			if int64Version < currentVersion {
+				return goose.DownTo(db, assets.PostgresMigrationDir, int64Version)
 			}
 
-			return goose.UpTo(db, assets.PostgresMigrationDir, version)
+			return goose.UpTo(db, assets.PostgresMigrationDir, int64Version)
 		}
 
 		return goose.Up(db, assets.PostgresMigrationDir)

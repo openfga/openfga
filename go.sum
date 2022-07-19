@@ -302,6 +302,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pressly/goose/v3 v3.6.1 h1:DB7/eKhn98vWOz90OSXqMf4OwuKCdQ6GbvxhtjO4Uak=
 github.com/pressly/goose/v3 v3.6.1/go.mod h1:fpaav/TpxygOn1+OAdzwswN2NbvadBOktQpiDOxewvY=
+github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735 h1:mfGziHZ0vwGLzPkHgx+UJEvKgAb1Rr8nolk41FRE7zo=
+github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735/go.mod h1:Sias8KhSAtEcLTUnLg6Ih/YMTyUBvV1wKfw5gwyOpbw=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 h1:OdAsTTz6OkFY5QxjkYwrChwuRruF69c169dPK26NUlk=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
