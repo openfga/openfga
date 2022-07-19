@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"path"
@@ -79,6 +80,25 @@ func run(_ *cobra.Command, _ []string) {
 	g.Go(func() error {
 		return service.Run(ctx)
 	})
+
+	if config.Profiler.Enabled {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		go func() {
+			logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
+
+			if err := http.ListenAndServe(config.Profiler.Addr, mux); err != nil {
+				if err != http.ErrServerClosed {
+					logger.Fatal("failed to start pprof profiler", zap.Error(err))
+				}
+			}
+		}()
+	}
 
 	var playground *http.Server
 	if config.Playground.Enabled {
@@ -270,6 +290,9 @@ func bindFlags(cmd *cobra.Command) {
 	cmdutil.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
 	cmd.Flags().Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
 	cmdutil.MustBindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
+
+	cmd.Flags().Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
+	cmdutil.MustBindPFlag("profiler.enabled", cmd.Flags().Lookup("profiler-enabled"))
 
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
