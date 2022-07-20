@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"testing"
@@ -13,57 +14,12 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/jackc/pgx/v4"
+	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
+	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 )
-
-var createTableStmts = []string{
-	`CREATE TABLE IF NOT EXISTS tuple (
-		store TEXT NOT NULL,
-		object_type TEXT NOT NULL,
-		object_id TEXT NOT NULL,
-		relation TEXT NOT NULL,
-		_user TEXT NOT NULL,
-		user_type TEXT NOT NULL,
-		ulid TEXT NOT NULL,
-		inserted_at TIMESTAMPTZ NOT NULL,
-		PRIMARY KEY (store, object_type, object_id, relation, _user)
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user'`,
-	`CREATE INDEX IF NOT EXISTS idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset'`,
-	`CREATE UNIQUE INDEX IF NOT EXISTS idx_tuple_ulid ON tuple (ulid)`,
-	`CREATE TABLE IF NOT EXISTS authorization_model (
-		store TEXT NOT NULL,
-		authorization_model_id TEXT NOT NULL,
-		type TEXT NOT NULL,
-		type_definition BYTEA,
-		PRIMARY KEY (store, authorization_model_id, type)
-	)`,
-	`CREATE TABLE IF NOT EXISTS store (
-		id TEXT PRIMARY KEY,
-		name TEXT NOT NULL,
-		created_at TIMESTAMPTZ NOT NULL,
-		updated_at TIMESTAMPTZ,
-		deleted_at TIMESTAMPTZ
-	)`,
-	`CREATE TABLE IF NOT EXISTS assertion (
-		store TEXT NOT NULL,
-		authorization_model_id TEXT NOT NULL,
-		assertions BYTEA,
-		PRIMARY KEY (store, authorization_model_id)
-	)`,
-	`CREATE TABLE IF NOT EXISTS changelog (
-		store TEXT NOT NULL,
-		object_type TEXT NOT NULL,
-		object_id TEXT NOT NULL,
-		relation TEXT NOT NULL,
-		_user TEXT NOT NULL,
-		operation INTEGER NOT NULL,
-		ulid TEXT NOT NULL,
-		inserted_at TIMESTAMPTZ NOT NULL,
-		PRIMARY KEY (store, ulid, object_type)
-	)`,
-}
 
 const (
 	postgresImage = "postgres:14"
@@ -203,26 +159,34 @@ func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkNam
 	return builder
 }
 
-func (b *postgresTester[T]) NewDatabase(t testing.TB) string {
+func (p *postgresTester[T]) NewDatabase(_ testing.TB) string {
 
 	dbName := "defaultdb"
 
 	return fmt.Sprintf(
 		"postgres://%s@%s:%s/%s?sslmode=disable",
-		b.creds,
-		b.hostname,
-		b.port,
+		p.creds,
+		p.hostname,
+		p.port,
 		dbName,
 	)
 }
 
-func (b *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
-	connectStr := b.NewDatabase(t)
+func (p *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
+	connectStr := p.NewDatabase(t)
 
-	for _, stmt := range createTableStmts {
-		_, err := b.conn.Exec(context.Background(), stmt)
-		require.NoError(t, err)
-	}
+	db, err := sql.Open("pgx", connectStr)
+	require.NoError(t, err)
+
+	goose.SetLogger(goose.NopLogger())
+
+	err = goose.SetDialect("postgres")
+	require.NoError(t, err)
+
+	goose.SetBaseFS(assets.EmbedMigrations)
+
+	err = goose.Up(db, assets.PostgresMigrationDir)
+	require.NoError(t, err)
 
 	return initFunc("postgres", connectStr)
 }
