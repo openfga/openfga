@@ -3,6 +3,7 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"log"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/openfga/openfga/assets"
@@ -56,11 +57,11 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 	case "postgres":
 		db, err := sql.Open("pgx", uri)
 		if err != nil {
-			return fmt.Errorf("failed to parse the config from the connection uri: %w", err)
+			log.Fatal("failed to parse the config from the connection uri", err)
 		}
 
 		if err := goose.SetDialect("postgres"); err != nil {
-			return fmt.Errorf("failed to initialize the migrate command: %w", err)
+			log.Fatal("failed to initialize the migrate command", err)
 		}
 
 		goose.SetBaseFS(assets.EmbedMigrations)
@@ -68,19 +69,27 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 		if version > 0 {
 			currentVersion, err := goose.GetDBVersion(db)
 			if err != nil {
-				return err
+				log.Fatal(err)
 			}
 
 			int64Version := int64(version)
 			if int64Version < currentVersion {
-				return goose.DownTo(db, assets.PostgresMigrationDir, int64Version)
+				if err := goose.DownTo(db, assets.PostgresMigrationDir, int64Version); err != nil {
+					log.Fatal(err)
+				}
 			}
 
-			return goose.UpTo(db, assets.PostgresMigrationDir, int64Version)
+			if err := goose.UpTo(db, assets.PostgresMigrationDir, int64Version); err != nil {
+				log.Fatal(err)
+			}
 		}
 
-		return goose.Up(db, assets.PostgresMigrationDir)
+		if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
 	default:
-		return fmt.Errorf("unable to run migrations for datastore engine type: %s", engine)
+		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 }
