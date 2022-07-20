@@ -3,8 +3,11 @@ package testutils
 import (
 	"math/rand"
 	"sort"
+	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/openfga/openfga/pkg/id"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -42,4 +45,11 @@ func CreateRandomString(n int) string {
 		b[i] = AllChars[rand.Intn(len(AllChars))]
 	}
 	return string(b)
+}
+
+func RandomID(t *testing.T) string {
+	id, err := id.NewString()
+	require.NoError(t, err)
+
+	return id
 }

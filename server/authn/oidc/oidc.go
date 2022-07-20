@@ -13,6 +13,8 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/retryablehttp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/openfga/openfga/server/authn"
 )
@@ -50,7 +52,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
-		return nil, errors.New("missing bearer token")
+		return nil, status.Errorf(codes.Unauthenticated, "missing bearer token")
 	}
 
 	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
@@ -60,31 +62,31 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	})
 
 	if err != nil {
-		return nil, errors.Errorf("error parsing token: %v", err)
+		return nil, status.Errorf(codes.Unauthenticated, "failed to parse the provided token: %v", err)
 	}
 
 	if !token.Valid {
-		return nil, errors.Errorf("invalid token")
+		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token is invalid")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.Errorf("invalid claims")
+		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has malformed auth claims")
 	}
 
 	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
-		return nil, errors.New("invalid issuer")
+		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has an invalid 'issuer' claim")
 	}
 
 	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
-		return nil, errors.New("invalid audience")
+		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has an invalid 'audience' claim")
 	}
 
 	// optional subject
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
-			return nil, errors.New("invalid subject")
+			return nil, status.Errorf(codes.Unauthenticated, "the provided auth token is missing the 'sub' claim")
 		}
 	}
 
