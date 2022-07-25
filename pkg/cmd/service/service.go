@@ -123,6 +123,12 @@ type OpenFGAConfig struct {
 	ResolveNodeLimit uint32
 }
 
+// ProfilerConfig defines server configurations specific to pprof profiling.
+type ProfilerConfig struct {
+	Enabled bool
+	Addr    string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -133,6 +139,7 @@ type Config struct {
 	Authn      AuthnConfig
 	Log        LogConfig
 	Playground PlaygroundConfig
+	Profiler   ProfilerConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -172,6 +179,10 @@ func DefaultConfig() *Config {
 		Playground: PlaygroundConfig{
 			Enabled: true,
 			Port:    3000,
+		},
+		Profiler: ProfilerConfig{
+			Enabled: false,
+			Addr:    ":3001",
 		},
 	}
 }
