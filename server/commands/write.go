@@ -75,6 +75,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
+		// TODO: delete the debugging statement
 		c.logger.Info(fmt.Sprintf("%+v\n", tupleUserset))
 		switch usType := tupleUserset.Userset.(type) {
 		case *openfgapb.Userset_This:
@@ -93,6 +94,13 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 			continue
 		case *openfgapb.Userset_Difference:
 			err := isDirectDifference(usType, tk)
+			if err != nil {
+				return serverErrors.HandleTupleValidateError(err)
+			}
+			continue
+		case *openfgapb.Userset_ComputedUserset:
+			// if Userset.type is a ComputedUserset then we know it can't be direct
+			err := &tupleUtils.IndirectWriteError{Reason: "Attempting to write directly to an indirect only relationship", TupleKey: tk}
 			if err != nil {
 				return serverErrors.HandleTupleValidateError(err)
 			}
