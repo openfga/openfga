@@ -92,7 +92,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	if statCheckDBCalls != nil {
 		statCheckDBCalls.Add(ctx, int64(rc.metadata.GetReadCalls()))
 	}
-	
+
 	return &openfgapb.CheckResponse{
 		Allowed:    ok,
 		Resolution: resolution,
