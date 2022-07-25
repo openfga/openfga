@@ -2,8 +2,6 @@ package commands
 
 import (
 	"context"
-	"fmt"
-	"runtime"
 	"sync"
 
 	"github.com/go-errors/errors"
@@ -46,7 +44,6 @@ func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.
 
 // Execute the query in `checkRequest`, returning the response or an error.
 func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	before := runtime.NumGoroutine()
 	statCheckResolutionDepth, _ := query.meter.SyncInt64().Counter(
 		"openfga.check.resolution.depth",
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
@@ -95,9 +92,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	if statCheckDBCalls != nil {
 		statCheckDBCalls.Add(ctx, int64(rc.metadata.GetReadCalls()))
 	}
-
-	after := runtime.NumGoroutine()
-	fmt.Printf("check $$$$$$ before: %d, after %d\n\n", before, after)
+	
 	return &openfgapb.CheckResponse{
 		Allowed:    ok,
 		Resolution: resolution,
