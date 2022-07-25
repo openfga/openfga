@@ -14,16 +14,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// // WriteError is used to categorize errors specific to write check logic
-// type IndirectWriteError struct {
-// 	Reason   string
-// 	TupleKey *openfgapb.TupleKey
-// }
-
-// func (i *IndirectWriteError) Error() string {
-// 	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
-// }
-
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger    logger.Logger
