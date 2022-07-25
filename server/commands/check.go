@@ -230,7 +230,10 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
 			if err != nil {
-				c <- &chanResolveResult{err: err, found: false}
+				select {
+				case c <- &chanResolveResult{err: err, found: false}:
+				case <-done:
+				}
 				return
 			}
 			err = query.resolveNode(ctx, nestedRC, userset)
