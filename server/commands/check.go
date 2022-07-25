@@ -190,6 +190,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
+	defer iter.stop()
 
 	for {
 		usersetTuple, err := iter.next()
@@ -238,9 +239,6 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 			}
 		}(c)
 	}
-
-	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
@@ -404,6 +402,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
+	defer iter.stop()
 
 	grp, ctx := errgroup.WithContext(ctx)
 	for {
