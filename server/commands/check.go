@@ -176,7 +176,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 				err = nil
 			}
 			select {
-			case c <- &chanResolveResult{err: nil, found: true}:
+			case c <- &chanResolveResult{err: err, found: false}:
 			case <-done:
 			}
 			return
