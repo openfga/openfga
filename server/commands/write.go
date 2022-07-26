@@ -135,6 +135,7 @@ func handleError(err error) error {
 
 func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) bool {
 	isDirect := false
+	// Named loop for early exit from a nested loop
 contolLoop:
 	for _, userset := range nodes.Intersection.Child {
 		switch userset.Userset.(type) {
@@ -151,6 +152,7 @@ contolLoop:
 
 func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) bool {
 	isDirect := false
+	// Named loop for early exit from a nested loop
 contolLoop:
 	for _, userset := range nodes.Union.Child {
 		switch userset.Userset.(type) {
@@ -168,6 +170,7 @@ contolLoop:
 func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) bool {
 	isDirect := false
 	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
+	// Named loop for early exit from a nested loop
 contolLoop:
 	for _, userset := range sets {
 		switch userset.Userset.(type) {
