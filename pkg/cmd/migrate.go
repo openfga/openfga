@@ -53,6 +53,8 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	goose.SetLogger(goose.NopLogger())
+
 	switch engine {
 	case "postgres":
 		db, err := sql.Open("pgx", uri)
