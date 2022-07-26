@@ -19,20 +19,20 @@ lint:  ## Lint Go source files
 
 .PHONY: clean
 clean: ## Clean files
-	rm ./bin/openfga
+	rm ./openfga
 
 .PHONY: build
 build: ## Build/compile the OpenFGA service
-	go build -o ./bin/openfga ./cmd/openfga
+	go build -o ./openfga ./cmd/openfga
 
 .PHONY: run
 run: build ## Run the OpenFGA server with in-memory storage
-	./bin/openfga run
+	./openfga run
 
 .PHONY: run-postgres
 run-postgres: build ## Run the OpenFGA server with Postgres
 	# nosemgrep: detected-username-and-password-in-uri
-	./bin/openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres?sslmode=disable
+	./openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres?sslmode=disable
 
 .PHONY: go-generate
 go-generate: install-tools

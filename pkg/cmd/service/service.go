@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -55,9 +56,9 @@ type HTTPConfig struct {
 	Addr    string
 	TLS     TLSConfig
 
-	// UpstreamRequestTimeout is the timeout duration for proxying HTTP requests upstream
+	// UpstreamTimeout is the timeout duration for proxying HTTP requests upstream
 	// to the grpc endpoint.
-	UpstreamRequestTimeout time.Duration
+	UpstreamTimeout time.Duration
 
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
@@ -122,6 +123,12 @@ type OpenFGAConfig struct {
 	ResolveNodeLimit uint32
 }
 
+// ProfilerConfig defines server configurations specific to pprof profiling.
+type ProfilerConfig struct {
+	Enabled bool
+	Addr    string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -132,6 +139,7 @@ type Config struct {
 	Authn      AuthnConfig
 	Log        LogConfig
 	Playground PlaygroundConfig
+	Profiler   ProfilerConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -153,12 +161,12 @@ func DefaultConfig() *Config {
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
-			Enabled:                true,
-			Addr:                   ":8080",
-			TLS:                    TLSConfig{Enabled: false},
-			UpstreamRequestTimeout: 3 * time.Second,
-			CORSAllowedOrigins:     []string{"*"},
-			CORSAllowedHeaders:     []string{"*"},
+			Enabled:            true,
+			Addr:               ":8080",
+			TLS:                TLSConfig{Enabled: false},
+			UpstreamTimeout:    3 * time.Second,
+			CORSAllowedOrigins: []string{"*"},
+			CORSAllowedHeaders: []string{"*"},
 		},
 		Authn: AuthnConfig{
 			Method:                  "none",
@@ -169,8 +177,12 @@ func DefaultConfig() *Config {
 			Format: "text",
 		},
 		Playground: PlaygroundConfig{
-			Enabled: false,
+			Enabled: true,
 			Port:    3000,
+		},
+		Profiler: ProfilerConfig{
+			Enabled: false,
+			Addr:    ":3001",
 		},
 	}
 }
@@ -189,6 +201,8 @@ func GetServiceConfig() (*Config, error) {
 	for _, path := range configPaths {
 		viper.AddConfigPath(path)
 	}
+	viper.SetEnvPrefix("OPENFGA")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	err := viper.ReadInConfig()
@@ -310,12 +324,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Enabled:                config.HTTP.Enabled,
-			Addr:                   config.HTTP.Addr,
-			TLSConfig:              httpTLSConfig,
-			UpstreamRequestTimeout: config.HTTP.UpstreamRequestTimeout,
-			CORSAllowedOrigins:     config.HTTP.CORSAllowedOrigins,
-			CORSAllowedHeaders:     config.HTTP.CORSAllowedHeaders,
+			Enabled:            config.HTTP.Enabled,
+			Addr:               config.HTTP.Addr,
+			TLSConfig:          httpTLSConfig,
+			UpstreamTimeout:    config.HTTP.UpstreamTimeout,
+			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
+			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,

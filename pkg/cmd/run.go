@@ -7,7 +7,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/pprof"
+	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
@@ -22,6 +25,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -68,6 +80,25 @@ func run(_ *cobra.Command, _ []string) {
 	g.Go(func() error {
 		return service.Run(ctx)
 	})
+
+	if config.Profiler.Enabled {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		go func() {
+			logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
+
+			if err := http.ListenAndServe(config.Profiler.Addr, mux); err != nil {
+				if err != http.ErrServerClosed {
+					logger.Fatal("failed to start pprof profiler", zap.Error(err))
+				}
+			}
+		}()
+	}
 
 	var playground *http.Server
 	if config.Playground.Enabled {
@@ -230,6 +261,15 @@ func bindFlags(cmd *cobra.Command) {
 
 	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
 
+	cmd.Flags().Duration("http-upstream-timeout", defaultConfig.HTTP.UpstreamTimeout, "the timeout duration for proxying HTTP requests upstream to the grpc endpoint")
+	cmdutil.MustBindPFlag("http.upstreamTimeout", cmd.Flags().Lookup("http-upstream-timeout"))
+
+	cmd.Flags().StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
+	cmdutil.MustBindPFlag("http.corsAllowedOrigins", cmd.Flags().Lookup("http-cors-allowed-origins"))
+
+	cmd.Flags().StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+	cmdutil.MustBindPFlag("http.corsAllowedHeaders", cmd.Flags().Lookup("http-cors-allowed-headers"))
+
 	cmd.Flags().String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 	cmdutil.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
 	cmd.Flags().StringSlice("authn-preshared-keys", defaultConfig.Authn.Keys, "one or more preshared keys to use for authentication")
@@ -243,12 +283,29 @@ func bindFlags(cmd *cobra.Command) {
 	cmdutil.MustBindPFlag("datastore.engine", cmd.Flags().Lookup("datastore-engine"))
 	cmd.Flags().String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 	cmdutil.MustBindPFlag("datastore.uri", cmd.Flags().Lookup("datastore-uri"))
+	cmd.Flags().Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
+	cmdutil.MustBindPFlag("datastore.maxCacheSize", cmd.Flags().Lookup("datastore-max-cache-size"))
 
 	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 	cmdutil.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
 	cmd.Flags().Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
 	cmdutil.MustBindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
 
+	cmd.Flags().Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
+	cmdutil.MustBindPFlag("profiler.enabled", cmd.Flags().Lookup("profiler-enabled"))
+
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
+
+	cmd.Flags().Int("max-tuples-per-write", defaultConfig.OpenFGA.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
+	cmdutil.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
+
+	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.OpenFGA.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+	cmdutil.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authorization-model"))
+
+	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.OpenFGA.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
+	cmdutil.MustBindPFlag("changelogHorizonOffset", cmd.Flags().Lookup("changelog-horizon-offset"))
+
+	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.OpenFGA.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
+	cmdutil.MustBindPFlag("resolveNodeLimit", cmd.Flags().Lookup("resolve-node-limit"))
 }
