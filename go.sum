@@ -43,8 +43,8 @@ github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1/go.mod h1:xomTg6
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
-github.com/MicahParks/keyfunc v1.1.0 h1:9NcnRwS0ciuVeVNi+vTdYVMTmk62OID7VlG6y9BgLK0=
-github.com/MicahParks/keyfunc v1.1.0/go.mod h1:a4yfunv77gZ0RgTNw7tOYS+bjtHk5565e+1dPz+YJI8=
+github.com/MicahParks/keyfunc v1.2.0 h1:qiUfvtvvcoS0JXcHtoqglT29WyvuL0l3tkBlzp0QmsU=
+github.com/MicahParks/keyfunc v1.2.0/go.mod h1:a4yfunv77gZ0RgTNw7tOYS+bjtHk5565e+1dPz+YJI8=
 github.com/Microsoft/go-winio v0.5.2 h1:a9IhgEQBCUEk6QCdml9CiJGhAws+YwffDHEMp1VMrpA=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
@@ -358,8 +358,8 @@ go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 h1:H8IjmuFDVUBBLkV
 go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6/go.mod h1:F6EHsP7yAHnwhJR93WLFnOgyVoKWWu+T7Q0Vhtxvfqw=
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 h1:A1OduCnmHrcb3X//F0NTbqsMPZiU7Vi2O6/qou/F+XQ=
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43/go.mod h1:bAq6RDrSP9x2I9Rb+1NzQ1/0AbFkiLx1RwIcWTw4lWI=
-go.buf.build/openfga/go/openfga/api v1.1.22 h1:UGiKkjckrqdl2rtaNr4Iee/w47PS+l82FJlSXxce5a0=
-go.buf.build/openfga/go/openfga/api v1.1.22/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
+go.buf.build/openfga/go/openfga/api v1.1.23 h1:W3/QxOqGArVgoTox2KIqwajerk2WY35X8FfZjwH4cfo=
+go.buf.build/openfga/go/openfga/api v1.1.23/go.mod h1:tuNxMaaPgKyng9eCyTMfhuuMzTM8RFZbQe7NCQVAaPk=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=

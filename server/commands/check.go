@@ -170,18 +170,20 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	go func(c chan<- *chanResolveResult) {
 		defer wg.Done()
 
+		found := false
 		tk, err := rc.readUserTuple(ctx, query.datastore)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				err = nil
 			}
-			c <- &chanResolveResult{err: err, found: false}
-			return
 		}
 
-		rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
+		if tk != nil && err == nil {
+			rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
+			found = true
+		}
 		select {
-		case c <- &chanResolveResult{err: nil, found: true}:
+		case c <- &chanResolveResult{err: err, found: found}:
 		case <-done:
 		}
 	}(c)
@@ -226,11 +228,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 			defer wg.Done()
 
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
-			if err != nil {
-				c <- &chanResolveResult{err: err, found: false}
-				return
+			if err == nil {
+				err = query.resolveNode(ctx, nestedRC, userset)
 			}
-			err = query.resolveNode(ctx, nestedRC, userset)
 
 			select {
 			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
@@ -404,6 +404,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
+	defer iter.stop()
 
 	grp, ctx := errgroup.WithContext(ctx)
 	for {

@@ -3,7 +3,7 @@ module github.com/openfga/openfga
 go 1.18
 
 require (
-	github.com/MicahParks/keyfunc v1.1.0
+	github.com/MicahParks/keyfunc v1.2.0
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/docker/docker v20.10.16+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -22,7 +22,7 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	github.com/tidwall/gjson v1.14.1
-	go.buf.build/openfga/go/openfga/api v1.1.22
+	go.buf.build/openfga/go/openfga/api v1.1.23
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.33.0
 	go.opentelemetry.io/otel v1.8.0
 	go.opentelemetry.io/otel/metric v0.31.0
