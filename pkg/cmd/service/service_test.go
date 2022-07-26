@@ -438,7 +438,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with invalid token fails",
 		authHeader:    "Bearer incorrecttoken",
-		expectedError: "error parsing token",
+		expectedError: "failed to parse the provided token",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
