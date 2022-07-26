@@ -1509,7 +1509,7 @@ var checkQueryTests = []checkQueryTest{
 	},
 }
 
-func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestCheckQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		t.Fatal(err)
@@ -1524,7 +1524,7 @@ func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range checkQueryTests {
@@ -1581,13 +1581,13 @@ func TestCheckQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	}
 }
 
-func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	originalTD := []*openfgapb.TypeDefinition{{
@@ -1689,7 +1689,7 @@ var tuples = []*openfgapb.TupleKey{
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
 var result *openfgapb.CheckResponse //nolint
 
-func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func BenchmarkCheckWithoutTrace(b *testing.B, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
@@ -1705,7 +1705,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTest
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
@@ -1743,7 +1743,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTest
 	result = r
 }
 
-func BenchmarkWithTrace(b *testing.B, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func BenchmarkWithTrace(b *testing.B, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		b.Fatal(err)
@@ -1758,7 +1758,7 @@ func BenchmarkWithTrace(b *testing.B, dbTester teststorage.DatastoreTester[stora
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)

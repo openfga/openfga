@@ -15,7 +15,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteAuthorizationModel(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	type writeAuthorizationModelTestSettings struct {
 		_name    string
 		request  *openfgapb.WriteAuthorizationModelRequest
@@ -27,7 +27,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)

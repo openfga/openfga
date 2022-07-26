@@ -12,12 +12,12 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func AssertionsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func AssertionsTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	t.Run("writing and reading assertions succeeds", func(t *testing.T) {

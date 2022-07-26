@@ -505,13 +505,13 @@ var writeCommandTests = []writeCommandTest{
 	},
 }
 
-func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteCommand(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range writeCommandTests {

@@ -16,7 +16,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestGetStoreQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	type getStoreQueryTest struct {
 		_name            string
 		request          *openfgapb.GetStoreRequest
@@ -39,7 +39,7 @@ func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester[storag
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {
@@ -71,7 +71,7 @@ func TestGetStoreQuery(t *testing.T, dbTester teststorage.DatastoreTester[storag
 	}
 }
 
-func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestGetStoreSucceeds(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
@@ -79,7 +79,7 @@ func TestGetStoreSucceeds(t *testing.T, dbTester teststorage.DatastoreTester[sto
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)

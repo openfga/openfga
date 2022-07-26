@@ -13,7 +13,7 @@ import (
 func TestPostgresDatastore(t *testing.T) {
 	testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "postgres")
 
-	test.TestAll(t, test.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
+	test.TestAll(t, test.OpenFGADatastoreConstructor(func() (storage.OpenFGADatastore, error) {
 		ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
 			ds, err := postgres.NewPostgresDatastore(uri)
 			require.NoError(t, err)

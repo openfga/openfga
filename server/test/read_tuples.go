@@ -20,12 +20,12 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadTuplesQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
@@ -105,12 +105,12 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	}
 }
 
-func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")

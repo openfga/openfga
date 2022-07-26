@@ -33,7 +33,7 @@ func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore
 	return modelID, nil
 }
 
-func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestExpandQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions
@@ -726,7 +726,7 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {
@@ -748,7 +748,7 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	}
 }
 
-func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestExpandQueryErrors(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions
@@ -837,7 +837,7 @@ func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[st
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {

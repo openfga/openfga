@@ -15,7 +15,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestCreateStore(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	type createStoreTestSettings struct {
 		_name    string
@@ -45,7 +45,7 @@ func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {

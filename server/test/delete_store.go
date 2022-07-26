@@ -12,13 +12,13 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestDeleteStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestDeleteStore(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	createStoreCmd := commands.NewCreateStoreCommand(datastore, logger)

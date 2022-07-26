@@ -4,62 +4,48 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/storage"
-	"github.com/stretchr/testify/require"
 )
 
-// InitFunc initializes a datastore instance from a uri that has been
-// generated from a TestStorageBuilder
-type InitFunc[T any] func(engine, uri string) T
+// DatastoreInitFunc defines a function to initialize a new datastore instance.
+type DatastoreInitFunc[T any] func(engine, uri string) T
 
-// RunningEngineForTest represents an instance of a datastore engine running with its backing
-// database/service, expressly for testing.
-type RunningEngineForTest[T any] interface {
+// DatastoreTestEngine defines a generic interface to run any generic datastore engine
+// for testing purposes. A DatastoreTestEngine can be used in tests to spin up and tear
+// down storage instances needed for testing.
+type DatastoreTestEngine[T any] interface {
 
-	// NewDatabase returns the connection string to a new initialized logical database,
-	// but one that is not migrated.
+	// NewDatabase initializes a database and returns a connection string
+	// that can be used to connect to it.
 	NewDatabase(t testing.TB) string
 
-	// NewDatastore returns a new logical datastore initialized with the
-	// initFunc. For example, the sql based stores will create a new logical
-	// database in the database instance, migrate it and provide the URI for it
-	// to initFunc
-	NewDatastore(t testing.TB, initFunc InitFunc[T]) T
+	// NewDatastore constructs and initializes a new datastore with the provided init
+	// function.
+	NewDatastore(t testing.TB, init DatastoreInitFunc[T]) T
 }
 
-type DatastoreTestEngine[T any] struct{}
+type datastoreTestEngine[T any] struct{}
 
-func NewDatastoreTestEngine[T any]() *DatastoreTestEngine[T] {
-	return &DatastoreTestEngine[T]{}
+func NewDatastoreTestEngine[T any]() *datastoreTestEngine[T] {
+	return &datastoreTestEngine[T]{}
 }
 
-// RunDatastoreTestEngine starts the backing database or service necessary for the given engine
-// for testing and sets the defaults for that database or service. Note that this does *NOT*
-// create the logical database nor call migrate; callers can do so via NewDatabase and NewDatastore
-// respectively. Note also that the backing database or service will be shutdown automatically via
-// the Cleanup of the testing object.
-func (d *DatastoreTestEngine[T]) RunDatastoreTestEngine(t testing.TB, engine string) RunningEngineForTest[T] {
-	return d.RunDatastoreTestEngineWithBridge(t, engine, "")
-}
-
-// RunDatastoreTestEngineWithBridge runs a datastore engine on a specific bridge. If a bridge is
-// specified, then the hostnames returned by the engines are those to be called from another
-// container on the bridge.
-func (d *DatastoreTestEngine[T]) RunDatastoreTestEngineWithBridge(t testing.TB, engine, bridgeNetworkName string) RunningEngineForTest[T] {
+// RunDatastoreTestEngine constructs and runs a specifc DatastoreTestEngine for the provided
+// datastore engine. The resources used by the test engine will be cleaned up after the test
+// has finished.
+func (d *datastoreTestEngine[T]) RunDatastoreTestEngine(t testing.TB, engine string) DatastoreTestEngine[T] {
 	switch engine {
 	case "memory":
-		require.Equal(t, "", bridgeNetworkName, "memory datastore does not support bridge networking")
-		return RunMemoryForTesting[T](t)
+		return RunMemoryTestEngine[T](t)
 	case "postgres":
-		pgTester := NewPostgresTester[T]()
-		return pgTester.RunPostgresForTesting(t, bridgeNetworkName)
+		return NewPostgresTestEngine[T]().RunPostgresTestEngine(t)
 	default:
-		t.Fatalf("found missing engine for RunDatastoreEngine: %s", engine)
+		t.Fatalf("'%s' engine is not supported by RunDatastoreTestEngine", engine)
 		return nil
 	}
 }
 
 // RunOpenFGADatastoreTestEngine runs a datastore test engine specifically for the OpenFGADatastore storage interface.
-func RunOpenFGADatastoreTestEngine(t testing.TB, engine string) RunningEngineForTest[storage.OpenFGADatastore] {
+func RunOpenFGADatastoreTestEngine(t testing.TB, engine string) DatastoreTestEngine[storage.OpenFGADatastore] {
 	testEngine := NewDatastoreTestEngine[storage.OpenFGADatastore]()
 	return testEngine.RunDatastoreTestEngine(t, engine)
 }

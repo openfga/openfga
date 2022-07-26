@@ -73,19 +73,22 @@ var (
 	expireTimeout = 60 * time.Second
 )
 
-type postgresTester[T any] struct {
-	conn     *pgx.Conn
-	hostname string
-	port     string
-	creds    string
+type postgresTestEngine[T any] struct {
+	conn  *pgx.Conn
+	addr  string
+	creds string
 }
 
-func NewPostgresTester[T any]() *postgresTester[T] {
-	return &postgresTester[T]{}
+// NewPostgresTestEngine returns an implementation of the DatastoreTestEngine interface
+// for Postgres.
+func NewPostgresTestEngine[T any]() *postgresTestEngine[T] {
+	return &postgresTestEngine[T]{}
 }
 
-// RunPostgresForTesting returns a RunningEngineForTest for the postgres driver.
-func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkName string) RunningEngineForTest[T] {
+// RunPostgresTestEngine runs a Postgres container, connects to it, and returns a
+// bootstrapped implementation of the DatastoreTestEngine interface wired up for the
+// Postgres datastore engine.
+func (p *postgresTestEngine[T]) RunPostgresTestEngine(t testing.TB) DatastoreTestEngine[T] {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
 
@@ -146,8 +149,6 @@ func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkNam
 		t.Fatalf("failed to get host port mapping from postgres container")
 	}
 
-	port := m[0].HostPort
-
 	// spin up a goroutine to survive any test panics to expire/stop the running container
 	go func() {
 		time.Sleep(expireTimeout)
@@ -162,19 +163,12 @@ func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkNam
 		stopContainer()
 	})
 
-	builder := &postgresTester[T]{
-		hostname: "localhost",
-		creds:    "postgres:secret",
+	builder := &postgresTestEngine[T]{
+		addr:  fmt.Sprintf("localhost:%s", m[0].HostPort),
+		creds: "postgres:secret",
 	}
 
-	if bridgeNetworkName != "" {
-		builder.hostname = name
-		builder.port = "5432"
-	} else {
-		builder.port = port
-	}
-
-	uri := fmt.Sprintf("postgres://%s@localhost:%s/defaultdb?sslmode=disable", builder.creds, port)
+	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", builder.creds, builder.addr)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -203,26 +197,23 @@ func (p *postgresTester[T]) RunPostgresForTesting(t testing.TB, bridgeNetworkNam
 	return builder
 }
 
-func (b *postgresTester[T]) NewDatabase(t testing.TB) string {
-
-	dbName := "defaultdb"
+func (p *postgresTestEngine[T]) NewDatabase(t testing.TB) string {
 
 	return fmt.Sprintf(
-		"postgres://%s@%s:%s/%s?sslmode=disable",
-		b.creds,
-		b.hostname,
-		b.port,
-		dbName,
+		"postgres://%s@%s/%s?sslmode=disable",
+		p.creds,
+		p.addr,
+		"defaultdb",
 	)
 }
 
-func (b *postgresTester[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
-	connectStr := b.NewDatabase(t)
+func (p *postgresTestEngine[T]) NewDatastore(t testing.TB, init DatastoreInitFunc[T]) T {
 
+	// bootstrap the database schema
 	for _, stmt := range createTableStmts {
-		_, err := b.conn.Exec(context.Background(), stmt)
+		_, err := p.conn.Exec(context.Background(), stmt)
 		require.NoError(t, err)
 	}
 
-	return initFunc("postgres", connectStr)
+	return init("postgres", p.NewDatabase(t))
 }

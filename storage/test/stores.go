@@ -14,12 +14,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStore(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TestStore(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	// Create some stores

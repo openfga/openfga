@@ -15,12 +15,12 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteAndReadAuthorizationModel(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
@@ -71,12 +71,12 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester[s
 	}
 }
 
-func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func ReadAuthorizationModelsTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
@@ -171,12 +171,12 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester[storage.
 	}
 }
 
-func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func FindLatestAuthorizationModelIDTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
@@ -241,12 +241,12 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester[s
 	})
 }
 
-func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func ReadTypeDefinitionTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {

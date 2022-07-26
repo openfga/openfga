@@ -17,7 +17,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	type readQueryTest struct {
 		_name           string
 		typeDefinitions []*openfgapb.TypeDefinition
@@ -550,7 +550,7 @@ func TestReadQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.Op
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {

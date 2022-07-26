@@ -14,12 +14,12 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func ReadChangesTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func ReadChangesTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	t.Run("read changes with continuation token", func(t *testing.T) {
@@ -160,12 +160,12 @@ func ReadChangesTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatas
 	})
 }
 
-func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TupleWritingAndReadingTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	t.Run("deletes would succeed and write would fail, fails and introduces no changes", func(t *testing.T) {
@@ -340,12 +340,12 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.O
 	})
 }
 
-func TuplePaginationOptionsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TuplePaginationOptionsTest(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)

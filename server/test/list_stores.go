@@ -15,12 +15,12 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestListStores(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	// clean up all stores from other tests

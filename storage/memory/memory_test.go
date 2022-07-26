@@ -21,7 +21,7 @@ func init() {
 func TestMemdbStorage(t *testing.T) {
 	testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "memory")
 
-	test.TestAll(t, test.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
+	test.TestAll(t, test.OpenFGADatastoreConstructor(func() (storage.OpenFGADatastore, error) {
 		ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
 			return memory.New(telemetry.NewNoopTracer(), 10, 24)
 		})

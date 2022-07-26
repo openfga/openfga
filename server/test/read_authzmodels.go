@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(20)
 
 	require := require.New(t)
@@ -26,7 +26,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	tests := []struct {
@@ -94,12 +94,12 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 	}
 }
 
-func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithPaging(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	tds := &openfgapb.TypeDefinitions{
@@ -168,12 +168,12 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	require.ErrorContains(err, "Invalid continuation token")
 }
 
-func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)

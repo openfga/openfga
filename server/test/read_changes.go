@@ -61,9 +61,9 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 	}
 }
 
-func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadChanges(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, dbTester)
+	ctx, backend, tracer, err := setup(store, dc)
 	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -249,9 +249,9 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	}
 }
 
-func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, dbTester)
+	ctx, backend, tracer, err := setup(store, dc)
 	require.NoError(t, err)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
@@ -265,11 +265,11 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func setup(store string, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	if err != nil {
 		return nil, nil, nil, err
 	}

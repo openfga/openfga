@@ -13,7 +13,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAssertionQuery(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	type readAssertionsQueryTest struct {
 		_name            string
 		request          *openfgapb.ReadAssertionsRequest
@@ -36,7 +36,7 @@ func TestReadAssertionQuery(t *testing.T, dbTester teststorage.DatastoreTester[s
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {

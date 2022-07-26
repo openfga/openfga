@@ -19,28 +19,32 @@ var (
 	}
 )
 
-// DatastoreTester provides a generic datastore suite a means of initializing
-// a particular datastore.
-type DatastoreTester[T any] interface {
+// DatastoreConstructor provides a generic mechanism to construct a datastore instance.
+type DatastoreConstructor[T any] interface {
 	// New creates a new datastore instance for a single test.
 	New() (T, error)
 }
 
-type DatastoreTesterFunc func() (storage.OpenFGADatastore, error)
+// OpenFGADatastoreConstructor implements the DatastoreConstructor interface
+// specifically for the OpenFGADatastore storage interface.
+type OpenFGADatastoreConstructor func() (storage.OpenFGADatastore, error)
 
-func (f DatastoreTesterFunc) New() (storage.OpenFGADatastore, error) {
-	return f()
+// New returns the OpenFGADatastore implementation coming from the underlying function
+// provided.
+func (fn OpenFGADatastoreConstructor) New() (storage.OpenFGADatastore, error) {
+	return fn()
 }
 
-// All runs all generic datastore tests on a DatastoreTester.
-func TestAll(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
-	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, dbTester) })
-	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, dbTester) })
-	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { TestWriteAndReadAuthorizationModel(t, dbTester) })
-	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, dbTester) })
-	t.Run("TestReadTypeDefinition", func(t *testing.T) { ReadTypeDefinitionTest(t, dbTester) })
-	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, dbTester) })
-	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, dbTester) })
-	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, dbTester) })
-	t.Run("TestStore", func(t *testing.T) { TestStore(t, dbTester) })
+// TestAll runs all datastore tests against the datastore constructed by the provided
+// DatastoreConstructor.
+func TestAll(t *testing.T, dc DatastoreConstructor[storage.OpenFGADatastore]) {
+	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, dc) })
+	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, dc) })
+	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { TestWriteAndReadAuthorizationModel(t, dc) })
+	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, dc) })
+	t.Run("TestReadTypeDefinition", func(t *testing.T) { ReadTypeDefinitionTest(t, dc) })
+	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, dc) })
+	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, dc) })
+	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, dc) })
+	t.Run("TestStore", func(t *testing.T) { TestStore(t, dc) })
 }

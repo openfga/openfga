@@ -16,7 +16,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelQueryErrors(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	type readAuthorizationModelQueryTest struct {
 		_name         string
 		request       *openfgapb.ReadAuthorizationModelRequest
@@ -38,7 +38,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.Da
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	for _, test := range tests {
@@ -50,13 +50,13 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, dbTester teststorage.Da
 	}
 }
 
-func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	state := &openfgapb.TypeDefinitions{
@@ -90,12 +90,12 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	require.Nil(actualError)
 }
 
-func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, dc teststorage.DatastoreConstructor[storage.OpenFGADatastore]) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
+	datastore, err := dc.New()
 	require.NoError(err)
 
 	emptyState := &openfgapb.TypeDefinitions{
