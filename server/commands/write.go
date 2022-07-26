@@ -69,20 +69,17 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		case *openfgapb.Userset_This:
 			continue // no need to check on Direct Relationship
 		case *openfgapb.Userset_Intersection:
-			isDirect := isDirectIntersection(usType, tk)
-			if !isDirect {
+			if !isDirectIntersection(usType, tk) {
 				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 			}
 			continue
 		case *openfgapb.Userset_Union:
-			isDirect := isDirectUnion(usType, tk)
-			if !isDirect {
+			if !isDirectUnion(usType, tk) {
 				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 			}
 			continue
 		case *openfgapb.Userset_Difference:
-			isDirect := isDirectDifference(usType, tk)
-			if !isDirect {
+			if !isDirectDifference(usType, tk) {
 				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 			}
 			continue
