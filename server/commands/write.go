@@ -135,47 +135,41 @@ func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgap
 }
 
 func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) bool {
-	isDirect := false
 	for _, userset := range nodes.Intersection.Child {
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
-			isDirect = true
-			return isDirect
+			return true
 		default:
 			continue
 		}
 	}
 
-	return isDirect
+	return false
 }
 
 func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) bool {
-	isDirect := false
 	for _, userset := range nodes.Union.Child {
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
-			isDirect = true
-			return isDirect
+			return true
 		default:
 			continue
 		}
 	}
 
-	return isDirect
+	return false
 }
 
 func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) bool {
-	isDirect := false
 	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
 	for _, userset := range sets {
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
-			isDirect = true
-			return isDirect
+			return true
 		default:
 			continue
 		}
 	}
 
-	return isDirect
+	return false
 }
