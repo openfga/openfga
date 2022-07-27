@@ -6,7 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.5] - 2022-07-18
+## [0.1.6] - 2022-07-27
+### Fixed
+* Issue with embedded Playground assets found in the `v0.1.5` released docker image (#129)
+
+## [0.1.5] - 2022-07-27
 ### Added
 * Support for defining server configuration in `config.yaml`, CLI flags, or env variables (#63 #92 #100)
 
@@ -35,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   curl --request GET -d '{"service":"openfga.v1.OpenFGAService"}' http://localhost:8080/healthz
   ```
 
+* Profiling support (pprof) (#111)
+
+  You can now profile the OpenFGA server while it's running using the [pprof](https://github.com/google/pprof/blob/main/doc/README.md) profiler. To enable the pprof profiler set `profiler.enabled=true`. It is served on the `/debug/pprof` endpoint and port `3001` by default.
+
 * Configuration to enable/disable the HTTP server (#84)
 
   You can now enable/disable the HTTP server by setting `http.enabled=true/false`. It is enabled by default.
@@ -43,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Env variables have a new mappings.
 
   Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
+
+### Fixed
+* goroutine leaks in Check resolution. (#113)
 
 ## [0.1.4] - 2022-06-27
 ### Added
@@ -67,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
 [0.1.5]: https://github.com/openfga/openfga/releases/tag/v0.1.5
 [0.1.4]: https://github.com/openfga/openfga/releases/tag/v0.1.4
 [0.1.2]: https://github.com/openfga/openfga/releases/tag/v0.1.2

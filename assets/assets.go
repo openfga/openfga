@@ -8,3 +8,6 @@ const (
 
 //go:embed migrations/*
 var EmbedMigrations embed.FS
+
+//go:embed playground/*
+var EmbedPlayground embed.FS
