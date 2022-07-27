@@ -24,20 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate Release Changes
-        id: changelog_reader
-        uses: mindsers/changelog-reader-action@v2
-        with:
-          version: ${{ steps.tag_name.outputs.current_version }}
-
-      - name: Generate Release Notes
-        id: release_notes
-        run: |
-          export NOTES=$(mktemp)
-          echo ::set-output name=notes::$NOTES
-          printf '${{ steps.changelog_reader.outputs.changes }}' > $NOTES
-        shell: bash
-
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
@@ -54,6 +40,6 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --rm-dist --release-notes ${{ steps.release_notes.outputs.notes }}
+          args: release --rm-dist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

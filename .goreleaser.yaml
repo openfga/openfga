@@ -37,7 +37,7 @@ dockers:
       - "openfga/openfga:v{{ .Major }}.{{ .Minor }}.{{ .Patch }}"
 
     extra_files:
-      - static/playground
+      - assets
 
 release:
   github:
@@ -52,7 +52,7 @@ archives:
       386: i386
       amd64: x86_64
     files:
-      - static/playground
+      - assets
 
 checksum:
   name_template: 'checksums.txt'
