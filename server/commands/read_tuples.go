@@ -11,29 +11,29 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// A ReadTuplesQuery can be used to read tuples from a store
-// THIS IS ONLY FOR THE PLAYGROUND, DO NOT EXPOSE THIS IN PRODUCTION ENVIRONMENTS
+// ReadTuplesQuery can be used to read tuples from a store.
 type ReadTuplesQuery struct {
 	backend storage.TupleBackend
-	encoder encoder.Encoder
 	logger  logger.Logger
+	encoder encoder.Encoder
 }
 
-// NewReadTuplesQuery creates a ReadTuplesQuery with specified `tupleBackend` to use for storage
-func NewReadTuplesQuery(backend storage.TupleBackend, encoder encoder.Encoder, logger logger.Logger) *ReadTuplesQuery {
+// NewReadTuplesQuery constructs a ReadTuplesQuery with the provided storage backend.
+func NewReadTuplesQuery(backend storage.TupleBackend, logger logger.Logger, encoder encoder.Encoder) *ReadTuplesQuery {
 	return &ReadTuplesQuery{
 		backend: backend,
-		encoder: encoder,
 		logger:  logger,
+		encoder: encoder,
 	}
 }
 
-// Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store
+// Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store.
 func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadTuples", 1, 0)
 
@@ -44,7 +44,7 @@ func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuples
 
 	encodedToken, err := q.encoder.Encode(continuationToken)
 	if err != nil {
-		return nil, serverErrors.NewInternalError("", err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	resp := &openfgapb.ReadTuplesResponse{

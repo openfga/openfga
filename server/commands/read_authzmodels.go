@@ -13,15 +13,15 @@ import (
 
 type ReadAuthorizationModelsQuery struct {
 	backend storage.AuthorizationModelReadBackend
-	encoder encoder.Encoder
 	logger  logger.Logger
+	encoder encoder.Encoder
 }
 
-func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, encoder encoder.Encoder, logger logger.Logger) *ReadAuthorizationModelsQuery {
+func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger, encoder encoder.Encoder) *ReadAuthorizationModelsQuery {
 	return &ReadAuthorizationModelsQuery{
 		backend: backend,
-		encoder: encoder,
 		logger:  logger,
+		encoder: encoder,
 	}
 }
 
@@ -30,6 +30,7 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 	utils.LogDBStats(ctx, q.logger, "ReadAuthzModels", 1, 0)
 

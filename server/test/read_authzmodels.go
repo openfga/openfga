@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -22,7 +23,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
-	encoder := encoder.NewNoopEncoder()
+	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 
 	datastore, err := dbTester.New()
@@ -77,13 +78,13 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 				for store, state := range test.backendState {
 					modelID, err := id.NewString()
 					require.NoError(err)
-					if err := datastore.WriteAuthorizationModel(ctx, store, modelID, state); err != nil {
-						t.Fatalf("WriteAuthorizationModel(%s), err = %v, want nil", store, err)
-					}
+
+					err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+					require.NoError(err)
 				}
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 			resp, err := query.Execute(ctx, test.request)
 
 			require.NoError(err)
@@ -113,21 +114,21 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	modelID1, err := id.NewString()
 	require.NoError(err)
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds); err != nil {
-		t.Fatal(err)
-	}
-	modelID2, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID2, tds); err != nil {
-		t.Fatal(err)
-	}
-
-	encoder, err := encoder.NewTokenEncrypter("key")
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, tds)
 	require.NoError(err)
 
-	query := commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger)
+	modelID2, err := id.NewString()
+	require.NoError(err)
+
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds)
+	require.NoError(err)
+
+	encrypter, err := encrypter.NewGCMEncrypter("key")
+	require.NoError(err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
+	query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
 	firstRequest := &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
@@ -177,9 +178,8 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(err)
+
 	tds := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -188,13 +188,10 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester 
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, tds); err != nil {
-		t.Fatal(err)
-	}
-	encoder, err := encoder.NewTokenEncrypter("key")
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
-	_, err = commands.NewReadAuthorizationModelsQuery(datastore, encoder, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})

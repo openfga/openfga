@@ -56,7 +56,7 @@ Download your platform's [latest release](https://github.com/openfga/openfga/rel
 with the command:
 
 ```bash
-./bin/openfga run
+./openfga run
 ```
 
 ### Building from Source
@@ -120,7 +120,7 @@ docker compose up -d postgres
 make run-postgres
 ```
 
-This should start a Postgres container, run database schema migrations, and start the OpenFGA server.
+This should start a Postgres container, run migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
 
@@ -152,14 +152,32 @@ If everything is running correctly, you should get a response with information a
 ```
 
 ## Playground
-The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instace.
+The Playground facilitates rapid development by allowing you to visualize and model your application's authorization model(s) and manage relationship tuples with a locally running OpenFGA instance.
 
+To run OpenFGA with the Playground disabled, provide the `--playground-enabled=false` flag.
+
+```
+./openfga run --playground-enabled=false
+```
 Once OpenFGA is running, by default, the Playground can be accessed at [http://localhost:3000/playground](http://localhost:3000/playground).
 
-In the event that a port other than the default port is required, the `OPENFGA_PLAYGROUND_PORT` environment variable can be set to change it. For example,
+In the event that a port other than the default port is required, the `--playground-port` flag can be set to change it. For example,
 
 ```sh
-OPENFGA_PLAYGROUND_PORT=3001 ./bin/openfga run
+./openfga run --playground-enabled --playground-port 3001
+```
+
+## Profiler (pprof)
+Profiling through pprof can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
+
+```sh
+./openfga run --profiler-enabled
+```
+
+If you need to serve the profiler on a different address than the default `:3001`, you can do so by specifying the `--profiler-addr` flag. For example,
+
+```sh
+./openfga run --profiler-enabled --profiler-addr :3002
 ```
 
 ## Next Steps

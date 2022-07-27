@@ -708,19 +708,16 @@ func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester[storage
 		t.Run(test._name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 			modelID, err := id.NewString()
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(err)
+
 			if test.typeDefinitions != nil {
-				if err := datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions}); err != nil {
-					t.Fatalf("%s: WriteAuthorizationModel: got '%v', want nil", test._name, err)
-				}
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				require.NoError(err)
 			}
 
 			if test.tuples != nil {
-				if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples); err != nil {
-					t.Fatalf("error writing test tuples: %v", err)
-				}
+				err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples)
+				require.NoError(err)
 			}
 
 			cmd := commands.NewWriteCommand(datastore, tracer, logger)

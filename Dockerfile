@@ -10,6 +10,6 @@ EXPOSE 8081
 EXPOSE 8080
 EXPOSE 3000
 COPY --from=builder /app/openfga /app/openfga
-COPY --from=builder /app/static /app/static
+COPY --from=builder /app/assets /app/assets
 WORKDIR /app
 ENTRYPOINT ["./openfga"]
