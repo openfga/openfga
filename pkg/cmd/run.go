@@ -101,7 +101,6 @@ func run(_ *cobra.Command, _ []string) {
 
 		logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost:%d/playground", playgroundPort))
 
-		assets.EmbedPlayground.ReadFile("index.html")
 		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 		if err != nil {
 			logger.Fatal("failed to parse Playground index.html as Go template", zap.Error(err))
