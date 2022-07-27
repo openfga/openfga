@@ -1,24 +1,13 @@
 package storage
 
-import (
-	"testing"
-)
+type memoryTestContainer struct{}
 
-type memoryTest[T any] struct{}
-
-func NewMemoryTester[T any]() *memoryTest[T] {
-	return &memoryTest[T]{}
+// NewMemoryTestContainer constructs an implementation of the DatastoreTestContainer interface
+// for the in memory datastore engine.
+func NewMemoryTestContainer() *memoryTestContainer {
+	return &memoryTestContainer{}
 }
 
-func (m *memoryTest[T]) NewDatabase(t testing.TB) string {
+func (m *memoryTestContainer) GetConnectionURI() string {
 	return ""
-}
-
-func (m *memoryTest[T]) NewDatastore(t testing.TB, initFunc InitFunc[T]) T {
-	return initFunc("memory", "")
-}
-
-// RunMemoryForTesting returns a RunningEngineForTest for the in-memory driver.
-func RunMemoryForTesting[T any](t testing.TB) RunningEngineForTest[T] {
-	return &memoryTest[T]{}
 }

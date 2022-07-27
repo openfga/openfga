@@ -8,14 +8,15 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"os"
 	"os/signal"
+	"path"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
@@ -24,6 +25,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -101,12 +111,12 @@ func run(_ *cobra.Command, _ []string) {
 
 		logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost:%d/playground", playgroundPort))
 
-		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
+		tmpl, err := template.ParseFiles("./static/playground/index.html")
 		if err != nil {
 			logger.Fatal("failed to parse Playground index.html as Go template", zap.Error(err))
 		}
 
-		fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
+		fileServer := http.FileServer(http.Dir("./static"))
 
 		policy := backoff.NewExponentialBackOff()
 		policy.MaxElapsedTime = 3 * time.Second
