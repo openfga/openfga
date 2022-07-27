@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2022-07-27
+### Fixed
+* Issue with embedded Playground assets found in the `v0.1.5` released docker image (#129)
+
 ## [0.1.5] - 2022-07-27
 ### Added
 * Support for defining server configuration in `config.yaml`, CLI flags, or env variables (#63 #92 #100)
@@ -74,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
 [0.1.5]: https://github.com/openfga/openfga/releases/tag/v0.1.5
 [0.1.4]: https://github.com/openfga/openfga/releases/tag/v0.1.4
 [0.1.2]: https://github.com/openfga/openfga/releases/tag/v0.1.2
