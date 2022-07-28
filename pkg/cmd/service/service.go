@@ -110,10 +110,15 @@ type PlaygroundConfig struct {
 // OpenFGAConfig defines server configurations specific to the OpenFGA server itself.
 type OpenFGAConfig struct {
 
-	// LookupDeadline defines the maximum amount of time to stream Lookup results
-	// until the server stream is closed. This is to protect the server from misuse of the
-	// endpoint.
+	// LookupDeadline defines the maximum amount of time to accumulate Lookup results
+	// before the server will respond. This is to protect the server from misuse of the
+	// Lookup endpoints.
 	LookupDeadline time.Duration
+
+	// LookupMaxResults defines the maximum number of Lookup results to accumulate
+	// before the server will respond. This is to protect the server from misuse of the
+	// Lookup endpoints.
+	LookupMaxResults uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -338,6 +343,8 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		},
 		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,
+		LookupDeadline:         config.OpenFGA.LookupDeadline,
+		LookupMaxResults:       config.OpenFGA.LookupMaxResults,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 	})

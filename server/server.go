@@ -82,6 +82,8 @@ type Config struct {
 	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
+	LookupDeadline         time.Duration
+	LookupMaxResults       uint32
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 }
@@ -161,8 +163,12 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*openfgapb.LookupResponse, error) {
 
 	storeID := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	targetObjectType := req.GetObjectType()
+
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
 
 	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
 		StoreID:            storeID,
@@ -237,10 +243,14 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_StreamedLookupServer) error {
 
 	storeID := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	targetObjectType := req.GetObjectType()
 
 	ctx := context.Background()
+
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	if err != nil {
+		return err
+	}
 
 	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
 		StoreID:            storeID,
@@ -309,7 +319,7 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 	}()
 
 	select {
-	case <-time.After(2 * time.Second): // todo(jon-whit): make this server configurable
+	case <-time.After(s.config.LookupDeadline):
 		return status.Error(codes.DeadlineExceeded, "the server's response deadline has been exceeded")
 	case <-resolvedChan:
 		return nil
