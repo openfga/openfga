@@ -248,7 +248,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	}
 }
 
-func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, ds storage.OpenFGADatastore) {
+func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, tracer, err := setup(store, ds)
 	require.NoError(t, err)
