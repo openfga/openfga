@@ -197,7 +197,7 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 
 		var results uint32
 		for {
-			if s.config.LookupMaxResults != 0 && atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+			if atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
 				break
 			}
 
@@ -226,9 +226,11 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 				}
 
 				if resp.Allowed {
-					_, objectID := tuple.SplitObject(t.Key.Object)
-					objectIDsChan <- objectID
-					atomic.AddUint32(&results, 1)
+					if atomic.LoadUint32(&results) < s.config.LookupMaxResults {
+						_, objectID := tuple.SplitObject(t.Key.Object)
+						objectIDsChan <- objectID
+						atomic.AddUint32(&results, 1)
+					}
 				}
 
 				return nil
@@ -304,7 +306,7 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 
 		var results uint32
 		for {
-			if s.config.LookupMaxResults != 0 && atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+			if atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
 				break
 			}
 
@@ -335,14 +337,16 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 				if resp.Allowed {
 					_, objectID := tuple.SplitObject(t.Key.Object)
 
-					err = srv.Send(&openfgapb.StreamedLookupResponse{
-						ObjectId: objectID,
-					})
-					if err != nil {
-						return err
-					}
+					if atomic.LoadUint32(&results) < s.config.LookupMaxResults {
+						err = srv.Send(&openfgapb.StreamedLookupResponse{
+							ObjectId: objectID,
+						})
+						if err != nil {
+							return err
+						}
 
-					atomic.AddUint32(&results, 1)
+						atomic.AddUint32(&results, 1)
+					}
 				}
 
 				return nil

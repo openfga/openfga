@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -155,7 +156,7 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
 		LookupDeadline:                0,
-		LookupMaxResults:              0,
+		LookupMaxResults:              math.MaxUint32,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
