@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -185,8 +186,21 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 
 	objectIDsChan := make(chan string, 100)
 
+	timeoutCtx := ctx
+	var cancel context.CancelFunc
+	if s.config.LookupDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.LookupDeadline)
+		defer cancel()
+	}
+
 	go func() {
+
+		var results uint32
 		for {
+			if s.config.LookupMaxResults != 0 && atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+				break
+			}
+
 			t, err := iter.Next()
 			if err != nil {
 				if err == storage.TupleIteratorDone {
@@ -197,7 +211,7 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 			fn := func() error {
 				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
-				resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
 					TupleKey: &openfgapb.TupleKey{
@@ -214,6 +228,7 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 				if resp.Allowed {
 					_, objectID := tuple.SplitObject(t.Key.Object)
 					objectIDsChan <- objectID
+					atomic.AddUint32(&results, 1)
 				}
 
 				return nil
@@ -230,9 +245,20 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 		close(objectIDsChan)
 	}()
 
+	resolvedChan := make(chan struct{})
+
 	var objectIDs []string
-	for objectID := range objectIDsChan {
-		objectIDs = append(objectIDs, objectID)
+	go func() {
+		for objectID := range objectIDsChan {
+			objectIDs = append(objectIDs, objectID)
+		}
+
+		close(resolvedChan)
+	}()
+
+	select {
+	case <-timeoutCtx.Done():
+	case <-resolvedChan:
 	}
 
 	return &openfgapb.LookupResponse{
@@ -267,8 +293,21 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 
 	resolvedChan := make(chan struct{})
 
+	var timeoutCtx context.Context
+	var cancel context.CancelFunc
+	if s.config.LookupDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.LookupDeadline)
+		defer cancel()
+	}
+
 	go func() {
+
+		var results uint32
 		for {
+			if s.config.LookupMaxResults != 0 && atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+				break
+			}
+
 			t, err := iter.Next()
 			if err != nil {
 				if err == storage.TupleIteratorDone {
@@ -279,7 +318,7 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 			fn := func() error {
 				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
-				resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
 					TupleKey: &openfgapb.TupleKey{
@@ -302,6 +341,8 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 					if err != nil {
 						return err
 					}
+
+					atomic.AddUint32(&results, 1)
 				}
 
 				return nil
@@ -319,11 +360,11 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 	}()
 
 	select {
-	case <-time.After(s.config.LookupDeadline):
-		return status.Error(codes.DeadlineExceeded, "the server's response deadline has been exceeded")
+	case <-timeoutCtx.Done():
 	case <-resolvedChan:
-		return nil
 	}
+
+	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {

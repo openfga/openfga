@@ -287,15 +287,21 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
 
-	cmd.Flags().Int("max-tuples-per-write", defaultConfig.OpenFGA.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
+	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	cmdutil.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
 
-	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.OpenFGA.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 	cmdutil.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authorization-model"))
 
-	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.OpenFGA.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
+	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 	cmdutil.MustBindPFlag("changelogHorizonOffset", cmd.Flags().Lookup("changelog-horizon-offset"))
 
-	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.OpenFGA.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
+	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
 	cmdutil.MustBindPFlag("resolveNodeLimit", cmd.Flags().Lookup("resolve-node-limit"))
+
+	cmd.Flags().Duration("lookup-deadline", defaultConfig.LookupDeadline, "the timeout deadline for serving Lookup requests")
+	cmdutil.MustBindPFlag("lookupDeadline", cmd.Flags().Lookup("lookup-deadline"))
+
+	cmd.Flags().Uint32("lookup-max-results", defaultConfig.LookupMaxResults, "the maximum results to serve for Lookup requests")
+	cmdutil.MustBindPFlag("lookupMaxResults", cmd.Flags().Lookup("lookup-max-results"))
 }
