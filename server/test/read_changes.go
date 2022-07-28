@@ -250,7 +250,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, ds)
+	ctx, backend, tracer, err := setup(store, datastore)
 	require.NoError(t, err)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
