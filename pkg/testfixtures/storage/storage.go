@@ -6,6 +6,9 @@ import (
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.
 type DatastoreTestContainer interface {
+
+	// GetConnectionURI returns a connection string to the datastore instance running inside
+	// the container.
 	GetConnectionURI() string
 }
 
