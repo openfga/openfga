@@ -2,6 +2,8 @@ module github.com/openfga/openfga
 
 go 1.18
 
+replace go.buf.build/openfga/go/openfga/api => /Users/jonwhit/github/openfga/api/proto
+
 require (
 	github.com/MicahParks/keyfunc v1.2.0
 	github.com/cenkalti/backoff/v4 v4.1.3
@@ -39,6 +41,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/distribution v2.8.1+incompatible // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/envoyproxy/protoc-gen-validate v0.6.7 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -71,8 +74,6 @@ require (
 	github.com/subosito/gotenv v1.3.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
-	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 // indirect
-	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

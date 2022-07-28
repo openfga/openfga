@@ -110,6 +110,11 @@ type PlaygroundConfig struct {
 // OpenFGAConfig defines server configurations specific to the OpenFGA server itself.
 type OpenFGAConfig struct {
 
+	// LookupDeadline defines the maximum amount of time to stream Lookup results
+	// until the server stream is closed. This is to protect the server from misuse of the
+	// endpoint.
+	LookupDeadline time.Duration
+
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
 

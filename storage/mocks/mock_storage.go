@@ -148,6 +148,26 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(arg0, arg1, arg2, arg3 interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), arg0, arg1, arg2, arg3)
 }
 
+// ReadRelationshipTuples mocks base method.
+func (m *MockTupleBackend) ReadRelationshipTuples(ctx context.Context, filter storage.ReadRelationshipTuplesFilter, opts ...storage.QueryOption) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ReadRelationshipTuples", varargs...)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRelationshipTuples indicates an expected call of ReadRelationshipTuples.
+func (mr *MockTupleBackendMockRecorder) ReadRelationshipTuples(ctx, filter interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRelationshipTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadRelationshipTuples), varargs...)
+}
+
 // ReadUserTuple mocks base method.
 func (m *MockTupleBackend) ReadUserTuple(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
@@ -898,6 +918,26 @@ func (m *MockOpenFGADatastore) ReadPage(arg0 context.Context, arg1 string, arg2 
 func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), arg0, arg1, arg2, arg3)
+}
+
+// ReadRelationshipTuples mocks base method.
+func (m *MockOpenFGADatastore) ReadRelationshipTuples(ctx context.Context, filter storage.ReadRelationshipTuplesFilter, opts ...storage.QueryOption) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{ctx, filter}
+	for _, a := range opts {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "ReadRelationshipTuples", varargs...)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadRelationshipTuples indicates an expected call of ReadRelationshipTuples.
+func (mr *MockOpenFGADatastoreMockRecorder) ReadRelationshipTuples(ctx, filter interface{}, opts ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{ctx, filter}, opts...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadRelationshipTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadRelationshipTuples), varargs...)
 }
 
 // ReadTypeDefinition mocks base method.

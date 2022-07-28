@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
@@ -28,7 +29,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
@@ -153,6 +156,164 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
 	return server, nil
+}
+
+func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*openfgapb.LookupResponse, error) {
+
+	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
+	targetObjectType := req.GetObjectType()
+
+	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
+		StoreID:            storeID,
+		OptionalObjectType: targetObjectType,
+	})
+	if err != nil {
+		s.logger.Error("database query failed", logger.Error(err))
+		return nil, status.Errorf(codes.Internal, "An internal server error has occured")
+	}
+	defer iter.Stop()
+
+	g := new(errgroup.Group)
+	g.SetLimit(100) // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+
+	objectIDsChan := make(chan string, 100)
+
+	go func() {
+		for {
+			t, err := iter.Next()
+			if err != nil {
+				if err == storage.TupleIteratorDone {
+					break
+				}
+			}
+
+			fn := func() error {
+				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+
+				resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey: &openfgapb.TupleKey{
+						Object:   t.Key.Object,
+						Relation: req.GetRelation(),
+						User:     req.GetUser(),
+					},
+					ContextualTuples: req.GetContextualTuples(),
+				})
+				if err != nil {
+					return err
+				}
+
+				if resp.Allowed {
+					_, objectID := tuple.SplitObject(t.Key.Object)
+					objectIDsChan <- objectID
+				}
+
+				return nil
+			}
+
+			g.Go(fn)
+		}
+
+		err := g.Wait()
+		if err != nil {
+			// todo: handle error
+		}
+
+		close(objectIDsChan)
+	}()
+
+	var objectIDs []string
+	for objectID := range objectIDsChan {
+		objectIDs = append(objectIDs, objectID)
+	}
+
+	return &openfgapb.LookupResponse{
+		ObjectIds: objectIDs,
+	}, nil
+}
+
+func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_StreamedLookupServer) error {
+
+	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
+	targetObjectType := req.GetObjectType()
+
+	ctx := context.Background()
+
+	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
+		StoreID:            storeID,
+		OptionalObjectType: targetObjectType,
+	})
+	if err != nil {
+		s.logger.Error("database query failed", logger.Error(err))
+		return status.Errorf(codes.Internal, "An internal server error has occured")
+	}
+	defer iter.Stop()
+
+	g := new(errgroup.Group)
+	g.SetLimit(100) // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+
+	resolvedChan := make(chan struct{})
+
+	go func() {
+		for {
+			t, err := iter.Next()
+			if err != nil {
+				if err == storage.TupleIteratorDone {
+					break
+				}
+			}
+
+			fn := func() error {
+				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+
+				resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey: &openfgapb.TupleKey{
+						Object:   t.Key.Object,
+						Relation: req.GetRelation(),
+						User:     req.GetUser(),
+					},
+					ContextualTuples: req.GetContextualTuples(),
+				})
+				if err != nil {
+					return err
+				}
+
+				if resp.Allowed {
+					_, objectID := tuple.SplitObject(t.Key.Object)
+
+					err = srv.Send(&openfgapb.StreamedLookupResponse{
+						ObjectId: objectID,
+					})
+					if err != nil {
+						return err
+					}
+				}
+
+				return nil
+			}
+
+			g.Go(fn)
+		}
+
+		err := g.Wait()
+		if err != nil {
+			// todo: handle error
+		}
+
+		resolvedChan <- struct{}{}
+	}()
+
+	select {
+	case <-time.After(2 * time.Second): // todo(jon-whit): make this server configurable
+		return status.Error(codes.DeadlineExceeded, "the server's response deadline has been exceeded")
+	case <-resolvedChan:
+		return nil
+	}
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {

@@ -43,12 +43,44 @@ type TupleIterator interface {
 type Writes = []*openfgapb.TupleKey
 type Deletes = []*openfgapb.TupleKey
 
+// QueryOptions represent constraints that can be applied to a query to modify the response
+// behavior of the query.
+type QueryOptions struct {
+	Limit uint64
+}
+
+type QueryOption func(*QueryOptions)
+
+// WithLimit returns a QueryOption with the provided query limit set.
+func WithLimit(limit uint64) QueryOption {
+	return func(qo *QueryOptions) {
+		qo.Limit = limit
+	}
+}
+
+// ReadRelationshipTuplesFilter represents fields that can be used to additionally constrain/filter
+// relationship tuples when querying them.
+type ReadRelationshipTuplesFilter struct {
+	StoreID            string
+	OptionalObjectType string
+	OptionalObjectID   string
+	OptionalRelation   string
+	//OptionalUserFilter *UserFilter
+}
+
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
 	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
 	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
 	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+
+	// ReadRelationshipTuples queries relationship tuples matching the filter.
+	ReadRelationshipTuples(
+		ctx context.Context,
+		filter ReadRelationshipTuplesFilter,
+		opts ...QueryOption,
+	) (TupleIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
