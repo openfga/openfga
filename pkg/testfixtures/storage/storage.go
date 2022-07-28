@@ -14,12 +14,10 @@ type DatastoreTestContainer interface {
 // has finished.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
-	case "memory":
-		return NewMemoryTestContainer()
 	case "postgres":
 		return NewPostgresTestContainer().RunPostgresTestContainer(t)
 	default:
-		t.Fatalf("'%s' engine is not supported by RunDatastoreTestEngine", engine)
+		t.Fatalf("'%s' engine is not supported by RunDatastoreTestContainer", engine)
 		return nil
 	}
 }
