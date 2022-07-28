@@ -64,6 +64,8 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
+
+		// Validate that we are not trying to write to an indirect-only relationship
 		err = validateHasDirectRelationship(tupleUserset, tk)
 		if err != nil {
 			return err
@@ -117,20 +119,25 @@ func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgap
 		if !isDirectIntersection(usType, tk) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
+
 	case *openfgapb.Userset_Union:
 		if !isDirectUnion(usType, tk) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
+
 	case *openfgapb.Userset_Difference:
 		if !isDirectDifference(usType, tk) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
+
 	case *openfgapb.Userset_ComputedUserset:
 		// if Userset.type is a ComputedUserset then we know it can't be direct
 		return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
+
 	default:
 		return nil
 	}
+
 	return nil
 }
 
@@ -139,6 +146,7 @@ func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.T
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
 			return true
+
 		default:
 			continue
 		}
@@ -152,6 +160,7 @@ func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) bool 
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
 			return true
+
 		default:
 			continue
 		}
@@ -166,6 +175,7 @@ func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleK
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
 			return true
+
 		default:
 			continue
 		}
