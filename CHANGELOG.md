@@ -6,6 +6,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2022-07-29
+### Added
+* `migrate` CLI command (#56)
+
+  The `migrate` command has been added to the OpenFGA CLI to assist with bootstrapping and managing database schema migrations. See the usage for more info.
+
+  ```
+  ➜ openfga migrate -h
+  The migrate command is used to migrate the database schema needed for OpenFGA.
+
+  Usage:
+    openfga migrate [flags]
+
+  Flags:
+        --datastore-engine string   (required) the database engine to run the migrations for
+        --datastore-uri string      (required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')
+    -h, --help                      help for migrate
+        --version uint              the version to migrate to. If omitted, the latest version of the schema will be used
+  ```
+
 ## [0.1.6] - 2022-07-27
 ### Fixed
 * Issue with embedded Playground assets found in the `v0.1.5` released docker image (#129)
@@ -78,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
 [0.1.5]: https://github.com/openfga/openfga/releases/tag/v0.1.5
 [0.1.4]: https://github.com/openfga/openfga/releases/tag/v0.1.4
