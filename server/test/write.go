@@ -93,16 +93,16 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repository:auth0/express-jwt",
+				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@auth0.com",
+				User:     "github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
-			Object:   "repository:auth0/express-jwt",
+			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@auth0.com",
+			User:     "github|alice@openfga.com",
 		}),
 	},
 	{
@@ -140,16 +140,16 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repository:auth0/express-jwt",
+				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@auth0.com",
+				User:     "github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
-			Object:   "repository:auth0/express-jwt",
+			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@auth0.com",
+			User:     "github|alice@openfga.com",
 		}),
 	},
 	{
@@ -201,16 +201,16 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repository:auth0/express-jwt",
+				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@auth0.com",
+				User:     "github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
-			Object:   "repository:auth0/express-jwt",
+			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@auth0.com",
+			User:     "github|alice@openfga.com",
 		}),
 	},
 	{
@@ -236,16 +236,57 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repository:auth0/express-jwt",
+				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@auth0.com",
+				User:     "github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
-			Object:   "repository:auth0/express-jwt",
+			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@auth0.com",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
+		_name: "ExecuteWithWriteToIndirectTupleToUsersetRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset: &openfgapb.ObjectRelation{
+									Object:   "",
+									Relation: "writer",
+								},
+								ComputedUserset: &openfgapb.ObjectRelation{
+									Object:   "",
+									Relation: "writer",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
 		}),
 	},
 	{

@@ -134,6 +134,10 @@ func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgap
 		// if Userset.type is a ComputedUserset then we know it can't be direct
 		return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 
+	case *openfgapb.Userset_TupleToUserset:
+		// if Userset.type is a TupleToUserset then we know it can't be direct
+		return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
+
 	default:
 		return nil
 	}
