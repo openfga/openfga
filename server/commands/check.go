@@ -170,18 +170,20 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	go func(c chan<- *chanResolveResult) {
 		defer wg.Done()
 
+		found := false
 		tk, err := rc.readUserTuple(ctx, query.datastore)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				err = nil
 			}
-			c <- &chanResolveResult{err: err, found: false}
-			return
 		}
 
-		rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
+		if tk != nil && err == nil {
+			rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
+			found = true
+		}
 		select {
-		case c <- &chanResolveResult{err: nil, found: true}:
+		case c <- &chanResolveResult{err: err, found: found}:
 		case <-done:
 		}
 	}(c)
@@ -226,11 +228,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 			defer wg.Done()
 
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
-			if err != nil {
-				c <- &chanResolveResult{err: err, found: false}
-				return
+			if err == nil {
+				err = query.resolveNode(ctx, nestedRC, userset)
 			}
-			err = query.resolveNode(ctx, nestedRC, userset)
 
 			select {
 			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
@@ -394,7 +394,7 @@ func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionCo
 }
 
 func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resolutionContext, node *openfgapb.Userset_TupleToUserset) error {
-	relation := node.TupleToUserset.Tupleset.GetRelation()
+	relation := node.TupleToUserset.GetTupleset().GetRelation()
 	if relation == "" {
 		relation = rc.tk.GetRelation()
 	}
@@ -405,7 +405,12 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		return serverErrors.HandleError("", err)
 	}
 
-	grp, ctx := errgroup.WithContext(ctx)
+	done := make(chan struct{})
+	defer close(done)
+
+	var wg sync.WaitGroup
+	c := make(chan *chanResolveResult)
+
 	for {
 		tuple, err := iter.next()
 		if err != nil {
@@ -414,36 +419,65 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			}
 			return serverErrors.HandleError("", err)
 		}
+
 		if rc.shouldShortCircuit() {
 			break // the user was resolved already, avoid launching extra lookups
 		}
 
-		uObject, uRelation := tupleUtils.SplitObjectRelation(tuple.GetUser())
-		// We only proceed in the case that userRelation == userset.GetComputedUserset().GetRelation().
-		// uRelation may be empty, and in this case we set it to userset.GetComputedUserset().GetRelation().
-		if uRelation == "" {
-			uRelation = node.TupleToUserset.GetComputedUserset().GetRelation()
+		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
+		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation()
+
+		// userRel may be empty, and in this case we set it to usersetRel.
+		if userRel == "" {
+			userRel = usersetRel
 		}
-		if uRelation != node.TupleToUserset.GetComputedUserset().GetRelation() {
+		// We only proceed in the case that userRel == usersetRel (=node.TupleToUserset.GetComputedUserset().GetRelation()).
+		if userRel != usersetRel {
 			continue
 		}
+
 		tupleKey := &openfgapb.TupleKey{
 			// user from previous lookup
-			Object:   uObject,
-			Relation: uRelation,
+			Object:   userObj,
+			Relation: userRel,
 			// original tk user
 			User: rc.tk.GetUser(),
 		}
-		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(uObject, uRelation))
+		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(userObj, userRel))
 		nestedRC := rc.fork(tupleKey, tracer, false)
-		grp.Go(func() error {
+
+		wg.Add(1)
+		go func(c chan<- *chanResolveResult) {
+			defer wg.Done()
+
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
-			if err != nil {
-				return err
+			if err == nil {
+				err = query.resolveNode(ctx, nestedRC, userset)
 			}
-			return query.resolveNode(ctx, nestedRC, userset)
-		})
+
+			select {
+			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
+			case <-done:
+			}
+		}(c)
 	}
 
-	return grp.Wait()
+	// If any `break` was triggered, immediately release any possible resources held by the iterator.
+	iter.stop()
+
+	go func(c chan *chanResolveResult) {
+		wg.Wait()
+		close(c)
+	}(c)
+
+	for res := range c {
+		if res.found {
+			return nil
+		}
+		if res.err != nil {
+			err = res.err
+		}
+	}
+
+	return err
 }

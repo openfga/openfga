@@ -65,6 +65,13 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		}
 	}
 
+	for _, tk := range deletes {
+		// For delete, we only need to ensure it is well form but no need to validate whether relation exists
+		if err := tupleUtils.ValidateUser(tk); err != nil {
+			return serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
 	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
 		return err
 	}
