@@ -144,7 +144,7 @@ var writeCommandTests = []writeCommandTest{
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("missing user", &openfgapb.TupleKey{Object: "repo:auth0", Relation: "owner"}),
+		err: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", &openfgapb.TupleKey{Object: "repo:auth0", Relation: "owner"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
