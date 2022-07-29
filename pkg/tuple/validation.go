@@ -54,7 +54,7 @@ func (i *RelationNotFoundError) Error() string {
 // ValidateUser returns whether the user is valid.  If not, return error
 func ValidateUser(tk *openfgapb.TupleKey) error {
 	if !IsValidUser(tk.GetUser()) {
-		return &InvalidTupleError{Reason: "missing user", TupleKey: tk}
+		return &InvalidTupleError{Reason: "the 'user' field must be a non-empty string", TupleKey: tk}
 	}
 	return nil
 }
