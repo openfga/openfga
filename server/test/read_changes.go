@@ -32,22 +32,22 @@ type testCase struct {
 }
 
 var tkMaria = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "maria",
 }
 var tkMariaOrg = &openfgapb.TupleKey{
-	Object:   "org:auth0",
+	Object:   "org:openfga",
 	Relation: "member",
 	User:     "maria",
 }
 var tkCraig = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "craig",
 }
 var tkYamil = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "yamil",
 }

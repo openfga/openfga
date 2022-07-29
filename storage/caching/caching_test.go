@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-const store = "auth0"
+const store = "openfga"
 
 type readTypeDefinitionTest struct {
 	_name                  string

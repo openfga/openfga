@@ -174,7 +174,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.O
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
-				User:     "org:auth0#member",
+				User:     "org:openfga#member",
 			},
 			{
 				Object:   "doc:readme",
@@ -280,7 +280,7 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.O
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
-				User:     "org:auth0#member",
+				User:     "org:openfga#member",
 			},
 			{
 				Object:   "doc:readme",
