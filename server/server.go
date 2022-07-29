@@ -83,8 +83,8 @@ type Config struct {
 	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
-	LookupDeadline         time.Duration
-	LookupMaxResults       uint32
+	ListObjectsDeadline    time.Duration
+	ListObjectsMaxResults  uint32
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 }
@@ -161,7 +161,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	return server, nil
 }
 
-func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*openfgapb.LookupResponse, error) {
+func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
 
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetObjectType()
@@ -188,8 +188,8 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 
 	timeoutCtx := ctx
 	var cancel context.CancelFunc
-	if s.config.LookupDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.LookupDeadline)
+	if s.config.ListObjectsDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.ListObjectsDeadline)
 		defer cancel()
 	}
 
@@ -197,7 +197,7 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 
 		var results uint32
 		for {
-			if atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+			if atomic.LoadUint32(&results) >= s.config.ListObjectsMaxResults {
 				break
 			}
 
@@ -226,7 +226,7 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 				}
 
 				if resp.Allowed {
-					if atomic.LoadUint32(&results) < s.config.LookupMaxResults {
+					if atomic.LoadUint32(&results) < s.config.ListObjectsMaxResults {
 						_, objectID := tuple.SplitObject(t.Key.Object)
 						objectIDsChan <- objectID
 						atomic.AddUint32(&results, 1)
@@ -263,13 +263,12 @@ func (s *Server) Lookup(ctx context.Context, req *openfgapb.LookupRequest) (*ope
 	case <-resolvedChan:
 	}
 
-	return &openfgapb.LookupResponse{
+	return &openfgapb.ListObjectsResponse{
 		ObjectIds: objectIDs,
 	}, nil
 }
 
-func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.OpenFGAService_StreamedLookupServer) error {
-
+func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetObjectType()
 
@@ -297,8 +296,8 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 
 	var timeoutCtx context.Context
 	var cancel context.CancelFunc
-	if s.config.LookupDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.LookupDeadline)
+	if s.config.ListObjectsDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.ListObjectsDeadline)
 		defer cancel()
 	}
 
@@ -306,7 +305,7 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 
 		var results uint32
 		for {
-			if atomic.LoadUint32(&results) >= s.config.LookupMaxResults {
+			if atomic.LoadUint32(&results) >= s.config.ListObjectsMaxResults {
 				break
 			}
 
@@ -337,8 +336,8 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 				if resp.Allowed {
 					_, objectID := tuple.SplitObject(t.Key.Object)
 
-					if atomic.LoadUint32(&results) < s.config.LookupMaxResults {
-						err = srv.Send(&openfgapb.StreamedLookupResponse{
+					if atomic.LoadUint32(&results) < s.config.ListObjectsMaxResults {
+						err = srv.Send(&openfgapb.StreamedListObjectsResponse{
 							ObjectId: objectID,
 						})
 						if err != nil {
@@ -353,6 +352,7 @@ func (s *Server) StreamedLookup(req *openfgapb.LookupRequest, srv openfgapb.Open
 			}
 
 			g.Go(fn)
+			time.Sleep(4 * time.Second)
 		}
 
 		err := g.Wait()

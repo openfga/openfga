@@ -117,15 +117,15 @@ type ProfilerConfig struct {
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
-	// LookupDeadline defines the maximum amount of time to accumulate Lookup results
+	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
-	// Lookup endpoints.
-	LookupDeadline time.Duration
+	// ListObjects endpoints.
+	ListObjectsDeadline time.Duration
 
-	// LookupMaxResults defines the maximum number of Lookup results to accumulate
+	// ListObjectsMaxResults defines the maximum number of ListObjects results to accumulate
 	// before the server will respond. This is to protect the server from misuse of the
-	// Lookup endpoints.
-	LookupMaxResults uint32
+	// ListObjects endpoints.
+	ListObjectsMaxResults uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -155,8 +155,8 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		LookupDeadline:                0,
-		LookupMaxResults:              math.MaxUint32,
+		ListObjectsDeadline:           0,
+		ListObjectsMaxResults:         math.MaxUint32,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -339,8 +339,8 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		},
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
-		LookupDeadline:         config.LookupDeadline,
-		LookupMaxResults:       config.LookupMaxResults,
+		ListObjectsDeadline:    config.ListObjectsDeadline,
+		ListObjectsMaxResults:  config.ListObjectsMaxResults,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 	})
