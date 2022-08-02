@@ -67,7 +67,6 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	defer t.Stop()
 
 	var res []*openfgapb.Tuple
-	var ulid string
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
@@ -76,17 +75,20 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 			}
 			return nil, nil, err
 		}
-		ulid = tupleRecord.ulid
 		res = append(res, tupleRecord.asTuple())
 	}
 
-	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token. This is
-	// why we have LIMIT+1 in the query.
-	if _, err := t.next(); errors.Is(err, storage.TupleIteratorDone) {
-		return res, nil, nil
+	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token.
+	// This is why we have LIMIT+1 in the query.
+	tupleRecord, err := t.next()
+	if err != nil {
+		if errors.Is(err, storage.TupleIteratorDone) {
+			return res, nil, nil
+		}
+		return nil, nil, err
 	}
 
-	contToken, err := json.Marshal(newContToken(ulid, ""))
+	contToken, err := json.Marshal(newContToken(tupleRecord.ulid, ""))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -143,7 +145,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 		if err != nil {
 			return "", nil, err
 		}
-		sb = sb.Where(squirrel.Gt{"ulid": token.Ulid})
+		sb = sb.Where(squirrel.GtOrEq{"ulid": token.Ulid})
 	}
 	if opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
