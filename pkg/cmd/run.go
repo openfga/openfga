@@ -8,15 +8,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	"os"
 	"os/signal"
-	"path"
 	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/cmd/service"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
@@ -25,15 +24,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
-
-func init() {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../..")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
-}
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -106,17 +96,22 @@ func run(_ *cobra.Command, _ []string) {
 			logger.Fatal("the HTTP server must be enabled to run the OpenFGA Playground")
 		}
 
+		authMethod := config.Authn.Method
+		if !(authMethod == "none" || authMethod == "preshared") {
+			logger.Fatal("the Playground only supports authn methods 'none' and 'preshared'")
+		}
+
 		playgroundPort := config.Playground.Port
 		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
 
 		logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost:%d/playground", playgroundPort))
 
-		tmpl, err := template.ParseFiles("./static/playground/index.html")
+		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 		if err != nil {
 			logger.Fatal("failed to parse Playground index.html as Go template", zap.Error(err))
 		}
 
-		fileServer := http.FileServer(http.Dir("./static"))
+		fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
 
 		policy := backoff.NewExponentialBackOff()
 		policy.MaxElapsedTime = 3 * time.Second
@@ -133,15 +128,22 @@ func run(_ *cobra.Command, _ []string) {
 			logger.Fatal("failed to establish Playground connection to HTTP server", zap.Error(err))
 		}
 
+		playgroundAPIToken := ""
+		if authMethod == "preshared" {
+			playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
+		}
+
 		mux := http.NewServeMux()
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					err = tmpl.Execute(w, struct {
-						HTTPServerURL string
+						HTTPServerURL      string
+						PlaygroundAPIToken string
 					}{
-						HTTPServerURL: conn.RemoteAddr().String(),
+						HTTPServerURL:      conn.RemoteAddr().String(),
+						PlaygroundAPIToken: playgroundAPIToken,
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)

@@ -10,8 +10,6 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
-    volumes:
-      - ./storage/postgres/migrations/20220617_initialize_schema.up.sql:/docker-entrypoint-initdb.d/db.sql
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s

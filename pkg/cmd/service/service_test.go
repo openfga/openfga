@@ -51,7 +51,7 @@ const (
 func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
 	t.Helper()
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
