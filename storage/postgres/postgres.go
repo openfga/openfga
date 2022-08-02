@@ -131,12 +131,12 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	ctx, span := p.tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
-	stmt, err := buildReadQuery(store, tupleKey, opts)
+	stmt, args, err := buildReadQuery(store, tupleKey, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	rows, err := p.pool.Query(ctx, stmt)
+	rows, err := p.pool.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}

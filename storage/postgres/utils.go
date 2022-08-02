@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
@@ -117,33 +118,37 @@ func newContToken(ulid, objectType string) *contToken {
 	}
 }
 
-func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, error) {
-	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s'", store)
+func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, []any, error) {
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	builder := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		From("tuple").
+		Where(squirrel.Eq{"store": store})
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
-		stmt = fmt.Sprintf("%s AND object_type = '%s'", stmt, objectType)
+		builder = builder.Where(squirrel.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
-		stmt = fmt.Sprintf("%s AND object_id = '%s'", stmt, objectID)
+		builder = builder.Where(squirrel.Eq{"object_id": objectID})
 	}
 	if tupleKey.GetRelation() != "" {
-		stmt = fmt.Sprintf("%s AND relation = '%s'", stmt, tupleKey.GetRelation())
+		builder = builder.Where(squirrel.Eq{"relation": tupleKey.GetRelation()})
 	}
 	if tupleKey.GetUser() != "" {
-		stmt = fmt.Sprintf("%s AND _user = '%s'", stmt, tupleKey.GetUser())
+		builder = builder.Where(squirrel.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, token.Ulid)
+		builder = builder.Where(squirrel.Gt{"ulid": token.Ulid})
 	}
-	stmt = fmt.Sprintf("%s ORDER BY ulid", stmt)
+	builder = builder.OrderBy("ulid")
 	if opts.PageSize != 0 {
-		stmt = fmt.Sprintf("%s LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
+		builder = builder.Limit(uint64(opts.PageSize + 1))
 	}
-	return stmt, nil
+
+	return builder.ToSql()
 }
 
 func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) string {
