@@ -13,8 +13,10 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/retryablehttp"
-
 	"github.com/openfga/openfga/server/authn"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -29,6 +31,13 @@ type RemoteOidcAuthenticator struct {
 
 var (
 	JWKRefreshInterval, _ = time.ParseDuration("48h")
+
+	ErrInvalidAudience    = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	ErrInvalidClaims      = status.Error(codes.Code(openfgapb.AuthErrorCode_invalid_claims), "invalid claims")
+	ErrInvalidIssuer      = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	ErrInvalidSubject     = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	ErrInvalidToken       = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
+	ErrMissingBearerToken = status.Error(codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), "missing bearer token")
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
@@ -50,7 +59,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
-		return nil, errors.New("missing bearer token")
+		return nil, ErrMissingBearerToken
 	}
 
 	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
@@ -58,33 +67,32 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
-
 	if err != nil {
-		return nil, errors.Errorf("error parsing token: %v", err)
+		return nil, ErrInvalidToken
 	}
 
 	if !token.Valid {
-		return nil, errors.Errorf("invalid token")
+		return nil, ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.Errorf("invalid claims")
+		return nil, ErrInvalidClaims
 	}
 
 	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
-		return nil, errors.New("invalid issuer")
+		return nil, ErrInvalidIssuer
 	}
 
 	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
-		return nil, errors.New("invalid audience")
+		return nil, ErrInvalidAudience
 	}
 
 	// optional subject
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
-			return nil, errors.New("invalid subject")
+			return nil, ErrInvalidSubject
 		}
 	}
 

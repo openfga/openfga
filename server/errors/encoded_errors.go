@@ -10,9 +10,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const cFirstValidationErrorCode int32 = 2000
-const cFirstInternalErrorCode int32 = 4000
-const cFirstUnknownEndpointErrorCode int32 = 5000
+const (
+	cFirstAuthenticationErrorCode  int32 = 1000
+	cFirstValidationErrorCode      int32 = 2000
+	cFirstInternalErrorCode        int32 = 4000
+	cFirstUnknownEndpointErrorCode int32 = 5000
+)
 
 type ErrorResponse struct {
 	Code    string `json:"code"`
@@ -73,13 +76,13 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 
 	var httpStatusCode int
 	var code string
-	if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
+	if errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode {
+		httpStatusCode = http.StatusUnauthorized
+		code = openfgapb.AuthErrorCode(errorCode).String()
+	} else if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
 		httpStatusCode = http.StatusBadRequest
 		code = openfgapb.ErrorCode(errorCode).String()
 	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
-		httpStatusCode = http.StatusInternalServerError
-		code = openfgapb.InternalErrorCode(errorCode).String()
-	} else if errorCode >= cFirstUnknownEndpointErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
 		httpStatusCode = http.StatusInternalServerError
 		code = openfgapb.InternalErrorCode(errorCode).String()
 	} else {
@@ -98,7 +101,7 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 
 // IsValidEncodedError returns whether the error code is a valid encoded error
 func IsValidEncodedError(errorCode int32) bool {
-	return errorCode >= cFirstValidationErrorCode
+	return errorCode >= cFirstAuthenticationErrorCode
 }
 
 func getCustomizedErrorCode(field string, reason string) int32 {
@@ -189,7 +192,7 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 
 func ConvertToEncodedErrorCode(statusError *status.Status) int32 {
 	code := int32(statusError.Code())
-	if code >= cFirstValidationErrorCode {
+	if code >= cFirstAuthenticationErrorCode {
 		return code
 	}
 

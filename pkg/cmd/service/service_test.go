@@ -253,7 +253,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
 		authHeader:    "Bearer incorrectkey",
-		expectedError: "unauthorized",
+		expectedError: "unauthenticated",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
@@ -438,7 +438,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with invalid token fails",
 		authHeader:    "Bearer incorrecttoken",
-		expectedError: "error parsing token",
+		expectedError: "invalid bearer token",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
