@@ -23,7 +23,7 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	github.com/tidwall/gjson v1.14.1
-	go.buf.build/openfga/go/openfga/api v1.1.23
+	go.buf.build/openfga/go/openfga/api v1.2.24
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.33.0
 	go.opentelemetry.io/otel v1.8.0
 	go.opentelemetry.io/otel/metric v0.31.0
@@ -71,8 +71,8 @@ require (
 	github.com/subosito/gotenv v1.3.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
-	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.1.6 // indirect
-	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.1.43 // indirect
+	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.6 // indirect
+	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.43 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
@@ -82,7 +82,6 @@ require (
 	golang.org/x/sys v0.0.0-20220731174439-a90be440212d // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306 // indirect
-	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
 	google.golang.org/genproto v0.0.0-20220801145646-83ce21fca29f // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
