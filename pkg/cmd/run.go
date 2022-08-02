@@ -96,6 +96,11 @@ func run(_ *cobra.Command, _ []string) {
 			logger.Fatal("the HTTP server must be enabled to run the OpenFGA Playground")
 		}
 
+		authMethod := config.Authn.Method
+		if !(authMethod == "none" || authMethod == "preshared") {
+			logger.Fatal("the Playground only supports authn methods 'none' and 'preshared'")
+		}
+
 		playgroundPort := config.Playground.Port
 		playgroundAddr := fmt.Sprintf(":%d", playgroundPort)
 
@@ -123,15 +128,22 @@ func run(_ *cobra.Command, _ []string) {
 			logger.Fatal("failed to establish Playground connection to HTTP server", zap.Error(err))
 		}
 
+		playgroundAPIToken := ""
+		if authMethod == "preshared" {
+			playgroundAPIToken = config.Authn.AuthnPresharedKeyConfig.Keys[0]
+		}
+
 		mux := http.NewServeMux()
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					err = tmpl.Execute(w, struct {
-						HTTPServerURL string
+						HTTPServerURL      string
+						PlaygroundAPIToken string
 					}{
-						HTTPServerURL: conn.RemoteAddr().String(),
+						HTTPServerURL:      conn.RemoteAddr().String(),
+						PlaygroundAPIToken: playgroundAPIToken,
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)
