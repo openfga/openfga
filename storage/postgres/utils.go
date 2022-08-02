@@ -179,8 +179,7 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error)
 	sb := psql.Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(squirrel.Eq{"deleted_at": nil}).
-		OrderBy("id").
-		Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+		OrderBy("id")
 
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
@@ -188,6 +187,9 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error)
 			return "", nil, err
 		}
 		sb = sb.Where(squirrel.GtOrEq{"id": token.Ulid})
+	}
+	if opts.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	return sb.ToSql()
@@ -227,8 +229,7 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 	sb := psql.Select("authorization_model_id").Distinct().
 		From("authorization_model").
 		Where(squirrel.Eq{"store": store}).
-		OrderBy("authorization_model_id DESC").
-		Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+		OrderBy("authorization_model_id DESC")
 
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
@@ -236,6 +237,9 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 			return "", nil, err
 		}
 		sb = sb.Where(squirrel.LtOrEq{"authorization_model_id": token.Ulid})
+	}
+	if opts.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
 	return sb.ToSql()
