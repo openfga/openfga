@@ -120,100 +120,125 @@ func newContToken(ulid, objectType string) *contToken {
 
 func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, []any, error) {
 	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
-	builder := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
-		Where(squirrel.Eq{"store": store})
+		Where(squirrel.Eq{"store": store}).
+		OrderBy("ulid")
+
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
-		builder = builder.Where(squirrel.Eq{"object_type": objectType})
+		sb = sb.Where(squirrel.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
-		builder = builder.Where(squirrel.Eq{"object_id": objectID})
+		sb = sb.Where(squirrel.Eq{"object_id": objectID})
 	}
 	if tupleKey.GetRelation() != "" {
-		builder = builder.Where(squirrel.Eq{"relation": tupleKey.GetRelation()})
+		sb = sb.Where(squirrel.Eq{"relation": tupleKey.GetRelation()})
 	}
 	if tupleKey.GetUser() != "" {
-		builder = builder.Where(squirrel.Eq{"_user": tupleKey.GetUser()})
+		sb = sb.Where(squirrel.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
-		builder = builder.Where(squirrel.Gt{"ulid": token.Ulid})
+		sb = sb.Where(squirrel.Gt{"ulid": token.Ulid})
 	}
-	builder = builder.OrderBy("ulid")
 	if opts.PageSize != 0 {
-		builder = builder.Limit(uint64(opts.PageSize + 1))
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	return builder.ToSql()
+	return sb.ToSql()
 }
 
-func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) string {
-	stmt := fmt.Sprintf("SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = '%s' AND user_type = '%s'", store, tupleUtils.UserSet)
+func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) (string, []any, error) {
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	sb := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		From("tuple").
+		Where(squirrel.Eq{"store": store}).
+		Where(squirrel.Eq{"user_type": tupleUtils.UserSet}).
+		OrderBy("ulid")
+
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
-		stmt = fmt.Sprintf("%s AND object_type = '%s'", stmt, objectType)
+		sb = sb.Where(squirrel.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
-		stmt = fmt.Sprintf("%s AND object_id = '%s'", stmt, objectID)
+		sb = sb.Where(squirrel.Eq{"object_id": objectID})
 	}
 	if tupleKey.GetRelation() != "" {
-		stmt = fmt.Sprintf("%s AND relation = '%s'", stmt, tupleKey.GetRelation())
+		sb = sb.Where(squirrel.Eq{"relation": tupleKey.GetRelation()})
 	}
-	stmt = fmt.Sprintf("%s ORDER BY ulid", stmt)
-	return stmt
+
+	return sb.ToSql()
 }
 
-func buildListStoresQuery(opts storage.PaginationOptions) (string, error) {
-	stmt := "SELECT id, name, created_at, updated_at FROM store WHERE deleted_at IS NULL"
+func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error) {
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	sb := psql.Select("id", "name", "created_at", "updated_at").
+		From("store").
+		Where(squirrel.Eq{"deleted_at": nil}).
+		OrderBy("id").
+		Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		stmt = fmt.Sprintf("%s AND id >= '%s'", stmt, token.Ulid)
+		sb = sb.Where(squirrel.GtOrEq{"id": token.Ulid})
 	}
-	stmt = fmt.Sprintf("%s ORDER BY id LIMIT %d", stmt, opts.PageSize+1)
-	return stmt, nil
+
+	return sb.ToSql()
 }
 
-func buildReadChangesQuery(store, objectTypeFilter string, opts storage.PaginationOptions, horizonOffset time.Duration) (string, error) {
-	stmt := fmt.Sprintf("SELECT ulid, object_type, object_id, relation, _user, operation, inserted_at FROM changelog WHERE store = '%s'", store)
+func buildReadChangesQuery(store, objectTypeFilter string, opts storage.PaginationOptions, horizonOffset time.Duration) (string, []any, error) {
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	sb := psql.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+		From("changelog").
+		Where(squirrel.Eq{"store": store}).
+		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
+		OrderBy("inserted_at ASC")
+
 	if objectTypeFilter != "" {
-		stmt = fmt.Sprintf("%s AND object_type = '%s'", stmt, objectTypeFilter)
+		sb = sb.Where(squirrel.Eq{"object_type": objectTypeFilter})
 	}
-	stmt = fmt.Sprintf("%s AND inserted_at < NOW() - interval '%dms'", stmt, horizonOffset.Milliseconds())
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		if token.ObjectType != objectTypeFilter {
-			return "", storage.ErrMismatchObjectType
+			return "", nil, storage.ErrMismatchObjectType
 		}
-		stmt = fmt.Sprintf("%s AND ulid > '%s'", stmt, token.Ulid) // > here as we always return a continuation token
+
+		sb = sb.Where(squirrel.Gt{"ulid": token.Ulid}) // > as we always return a continuation token
 	}
-	stmt = fmt.Sprintf("%s ORDER BY inserted_at ASC", stmt)
 	if opts.PageSize > 0 {
-		stmt = fmt.Sprintf("%s LIMIT %d", stmt, opts.PageSize) // + 1 is NOT used here as we always return a continuation token
+		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
 	}
-	return stmt, nil
+
+	return sb.ToSql()
 }
 
-func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) (string, error) {
-	stmt := fmt.Sprintf("SELECT DISTINCT authorization_model_id FROM authorization_model WHERE store = '%s'", store)
+func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) (string, []any, error) {
+	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
+	sb := psql.Select("authorization_model_id").Distinct().
+		From("authorization_model").
+		Where(squirrel.Eq{"store": store}).
+		OrderBy("authorization_model_id DESC").
+		Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
+
 	if opts.From != "" {
 		token, err := unmarshallContToken(opts.From)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
-		stmt = fmt.Sprintf("%s AND authorization_model_id <= '%s'", stmt, token.Ulid)
+		sb = sb.Where(squirrel.LtOrEq{"authorization_model_id": token.Ulid})
 	}
-	stmt = fmt.Sprintf("%s ORDER BY authorization_model_id DESC LIMIT %d", stmt, opts.PageSize+1) // + 1 is used to determine whether to return a continuation token.
-	return stmt, nil
+
+	return sb.ToSql()
 }
 
 func unmarshallContToken(from string) (*contToken, error) {

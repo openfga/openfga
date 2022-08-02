@@ -237,8 +237,12 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	stmt := buildReadUsersetTuplesQuery(store, tupleKey)
-	rows, err := p.pool.Query(ctx, stmt)
+	stmt, args, err := buildReadUsersetTuplesQuery(store, tupleKey)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
@@ -307,12 +311,12 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	stmt, err := buildReadAuthorizationModelsQuery(store, opts)
+	stmt, args, err := buildReadAuthorizationModelsQuery(store, opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := p.pool.Query(ctx, stmt)
+	rows, err := p.pool.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
@@ -473,12 +477,12 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
-	stmt, err := buildListStoresQuery(opts)
+	stmt, args, err := buildListStoresQuery(opts)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := p.pool.Query(ctx, stmt)
+	rows, err := p.pool.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
@@ -577,12 +581,12 @@ func (p *Postgres) ReadChanges(
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	stmt, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
+	stmt, args, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	rows, err := p.pool.Query(ctx, stmt)
+	rows, err := p.pool.Query(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
