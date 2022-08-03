@@ -251,16 +251,25 @@ func TupleWritingAndReadingTest(t *testing.T, dbTester DatastoreTester[storage.O
 
 	t.Run("reading a tuple that exists succeeds", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
-		tuple := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
+		tuple1 := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
+		tuple2 := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "doc:other#viewer"}}
 
-		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tuple.Key}); err != nil {
+		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tuple1.Key, tuple2.Key}); err != nil {
 			t.Fatal(err)
 		}
-		gotTuple, err := datastore.ReadUserTuple(ctx, store, tuple.Key)
+		gotTuple, err := datastore.ReadUserTuple(ctx, store, tuple1.Key)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if diff := cmp.Diff(gotTuple, tuple, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(gotTuple, tuple1, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		}
+
+		gotTuple, err = datastore.ReadUserTuple(ctx, store, tuple2.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(gotTuple, tuple2, cmpOpts...); diff != "" {
 			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 	})
