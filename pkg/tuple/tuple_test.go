@@ -216,7 +216,7 @@ func TestIsValidUser(t *testing.T) {
 		valid bool
 	}{
 		{
-			name:  "anne@auth0.com",
+			name:  "anne@openfga",
 			valid: true,
 		},
 		{
@@ -244,7 +244,7 @@ func TestIsValidUser(t *testing.T) {
 			valid: false,
 		},
 		{
-			name:  "anne@auth0 .com", // empty space
+			name:  "anne@openfga .com", // empty space
 			valid: false,
 		},
 	} {
@@ -264,7 +264,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 		want UserType
 	}{
 		{
-			name: "anne@auth0.com",
+			name: "anne@openfga",
 			want: User,
 		},
 		{
@@ -280,7 +280,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 			want: UserSet,
 		},
 		{
-			name: "github|jon.allie@auth0.com",
+			name: "github|jon.allie@openfga",
 			want: User,
 		},
 	} {

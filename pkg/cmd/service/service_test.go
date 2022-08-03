@@ -51,7 +51,7 @@ const (
 func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
 	t.Helper()
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
@@ -766,6 +766,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.Playground.Port)
 
+	val = res.Get("properties.profiler.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), config.Profiler.Enabled)
+
+	val = res.Get("properties.profiler.properties.addr.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.Profiler.Addr)
+
 	val = res.Get("properties.authn.properties.method.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), config.Authn.Method)
@@ -774,19 +782,19 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), config.Log.Format)
 
-	val = res.Get("properties.openfga.properties.maxTuplesPerWrite.default")
+	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTuplesPerWrite)
 
-	val = res.Get("properties.openfga.properties.maxTypesPerAuthorizationModel.default")
+	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTypesPerAuthorizationModel)
 
-	val = res.Get("properties.openfga.properties.changelogHorizonOffset.default")
+	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.ChangelogHorizonOffset)
 
-	val = res.Get("properties.openfga.properties.resolveNodeLimit.default")
+	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.OpenFGA.ResolveNodeLimit)
 

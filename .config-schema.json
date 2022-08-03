@@ -1,29 +1,24 @@
 {
     "properties": {
-        "openfga": {
-            "type": "object",
-            "properties": {
-                "maxTuplesPerWrite": {
-                    "description": "The maximum allowed number of tuples per Write transaction.",
-                    "type": "integer",
-                    "default": 100
-                },
-                "maxTypesPerAuthorizationModel": {
-                    "description": "The maximum allowed number of type definitions per authorization model.",
-                    "type": "integer",
-                    "default": 100
-                },
-                "changelogHorizonOffset": {
-                    "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
-                    "type": "integer",
-                    "default": 0
-                },
-                "resolveNodeLimit": {
-                    "description": "Defines how deeply nested an authorization model can be.",
-                    "type": "integer",
-                    "default": 25
-                }
-            }
+        "maxTuplesPerWrite": {
+            "description": "The maximum allowed number of tuples per Write transaction.",
+            "type": "integer",
+            "default": 100
+        },
+        "maxTypesPerAuthorizationModel": {
+            "description": "The maximum allowed number of type definitions per authorization model.",
+            "type": "integer",
+            "default": 100
+        },
+        "changelogHorizonOffset": {
+            "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
+            "type": "integer",
+            "default": 0
+        },
+        "resolveNodeLimit": {
+            "description": "Defines how deeply nested an authorization model can be.",
+            "type": "integer",
+            "default": 25
         },
         "playground": {
             "type": "object",
@@ -37,6 +32,21 @@
                     "description": "The port to serve the local OpenFGA Playground on.",
                     "type": "integer",
                     "default": 3000
+                }
+            }
+        },
+        "profiler": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enabled/disable pprof profiling.",
+                    "type": "boolean",
+                    "default": false
+                },
+                "addr": {
+                    "description": "The host:port address to serve the pprof profiler server on.",
+                    "type": "string",
+                    "default": ":3001"
                 }
             }
         },
@@ -117,7 +127,7 @@
                 "tls": {
                     "$ref": "#/definitions/tls"
                 },
-                "upstreamRequestTimeout": {
+                "upstreamTimeout": {
                     "description": "The timeout duration for proxying HTTP requests upstream to the grpc endpoint.",
                     "type": "string",
                     "default": "3s"
