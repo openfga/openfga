@@ -1,7 +1,7 @@
 {
     "type_definitions": [
         {
-            "type": "openfga-client",
+            "type": "auth0-client",
             "relations": {
                 "writer": {
                     "this": {}
@@ -23,7 +23,7 @@
             }
         },
         {
-            "type": "openfga-rule",
+            "type": "auth0-rule",
             "relations": {
                 "writer": {
                     "this": {}
@@ -45,7 +45,7 @@
             }
         },
         {
-            "type": "openfga-org",
+            "type": "auth0-org",
             "relations": {
                 "writer": {
                     "this": {}
@@ -70,7 +70,7 @@
             }
         },
         {
-            "type": "openfga-team",
+            "type": "auth0-team",
             "relations": {
                 "member": {
                     "this": {}

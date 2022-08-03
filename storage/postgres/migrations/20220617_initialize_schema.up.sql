@@ -1,4 +1,3 @@
--- +goose Up
 CREATE TABLE tuple (
 		store TEXT NOT NULL,
 		object_type TEXT NOT NULL,
@@ -49,10 +48,3 @@ CREATE TABLE changelog (
 	inserted_at TIMESTAMPTZ NOT NULL,
 	PRIMARY KEY (store, ulid, object_type)
 );
-
--- +goose Down
-DROP TABLE tuple;
-DROP TABLE authorization_model;
-DROP TABLE store;
-DROP TABLE assertion;
-DROP TABLE changelog;

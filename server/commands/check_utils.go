@@ -426,6 +426,7 @@ func (t *tupleKeyIterator) next() (*openfgapb.TupleKey, error) {
 }
 
 func (t *tupleKeyIterator) stop() {
+	// Close shouldn't error if called multiple times
 	t.tIterator.Stop()
 }
 

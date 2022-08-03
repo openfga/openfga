@@ -113,17 +113,14 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 
 This section assumes that you have cloned the repository.
 
-To run OpenFGA with the Postgres datastore engine first build OpenFGA and start Postgres in a container:
-```
-make build
-docker compose up -d postgres
-```
-Then run the following commands:
+To run OpenFGA with the Postgres datastore engine, simply run the following commands:
+
 ```bash
-./openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
-./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+docker compose up -d postgres
+make run-postgres
 ```
-You should see `using 'postgres' storage engine` in the logs.
+
+This should start a Postgres container, run migrations, and start the OpenFGA server.
 
 When you are done you can stop the Postgres container with:
 
@@ -168,19 +165,6 @@ In the event that a port other than the default port is required, the `--playgro
 
 ```sh
 ./openfga run --playground-enabled --playground-port 3001
-```
-
-## Profiler (pprof)
-Profiling through pprof can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
-
-```sh
-./openfga run --profiler-enabled
-```
-
-If you need to serve the profiler on a different address than the default `:3001`, you can do so by specifying the `--profiler-addr` flag. For example,
-
-```sh
-./openfga run --profiler-enabled --profiler-addr :3002
 ```
 
 ## Next Steps

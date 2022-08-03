@@ -55,26 +55,26 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "admin",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "admin",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#admin",
+						Name: "repo:auth0/foo#admin",
 						Value: &openfgapb.UsersetTree_Node_Leaf{
 							Leaf: &openfgapb.UsersetTree_Leaf{
 								Value: &openfgapb.UsersetTree_Leaf_Users{
 									Users: &openfgapb.UsersetTree_Users{
-										Users: []string{"github|jon.allie@openfga"},
+										Users: []string{"github|jon.allie@auth0.com"},
 									},
 								},
 							},
@@ -105,19 +105,19 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			tuples: []*openfgapb.TupleKey{},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#writer",
+						Name: "repo:auth0/foo#writer",
 						Value: &openfgapb.UsersetTree_Node_Leaf{
 							Leaf: &openfgapb.UsersetTree_Leaf{
 								Value: &openfgapb.UsersetTree_Leaf_Computed{
 									Computed: &openfgapb.UsersetTree_Computed{
-										Userset: "repo:openfga/foo#admin",
+										Userset: "repo:auth0/foo#admin",
 									},
 								},
 							},
@@ -159,34 +159,34 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "manager",
-					User:     "org:openfga",
+					User:     "org:auth0",
 				},
 				{
-					Object:   "org:openfga",
+					Object:   "org:auth0",
 					Relation: "repo_admin",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "admin",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#admin",
+						Name: "repo:auth0/foo#admin",
 						Value: &openfgapb.UsersetTree_Node_Leaf{
 							Leaf: &openfgapb.UsersetTree_Leaf{
 								Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
 									TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-										Tupleset: "repo:openfga/foo#manager",
+										Tupleset: "repo:auth0/foo#manager",
 										Computed: []*openfgapb.UsersetTree_Computed{
 											{
-												Userset: "org:openfga#repo_admin",
+												Userset: "org:auth0#repo_admin",
 											},
 										},
 									},
@@ -230,39 +230,39 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "manager",
-					User:     "org:openfga",
+					User:     "org:auth0",
 				},
 				{
-					Object:   "org:openfga",
+					Object:   "org:auth0",
 					Relation: "repo_admin",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "manager",
 					User:     "amy",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "admin",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#admin",
+						Name: "repo:auth0/foo#admin",
 						Value: &openfgapb.UsersetTree_Node_Leaf{
 							Leaf: &openfgapb.UsersetTree_Leaf{
 								Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
 									TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-										Tupleset: "repo:openfga/foo#manager",
+										Tupleset: "repo:auth0/foo#manager",
 										Computed: []*openfgapb.UsersetTree_Computed{
 											{
-												Userset: "org:openfga#repo_admin",
+												Userset: "org:auth0#repo_admin",
 											},
 										},
 									},
@@ -305,34 +305,34 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "manager",
-					User:     "org:openfga",
+					User:     "org:auth0",
 				},
 				{
-					Object:   "org:openfga",
+					Object:   "org:auth0",
 					Relation: "repo_admin",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "admin",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#admin",
+						Name: "repo:auth0/foo#admin",
 						Value: &openfgapb.UsersetTree_Node_Leaf{
 							Leaf: &openfgapb.UsersetTree_Leaf{
 								Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
 									TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-										Tupleset: "repo:openfga/foo#manager",
+										Tupleset: "repo:auth0/foo#manager",
 										Computed: []*openfgapb.UsersetTree_Computed{
 											{
-												Userset: "org:openfga#repo_admin",
+												Userset: "org:auth0#repo_admin",
 											},
 										},
 									},
@@ -377,43 +377,43 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#writer",
+						Name: "repo:auth0/foo#writer",
 						Value: &openfgapb.UsersetTree_Node_Union{
 							Union: &openfgapb.UsersetTree_Nodes{
 								Nodes: []*openfgapb.UsersetTree_Node{
 									{
-										Name: "repo:openfga/foo#writer",
+										Name: "repo:auth0/foo#writer",
 										Value: &openfgapb.UsersetTree_Node_Leaf{
 											Leaf: &openfgapb.UsersetTree_Leaf{
 												Value: &openfgapb.UsersetTree_Leaf_Users{
 													Users: &openfgapb.UsersetTree_Users{
-														Users: []string{"github|jon.allie@openfga"},
+														Users: []string{"github|jon.allie@auth0.com"},
 													},
 												},
 											},
 										},
 									},
 									{
-										Name: "repo:openfga/foo#writer",
+										Name: "repo:auth0/foo#writer",
 										Value: &openfgapb.UsersetTree_Node_Leaf{
 											Leaf: &openfgapb.UsersetTree_Leaf{
 												Value: &openfgapb.UsersetTree_Leaf_Computed{
 													Computed: &openfgapb.UsersetTree_Computed{
-														Userset: "repo:openfga/foo#admin",
+														Userset: "repo:auth0/foo#admin",
 													},
 												},
 											},
@@ -462,35 +462,35 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			tuples: []*openfgapb.TupleKey{},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "active_admin",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#active_admin",
+						Name: "repo:auth0/foo#active_admin",
 						Value: &openfgapb.UsersetTree_Node_Difference{
 							Difference: &openfgapb.UsersetTree_Difference{
 								Base: &openfgapb.UsersetTree_Node{
-									Name: "repo:openfga/foo#active_admin",
+									Name: "repo:auth0/foo#active_admin",
 									Value: &openfgapb.UsersetTree_Node_Leaf{
 										Leaf: &openfgapb.UsersetTree_Leaf{
 											Value: &openfgapb.UsersetTree_Leaf_Computed{
 												Computed: &openfgapb.UsersetTree_Computed{
-													Userset: "repo:openfga/foo#admin",
+													Userset: "repo:auth0/foo#admin",
 												},
 											},
 										},
 									},
 								},
 								Subtract: &openfgapb.UsersetTree_Node{
-									Name: "repo:openfga/foo#active_admin",
+									Name: "repo:auth0/foo#active_admin",
 									Value: &openfgapb.UsersetTree_Node_Leaf{
 										Leaf: &openfgapb.UsersetTree_Leaf{
 											Value: &openfgapb.UsersetTree_Leaf_Computed{
 												Computed: &openfgapb.UsersetTree_Computed{
-													Userset: "repo:openfga/foo#banned",
+													Userset: "repo:auth0/foo#banned",
 												},
 											},
 										},
@@ -538,19 +538,19 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			tuples: []*openfgapb.TupleKey{},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#writer",
+						Name: "repo:auth0/foo#writer",
 						Value: &openfgapb.UsersetTree_Node_Intersection{
 							Intersection: &openfgapb.UsersetTree_Nodes{
 								Nodes: []*openfgapb.UsersetTree_Node{
 									{
-										Name: "repo:openfga/foo#writer",
+										Name: "repo:auth0/foo#writer",
 										Value: &openfgapb.UsersetTree_Node_Leaf{
 											Leaf: &openfgapb.UsersetTree_Leaf{
 												Value: &openfgapb.UsersetTree_Leaf_Users{
@@ -562,12 +562,12 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 										},
 									},
 									{
-										Name: "repo:openfga/foo#writer",
+										Name: "repo:auth0/foo#writer",
 										Value: &openfgapb.UsersetTree_Node_Leaf{
 											Leaf: &openfgapb.UsersetTree_Leaf{
 												Value: &openfgapb.UsersetTree_Leaf_Computed{
 													Computed: &openfgapb.UsersetTree_Computed{
-														Userset: "repo:openfga/foo#admin",
+														Userset: "repo:auth0/foo#admin",
 													},
 												},
 											},
@@ -643,54 +643,54 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "owner",
-					User:     "org:openfga",
+					User:     "org:auth0",
 				},
 				{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
-					User:     "github|jon.allie@openfga",
+					User:     "github|jon.allie@auth0.com",
 				},
 			},
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:openfga/foo",
+					Object:   "repo:auth0/foo",
 					Relation: "writer",
 				},
 			},
 			expected: &openfgapb.ExpandResponse{
 				Tree: &openfgapb.UsersetTree{
 					Root: &openfgapb.UsersetTree_Node{
-						Name: "repo:openfga/foo#writer",
+						Name: "repo:auth0/foo#writer",
 						Value: &openfgapb.UsersetTree_Node_Difference{
 							Difference: &openfgapb.UsersetTree_Difference{
 								Base: &openfgapb.UsersetTree_Node{
-									Name: "repo:openfga/foo#writer",
+									Name: "repo:auth0/foo#writer",
 									Value: &openfgapb.UsersetTree_Node_Union{
 										Union: &openfgapb.UsersetTree_Nodes{
 											Nodes: []*openfgapb.UsersetTree_Node{
 												{
-													Name: "repo:openfga/foo#writer",
+													Name: "repo:auth0/foo#writer",
 													Value: &openfgapb.UsersetTree_Node_Leaf{
 														Leaf: &openfgapb.UsersetTree_Leaf{
 															Value: &openfgapb.UsersetTree_Leaf_Users{
 																Users: &openfgapb.UsersetTree_Users{
-																	Users: []string{"github|jon.allie@openfga"},
+																	Users: []string{"github|jon.allie@auth0.com"},
 																},
 															},
 														},
 													},
 												},
 												{
-													Name: "repo:openfga/foo#writer",
+													Name: "repo:auth0/foo#writer",
 													Value: &openfgapb.UsersetTree_Node_Leaf{
 														Leaf: &openfgapb.UsersetTree_Leaf{
 															Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
 																TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-																	Tupleset: "repo:openfga/foo#owner",
+																	Tupleset: "repo:auth0/foo#owner",
 																	Computed: []*openfgapb.UsersetTree_Computed{
-																		{Userset: "org:openfga#repo_writer"},
+																		{Userset: "org:auth0#repo_writer"},
 																	},
 																},
 															},
@@ -702,12 +702,12 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 									},
 								},
 								Subtract: &openfgapb.UsersetTree_Node{
-									Name: "repo:openfga/foo#writer",
+									Name: "repo:auth0/foo#writer",
 									Value: &openfgapb.UsersetTree_Node_Leaf{
 										Leaf: &openfgapb.UsersetTree_Leaf{
 											Value: &openfgapb.UsersetTree_Leaf_Computed{
 												Computed: &openfgapb.UsersetTree_Computed{
-													Userset: "repo:openfga/foo#banned_writer",
+													Userset: "repo:auth0/foo#banned_writer",
 												},
 											},
 										},

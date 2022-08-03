@@ -56,9 +56,9 @@ type HTTPConfig struct {
 	Addr    string
 	TLS     TLSConfig
 
-	// UpstreamTimeout is the timeout duration for proxying HTTP requests upstream
+	// UpstreamRequestTimeout is the timeout duration for proxying HTTP requests upstream
 	// to the grpc endpoint.
-	UpstreamTimeout time.Duration
+	UpstreamRequestTimeout time.Duration
 
 	CORSAllowedOrigins []string `default:"*" split_words:"true"`
 	CORSAllowedHeaders []string `default:"*" split_words:"true"`
@@ -123,12 +123,6 @@ type OpenFGAConfig struct {
 	ResolveNodeLimit uint32
 }
 
-// ProfilerConfig defines server configurations specific to pprof profiling.
-type ProfilerConfig struct {
-	Enabled bool
-	Addr    string
-}
-
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -139,7 +133,6 @@ type Config struct {
 	Authn      AuthnConfig
 	Log        LogConfig
 	Playground PlaygroundConfig
-	Profiler   ProfilerConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -161,12 +154,12 @@ func DefaultConfig() *Config {
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
-			Enabled:            true,
-			Addr:               ":8080",
-			TLS:                TLSConfig{Enabled: false},
-			UpstreamTimeout:    3 * time.Second,
-			CORSAllowedOrigins: []string{"*"},
-			CORSAllowedHeaders: []string{"*"},
+			Enabled:                true,
+			Addr:                   ":8080",
+			TLS:                    TLSConfig{Enabled: false},
+			UpstreamRequestTimeout: 3 * time.Second,
+			CORSAllowedOrigins:     []string{"*"},
+			CORSAllowedHeaders:     []string{"*"},
 		},
 		Authn: AuthnConfig{
 			Method:                  "none",
@@ -179,10 +172,6 @@ func DefaultConfig() *Config {
 		Playground: PlaygroundConfig{
 			Enabled: true,
 			Port:    3000,
-		},
-		Profiler: ProfilerConfig{
-			Enabled: false,
-			Addr:    ":3001",
 		},
 	}
 }
@@ -324,12 +313,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
-			Enabled:            config.HTTP.Enabled,
-			Addr:               config.HTTP.Addr,
-			TLSConfig:          httpTLSConfig,
-			UpstreamTimeout:    config.HTTP.UpstreamTimeout,
-			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
-			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
+			Enabled:                config.HTTP.Enabled,
+			Addr:                   config.HTTP.Addr,
+			TLSConfig:              httpTLSConfig,
+			UpstreamRequestTimeout: config.HTTP.UpstreamRequestTimeout,
+			CORSAllowedOrigins:     config.HTTP.CORSAllowedOrigins,
+			CORSAllowedHeaders:     config.HTTP.CORSAllowedHeaders,
 		},
 		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,

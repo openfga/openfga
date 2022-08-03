@@ -27,47 +27,47 @@ var gitHubTuples = []*openfgapb.TupleKey{
 	{
 		User:     "erik",
 		Relation: "member",
-		Object:   "org:openfga",
+		Object:   "org:auth0",
 	},
 	{
-		User:     "org:openfga#member",
+		User:     "org:auth0#member",
 		Relation: "repo_admin",
-		Object:   "org:openfga",
+		Object:   "org:auth0",
 	},
 	{
-		User:     "team:openfga/iam#member",
+		User:     "team:auth0/iam#member",
 		Relation: "admin",
-		Object:   "repo:openfga/openfga",
+		Object:   "repo:auth0/express-jwt",
 	},
 	{
-		User:     "org:openfga",
+		User:     "org:auth0",
 		Relation: "owner",
-		Object:   "repo:openfga/openfga",
+		Object:   "repo:auth0/express-jwt",
 	},
 	{
 		User:     "anne",
 		Relation: "reader",
-		Object:   "repo:openfga/openfga",
+		Object:   "repo:auth0/express-jwt",
 	},
 	{
 		User:     "beth",
 		Relation: "writer",
-		Object:   "repo:openfga/openfga",
+		Object:   "repo:auth0/express-jwt",
 	},
 	{
 		User:     "charles",
 		Relation: "member",
-		Object:   "team:openfga/iam",
+		Object:   "team:auth0/iam",
 	},
 	{
-		User:     "team:openfga/protocols#member",
+		User:     "team:auth0/protocols#member",
 		Relation: "member",
-		Object:   "team:openfga/iam",
+		Object:   "team:auth0/iam",
 	},
 	{
 		User:     "diane",
 		Relation: "member",
-		Object:   "team:openfga/protocols",
+		Object:   "team:auth0/protocols",
 	},
 }
 
@@ -127,7 +127,7 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object: "repo:openfga/openfga",
+				Object: "repo:auth0/express-jwt",
 				User:   "someUser",
 			},
 		},
@@ -146,7 +146,7 @@ var checkQueryTests = []checkQueryTest{
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 		},
 		// output
@@ -163,14 +163,14 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "inexistent",
 				User:     "someUser",
 			},
 		},
 		// output
 		err: serverErrors.RelationNotFound("inexistent", "repo", &openfgapb.TupleKey{
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 			Relation: "inexistent",
 			User:     "someUser",
 		}),
@@ -188,7 +188,7 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
 				User:     "john:albert:doe",
 			},
@@ -220,7 +220,7 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
 				User:     "someUser",
 			},
@@ -249,7 +249,7 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "writer",
 				User:     "someUser",
 			},
@@ -290,7 +290,7 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
 				User:     "someUser",
 			},
@@ -308,17 +308,17 @@ var checkQueryTests = []checkQueryTest{
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{{
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 			Relation: "admin",
-			User:     "github|jose@openfga",
+			User:     "github|jose@auth0.com",
 		}},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
@@ -338,7 +338,7 @@ var checkQueryTests = []checkQueryTest{
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{{
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 			Relation: "admin",
 			User:     "*",
 		}},
@@ -346,9 +346,9 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
@@ -372,9 +372,9 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		// output
@@ -406,17 +406,17 @@ var checkQueryTests = []checkQueryTest{
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{{
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 			Relation: "admin",
-			User:     "github|jose@openfga",
+			User:     "github|jose@auth0.com",
 		}},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
@@ -450,7 +450,7 @@ var checkQueryTests = []checkQueryTest{
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{{
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 			Relation: "admin",
 			User:     "*",
 		}},
@@ -458,9 +458,9 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
@@ -498,12 +498,12 @@ var checkQueryTests = []checkQueryTest{
 		}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "owner",
 				User:     "team/iam",
 			},
@@ -512,9 +512,9 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		// output
@@ -552,25 +552,25 @@ var checkQueryTests = []checkQueryTest{
 		}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "writer",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
 		// output
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#writer.(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#writer.(direct).",
 		},
 	},
 	{
@@ -599,10 +599,10 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Object:   "team:iam",
 				Relation: "team_member",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
 				User:     "team:iam#team_member",
 			},
@@ -611,9 +611,9 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
@@ -653,10 +653,10 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Object:   "team:iam",
 				Relation: "team_member",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "writer",
 				User:     "team:iam#team_member",
 			},
@@ -665,24 +665,24 @@ var checkQueryTests = []checkQueryTest{
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
 		// output
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#writer.(direct).team:iam#team_member.(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#writer.(direct).team:iam#team_member.(direct).",
 		},
 	},
 	{
 		_name: "ExecuteReturnsNotAllowedIfIntersectionIsRequiredAndUserIsInOneUserSetButNotTheOther",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
-			Type: "openfga-store",
-			// pretend you can only create an organization user in an openfga store if
+			Type: "auth0-store",
+			// pretend you can only create an organization user in an auth0 store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
 				"create_organization_user": {
@@ -707,18 +707,18 @@ var checkQueryTests = []checkQueryTest{
 		}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_user",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_organization_user",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			Trace: true,
 		},
@@ -731,8 +731,8 @@ var checkQueryTests = []checkQueryTest{
 		_name: "ExecuteReturnsAllowedIfIntersectionIsRequiredAndUserIsInAllUserSets",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
-			Type: "openfga-store",
-			// pretend you can only create an organization user in an openfga store if
+			Type: "auth0-store",
+			// pretend you can only create an organization user in an auth0 store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
 				"create_organization_user": {
@@ -757,38 +757,38 @@ var checkQueryTests = []checkQueryTest{
 		}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_user",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "write_organization",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_organization_user",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			Trace: true,
 		},
 		// output
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".[.0(computed-userset).openfga-store:yenkel-dev#create_user.(direct).,.1(computed-userset).openfga-store:yenkel-dev#write_organization.(direct).]",
+			Resolution: ".[.0(computed-userset).auth0-store:yenkel-dev#create_user.(direct).,.1(computed-userset).auth0-store:yenkel-dev#write_organization.(direct).]",
 		},
 	},
 	{
 		_name: "ExecuteSupportsNestedIntersectionAndCorrectlyTraces",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
-			Type: "openfga-store",
-			// pretend you can only create an organization user in an openfga store if
+			Type: "auth0-store",
+			// pretend you can only create an organization user in an auth0 store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
 				"create_organization_user": {
@@ -830,35 +830,35 @@ var checkQueryTests = []checkQueryTest{
 		}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_user_a",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_user_b",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "write_organization",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		// input
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "openfga-store:yenkel-dev",
+				Object:   "auth0-store:yenkel-dev",
 				Relation: "create_organization_user",
-				User:     "github|yenkel@openfga",
+				User:     "github|yenkel@auth0.com",
 			},
 			Trace: true,
 		},
 		// output
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".[.0(computed-userset).openfga-store:yenkel-dev#create_user.[.0(computed-userset).openfga-store:yenkel-dev#create_user.0(computed-userset).openfga-store:yenkel-dev#create_user_a.(direct).,.0(computed-userset).openfga-store:yenkel-dev#create_user.1(computed-userset).openfga-store:yenkel-dev#create_user_b.(direct).],.1(computed-userset).openfga-store:yenkel-dev#write_organization.(direct).]",
+			Resolution: ".[.0(computed-userset).auth0-store:yenkel-dev#create_user.[.0(computed-userset).auth0-store:yenkel-dev#create_user.0(computed-userset).auth0-store:yenkel-dev#create_user_a.(direct).,.0(computed-userset).auth0-store:yenkel-dev#create_user.1(computed-userset).auth0-store:yenkel-dev#create_user_b.(direct).],.1(computed-userset).auth0-store:yenkel-dev#write_organization.(direct).]",
 		},
 	},
 	{
@@ -889,22 +889,22 @@ var checkQueryTests = []checkQueryTest{
 		},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "admin",
-				User:     "github|jon.allie@openfga",
+				User:     "github|jon.allie@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "banned",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "admin",
-				User:     "github|jon.allie@openfga",
+				User:     "github|jon.allie@auth0.com",
 			},
 			Trace: true,
 		},
@@ -941,27 +941,27 @@ var checkQueryTests = []checkQueryTest{
 		},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "admin",
-				User:     "github|jon.allie@openfga",
+				User:     "github|jon.allie@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "banned",
-				User:     "github|jon.allie@openfga",
+				User:     "github|jon.allie@auth0.com",
 			},
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "banned",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "admin",
-				User:     "github|jon.allie@openfga",
+				User:     "github|jon.allie@auth0.com",
 			},
 			Trace: true,
 		},
@@ -1003,28 +1003,28 @@ var checkQueryTests = []checkQueryTest{
 		},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "manager",
-				User:     "org:openfga#repo_admin",
+				User:     "org:auth0#repo_admin",
 			},
 			{
-				Object:   "org:openfga",
+				Object:   "org:auth0",
 				Relation: "repo_admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/canaveral",
+				Object:   "repo:auth0/canaveral",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "github|jose@auth0.com",
 			},
 			Trace: true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(tuple-to-userset).repo:openfga/canaveral#manager.org:openfga#repo_admin.(direct).",
+			Resolution: ".union.1(tuple-to-userset).repo:auth0/canaveral#manager.org:auth0#repo_admin.(direct).",
 		},
 	},
 	{
@@ -1118,28 +1118,28 @@ var checkQueryTests = []checkQueryTest{
 		},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "writer",
-				User:     "team:openfga#member",
+				User:     "team:auth0#member",
 			},
 			{
-				Object:   "team:openfga",
+				Object:   "team:auth0",
 				Relation: "member",
-				User:     "github|iaco@openfga",
+				User:     "github|iaco@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
 		request: &openfgapb.CheckRequest{
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
-				User:     "github|iaco@openfga",
+				User:     "github|iaco@auth0.com",
 			},
 			Trace: true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.0(direct).team:openfga#member.(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#triager.union.1(computed-userset).repo:auth0/express-jwt#writer.union.0(direct).team:auth0#member.(direct).",
 		},
 	},
 	{
@@ -1191,7 +1191,7 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Object:   "document:octo_folder",
 				Relation: "editor",
-				User:     "google|iaco@openfga",
+				User:     "google|iaco@auth0.com",
 			},
 		},
 		resolveNodeLimit: defaultResolveNodeLimit,
@@ -1199,7 +1199,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				Object:   "document:octo_v2_draft",
 				Relation: "viewer",
-				User:     "google|iaco@openfga",
+				User:     "google|iaco@auth0.com",
 			},
 			Trace: true,
 		},
@@ -1217,7 +1217,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "anne",
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
@@ -1235,7 +1235,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "anne",
 				Relation: "triager",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
@@ -1252,13 +1252,13 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "diane",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.0(direct).team:openfga/iam#member.(direct).team:openfga/protocols#member.(direct).",
+			Resolution: ".union.0(direct).team:auth0/iam#member.(direct).team:auth0/protocols#member.(direct).",
 		},
 	},
 	{
@@ -1270,13 +1270,13 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "erik",
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.1(tuple-to-userset).repo:openfga/openfga#owner.org:openfga#repo_admin.(direct).org:openfga#member.union.0(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#triager.union.1(computed-userset).repo:auth0/express-jwt#writer.union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.1(tuple-to-userset).repo:auth0/express-jwt#owner.org:auth0#repo_admin.(direct).org:auth0#member.union.0(direct).",
 		},
 	},
 	{
@@ -1288,13 +1288,13 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "charles",
 				Relation: "writer",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.0(direct).team:openfga/iam#member.(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.0(direct).team:auth0/iam#member.(direct).",
 		},
 	},
 	{
@@ -1306,7 +1306,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "beth",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			Trace: true,
 		},
@@ -1322,18 +1322,18 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "anne",
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
 					User:     "anne",
 					Relation: "reader",
-					Object:   "repo:openfga/openfga",
+					Object:   "repo:auth0/express-jwt",
 				},
 				{
 					User:     "anne",
 					Relation: "reader",
-					Object:   "repo:openfga/openfga",
+					Object:   "repo:auth0/express-jwt",
 				},
 			}},
 			Trace: true,
@@ -1341,7 +1341,7 @@ var checkQueryTests = []checkQueryTest{
 		err: serverErrors.DuplicateContextualTuple(&openfgapb.TupleKey{
 			User:     "anne",
 			Relation: "reader",
-			Object:   "repo:openfga/openfga",
+			Object:   "repo:auth0/express-jwt",
 		}),
 	},
 	{
@@ -1352,7 +1352,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "anne",
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
@@ -1370,7 +1370,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "anne",
 				Relation: "triager",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
@@ -1387,14 +1387,14 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "diane",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.0(direct).team:openfga/iam#member.(direct).team:openfga/protocols#member.(direct).",
+			Resolution: ".union.0(direct).team:auth0/iam#member.(direct).team:auth0/protocols#member.(direct).",
 		},
 	},
 	{
@@ -1405,14 +1405,14 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "erik",
 				Relation: "reader",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.1(tuple-to-userset).repo:openfga/openfga#owner.org:openfga#repo_admin.(direct).org:openfga#member.union.0(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#triager.union.1(computed-userset).repo:auth0/express-jwt#writer.union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.1(tuple-to-userset).repo:auth0/express-jwt#owner.org:auth0#repo_admin.(direct).org:auth0#member.union.0(direct).",
 		},
 	},
 	{
@@ -1423,14 +1423,14 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "charles",
 				Relation: "writer",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed:    true,
-			Resolution: ".union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.0(direct).team:openfga/iam#member.(direct).",
+			Resolution: ".union.1(computed-userset).repo:auth0/express-jwt#maintainer.union.1(computed-userset).repo:auth0/express-jwt#admin.union.0(direct).team:auth0/iam#member.(direct).",
 		},
 	},
 	{
@@ -1441,7 +1441,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "beth",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: gitHubTuples},
 			Trace:            true,
@@ -1458,16 +1458,16 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "beth",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				User:     "",
 				Relation: "member",
-				Object:   "org:openfga",
+				Object:   "org:auth0",
 			}}},
 			Trace: true,
 		},
-		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "", Relation: "member", Object: "org:openfga"}),
+		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "", Relation: "member", Object: "org:auth0"}),
 	},
 	{
 		_name:                   "ContextualTuplesWithEmptyRelationFails",
@@ -1477,16 +1477,16 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "beth",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				User:     "anne",
 				Relation: "",
-				Object:   "org:openfga",
+				Object:   "org:auth0",
 			}}},
 			Trace: true,
 		},
-		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "", Object: "org:openfga"}),
+		err: serverErrors.InvalidContextualTuple(&openfgapb.TupleKey{User: "anne", Relation: "", Object: "org:auth0"}),
 	},
 	{
 		_name:                   "ContextualTuplesWithEmptyObjectFails",
@@ -1496,7 +1496,7 @@ var checkQueryTests = []checkQueryTest{
 			TupleKey: &openfgapb.TupleKey{
 				User:     "beth",
 				Relation: "admin",
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 			},
 			ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				User:     "anne",
@@ -1675,14 +1675,14 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, dbTester teststor
 
 var tuples = []*openfgapb.TupleKey{
 	{
-		Object:   "repo:openfga/openfga",
+		Object:   "repo:auth0/express-jwt",
 		Relation: "reader",
-		User:     "team:openfga#member",
+		User:     "team:auth0#member",
 	},
 	{
-		Object:   "team:openfga",
+		Object:   "team:auth0",
 		Relation: "member",
-		User:     "github|iaco@openfga",
+		User:     "github|iaco@auth0.com",
 	},
 }
 
@@ -1733,9 +1733,9 @@ func BenchmarkCheckWithoutTrace(b *testing.B, dbTester teststorage.DatastoreTest
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
-				User:     "github|iaco@openfga",
+				User:     "github|iaco@auth0.com",
 			},
 		})
 	}
@@ -1786,9 +1786,9 @@ func BenchmarkWithTrace(b *testing.B, dbTester teststorage.DatastoreTester[stora
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			TupleKey: &openfgapb.TupleKey{
-				Object:   "repo:openfga/openfga",
+				Object:   "repo:auth0/express-jwt",
 				Relation: "reader",
-				User:     "github|iaco@openfga",
+				User:     "github|iaco@auth0.com",
 			},
 			Trace: true,
 		})

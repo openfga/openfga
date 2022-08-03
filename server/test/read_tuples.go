@@ -45,19 +45,19 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 
 	writes := []*openfgapb.TupleKey{
 		{
-			Object:   "repo:openfga/foo",
+			Object:   "repo:auth0/foo",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie@auth0.com",
 		},
 		{
-			Object:   "repo:openfga/bar",
+			Object:   "repo:auth0/bar",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie@auth0.com",
 		},
 		{
-			Object:   "repo:openfga/baz",
+			Object:   "repo:auth0/baz",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie@auth0.com",
 		},
 	}
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
