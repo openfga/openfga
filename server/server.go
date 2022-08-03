@@ -164,7 +164,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
 
 	storeID := req.GetStoreId()
-	targetObjectType := req.GetObjectType()
+	targetObjectType := req.GetType()
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -270,7 +270,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	storeID := req.GetStoreId()
-	targetObjectType := req.GetObjectType()
+	targetObjectType := req.GetType()
 
 	ctx := context.Background()
 
