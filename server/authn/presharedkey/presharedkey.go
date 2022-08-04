@@ -11,10 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var (
-	ErrMissingBearerToken = status.Error(codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), "missing bearer token")
-	ErrUnauthenticated    = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
-)
+var errUnauthenticated = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
 
 type PresharedKeyAuthenticator struct {
 	ValidKeys map[string]struct{}
@@ -37,7 +34,7 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
-		return nil, ErrMissingBearerToken
+		return nil, authn.ErrMissingBearerToken
 	}
 
 	if _, found := pka.ValidKeys[authHeader]; found {
@@ -46,7 +43,7 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.
 		}, nil
 	}
 
-	return nil, ErrUnauthenticated
+	return nil, errUnauthenticated
 }
 
 func (pka *PresharedKeyAuthenticator) Close() {}
