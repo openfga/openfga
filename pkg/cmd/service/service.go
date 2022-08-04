@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
@@ -155,8 +154,8 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		ListObjectsDeadline:           0,
-		ListObjectsMaxResults:         math.MaxUint32,
+		ListObjectsDeadline:           3 * time.Second, // we have a 3-second timeout anyway
+		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,

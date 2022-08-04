@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -18,7 +17,6 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
@@ -30,9 +28,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
@@ -162,7 +158,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetType()
 
@@ -171,106 +166,20 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
-		StoreID:            storeID,
-		OptionalObjectType: targetObjectType,
+	q := commands.NewListObjectsQuery(s.datastore, s.tracer, s.logger, s.meter, s.config.ListObjectsDeadline, s.config.ListObjectsMaxResults, s.config.ResolveNodeLimit)
+
+	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
+		StoreId:              storeID,
+		ContextualTuples:     req.GetContextualTuples(),
+		AuthorizationModelId: modelID,
+		Type:                 targetObjectType,
+		Relation:             req.Relation,
+		User:                 req.User,
 	})
-	if err != nil {
-		s.logger.Error("database query failed", logger.Error(err))
-		return nil, status.Errorf(codes.Internal, "An internal server error has occured")
-	}
-	defer iter.Stop()
-
-	g := new(errgroup.Group)
-	g.SetLimit(100) // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
-
-	objectIDsChan := make(chan string, 100)
-
-	timeoutCtx := ctx
-	var cancel context.CancelFunc
-	if s.config.ListObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.ListObjectsDeadline)
-		defer cancel()
-	}
-
-	go func() {
-
-		var results uint32
-		for {
-			if atomic.LoadUint32(&results) >= s.config.ListObjectsMaxResults {
-				break
-			}
-
-			t, err := iter.Next()
-			if err != nil {
-				if err == storage.TupleIteratorDone {
-					break
-				}
-			}
-
-			fn := func() error {
-				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
-
-				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
-					StoreId:              storeID,
-					AuthorizationModelId: modelID,
-					TupleKey: &openfgapb.TupleKey{
-						Object:   t.Key.Object,
-						Relation: req.GetRelation(),
-						User:     req.GetUser(),
-					},
-					ContextualTuples: req.GetContextualTuples(),
-				})
-				if err != nil {
-					return err
-				}
-
-				if resp.Allowed {
-					if atomic.LoadUint32(&results) < s.config.ListObjectsMaxResults {
-						_, objectID := tuple.SplitObject(t.Key.Object)
-						objectIDsChan <- objectID
-						atomic.AddUint32(&results, 1)
-					}
-				}
-
-				return nil
-			}
-
-			g.Go(fn)
-		}
-
-		err := g.Wait()
-		if err != nil {
-			// todo: handle error
-		}
-
-		close(objectIDsChan)
-	}()
-
-	resolvedChan := make(chan struct{})
-
-	var objectIDs []string
-	go func() {
-		for objectID := range objectIDsChan {
-			objectIDs = append(objectIDs, objectID)
-		}
-
-		close(resolvedChan)
-	}()
-
-	select {
-	case <-timeoutCtx.Done():
-	case <-resolvedChan:
-	}
-
-	return &openfgapb.ListObjectsResponse{
-		ObjectIds: objectIDs,
-	}, nil
 }
 
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	storeID := req.GetStoreId()
-	targetObjectType := req.GetType()
 
 	ctx := context.Background()
 
@@ -278,97 +187,10 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	if err != nil {
 		return err
 	}
+	q := commands.NewListObjectsQuery(s.datastore, s.tracer, s.logger, s.meter, s.config.ListObjectsDeadline, s.config.ListObjectsMaxResults, s.config.ResolveNodeLimit)
 
-	iter, err := s.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
-		StoreID:            storeID,
-		OptionalObjectType: targetObjectType,
-	})
-	if err != nil {
-		s.logger.Error("database query failed", logger.Error(err))
-		return status.Errorf(codes.Internal, "An internal server error has occured")
-	}
-	defer iter.Stop()
-
-	g := new(errgroup.Group)
-	g.SetLimit(100) // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
-
-	resolvedChan := make(chan struct{})
-
-	var timeoutCtx context.Context
-	var cancel context.CancelFunc
-	if s.config.ListObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, s.config.ListObjectsDeadline)
-		defer cancel()
-	}
-
-	go func() {
-
-		var results uint32
-		for {
-			if atomic.LoadUint32(&results) >= s.config.ListObjectsMaxResults {
-				break
-			}
-
-			t, err := iter.Next()
-			if err != nil {
-				if err == storage.TupleIteratorDone {
-					break
-				}
-			}
-
-			fn := func() error {
-				query := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
-
-				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
-					StoreId:              storeID,
-					AuthorizationModelId: modelID,
-					TupleKey: &openfgapb.TupleKey{
-						Object:   t.Key.Object,
-						Relation: req.GetRelation(),
-						User:     req.GetUser(),
-					},
-					ContextualTuples: req.GetContextualTuples(),
-				})
-				if err != nil {
-					return err
-				}
-
-				if resp.Allowed {
-					_, objectID := tuple.SplitObject(t.Key.Object)
-
-					if atomic.LoadUint32(&results) < s.config.ListObjectsMaxResults {
-						err = srv.Send(&openfgapb.StreamedListObjectsResponse{
-							ObjectId: objectID,
-						})
-						if err != nil {
-							return err
-						}
-
-						atomic.AddUint32(&results, 1)
-					}
-				}
-
-				return nil
-			}
-
-			g.Go(fn)
-			time.Sleep(4 * time.Second)
-		}
-
-		err := g.Wait()
-		if err != nil {
-			// todo: handle error
-		}
-
-		resolvedChan <- struct{}{}
-	}()
-
-	select {
-	case <-timeoutCtx.Done():
-	case <-resolvedChan:
-	}
-
-	return nil
+	req.AuthorizationModelId = modelID
+	return q.ExecuteStreamed(ctx, req, srv)
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {

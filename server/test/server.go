@@ -58,6 +58,7 @@ func QueryTests(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenF
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, dbTester) },
 	)
+	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, dbTester) })
 }
 
 func CommandTests(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {

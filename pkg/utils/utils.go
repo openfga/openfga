@@ -125,3 +125,27 @@ func (r *ResolutionMetadata) Fork() *ResolutionMetadata {
 func LogDBStats(ctx context.Context, log logger.Logger, method string, reads uint32, writes uint32) {
 	log.InfoWithContext(ctx, "db_stats", logger.String("method", method), logger.Uint32("reads", reads), logger.Uint32("writes", writes))
 }
+
+type ConcurrentSet struct {
+	M map[string]bool
+	sync.RWMutex
+}
+
+func NewConcurrentSet() *ConcurrentSet {
+	return &ConcurrentSet{
+		M: make(map[string]bool),
+	}
+}
+
+func (s *ConcurrentSet) Add(item string) {
+	s.Lock()
+	defer s.Unlock()
+	s.M[item] = true
+}
+
+func (s *ConcurrentSet) Has(item string) bool {
+	s.RLock()
+	defer s.RUnlock()
+	_, ok := s.M[item]
+	return ok
+}

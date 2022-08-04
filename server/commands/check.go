@@ -44,6 +44,14 @@ func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.
 
 // Execute the query in `checkRequest`, returning the response or an error.
 func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
+	//if rand.Intn(100) < 10 { // 10% of failure
+	//	fmt.Println("check will throw error")
+	//	return nil, errors.New("random error")
+	//}
+	//if rand.Intn(100) < 10 { // 10% of taking a long time
+	//	fmt.Println("check will take 5 seconds")
+	//	time.Sleep(5 * time.Second)
+	//}
 	statCheckResolutionDepth, _ := query.meter.SyncInt64().Counter(
 		"openfga.check.resolution.depth",
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),

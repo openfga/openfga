@@ -129,7 +129,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
@@ -159,7 +159,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInUnion",
@@ -190,7 +190,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
@@ -224,7 +224,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
@@ -258,7 +258,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
@@ -288,7 +288,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
@@ -318,7 +318,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
@@ -357,7 +357,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("writer"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("writer"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
@@ -388,7 +388,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.UnknownRelationWhenWritingAuthzModel("owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",

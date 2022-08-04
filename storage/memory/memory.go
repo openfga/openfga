@@ -116,7 +116,24 @@ func (s *MemoryBackend) ReadRelationshipTuples(
 	filter storage.ReadRelationshipTuplesFilter,
 	opts ...storage.QueryOption,
 ) (storage.TupleIterator, error) {
-	return nil, fmt.Errorf("not implemented")
+	_, span := s.tracer.Start(ctx, "memory.ReadRelationshipTuples")
+	defer span.End()
+
+	matches := make([]*openfgapb.Tuple, 0)
+	for _, t := range s.tuples[filter.StoreID] {
+		if filter.OptionalRelation != "" && t.Key.Relation != filter.OptionalRelation {
+			continue
+		}
+		if filter.OptionalObjectType != "" && !strings.HasPrefix(t.Key.Object, filter.OptionalObjectType+":") {
+			continue
+		}
+		if filter.OptionalObjectID != "" && t.Key.Object != filter.OptionalObjectID {
+			continue
+		}
+		matches = append(matches, t)
+	}
+
+	return &staticIterator{tuples: matches}, nil
 }
 
 // Read See storage.TupleBackend.Read
