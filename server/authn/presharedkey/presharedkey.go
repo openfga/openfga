@@ -6,12 +6,7 @@ import (
 	"github.com/go-errors/errors"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/server/authn"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
-
-var errUnauthenticated = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
 
 type PresharedKeyAuthenticator struct {
 	ValidKeys map[string]struct{}
@@ -43,7 +38,7 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.
 		}, nil
 	}
 
-	return nil, errUnauthenticated
+	return nil, authn.ErrUnauthenticated
 }
 
 func (pka *PresharedKeyAuthenticator) Close() {}

@@ -14,6 +14,7 @@ type ctxKey string
 var (
 	authClaimsContextKey = ctxKey("auth-claims")
 
+	ErrUnauthenticated    = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
 	ErrMissingBearerToken = status.Error(codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), "missing bearer token")
 )
 
