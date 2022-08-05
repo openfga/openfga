@@ -314,6 +314,6 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
 	cmdutil.MustBindPFlag("listObjectsDeadline", cmd.Flags().Lookup("listObjects-deadline"))
 
-	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to serve for ListObjects requests")
+	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	cmdutil.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
 }

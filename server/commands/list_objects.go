@@ -26,9 +26,9 @@ type ListObjectsQuery struct {
 	logger                logger.Logger
 	tracer                trace.Tracer
 	meter                 metric.Meter
-	ListObjectsDeadline   time.Duration
-	ListObjectsMaxResults uint32
-	ResolveNodeLimit      uint32
+	listObjectsDeadline   time.Duration
+	listObjectsMaxResults uint32
+	resolveNodeLimit      uint32
 }
 
 // NewListObjectsQuery creates a ListObjectsQuery
@@ -38,9 +38,9 @@ func NewListObjectsQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer
 		logger:                logger,
 		tracer:                tracer,
 		meter:                 meter,
-		ListObjectsDeadline:   listObjectsDeadline,
-		ListObjectsMaxResults: listObjectsMaxResults,
-		ResolveNodeLimit:      ResolveNodeLimit,
+		listObjectsDeadline:   listObjectsDeadline,
+		listObjectsMaxResults: listObjectsMaxResults,
+		resolveNodeLimit:      ResolveNodeLimit,
 	}
 }
 
@@ -65,8 +65,8 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 
 	timeoutCtx := ctx
 	var cancel context.CancelFunc
-	if q.ListObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
+	if q.listObjectsDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
 		defer cancel()
 	}
 
@@ -77,7 +77,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 
 		// iterate over all object IDs in the store and check if the user has relation with each
 		for {
-			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+			if atomic.LoadUint32(&objectsFound) >= q.listObjectsMaxResults {
 				break
 			}
 
@@ -87,6 +87,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 					break
 				} else {
 					errChan <- err
+					continue
 				}
 			}
 			checkFunction := func() error {
@@ -94,7 +95,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 				if uniqueObjectIdsSet.Has(objectID) {
 					return nil
 				}
-				query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+				query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
 
 				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 					StoreId:              req.StoreId,
@@ -109,7 +110,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 					return err
 				}
 
-				if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+				if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
 					uniqueObjectIdsSet.Add(objectID)
 					atomic.AddUint32(&objectsFound, 1)
 				}
@@ -129,7 +130,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 					if uniqueObjectIdsSet.Has(objectID) {
 						return nil
 					}
-					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
 
 					resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 						StoreId:              req.StoreId,
@@ -145,7 +146,7 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 						return err
 					}
 
-					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
 						uniqueObjectIdsSet.Add(objectID)
 						atomic.AddUint32(&objectsFound, 1)
 					}
@@ -207,8 +208,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 
 	var timeoutCtx context.Context
 	var cancel context.CancelFunc
-	if q.ListObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
+	if q.listObjectsDeadline != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
 		defer cancel()
 	}
 
@@ -217,7 +218,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 
 		// iterate over all object IDs in the store and check if the user has relation with each
 		for {
-			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+			if atomic.LoadUint32(&objectsFound) >= q.listObjectsMaxResults {
 				break
 			}
 
@@ -227,6 +228,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 					break
 				} else {
 					errChan <- err
+					continue
 				}
 			}
 
@@ -236,7 +238,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 					return nil
 				}
 
-				query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+				query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
 
 				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 					StoreId:              req.StoreId,
@@ -251,7 +253,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 					return err
 				}
 
-				if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+				if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
 					err = srv.Send(&openfgapb.StreamedListObjectsResponse{
 						ObjectId: objectID,
 					})
@@ -271,7 +273,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 		// iterate over all tuples in the contextual tuples input
 		if req.ContextualTuples != nil {
 			for _, t := range req.ContextualTuples.TupleKeys {
-				if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+				if atomic.LoadUint32(&objectsFound) >= q.listObjectsMaxResults {
 					break
 				}
 
@@ -281,7 +283,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 					if uniqueObjectIdsSet.Has(objectID) {
 						return nil
 					}
-					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
 
 					resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 						StoreId:              req.StoreId,
@@ -297,7 +299,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 						return err
 					}
 
-					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
 						err = srv.Send(&openfgapb.StreamedListObjectsResponse{
 							ObjectId: objectID,
 						})
