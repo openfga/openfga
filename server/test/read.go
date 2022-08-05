@@ -26,7 +26,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		response        *openfgapb.ReadResponse
 	}
 
-	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/auth0/sandcastle/issues/13
+	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
 	var tests = []readQueryTest{
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",
@@ -60,7 +60,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object: "auth0/iam",
+					Object: "openfga/iam",
 				},
 			},
 			// output
@@ -101,7 +101,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Relation: "admin",
-					User:     "github|jon.allie@auth0.com",
+					User:     "github|jon.allie@openfga",
 				},
 			},
 			// output
@@ -170,9 +170,9 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "team:auth0/iam",
+					Object:   "team:openfga/iam",
 					Relation: "member",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// output
@@ -199,14 +199,14 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "org:",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// output
 			err: serverErrors.RelationNotFound("owner", "org", &openfgapb.TupleKey{
 				Object:   "org:",
 				Relation: "owner",
-				User:     "github|jose@auth0.com",
+				User:     "github|jose@openfga",
 			}),
 		},
 		{
@@ -221,12 +221,12 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "owner",
 					User:     "team/iam",
 				},
@@ -234,18 +234,18 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 				},
 			},
@@ -263,40 +263,40 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/openfgapb",
+					Object:   "repo:openfga/openfgapb",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object: "repo:auth0/express-jwt",
-					User:   "github|jose@auth0.com",
+					Object: "repo:openfga/openfga",
+					User:   "github|jose@openfga",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "owner",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 				},
 			},
@@ -314,40 +314,40 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/auth0-server",
+					Object:   "repo:openfga/openfga-server",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:",
-					User:   "github|jose@auth0.com",
+					User:   "github|jose@openfga",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/auth0-server",
+						Object:   "repo:openfga/openfga-server",
 						Relation: "writer",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 				},
 			},
@@ -365,24 +365,24 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/auth0-server",
+					Object:   "repo:openfga/openfga-server",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/auth0-users",
+					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// input
@@ -390,21 +390,21 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/auth0-server",
+						Object:   "repo:openfga/openfga-server",
 						Relation: "writer",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/auth0-users",
+						Object:   "repo:openfga/openfga-users",
 						Relation: "writer",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 				},
 			},
@@ -422,30 +422,30 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|yenkel@auth0.com",
+					User:     "github|yenkel@openfga",
 				},
 				{
-					Object:   "repo:auth0/auth0-users",
+					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
 				},
 			},
@@ -453,14 +453,14 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|yenkel@auth0.com",
+						User:     "github|yenkel@openfga",
 					}},
 				},
 			},
@@ -478,44 +478,44 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				}},
 			tuples: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "github|yenkel@auth0.com",
+					User:     "github|yenkel@openfga",
 				},
 				{
-					Object:   "repo:auth0/auth0-users",
+					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object: "repo:auth0/express-jwt",
+					Object: "repo:openfga/openfga",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@auth0.com",
+						User:     "github|jose@openfga",
 					}},
 					{Key: &openfgapb.TupleKey{
-						Object:   "repo:auth0/express-jwt",
+						Object:   "repo:openfga/openfga",
 						Relation: "writer",
-						User:     "github|yenkel@auth0.com",
+						User:     "github|yenkel@openfga",
 					}},
 				},
 			},
@@ -534,7 +534,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
-					Object: "repo:auth0/express-jwt",
+					Object: "repo:openfga/openfga",
 				},
 				ContinuationToken: "foo",
 			},

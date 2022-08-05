@@ -41,19 +41,19 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	writes := []*openfgapb.TupleKey{
 		{
-			Object:   "repo:auth0/foo",
+			Object:   "repo:openfga/foo",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 		{
-			Object:   "repo:auth0/bar",
+			Object:   "repo:openfga/bar",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 		{
-			Object:   "repo:auth0/baz",
+			Object:   "repo:openfga/baz",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 	}
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)

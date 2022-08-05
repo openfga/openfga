@@ -166,7 +166,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
-				User:     "org:auth0#member",
+				User:     "org:openfga#member",
 			},
 			{
 				Object:   "doc:readme",
@@ -272,7 +272,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
-				User:     "org:auth0#member",
+				User:     "org:openfga#member",
 			},
 			{
 				Object:   "doc:readme",
