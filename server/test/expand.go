@@ -13,7 +13,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -33,7 +32,7 @@ func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore
 	return modelID, nil
 }
 
-func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions
@@ -726,9 +725,6 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
-	require.NoError(err)
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(20)
@@ -748,7 +744,7 @@ func TestExpandQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	}
 }
 
-func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
 		name            string
 		typeDefinitions *openfgapb.TypeDefinitions
@@ -836,9 +832,6 @@ func TestExpandQueryErrors(t *testing.T, dbTester teststorage.DatastoreTester[st
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
