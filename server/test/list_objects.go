@@ -16,7 +16,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -76,10 +75,10 @@ func newListObjectsRequest(store, objectType, relation, user, modelID string, co
 	}
 }
 
-func TestListObjects(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
 	tracer := telemetry.NewNoopTracer()
-	ctx, backend, modelID, err := setupTestListObjects(store, dbTester)
+	ctx, backend, modelID, err := setupTestListObjects(store, datastore)
 	require.NoError(t, err)
 
 	t.Run("list objects", func(t *testing.T) {
@@ -164,13 +163,8 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	}
 }
 
-func setupTestListObjects(store string, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) (context.Context, storage.OpenFGADatastore, string, error) {
+func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (context.Context, storage.OpenFGADatastore, string, error) {
 	ctx := context.Background()
-	datastore, err := dbTester.New()
-	if err != nil {
-		return nil, nil, "", err
-	}
-
 	data, err := ioutil.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		return nil, nil, "", err
