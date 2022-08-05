@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -72,7 +71,6 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 	go func() {
 		var objectsFound uint32
 		for {
-			fmt.Println("inside for loop...")
 			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
 				break
 			}
@@ -133,23 +131,16 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 
 		close(resolvedChan)
 		close(errChan)
-
-		fmt.Println("done!")
 	}()
-
-	fmt.Println("waiting for goroutine to finish...")
 
 	select {
 	case <-timeoutCtx.Done():
-		fmt.Println("timeout")
 		return nil, serverErrors.NewInternalError("Timeout exceeded", timeoutCtx.Err())
 	case <-resolvedChan:
-		fmt.Println("resolved")
 		return &openfgapb.ListObjectsResponse{
 			ObjectIds: objectIDs,
 		}, nil
 	case genericError := <-errChan:
-		fmt.Println(genericError)
 		return nil, genericError
 	}
 }
