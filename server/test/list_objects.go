@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultListObjectsDeadline   = 5 * time.Second
-	defaultListObjectsMaxResults = 3
+	defaultListObjectsMaxResults = 5
 )
 
 type listObjectsTestCase struct {
@@ -34,6 +34,11 @@ type listObjectsTestCase struct {
 	expectedResult []string //all the results. the server may return less
 }
 
+var tKAllAdminsRepo6 = &openfgapb.TupleKey{
+	Object:   "repo:6",
+	Relation: "admin",
+	User:     "*",
+}
 var tkAnnaRepo1 = &openfgapb.TupleKey{
 	Object:   "repo:1",
 	Relation: "admin",
@@ -54,19 +59,20 @@ var tkAnnaRepo4 = &openfgapb.TupleKey{
 	Relation: "admin",
 	User:     "anna",
 }
-var tkBobRepo4 = &openfgapb.TupleKey{
+var tkBobRepo2 = &openfgapb.TupleKey{
 	Object:   "repo:2",
 	Relation: "admin",
 	User:     "bob",
 }
 
-func newListObjectsRequest(store, objectType, relation, user, modelID string) *openfgapb.ListObjectsRequest {
+func newListObjectsRequest(store, objectType, relation, user, modelID string, contextualTuples *openfgapb.ContextualTupleKeys) *openfgapb.ListObjectsRequest {
 	return &openfgapb.ListObjectsRequest{
 		StoreId:              store,
 		Type:                 objectType,
 		Relation:             relation,
 		User:                 user,
 		AuthorizationModelId: modelID,
+		ContextualTuples:     contextualTuples,
 	}
 }
 
@@ -80,25 +86,40 @@ func TestListObjects(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 		testCases := []listObjectsTestCase{
 			{
 				_name:          "does not return duplicates and respects maximum length allowed",
-				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID),
-				expectedResult: []string{"1", "2", "3", "4"},
+				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID, nil),
+				expectedResult: []string{"1", "2", "3", "4", "6"},
 				expectedError:  nil,
 			},
 			{
 				_name:          "performs correct checks",
-				request:        newListObjectsRequest(store, "repo", "admin", "bob", modelID),
-				expectedResult: []string{"2"},
+				request:        newListObjectsRequest(store, "repo", "admin", "bob", modelID, nil),
+				expectedResult: []string{"2", "6"},
+				expectedError:  nil,
+			},
+			{
+				_name: "includes contextual tuples in the checks",
+				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}, {
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:7",
+					}}}),
+				expectedResult: []string{"2", "5", "6", "7"},
 				expectedError:  nil,
 			},
 			{
 				_name:          "returns error if unknown type",
-				request:        newListObjectsRequest(store, "unknown", "admin", "anna", modelID),
+				request:        newListObjectsRequest(store, "unknown", "admin", "anna", modelID, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.TypeNotFound("unknown"),
 			},
 			{
 				_name:          "returns error if unknown relation",
-				request:        newListObjectsRequest(store, "repo", "unknown", "anna", modelID),
+				request:        newListObjectsRequest(store, "repo", "unknown", "anna", modelID, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.UnknownRelationWhenListingObjects("unknown", "repo"),
 			},
@@ -132,14 +153,13 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 		}
 
 		if res != nil {
-			if !subset(res.ObjectIds, test.expectedResult) {
-				diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty())
-				t.Fatalf("[%s] object ID mismatch (-got +want):\n%s", test._name, diff)
-			}
-
 			if len(res.ObjectIds) > defaultListObjectsMaxResults {
 				t.Fatalf("[%s] expected a maximum of %d results but got %d:", test._name, defaultListObjectsMaxResults, len(res.ObjectIds))
 			}
+			if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty()); diff != "" {
+				t.Fatalf("[%s] object ID mismatch (-got +want):\n%s", test._name, diff)
+			}
+
 		}
 	}
 }
@@ -168,27 +188,11 @@ func setupTestListObjects(store string, dbTester teststorage.DatastoreTester[sto
 		return nil, nil, "", err
 	}
 
-	writes := []*openfgapb.TupleKey{tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo4}
+	writes := []*openfgapb.TupleKey{tKAllAdminsRepo6, tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo2}
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	if err != nil {
 		return nil, nil, "", err
 	}
 
 	return ctx, datastore, modelID, nil
-}
-
-// subset returns true if the first slice is a subset of second
-func subset(first, second []string) bool {
-	set := make(map[string]bool)
-	for _, value := range second {
-		set[value] = true
-	}
-
-	for _, value := range first {
-		if _, found := set[value]; !found {
-			return false
-		}
-	}
-
-	return true
 }

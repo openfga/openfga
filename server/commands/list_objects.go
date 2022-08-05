@@ -46,7 +46,11 @@ func NewListObjectsQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer
 
 // Execute the ListObjectsQuery, returning a list of object IDs
 func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-	iter, err := q.getTupleIterator(ctx, req.StoreId, req.Type, req.AuthorizationModelId, req.Relation)
+	err := q.validateInput(ctx, req.StoreId, req.Type, req.AuthorizationModelId, req.Relation)
+	if err != nil {
+		return nil, err
+	}
+	iter, err := q.getTupleIterator(ctx, req.StoreId, req.Type)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +74,8 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 
 	go func() {
 		var objectsFound uint32
+
+		// iterate over all object IDs in the store and check if the user has relation with each
 		for {
 			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
 				break
@@ -98,7 +104,6 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 						Relation: req.GetRelation(),
 						User:     req.GetUser(),
 					},
-					ContextualTuples: req.GetContextualTuples(),
 				})
 				if err != nil {
 					return err
@@ -113,6 +118,43 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 			}
 
 			g.Go(checkFunction)
+		}
+
+		// iterate over all tuples in the contextual tuples input
+		if req.ContextualTuples != nil {
+			for _, t := range req.ContextualTuples.TupleKeys {
+				t := t
+				checkFunction := func() error {
+					_, objectID := tuple.SplitObject(t.Object)
+					if uniqueObjectIdsSet.Has(objectID) {
+						return nil
+					}
+					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+
+					resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
+						StoreId:              req.StoreId,
+						AuthorizationModelId: req.AuthorizationModelId,
+						TupleKey: &openfgapb.TupleKey{
+							Object:   t.Object,
+							Relation: req.GetRelation(),
+							User:     req.GetUser(),
+						},
+						ContextualTuples: req.ContextualTuples,
+					})
+					if err != nil {
+						return err
+					}
+
+					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+						uniqueObjectIdsSet.Add(objectID)
+						atomic.AddUint32(&objectsFound, 1)
+					}
+
+					return nil
+				}
+
+				g.Go(checkFunction)
+			}
 		}
 
 		err = g.Wait()
@@ -146,7 +188,11 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 }
 
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
-	iter, err := q.getTupleIterator(ctx, req.StoreId, req.Type, req.AuthorizationModelId, req.Relation)
+	err := q.validateInput(ctx, req.StoreId, req.Type, req.AuthorizationModelId, req.Relation)
+	if err != nil {
+		return err
+	}
+	iter, err := q.getTupleIterator(ctx, req.StoreId, req.Type)
 	if err != nil {
 		return err
 	}
@@ -168,6 +214,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 
 	go func() {
 		var objectsFound uint32
+
+		// iterate over all object IDs in the store and check if the user has relation with each
 		for {
 			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
 				break
@@ -179,7 +227,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 					break
 				} else {
 					errChan <- err
-
 				}
 			}
 
@@ -199,7 +246,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 						Relation: req.GetRelation(),
 						User:     req.GetUser(),
 					},
-					ContextualTuples: req.GetContextualTuples(),
 				})
 				if err != nil {
 					return err
@@ -222,6 +268,53 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 			g.Go(fn)
 		}
 
+		// iterate over all tuples in the contextual tuples input
+		if req.ContextualTuples != nil {
+			for _, t := range req.ContextualTuples.TupleKeys {
+				if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+					break
+				}
+
+				t := t
+				checkFunction := func() error {
+					_, objectID := tuple.SplitObject(t.Object)
+					if uniqueObjectIdsSet.Has(objectID) {
+						return nil
+					}
+					query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.ResolveNodeLimit)
+
+					resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
+						StoreId:              req.StoreId,
+						AuthorizationModelId: req.AuthorizationModelId,
+						TupleKey: &openfgapb.TupleKey{
+							Object:   t.Object,
+							Relation: req.GetRelation(),
+							User:     req.GetUser(),
+						},
+						ContextualTuples: req.ContextualTuples,
+					})
+					if err != nil {
+						return err
+					}
+
+					if resp.Allowed && !uniqueObjectIdsSet.Has(objectID) && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+						err = srv.Send(&openfgapb.StreamedListObjectsResponse{
+							ObjectId: objectID,
+						})
+						if err != nil {
+							return err
+						}
+
+						atomic.AddUint32(&objectsFound, 1)
+					}
+
+					return nil
+				}
+
+				g.Go(checkFunction)
+			}
+		}
+
 		err := g.Wait()
 		if err != nil {
 			// we don't want to abort everything if one of the checks failed.
@@ -242,27 +335,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 	return nil
 }
 
-func (q *ListObjectsQuery) getTupleIterator(ctx context.Context, storeID, targetObjectType, authModelID, relation string) (storage.TupleIterator, error) {
-	readAuthModelQuery := NewReadAuthorizationModelQuery(q.datastore, q.logger)
-	res, err := readAuthModelQuery.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{Id: authModelID, StoreId: storeID})
-	if err != nil {
-		return nil, err
-	}
-	foundType := false
-	for _, typeDef := range res.AuthorizationModel.TypeDefinitions {
-		if typeDef.Type == targetObjectType {
-			foundType = true
-			_, ok := typeDef.Relations[relation]
-			if !ok {
-				return nil, serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
-			}
-		}
-	}
-
-	if !foundType {
-		return nil, serverErrors.TypeNotFound(targetObjectType)
-	}
-
+func (q *ListObjectsQuery) getTupleIterator(ctx context.Context, storeID, targetObjectType string) (storage.TupleIterator, error) {
 	iter, err := q.datastore.ReadRelationshipTuples(ctx, storage.ReadRelationshipTuplesFilter{
 		StoreID:            storeID,
 		OptionalObjectType: targetObjectType,
@@ -271,4 +344,27 @@ func (q *ListObjectsQuery) getTupleIterator(ctx context.Context, storeID, target
 		return nil, serverErrors.NewInternalError("", err)
 	}
 	return iter, nil
+}
+
+func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, targetObjectType string, authModelID string, relation string) error {
+	readAuthModelQuery := NewReadAuthorizationModelQuery(q.datastore, q.logger)
+	res, err := readAuthModelQuery.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{Id: authModelID, StoreId: storeID})
+	if err != nil {
+		return err
+	}
+	foundType := false
+	for _, typeDef := range res.AuthorizationModel.TypeDefinitions {
+		if typeDef.Type == targetObjectType {
+			foundType = true
+			_, ok := typeDef.Relations[relation]
+			if !ok {
+				return serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
+			}
+		}
+	}
+
+	if !foundType {
+		return serverErrors.TypeNotFound(targetObjectType)
+	}
+	return nil
 }
