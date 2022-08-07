@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
@@ -22,25 +23,25 @@ const (
 )
 
 type ListObjectsQuery struct {
-	datastore             storage.OpenFGADatastore
-	logger                logger.Logger
-	tracer                trace.Tracer
-	meter                 metric.Meter
-	listObjectsDeadline   time.Duration
-	listObjectsMaxResults uint32
-	resolveNodeLimit      uint32
+	datastore                    storage.OpenFGADatastore
+	logger                       logger.Logger
+	tracer                       trace.Tracer
+	meter                        metric.Meter
+	listObjectsDeadlineInSeconds int
+	listObjectsMaxResults        uint32
+	resolveNodeLimit             uint32
 }
 
 // NewListObjectsQuery creates a ListObjectsQuery
-func NewListObjectsQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, meter metric.Meter, listObjectsDeadline time.Duration, listObjectsMaxResults uint32, ResolveNodeLimit uint32) *ListObjectsQuery {
+func NewListObjectsQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, meter metric.Meter, listObjectsDeadlineInSeconds int, listObjectsMaxResults uint32, ResolveNodeLimit uint32) *ListObjectsQuery {
 	return &ListObjectsQuery{
-		datastore:             datastore,
-		logger:                logger,
-		tracer:                tracer,
-		meter:                 meter,
-		listObjectsDeadline:   listObjectsDeadline,
-		listObjectsMaxResults: listObjectsMaxResults,
-		resolveNodeLimit:      ResolveNodeLimit,
+		datastore:                    datastore,
+		logger:                       logger,
+		tracer:                       tracer,
+		meter:                        meter,
+		listObjectsDeadlineInSeconds: listObjectsDeadlineInSeconds,
+		listObjectsMaxResults:        listObjectsMaxResults,
+		resolveNodeLimit:             ResolveNodeLimit,
 	}
 }
 
@@ -65,8 +66,8 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 
 	timeoutCtx := ctx
 	var cancel context.CancelFunc
-	if q.listObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
+	if q.listObjectsDeadlineInSeconds != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
 		defer cancel()
 	}
 
@@ -208,8 +209,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 
 	var timeoutCtx context.Context
 	var cancel context.CancelFunc
-	if q.listObjectsDeadline != 0 {
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
+	if q.listObjectsDeadlineInSeconds != 0 {
+		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
 		defer cancel()
 	}
 
@@ -349,24 +350,16 @@ func (q *ListObjectsQuery) getTupleIterator(ctx context.Context, storeID, target
 }
 
 func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, targetObjectType string, authModelID string, relation string) error {
-	readAuthModelQuery := NewReadAuthorizationModelQuery(q.datastore, q.logger)
-	res, err := readAuthModelQuery.Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{Id: authModelID, StoreId: storeID})
+	definition, err := q.datastore.ReadTypeDefinition(ctx, storeID, authModelID, targetObjectType)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return serverErrors.TypeNotFound(targetObjectType)
+		}
 		return err
 	}
-	foundType := false
-	for _, typeDef := range res.AuthorizationModel.TypeDefinitions {
-		if typeDef.Type == targetObjectType {
-			foundType = true
-			_, ok := typeDef.Relations[relation]
-			if !ok {
-				return serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
-			}
-		}
-	}
-
-	if !foundType {
-		return serverErrors.TypeNotFound(targetObjectType)
+	_, ok := definition.Relations[relation]
+	if !ok {
+		return serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
 	}
 	return nil
 }
