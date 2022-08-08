@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	"io/ioutil"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -132,34 +131,25 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	var res *openfgapb.ListObjectsResponse
 	var err error
 	for _, test := range testCases {
-		res, err = listObjectsQuery.Execute(ctx, test.request)
+		t.Run(test._name, func(t *testing.T) {
+			res, err = listObjectsQuery.Execute(ctx, test.request)
 
-		if res == nil && err == nil {
-			t.Errorf("[%s] Expected an error or a response, got neither", test._name)
-		}
-
-		if test.expectedError == nil && err != nil {
-			t.Errorf("[%s] Expected no error but got '%s'", test._name, err)
-		}
-
-		if test.expectedError != nil && err == nil {
-			t.Errorf("[%s] Expected an error '%s' but got nothing", test._name, test.expectedError)
-		}
-
-		if test.expectedError != nil && err != nil && !strings.Contains(test.expectedError.Error(), err.Error()) {
-			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
-		}
-
-		if res != nil {
-			if len(res.ObjectIds) > defaultListObjectsMaxResults {
-				t.Errorf("[%s] expected a maximum of %d results but got %d:", test._name, defaultListObjectsMaxResults, len(res.ObjectIds))
-			}
-			less := func(a, b string) bool { return a < b }
-			if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
-				t.Errorf("[%s] object ID mismatch (-got +want):\n%s", test._name, diff)
+			if res == nil && err == nil {
+				t.Error("Expected an error or a response, got neither")
 			}
 
-		}
+			require.ErrorIs(t, err, test.expectedError)
+
+			if res != nil {
+				if len(res.ObjectIds) > defaultListObjectsMaxResults {
+					t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(res.ObjectIds))
+				}
+				less := func(a, b string) bool { return a < b }
+				if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
+					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+				}
+			}
+		})
 	}
 }
 
