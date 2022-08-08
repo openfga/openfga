@@ -9,18 +9,13 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStore(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TestStore(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	// Create some stores
 	numStores := 10

@@ -8,17 +8,12 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func AssertionsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	t.Run("writing and reading assertions succeeds", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)

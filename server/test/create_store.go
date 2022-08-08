@@ -10,12 +10,10 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	type createStoreTestSettings struct {
 		_name    string
@@ -41,12 +39,8 @@ func TestCreateStore(t *testing.T, dbTester teststorage.DatastoreTester[storage.
 	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.CreateStoreResponse{})
 	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.CreateStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
-	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
