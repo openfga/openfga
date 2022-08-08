@@ -82,6 +82,13 @@ type TupleBackend interface {
 		opts ...QueryOption,
 	) (TupleIterator, error)
 
+	// ReadUniqueObjects returns all the unique objects of that type
+	ReadUniqueObjects(
+		ctx context.Context,
+		filter ReadRelationshipTuplesFilter,
+		opts ...QueryOption,
+	) ([]string, error)
+
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
 	ReadPage(context.Context, string, *openfgapb.TupleKey, PaginationOptions) ([]*openfgapb.Tuple, []byte, error)

@@ -142,6 +142,43 @@ func (p *Postgres) ReadRelationshipTuples(
 	return &tupleIterator{rows: rows}, nil
 }
 
+func (p *Postgres) ReadUniqueObjects(
+	ctx context.Context,
+	filter storage.ReadRelationshipTuplesFilter,
+	opts ...storage.QueryOption,
+) ([]string, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadUniqueObjects")
+	defer span.End()
+
+	sql := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store='%v'"
+	args := []interface{}{filter.StoreID}
+
+	if filter.OptionalObjectType != "" {
+		sql += " AND object_type='%v'"
+		args = append(args, filter.OptionalObjectType)
+	}
+
+	rows, err := p.pool.Query(ctx, fmt.Sprintf(sql, args...))
+	if err != nil {
+		return nil, err
+	}
+
+	uniqueObjectsOfType := make([]string, 0)
+	for rows.Next() {
+		var objectID, objectType string
+		err := rows.Scan(&objectType, &objectID)
+		if err != nil {
+			return nil, err
+		}
+
+		uniqueObjectsOfType = append(uniqueObjectsOfType, tupleUtils.BuildObject(objectType, objectID))
+	}
+
+	rows.Close()
+
+	return uniqueObjectsOfType, nil
+}
+
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.Read")
 	defer span.End()

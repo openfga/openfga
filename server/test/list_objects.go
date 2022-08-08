@@ -135,27 +135,28 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 		res, err = listObjectsQuery.Execute(ctx, test.request)
 
 		if res == nil && err == nil {
-			t.Fatalf("[%s] Expected an error or a response, got neither", test._name)
+			t.Errorf("[%s] Expected an error or a response, got neither", test._name)
 		}
 
 		if test.expectedError == nil && err != nil {
-			t.Fatalf("[%s] Expected no error but got '%s'", test._name, err)
+			t.Errorf("[%s] Expected no error but got '%s'", test._name, err)
 		}
 
 		if test.expectedError != nil && err == nil {
-			t.Fatalf("[%s] Expected an error '%s' but got nothing", test._name, test.expectedError)
+			t.Errorf("[%s] Expected an error '%s' but got nothing", test._name, test.expectedError)
 		}
 
 		if test.expectedError != nil && err != nil && !strings.Contains(test.expectedError.Error(), err.Error()) {
-			t.Fatalf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
+			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
 		}
 
 		if res != nil {
 			if len(res.ObjectIds) > defaultListObjectsMaxResults {
-				t.Fatalf("[%s] expected a maximum of %d results but got %d:", test._name, defaultListObjectsMaxResults, len(res.ObjectIds))
+				t.Errorf("[%s] expected a maximum of %d results but got %d:", test._name, defaultListObjectsMaxResults, len(res.ObjectIds))
 			}
-			if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty()); diff != "" {
-				t.Fatalf("[%s] object ID mismatch (-got +want):\n%s", test._name, diff)
+			less := func(a, b string) bool { return a < b }
+			if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
+				t.Errorf("[%s] object ID mismatch (-got +want):\n%s", test._name, diff)
 			}
 
 		}

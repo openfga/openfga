@@ -136,6 +136,30 @@ func (s *MemoryBackend) ReadRelationshipTuples(
 	return &staticIterator{tuples: matches}, nil
 }
 
+func (s *MemoryBackend) ReadUniqueObjects(
+	ctx context.Context,
+	filter storage.ReadRelationshipTuplesFilter,
+	opts ...storage.QueryOption,
+) ([]string, error) {
+	_, span := s.tracer.Start(ctx, "memory.ReadUniqueObjects")
+	defer span.End()
+
+	uniqueObjects := make(map[string]bool, 0)
+	matches := make([]string, 0)
+	for _, t := range s.tuples[filter.StoreID] {
+		if filter.OptionalObjectType == "" || !strings.HasPrefix(t.Key.Object, filter.OptionalObjectType+":") {
+			continue
+		}
+		_, found := uniqueObjects[t.Key.Object]
+		if !found {
+			uniqueObjects[t.Key.Object] = true
+			matches = append(matches, t.Key.Object)
+		}
+	}
+
+	return matches, nil
+}
+
 // Read See storage.TupleBackend.Read
 func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := s.tracer.Start(ctx, "memory.Read")
