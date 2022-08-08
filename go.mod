@@ -14,7 +14,7 @@ require (
 	github.com/google/go-cmp v0.5.8
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.1
-	github.com/jackc/pgx/v4 v4.16.1
+	github.com/jackc/pgx/v4 v4.17.0
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735
@@ -48,12 +48,12 @@ require (
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.12.1 // indirect
+	github.com/jackc/pgconn v1.13.0 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
-	github.com/jackc/pgtype v1.11.0 // indirect
+	github.com/jackc/pgtype v1.12.0 // indirect
 	github.com/jackc/puddle v1.2.1 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
@@ -79,7 +79,7 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/net v0.0.0-20220728211354-c7608f3a8462 // indirect
 	golang.org/x/sys v0.0.0-20220731174439-a90be440212d // indirect
 	golang.org/x/text v0.3.7 // indirect
