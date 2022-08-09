@@ -154,7 +154,7 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		ListObjectsDeadline:           3, // there is a 3-second timeout elsewhere
+		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
 		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",

@@ -125,8 +125,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 	}
 }
 
-func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, targetObjectType string, ctxTuples *openfgapb.ContextualTupleKeys) ([]string, error) {
-	uniqueObjects, err := q.Datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
+func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, targetObjectType string, ctxTuples *openfgapb.ContextualTupleKeys) (storage.ObjectIterator, error) {
+	iter, err := q.Datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
 		StoreID:    storeID,
 		ObjectType: targetObjectType,
 	})
@@ -134,29 +134,7 @@ func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, target
 		return nil, serverErrors.NewInternalError("", err)
 	}
 
-	if ctxTuples != nil {
-		// Take the relevant objects (i.e. same type) from the contextual tuples and add them to the result
-		uniqueSet := make(map[string]bool, len(uniqueObjects))
-		for _, o := range uniqueObjects {
-			_, found := uniqueSet[o]
-			if !found {
-				uniqueSet[o] = true
-			}
-		}
-
-		for _, ctxTuple := range ctxTuples.TupleKeys {
-			objectType, _ := tuple.SplitObject(ctxTuple.Object)
-			if objectType != targetObjectType {
-				continue
-			}
-			_, found := uniqueSet[ctxTuple.Object]
-			if !found {
-				uniqueSet[ctxTuple.Object] = true
-				uniqueObjects = append(uniqueObjects, ctxTuple.Object)
-			}
-		}
-	}
-	return uniqueObjects, nil
+	return iter, nil
 }
 
 func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, targetObjectType string, authModelID string, relation string) error {
@@ -188,16 +166,65 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	g.SetLimit(MaximumConcurrentChecks)
 	var objectsFound uint32
 
-	uniqueObjects, err := q.getUniqueObjects(timeoutCtx, input.storeID, input.objectType, input.ctxTuples)
+	iter, err := q.getUniqueObjects(timeoutCtx, input.storeID, input.objectType, input.ctxTuples)
 	if err != nil {
 		errChan <- err
 		close(errChan)
 		return
 	}
+	defer iter.Stop()
+
+	// iterate over the contextual tuples
+	if input.ctxTuples != nil {
+		for _, t := range input.ctxTuples.TupleKeys {
+			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+				break
+			}
+			t := t
+			checkFunction := func() error {
+				_, objectID := tuple.SplitObject(t.Object)
+				query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
+
+				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
+					StoreId:              input.storeID,
+					AuthorizationModelId: input.authModelID,
+					TupleKey: &openfgapb.TupleKey{
+						Object:   t.Object,
+						Relation: input.relation,
+						User:     input.user,
+					},
+					ContextualTuples: input.ctxTuples,
+				})
+				if err != nil {
+					// ignore the error. we don't want to abort everything if one of the checks failed.
+					q.Logger.Error("Check errored: ", logger.Error(err))
+					return nil
+				}
+
+				if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+					resultsChan <- objectID
+					atomic.AddUint32(&objectsFound, 1)
+				}
+
+				return nil
+			}
+
+			g.Go(checkFunction)
+		}
+	}
 
 	// iterate over all object IDs in the store and check if the user has relation with each
-	for _, object := range uniqueObjects {
-		object := object
+	for {
+		object, err := iter.Next()
+		if err != nil {
+			if errors.Is(err, storage.ObjectIteratorDone) {
+				break
+			} else {
+				errChan <- err
+				close(errChan)
+				return
+			}
+		}
 		if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
 			break
 		}

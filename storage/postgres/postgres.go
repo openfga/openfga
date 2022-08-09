@@ -111,7 +111,7 @@ func (p *Postgres) Close(ctx context.Context) error {
 func (p *Postgres) ListObjectsByType(
 	ctx context.Context,
 	filter storage.ListObjectsFilter,
-) ([]string, error) {
+) (storage.ObjectIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
@@ -123,20 +123,7 @@ func (p *Postgres) ListObjectsByType(
 		return nil, err
 	}
 
-	uniqueObjectsOfType := make([]string, 0)
-	for rows.Next() {
-		var objectID, objectType string
-		err := rows.Scan(&objectType, &objectID)
-		if err != nil {
-			return nil, err
-		}
-
-		uniqueObjectsOfType = append(uniqueObjectsOfType, tupleUtils.BuildObject(objectType, objectID))
-	}
-
-	rows.Close()
-
-	return uniqueObjectsOfType, nil
+	return &PostgresObjectIterator{rows: rows}, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {

@@ -57,6 +57,21 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
+type StaticObjectIterator struct {
+	objects []string
+}
+
+func (s *StaticObjectIterator) Next() (string, error) {
+	if len(s.objects) == 0 {
+		return "", storage.ObjectIteratorDone
+	}
+	next, rest := s.objects[0], s.objects[1:]
+	s.objects = rest
+	return next, nil
+}
+
+func (s *StaticObjectIterator) Stop() {}
+
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
@@ -114,7 +129,7 @@ func (s *MemoryBackend) Close(ctx context.Context) error {
 func (s *MemoryBackend) ListObjectsByType(
 	ctx context.Context,
 	filter storage.ListObjectsFilter,
-) ([]string, error) {
+) (storage.ObjectIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
 	defer span.End()
 
@@ -131,7 +146,7 @@ func (s *MemoryBackend) ListObjectsByType(
 		}
 	}
 
-	return matches, nil
+	return &StaticObjectIterator{objects: matches}, nil
 }
 
 // Read See storage.TupleBackend.Read
