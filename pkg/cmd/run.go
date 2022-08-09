@@ -311,7 +311,7 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
 	cmdutil.MustBindPFlag("resolveNodeLimit", cmd.Flags().Lookup("resolve-node-limit"))
 
-	cmd.Flags().Int("listObjects-deadline", defaultConfig.ListObjectsDeadlineInSeconds, "the timeout deadline for serving ListObjects requests")
+	cmd.Flags().Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
 	cmdutil.MustBindPFlag("listObjectsDeadline", cmd.Flags().Lookup("listObjects-deadline"))
 
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")

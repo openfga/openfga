@@ -75,14 +75,14 @@ type Dependencies struct {
 }
 
 type Config struct {
-	GRPCServer                   GRPCServerConfig
-	HTTPServer                   HTTPServerConfig
-	ResolveNodeLimit             uint32
-	ChangelogHorizonOffset       int
-	ListObjectsDeadlineInSeconds int
-	ListObjectsMaxResults        uint32
-	UnaryInterceptors            []grpc.UnaryServerInterceptor
-	MuxOptions                   []runtime.ServeMuxOption
+	GRPCServer             GRPCServerConfig
+	HTTPServer             HTTPServerConfig
+	ResolveNodeLimit       uint32
+	ChangelogHorizonOffset int
+	ListObjectsDeadline    time.Duration
+	ListObjectsMaxResults  uint32
+	UnaryInterceptors      []grpc.UnaryServerInterceptor
+	MuxOptions             []runtime.ServeMuxOption
 }
 
 type GRPCServerConfig struct {
@@ -171,7 +171,15 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	q := commands.NewListObjectsQuery(s.datastore, s.tracer, s.logger, s.meter, s.config.ListObjectsDeadlineInSeconds, s.config.ListObjectsMaxResults, s.config.ResolveNodeLimit)
+	q := &commands.ListObjectsQuery{
+		Datastore:             s.datastore,
+		Logger:                s.logger,
+		Tracer:                s.tracer,
+		Meter:                 s.meter,
+		ListObjectsDeadline:   s.config.ListObjectsDeadline,
+		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+	}
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
 		StoreId:              storeID,
@@ -196,7 +204,15 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	if err != nil {
 		return err
 	}
-	q := commands.NewListObjectsQuery(s.datastore, s.tracer, s.logger, s.meter, s.config.ListObjectsDeadlineInSeconds, s.config.ListObjectsMaxResults, s.config.ResolveNodeLimit)
+	q := &commands.ListObjectsQuery{
+		Datastore:             s.datastore,
+		Logger:                s.logger,
+		Tracer:                s.tracer,
+		Meter:                 s.meter,
+		ListObjectsDeadline:   s.config.ListObjectsDeadline,
+		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+	}
 
 	req.AuthorizationModelId = modelID
 	return q.ExecuteStreamed(ctx, req, srv)

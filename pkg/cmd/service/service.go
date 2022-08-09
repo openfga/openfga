@@ -116,10 +116,10 @@ type ProfilerConfig struct {
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
-	// ListObjectsDeadlineInSeconds defines the maximum amount of time to accumulate ListObjects results
+	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
 	// ListObjects endpoints.
-	ListObjectsDeadlineInSeconds int
+	ListObjectsDeadline time.Duration
 
 	// ListObjectsMaxResults defines the maximum number of ListObjects results to accumulate
 	// before the server will respond. This is to protect the server from misuse of the
@@ -154,7 +154,7 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		ListObjectsDeadlineInSeconds:  3, // there is a 3-second timeout elsewhere
+		ListObjectsDeadline:           3, // there is a 3-second timeout elsewhere
 		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
@@ -336,12 +336,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
 			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
 		},
-		ResolveNodeLimit:             config.ResolveNodeLimit,
-		ChangelogHorizonOffset:       config.ChangelogHorizonOffset,
-		ListObjectsDeadlineInSeconds: config.ListObjectsDeadlineInSeconds,
-		ListObjectsMaxResults:        config.ListObjectsMaxResults,
-		UnaryInterceptors:            interceptors,
-		MuxOptions:                   nil,
+		ResolveNodeLimit:       config.ResolveNodeLimit,
+		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+		ListObjectsDeadline:    config.ListObjectsDeadline,
+		ListObjectsMaxResults:  config.ListObjectsMaxResults,
+		UnaryInterceptors:      interceptors,
+		MuxOptions:             nil,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)

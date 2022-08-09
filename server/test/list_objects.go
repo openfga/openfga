@@ -4,6 +4,7 @@ import (
 	"context"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -20,8 +21,8 @@ import (
 )
 
 const (
-	defaultListObjectsDeadlineInSeconds = 5
-	defaultListObjectsMaxResults        = 5
+	defaultListObjectsDeadline   = 5 * time.Second
+	defaultListObjectsMaxResults = 5
 )
 
 type listObjectsTestCase struct {
@@ -133,7 +134,16 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		listObjectsQuery := commands.NewListObjectsQuery(backend, tracer, logger.NewNoopLogger(), telemetry.NewNoopMeter(), defaultListObjectsDeadlineInSeconds, defaultListObjectsMaxResults, defaultResolveNodeLimit)
+		listObjectsQuery := &commands.ListObjectsQuery{
+			Datastore:             backend,
+			Logger:                logger.NewNoopLogger(),
+			Tracer:                tracer,
+			Meter:                 telemetry.NewNoopMeter(),
+			ListObjectsDeadline:   defaultListObjectsDeadline,
+			ListObjectsMaxResults: defaultListObjectsMaxResults,
+			ResolveNodeLimit:      defaultResolveNodeLimit,
+		}
+
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
 	})
 }

@@ -21,26 +21,13 @@ const (
 )
 
 type ListObjectsQuery struct {
-	datastore                    storage.OpenFGADatastore
-	logger                       logger.Logger
-	tracer                       trace.Tracer
-	meter                        metric.Meter
-	listObjectsDeadlineInSeconds int
-	listObjectsMaxResults        uint32
-	resolveNodeLimit             uint32
-}
-
-// NewListObjectsQuery creates a ListObjectsQuery
-func NewListObjectsQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, meter metric.Meter, listObjectsDeadlineInSeconds int, listObjectsMaxResults uint32, ResolveNodeLimit uint32) *ListObjectsQuery {
-	return &ListObjectsQuery{
-		datastore:                    datastore,
-		logger:                       logger,
-		tracer:                       tracer,
-		meter:                        meter,
-		listObjectsDeadlineInSeconds: listObjectsDeadlineInSeconds,
-		listObjectsMaxResults:        listObjectsMaxResults,
-		resolveNodeLimit:             ResolveNodeLimit,
-	}
+	Datastore             storage.OpenFGADatastore
+	Logger                logger.Logger
+	Tracer                trace.Tracer
+	Meter                 metric.Meter
+	ListObjectsDeadline   time.Duration
+	ListObjectsMaxResults uint32
+	ResolveNodeLimit      uint32
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs
@@ -50,14 +37,14 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
-	resultsChan := make(chan string, q.listObjectsMaxResults)
+	resultsChan := make(chan string, q.ListObjectsMaxResults)
 	errChan := make(chan error)
 	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
-	if q.listObjectsDeadlineInSeconds != 0 {
+	if q.ListObjectsDeadline != 0 {
 		var cancel context.CancelFunc
-		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
 		defer cancel()
 	}
 
@@ -95,14 +82,14 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 		return err
 	}
 
-	resultsChan := make(chan string, q.listObjectsMaxResults)
+	resultsChan := make(chan string, q.ListObjectsMaxResults)
 	errChan := make(chan error)
 	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
-	if q.listObjectsDeadlineInSeconds != 0 {
+	if q.ListObjectsDeadline != 0 {
 		var cancel context.CancelFunc
-		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
 		defer cancel()
 	}
 
@@ -139,7 +126,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 }
 
 func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, targetObjectType string, ctxTuples *openfgapb.ContextualTupleKeys) ([]string, error) {
-	uniqueObjects, err := q.datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
+	uniqueObjects, err := q.Datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
 		StoreID:    storeID,
 		ObjectType: targetObjectType,
 	})
@@ -173,7 +160,7 @@ func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, target
 }
 
 func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, targetObjectType string, authModelID string, relation string) error {
-	definition, err := q.datastore.ReadTypeDefinition(ctx, storeID, authModelID, targetObjectType)
+	definition, err := q.Datastore.ReadTypeDefinition(ctx, storeID, authModelID, targetObjectType)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return serverErrors.TypeNotFound(targetObjectType)
@@ -211,13 +198,13 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for _, object := range uniqueObjects {
 		object := object
-		if atomic.LoadUint32(&objectsFound) >= q.listObjectsMaxResults {
+		if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
 			break
 		}
 
 		checkFunction := func() error {
 			_, objectID := tuple.SplitObject(object)
-			query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
+			query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
 
 			resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
 				StoreId:              input.storeID,
@@ -231,11 +218,11 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 			})
 			if err != nil {
 				// ignore the error. we don't want to abort everything if one of the checks failed.
-				q.logger.Error("Check errored: ", logger.Error(err))
+				q.Logger.Error("Check errored: ", logger.Error(err))
 				return nil
 			}
 
-			if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
+			if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
 				resultsChan <- objectID
 				atomic.AddUint32(&objectsFound, 1)
 			}
