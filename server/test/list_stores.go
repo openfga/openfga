@@ -9,19 +9,13 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
-	require := require.New(t)
+func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	// clean up all stores from other tests
 	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
@@ -32,7 +26,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 			ContinuationToken: deleteContinuationToken,
 		})
 		for _, store := range listStoresResponse.Stores {
-			if _, err = deleteCmd.Execute(ctx, &openfgapb.DeleteStoreRequest{
+			if _, err := deleteCmd.Execute(ctx, &openfgapb.DeleteStoreRequest{
 				StoreId: store.Id,
 			}); err != nil {
 				t.Fatalf("failed cleaning stores with %v", err)
@@ -53,7 +47,7 @@ func TestListStores(t *testing.T, dbTester teststorage.DatastoreTester[storage.O
 	// create two stores
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 	firstStoreName := testutils.CreateRandomString(10)
-	_, err = createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: firstStoreName})
+	_, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: firstStoreName})
 	if err != nil {
 		t.Fatalf("Error creating store 1: %v", err)
 	}

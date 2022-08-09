@@ -12,22 +12,18 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(20)
 
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	tests := []struct {
 		name                      string
@@ -94,13 +90,10 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 	}
 }
 
-func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	tds := &openfgapb.TypeDefinitions{
 		TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -168,13 +161,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	require.ErrorContains(err, "Invalid continuation token")
 }
 
-func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()

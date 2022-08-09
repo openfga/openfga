@@ -11,12 +11,10 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
 		_name   string
 		request *openfgapb.WriteAssertionsRequest
@@ -84,12 +82,8 @@ func TestWriteAssertions(t *testing.T, dbTester teststorage.DatastoreTester[stor
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, githubModelReq)
 	if err != nil {

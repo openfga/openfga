@@ -4,8 +4,6 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/telemetry"
-	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/test"
 )
@@ -19,13 +17,6 @@ func init() {
 }
 
 func TestMemdbStorage(t *testing.T) {
-	testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "memory")
-
-	test.TestAll(t, test.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
-		ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
-			return memory.New(telemetry.NewNoopTracer(), 10, 24)
-		})
-
-		return ds, nil
-	}))
+	ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+	test.RunAllTests(t, ds)
 }

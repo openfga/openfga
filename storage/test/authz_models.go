@@ -11,17 +11,12 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
@@ -71,13 +66,9 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, dbTester DatastoreTester[s
 	}
 }
 
-func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
@@ -171,13 +162,9 @@ func ReadAuthorizationModelsTest(t *testing.T, dbTester DatastoreTester[storage.
 	}
 }
 
-func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
@@ -241,13 +228,9 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, dbTester DatastoreTester[s
 	})
 }
 
-func ReadTypeDefinitionTest(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
+func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
-	require := require.New(t)
 	ctx := context.Background()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)

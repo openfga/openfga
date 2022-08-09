@@ -40,7 +40,7 @@ func (n NoopAuthenticator) Authenticate(requestContext context.Context) (*AuthCl
 
 func (n NoopAuthenticator) Close() {}
 
-//AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+// AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 type AuthClaims struct {
 	Subject string
 	Scopes  map[string]bool
