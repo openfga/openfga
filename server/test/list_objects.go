@@ -109,6 +109,17 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
+				_name: "ignores irrelevant contextual tuples in the checks",
+				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "member",
+						Object:   "team:abc",
+					}}}),
+				expectedResult: []string{"2", "6"},
+				expectedError:  nil,
+			},
+			{
 				_name:          "returns error if unknown type",
 				request:        newListObjectsRequest(store, "unknown", "admin", "anna", modelID, nil),
 				expectedResult: nil,

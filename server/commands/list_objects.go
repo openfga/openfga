@@ -55,8 +55,8 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
-	var cancel context.CancelFunc
 	if q.listObjectsDeadlineInSeconds != 0 {
+		var cancel context.CancelFunc
 		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
 		defer cancel()
 	}
@@ -93,8 +93,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
-	var cancel context.CancelFunc
 	if q.listObjectsDeadlineInSeconds != 0 {
+		var cancel context.CancelFunc
 		timeoutCtx, cancel = context.WithTimeout(ctx, time.Second*time.Duration(q.listObjectsDeadlineInSeconds))
 		defer cancel()
 	}
@@ -108,16 +108,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 		case <-timeoutCtx.Done():
 			return serverErrors.NewInternalError("Timeout exceeded", timeoutCtx.Err())
 		case objectID, ok := <-resultsChan:
-			if ok {
-				err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-					ObjectId: objectID,
-				})
-				if err != nil {
-					return serverErrors.NewInternalError("", err)
-				}
-			} else {
-				// the channel was closed
-				return nil
+			if !ok {
+				return nil //channel was closed
+			}
+			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
+				ObjectId: objectID,
+			}); err != nil {
+				return serverErrors.NewInternalError("", err)
 			}
 		case genericError, ok := <-errChan:
 			if ok {
@@ -137,7 +134,7 @@ func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, target
 	}
 
 	if ctxTuples != nil {
-		// Include the objects in the contextual tuples in the result
+		// Take the relevant objects (i.e. same type) from the contextual tuples and add them to the result
 		uniqueSet := make(map[string]bool, len(uniqueObjects))
 		for _, o := range uniqueObjects {
 			_, found := uniqueSet[o]
@@ -147,6 +144,10 @@ func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, target
 		}
 
 		for _, ctxTuple := range ctxTuples.TupleKeys {
+			objectType, _ := tuple.SplitObject(ctxTuple.Object)
+			if objectType != targetObjectType {
+				continue
+			}
 			_, found := uniqueSet[ctxTuple.Object]
 			if !found {
 				uniqueSet[ctxTuple.Object] = true
@@ -206,7 +207,9 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, storeID str
 				ContextualTuples: ctxTuples,
 			})
 			if err != nil {
-				return err
+				// ignore the error. we don't want to abort everything if one of the checks failed.
+				q.logger.Warn("Check errored: ", logger.Error(err))
+				return nil
 			}
 
 			if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.listObjectsMaxResults {
@@ -222,8 +225,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, storeID str
 
 	err = g.Wait()
 	if err != nil {
-		// we don't want to abort everything if one of the checks failed.
-		q.logger.Warn("ListObjectsByType errored: ", logger.Error(err))
+		errChan <- err
 	}
 
 	close(resultsChan)
