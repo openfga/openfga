@@ -43,29 +43,11 @@ type TupleIterator interface {
 type Writes = []*openfgapb.TupleKey
 type Deletes = []*openfgapb.TupleKey
 
-// QueryOptions represent constraints that can be applied to a query to modify the response
-// behavior of the query.
-type QueryOptions struct {
-	Limit uint64
-}
-
-type QueryOption func(*QueryOptions)
-
-// WithLimit returns a QueryOption with the provided query limit set.
-func WithLimit(limit uint64) QueryOption {
-	return func(qo *QueryOptions) {
-		qo.Limit = limit
-	}
-}
-
-// ReadRelationshipTuplesFilter represents fields that can be used to additionally constrain/filter
+// ListObjectsFilter represents fields that can be used to additionally constrain/filter
 // relationship tuples when querying them.
-type ReadRelationshipTuplesFilter struct {
-	StoreID            string
-	OptionalObjectType string
-	OptionalObjectID   string
-	OptionalRelation   string
-	//OptionalUserFilter *UserFilter
+type ListObjectsFilter struct {
+	StoreID    string
+	ObjectType string
 }
 
 // A TupleBackend provides an R/W interface for managing tuples.
@@ -75,19 +57,10 @@ type TupleBackend interface {
 	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
 
-	// ReadRelationshipTuples queries relationship tuples matching the filter.
-	ReadRelationshipTuples(
-		ctx context.Context,
-		filter ReadRelationshipTuplesFilter,
-		opts ...QueryOption,
-	) (TupleIterator, error)
-
-	// ReadUniqueObjects returns all the unique objects of that type
-	ReadUniqueObjects(
-		ctx context.Context,
-		filter ReadRelationshipTuplesFilter,
-		opts ...QueryOption,
-	) ([]string, error)
+	// ListObjectsByType returns all the objects of a specific type.
+	// You can assume that the type has already been validated.
+	// The result can't have duplicate elements.
+	ListObjectsByType(ctx context.Context, filter ListObjectsFilter) ([]string, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.

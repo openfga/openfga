@@ -108,55 +108,15 @@ func (p *Postgres) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *Postgres) ReadRelationshipTuples(
+func (p *Postgres) ListObjectsByType(
 	ctx context.Context,
-	filter storage.ReadRelationshipTuplesFilter,
-	opts ...storage.QueryOption,
-) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.QueryRelationshipTuples")
-	defer span.End()
-
-	sql := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store='%v'"
-	args := []interface{}{filter.StoreID}
-
-	if filter.OptionalObjectType != "" {
-		sql += " AND object_type='%v'"
-		args = append(args, filter.OptionalObjectType)
-	}
-
-	if filter.OptionalObjectID != "" {
-		sql += " AND object_id='%v'"
-		args = append(args, filter.OptionalObjectID)
-	}
-
-	if filter.OptionalRelation != "" {
-		sql += " AND relation='%v'"
-		args = append(args, filter.OptionalRelation)
-	}
-
-	rows, err := p.pool.Query(ctx, fmt.Sprintf(sql, args...))
-	if err != nil {
-		return nil, err
-	}
-
-	return &tupleIterator{rows: rows}, nil
-}
-
-func (p *Postgres) ReadUniqueObjects(
-	ctx context.Context,
-	filter storage.ReadRelationshipTuplesFilter,
-	opts ...storage.QueryOption,
+	filter storage.ListObjectsFilter,
 ) ([]string, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadUniqueObjects")
+	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
-	sql := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store='%v'"
-	args := []interface{}{filter.StoreID}
-
-	if filter.OptionalObjectType != "" {
-		sql += " AND object_type='%v'"
-		args = append(args, filter.OptionalObjectType)
-	}
+	sql := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store='%v' AND object_type='%v'"
+	args := []interface{}{filter.StoreID, filter.ObjectType}
 
 	rows, err := p.pool.Query(ctx, fmt.Sprintf(sql, args...))
 	if err != nil {

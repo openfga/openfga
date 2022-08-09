@@ -111,43 +111,17 @@ func (s *MemoryBackend) Close(ctx context.Context) error {
 	return nil
 }
 
-func (s *MemoryBackend) ReadRelationshipTuples(
+func (s *MemoryBackend) ListObjectsByType(
 	ctx context.Context,
-	filter storage.ReadRelationshipTuplesFilter,
-	opts ...storage.QueryOption,
-) (storage.TupleIterator, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadRelationshipTuples")
-	defer span.End()
-
-	matches := make([]*openfgapb.Tuple, 0)
-	for _, t := range s.tuples[filter.StoreID] {
-		if filter.OptionalRelation != "" && t.Key.Relation != filter.OptionalRelation {
-			continue
-		}
-		if filter.OptionalObjectType != "" && !strings.HasPrefix(t.Key.Object, filter.OptionalObjectType+":") {
-			continue
-		}
-		if filter.OptionalObjectID != "" && t.Key.Object != filter.OptionalObjectID {
-			continue
-		}
-		matches = append(matches, t)
-	}
-
-	return &staticIterator{tuples: matches}, nil
-}
-
-func (s *MemoryBackend) ReadUniqueObjects(
-	ctx context.Context,
-	filter storage.ReadRelationshipTuplesFilter,
-	opts ...storage.QueryOption,
+	filter storage.ListObjectsFilter,
 ) ([]string, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadUniqueObjects")
+	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
 	defer span.End()
 
 	uniqueObjects := make(map[string]bool, 0)
 	matches := make([]string, 0)
 	for _, t := range s.tuples[filter.StoreID] {
-		if filter.OptionalObjectType == "" || !strings.HasPrefix(t.Key.Object, filter.OptionalObjectType+":") {
+		if filter.ObjectType == "" || !strings.HasPrefix(t.Key.Object, filter.ObjectType+":") {
 			continue
 		}
 		_, found := uniqueObjects[t.Key.Object]

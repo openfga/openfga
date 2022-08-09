@@ -128,9 +128,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 }
 
 func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, targetObjectType string, ctxTuples *openfgapb.ContextualTupleKeys) ([]string, error) {
-	uniqueObjects, err := q.datastore.ReadUniqueObjects(ctx, storage.ReadRelationshipTuplesFilter{
-		StoreID:            storeID,
-		OptionalObjectType: targetObjectType,
+	uniqueObjects, err := q.datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
+		StoreID:    storeID,
+		ObjectType: targetObjectType,
 	})
 	if err != nil {
 		return nil, serverErrors.NewInternalError("", err)
@@ -223,7 +223,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, storeID str
 	err = g.Wait()
 	if err != nil {
 		// we don't want to abort everything if one of the checks failed.
-		q.logger.Warn("ListObjects errored: ", logger.Error(err))
+		q.logger.Warn("ListObjectsByType errored: ", logger.Error(err))
 	}
 
 	close(resultsChan)
