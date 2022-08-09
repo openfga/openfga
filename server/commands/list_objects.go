@@ -62,7 +62,14 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 	}
 
 	go func() {
-		q.performChecks(timeoutCtx, req.StoreId, req.AuthorizationModelId, req.Type, req.Relation, req.User, req.ContextualTuples, resultsChan, errChan, resolvedChan)
+		q.performChecks(timeoutCtx, &PerformChecksInput{
+			storeID:     req.StoreId,
+			authModelID: req.AuthorizationModelId,
+			objectType:  req.Type,
+			relation:    req.Relation,
+			user:        req.User,
+			ctxTuples:   req.ContextualTuples,
+		}, resultsChan, errChan, resolvedChan)
 	}()
 
 	select {
@@ -100,13 +107,20 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 	}
 
 	go func() {
-		q.performChecks(timeoutCtx, req.StoreId, req.AuthorizationModelId, req.Type, req.Relation, req.User, req.ContextualTuples, resultsChan, errChan, resolvedChan)
+		q.performChecks(timeoutCtx, &PerformChecksInput{
+			storeID:     req.StoreId,
+			authModelID: req.AuthorizationModelId,
+			objectType:  req.Type,
+			relation:    req.Relation,
+			user:        req.User,
+			ctxTuples:   req.ContextualTuples,
+		}, resultsChan, errChan, resolvedChan)
 	}()
 
 	for {
 		select {
 		case <-timeoutCtx.Done():
-			return serverErrors.NewInternalError("Timeout exceeded", timeoutCtx.Err())
+			return nil
 		case objectID, ok := <-resultsChan:
 			if !ok {
 				return nil //channel was closed
@@ -173,12 +187,21 @@ func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, ta
 	return nil
 }
 
-func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, storeID string, authModelID string, objectType string, relation string, user string, ctxTuples *openfgapb.ContextualTupleKeys, resultsChan chan<- string, errChan chan<- error, resolvedChan chan<- struct{}) {
+type PerformChecksInput struct {
+	storeID     string
+	authModelID string
+	objectType  string
+	relation    string
+	user        string
+	ctxTuples   *openfgapb.ContextualTupleKeys
+}
+
+func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *PerformChecksInput, resultsChan chan<- string, errChan chan<- error, resolvedChan chan<- struct{}) {
 	g := new(errgroup.Group)
 	g.SetLimit(MaximumConcurrentChecks)
 	var objectsFound uint32
 
-	uniqueObjects, err := q.getUniqueObjects(timeoutCtx, storeID, objectType, ctxTuples)
+	uniqueObjects, err := q.getUniqueObjects(timeoutCtx, input.storeID, input.objectType, input.ctxTuples)
 	if err != nil {
 		errChan <- err
 		close(errChan)
@@ -197,18 +220,18 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, storeID str
 			query := NewCheckQuery(q.datastore, q.tracer, q.meter, q.logger, q.resolveNodeLimit)
 
 			resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: authModelID,
+				StoreId:              input.storeID,
+				AuthorizationModelId: input.authModelID,
 				TupleKey: &openfgapb.TupleKey{
 					Object:   object,
-					Relation: relation,
-					User:     user,
+					Relation: input.relation,
+					User:     input.user,
 				},
-				ContextualTuples: ctxTuples,
+				ContextualTuples: input.ctxTuples,
 			})
 			if err != nil {
 				// ignore the error. we don't want to abort everything if one of the checks failed.
-				q.logger.Warn("Check errored: ", logger.Error(err))
+				q.logger.Error("Check errored: ", logger.Error(err))
 				return nil
 			}
 
