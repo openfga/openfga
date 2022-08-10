@@ -12,6 +12,8 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
@@ -37,6 +39,20 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
+	allResults, _ := q.Meter.SyncInt64().Counter(
+		"openfga.listobjects.allresults",
+		instrument.WithDescription("Number of object IDs returned"),
+		instrument.WithUnit(unit.Dimensionless),
+	)
+	partialResults, _ := q.Meter.SyncInt64().Counter(
+		"openfga.listobjects.partialresults",
+		instrument.WithDescription("Number of object IDs returned after the API timed out"),
+		instrument.WithUnit(unit.Dimensionless),
+	)
+	if err != nil {
+		return nil, serverErrors.NewInternalError("", err)
+	}
+
 	resultsChan := make(chan string, q.ListObjectsMaxResults)
 	errChan := make(chan error)
 	resolvedChan := make(chan struct{})
@@ -59,14 +75,26 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		}, resultsChan, errChan, resolvedChan)
 	}()
 
+	objectIDs := make([]string, 0)
+
 	select {
 	case <-timeoutCtx.Done():
-		return nil, serverErrors.NewInternalError("Timeout exceeded", timeoutCtx.Err())
-	case <-resolvedChan:
-		objectIDs := make([]string, 0)
+		// we give them what we have so far
 		for objectID := range resultsChan {
 			objectIDs = append(objectIDs, objectID)
 		}
+
+		partialResults.Add(timeoutCtx, int64(len(objectIDs)))
+
+		return &openfgapb.ListObjectsResponse{
+			ObjectIds: objectIDs,
+		}, nil
+	case <-resolvedChan:
+		for objectID := range resultsChan {
+			objectIDs = append(objectIDs, objectID)
+		}
+
+		allResults.Add(timeoutCtx, int64(len(objectIDs)))
 
 		return &openfgapb.ListObjectsResponse{
 			ObjectIds: objectIDs,
