@@ -115,15 +115,13 @@ func (p *Postgres) ListObjectsByType(
 	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
-	sql := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store='%v' AND object_type='%v'"
-	args := []interface{}{filter.StoreID, filter.ObjectType}
-
-	rows, err := p.pool.Query(ctx, fmt.Sprintf(sql, args...))
+	stmt := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store = $1 AND object_type = $2"
+	rows, err := p.pool.Query(ctx, stmt, filter.StoreID, filter.ObjectType)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PostgresObjectIterator{rows: rows}, nil
+	return &ObjectIterator{rows: rows}, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {

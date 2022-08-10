@@ -182,31 +182,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 			}
 			t := t
 			checkFunction := func() error {
-				_, objectID := tuple.SplitObject(t.Object)
-				query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
-
-				resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
-					StoreId:              input.storeID,
-					AuthorizationModelId: input.authModelID,
-					TupleKey: &openfgapb.TupleKey{
-						Object:   t.Object,
-						Relation: input.relation,
-						User:     input.user,
-					},
-					ContextualTuples: input.ctxTuples,
-				})
-				if err != nil {
-					// ignore the error. we don't want to abort everything if one of the checks failed.
-					q.Logger.Error("Check errored: ", logger.Error(err))
-					return nil
-				}
-
-				if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
-					resultsChan <- objectID
-					atomic.AddUint32(&objectsFound, 1)
-				}
-
-				return nil
+				return q.internalCheck(timeoutCtx, t.Object, input, objectsFound, resultsChan)
 			}
 
 			g.Go(checkFunction)
@@ -230,31 +206,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 		}
 
 		checkFunction := func() error {
-			_, objectID := tuple.SplitObject(object)
-			query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
-
-			resp, err := query.Execute(timeoutCtx, &openfgapb.CheckRequest{
-				StoreId:              input.storeID,
-				AuthorizationModelId: input.authModelID,
-				TupleKey: &openfgapb.TupleKey{
-					Object:   object,
-					Relation: input.relation,
-					User:     input.user,
-				},
-				ContextualTuples: input.ctxTuples,
-			})
-			if err != nil {
-				// ignore the error. we don't want to abort everything if one of the checks failed.
-				q.Logger.Error("Check errored: ", logger.Error(err))
-				return nil
-			}
-
-			if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
-				resultsChan <- objectID
-				atomic.AddUint32(&objectsFound, 1)
-			}
-
-			return nil
+			return q.internalCheck(timeoutCtx, object, input, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
@@ -268,4 +220,32 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	close(resultsChan)
 	close(resolvedChan)
 	close(errChan)
+}
+
+func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound uint32, resultsChan chan<- string) error {
+	_, objectID := tuple.SplitObject(object)
+	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
+
+	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
+		StoreId:              input.storeID,
+		AuthorizationModelId: input.authModelID,
+		TupleKey: &openfgapb.TupleKey{
+			Object:   object,
+			Relation: input.relation,
+			User:     input.user,
+		},
+		ContextualTuples: input.ctxTuples,
+	})
+	if err != nil {
+		// ignore the error. we don't want to abort everything if one of the checks failed.
+		q.Logger.Error("Check errored: ", logger.Error(err))
+		return nil
+	}
+
+	if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+		resultsChan <- objectID
+		atomic.AddUint32(&objectsFound, 1)
+	}
+
+	return nil
 }

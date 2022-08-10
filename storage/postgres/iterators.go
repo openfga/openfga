@@ -79,11 +79,11 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type PostgresObjectIterator struct {
+type ObjectIterator struct {
 	rows pgx.Rows
 }
 
-func (o *PostgresObjectIterator) Next() (string, error) {
+func (o *ObjectIterator) Next() (string, error) {
 	if !o.rows.Next() {
 		o.Stop()
 		return "", storage.ObjectIteratorDone
@@ -101,6 +101,6 @@ func (o *PostgresObjectIterator) Next() (string, error) {
 	return tupleUtils.BuildObject(objectType, objectID), nil
 }
 
-func (o *PostgresObjectIterator) Stop() {
+func (o *ObjectIterator) Stop() {
 	o.rows.Close()
 }
