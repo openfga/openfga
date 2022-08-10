@@ -238,7 +238,7 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, inp
 	})
 	if err != nil {
 		// ignore the error. we don't want to abort everything if one of the checks failed.
-		q.Logger.Error("Check errored: ", logger.Error(err))
+		q.Logger.ErrorWithContext(ctx, "Check errored: ", logger.Error(err))
 		return nil
 	}
 
