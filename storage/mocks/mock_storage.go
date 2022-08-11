@@ -138,18 +138,18 @@ func (m *MockTupleBackend) EXPECT() *MockTupleBackendMockRecorder {
 }
 
 // ListObjectsByType mocks base method.
-func (m *MockTupleBackend) ListObjectsByType(ctx context.Context, filter storage.ListObjectsFilter) (storage.ObjectIterator, error) {
+func (m *MockTupleBackend) ListObjectsByType(ctx context.Context, store, objectType string) (storage.ObjectIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, filter)
+	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, store, objectType)
 	ret0, _ := ret[0].(storage.ObjectIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListObjectsByType indicates an expected call of ListObjectsByType.
-func (mr *MockTupleBackendMockRecorder) ListObjectsByType(ctx, filter interface{}) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) ListObjectsByType(ctx, store, objectType interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockTupleBackend)(nil).ListObjectsByType), ctx, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockTupleBackend)(nil).ListObjectsByType), ctx, store, objectType)
 }
 
 // MaxTuplesInWriteOperation mocks base method.
@@ -813,18 +813,18 @@ func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx interface{}) *gomock.Cal
 }
 
 // ListObjectsByType mocks base method.
-func (m *MockOpenFGADatastore) ListObjectsByType(ctx context.Context, filter storage.ListObjectsFilter) (storage.ObjectIterator, error) {
+func (m *MockOpenFGADatastore) ListObjectsByType(ctx context.Context, store, objectType string) (storage.ObjectIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, filter)
+	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, store, objectType)
 	ret0, _ := ret[0].(storage.ObjectIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListObjectsByType indicates an expected call of ListObjectsByType.
-func (mr *MockOpenFGADatastoreMockRecorder) ListObjectsByType(ctx, filter interface{}) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ListObjectsByType(ctx, store, objectType interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListObjectsByType), ctx, filter)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListObjectsByType), ctx, store, objectType)
 }
 
 // ListStores mocks base method.

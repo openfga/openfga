@@ -52,13 +52,6 @@ type ObjectIterator interface {
 type Writes = []*openfgapb.TupleKey
 type Deletes = []*openfgapb.TupleKey
 
-// ListObjectsFilter represents fields that can be used to additionally constrain/filter
-// relationship tuples when querying them.
-type ListObjectsFilter struct {
-	StoreID    string
-	ObjectType string
-}
-
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
 	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
@@ -69,7 +62,7 @@ type TupleBackend interface {
 	// ListObjectsByType returns all the objects of a specific type.
 	// You can assume that the type has already been validated.
 	// The result can't have duplicate elements.
-	ListObjectsByType(ctx context.Context, filter ListObjectsFilter) (ObjectIterator, error)
+	ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.

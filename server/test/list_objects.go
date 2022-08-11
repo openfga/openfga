@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -26,42 +27,18 @@ const (
 )
 
 type listObjectsTestCase struct {
-	_name          string
+	name           string
 	request        *openfgapb.ListObjectsRequest
 	expectedError  error
 	expectedResult []string //all the results. the server may return less
 }
 
-var tKAllAdminsRepo6 = &openfgapb.TupleKey{
-	Object:   "repo:6",
-	Relation: "admin",
-	User:     "*",
-}
-var tkAnnaRepo1 = &openfgapb.TupleKey{
-	Object:   "repo:1",
-	Relation: "admin",
-	User:     "anna",
-}
-var tkAnnaRepo2 = &openfgapb.TupleKey{
-	Object:   "repo:2",
-	Relation: "admin",
-	User:     "anna",
-}
-var tkAnnaRepo3 = &openfgapb.TupleKey{
-	Object:   "repo:3",
-	Relation: "admin",
-	User:     "anna",
-}
-var tkAnnaRepo4 = &openfgapb.TupleKey{
-	Object:   "repo:4",
-	Relation: "admin",
-	User:     "anna",
-}
-var tkBobRepo2 = &openfgapb.TupleKey{
-	Object:   "repo:2",
-	Relation: "admin",
-	User:     "bob",
-}
+var tKAllAdminsRepo6 = tuple.NewTupleKey("repo:6", "admin", "*")
+var tkAnnaRepo1 = tuple.NewTupleKey("repo:1", "admin", "anna")
+var tkAnnaRepo2 = tuple.NewTupleKey("repo:2", "admin", "anna")
+var tkAnnaRepo3 = tuple.NewTupleKey("repo:3", "admin", "anna")
+var tkAnnaRepo4 = tuple.NewTupleKey("repo:4", "admin", "anna")
+var tkBobRepo2 = tuple.NewTupleKey("repo:2", "admin", "bob")
 
 func newListObjectsRequest(store, objectType, relation, user, modelID string, contextualTuples *openfgapb.ContextualTupleKeys) *openfgapb.ListObjectsRequest {
 	return &openfgapb.ListObjectsRequest{
@@ -83,19 +60,19 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("list objects", func(t *testing.T) {
 		testCases := []listObjectsTestCase{
 			{
-				_name:          "does not return duplicates and respects maximum length allowed",
+				name:           "does not return duplicates and respects maximum length allowed",
 				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID, nil),
 				expectedResult: []string{"1", "2", "3", "4", "6"},
 				expectedError:  nil,
 			},
 			{
-				_name:          "performs correct checks",
+				name:           "performs correct checks",
 				request:        newListObjectsRequest(store, "repo", "admin", "bob", modelID, nil),
 				expectedResult: []string{"2", "6"},
 				expectedError:  nil,
 			},
 			{
-				_name: "includes contextual tuples in the checks",
+				name: "includes contextual tuples in the checks",
 				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
@@ -110,7 +87,7 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				_name: "ignores irrelevant contextual tuples in the checks",
+				name: "ignores irrelevant contextual tuples in the checks",
 				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
@@ -121,13 +98,13 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				_name:          "returns error if unknown type",
+				name:           "returns error if unknown type",
 				request:        newListObjectsRequest(store, "unknown", "admin", "anna", modelID, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.TypeNotFound("unknown"),
 			},
 			{
-				_name:          "returns error if unknown relation",
+				name:           "returns error if unknown relation",
 				request:        newListObjectsRequest(store, "repo", "unknown", "anna", modelID, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.UnknownRelationWhenListingObjects("unknown", "repo"),
@@ -152,7 +129,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	var res *openfgapb.ListObjectsResponse
 	var err error
 	for _, test := range testCases {
-		t.Run(test._name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			res, err = listObjectsQuery.Execute(ctx, test.request)
 
 			if res == nil && err == nil {

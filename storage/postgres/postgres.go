@@ -108,15 +108,12 @@ func (p *Postgres) Close(ctx context.Context) error {
 	return nil
 }
 
-func (p *Postgres) ListObjectsByType(
-	ctx context.Context,
-	filter storage.ListObjectsFilter,
-) (storage.ObjectIterator, error) {
+func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
 	stmt := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store = $1 AND object_type = $2"
-	rows, err := p.pool.Query(ctx, stmt, filter.StoreID, filter.ObjectType)
+	rows, err := p.pool.Query(ctx, stmt, store, objectType)
 	if err != nil {
 		return nil, err
 	}

@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
 )
 
 type ListObjectsQuery struct {
@@ -40,13 +40,13 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 	}
 
 	allResults, _ := q.Meter.SyncInt64().Counter(
-		"openfga.listobjects.allresults",
-		instrument.WithDescription("Number of object IDs returned"),
+		"openfga.listObjects.completeResults",
+		instrument.WithDescription("Number of requests that return complete results"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	partialResults, _ := q.Meter.SyncInt64().Counter(
-		"openfga.listobjects.partialresults",
-		instrument.WithDescription("Number of object IDs returned after the API timed out"),
+		"openfga.listObjects.partialResults",
+		instrument.WithDescription("Number of requests that return partial results because they timed out"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
@@ -75,33 +75,23 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		}, resultsChan, errChan, resolvedChan)
 	}()
 
-	objectIDs := make([]string, 0)
-
 	select {
 	case <-timeoutCtx.Done():
-		// we give them what we have so far
-		for objectID := range resultsChan {
-			objectIDs = append(objectIDs, objectID)
-		}
-
-		partialResults.Add(timeoutCtx, int64(len(objectIDs)))
-
-		return &openfgapb.ListObjectsResponse{
-			ObjectIds: objectIDs,
-		}, nil
+		partialResults.Add(timeoutCtx, 1)
 	case <-resolvedChan:
-		for objectID := range resultsChan {
-			objectIDs = append(objectIDs, objectID)
-		}
-
-		allResults.Add(timeoutCtx, int64(len(objectIDs)))
-
-		return &openfgapb.ListObjectsResponse{
-			ObjectIds: objectIDs,
-		}, nil
+		allResults.Add(timeoutCtx, 1)
 	case genericError := <-errChan:
 		return nil, genericError
 	}
+
+	objectIDs := make([]string, 0)
+	for objectID := range resultsChan {
+		objectIDs = append(objectIDs, objectID)
+	}
+
+	return &openfgapb.ListObjectsResponse{
+		ObjectIds: objectIDs,
+	}, nil
 }
 
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
@@ -153,18 +143,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgapb.S
 	}
 }
 
-func (q *ListObjectsQuery) getUniqueObjects(ctx context.Context, storeID, targetObjectType string, ctxTuples *openfgapb.ContextualTupleKeys) (storage.ObjectIterator, error) {
-	iter, err := q.Datastore.ListObjectsByType(ctx, storage.ListObjectsFilter{
-		StoreID:    storeID,
-		ObjectType: targetObjectType,
-	})
-	if err != nil {
-		return nil, serverErrors.NewInternalError("", err)
-	}
-
-	return iter, nil
-}
-
 func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, targetObjectType string, authModelID string, relation string) error {
 	definition, err := q.Datastore.ReadTypeDefinition(ctx, storeID, authModelID, targetObjectType)
 	if err != nil {
@@ -191,10 +169,10 @@ type PerformChecksInput struct {
 
 func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *PerformChecksInput, resultsChan chan<- string, errChan chan<- error, resolvedChan chan<- struct{}) {
 	g := new(errgroup.Group)
-	g.SetLimit(MaximumConcurrentChecks)
+	g.SetLimit(maximumConcurrentChecks)
 	var objectsFound uint32
 
-	iter, err := q.getUniqueObjects(timeoutCtx, input.storeID, input.objectType, input.ctxTuples)
+	iter, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
 		errChan <- err
 		close(errChan)
@@ -266,7 +244,7 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, inp
 	})
 	if err != nil {
 		// ignore the error. we don't want to abort everything if one of the checks failed.
-		q.Logger.ErrorWithContext(ctx, "Check errored: ", logger.Error(err))
+		q.Logger.ErrorWithContext(ctx, "check_error", logger.Error(err))
 		return nil
 	}
 

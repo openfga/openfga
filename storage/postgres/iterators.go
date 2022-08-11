@@ -83,6 +83,8 @@ type ObjectIterator struct {
 	rows pgx.Rows
 }
 
+var _ storage.ObjectIterator = (*ObjectIterator)(nil)
+
 func (o *ObjectIterator) Next() (string, error) {
 	if !o.rows.Next() {
 		o.Stop()

@@ -61,6 +61,8 @@ type StaticObjectIterator struct {
 	objects []string
 }
 
+var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
+
 func (s *StaticObjectIterator) Next() (string, error) {
 	if len(s.objects) == 0 {
 		return "", storage.ObjectIteratorDone
@@ -126,17 +128,14 @@ func (s *MemoryBackend) Close(ctx context.Context) error {
 	return nil
 }
 
-func (s *MemoryBackend) ListObjectsByType(
-	ctx context.Context,
-	filter storage.ListObjectsFilter,
-) (storage.ObjectIterator, error) {
+func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
 	defer span.End()
 
 	uniqueObjects := make(map[string]bool, 0)
 	matches := make([]string, 0)
-	for _, t := range s.tuples[filter.StoreID] {
-		if filter.ObjectType == "" || !strings.HasPrefix(t.Key.Object, filter.ObjectType+":") {
+	for _, t := range s.tuples[store] {
+		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
 		}
 		_, found := uniqueObjects[t.Key.Object]

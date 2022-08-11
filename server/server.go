@@ -160,6 +160,7 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetType()
+
 	ctx, span := s.tracer.Start(ctx, "listObjects", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(targetObjectType)},
