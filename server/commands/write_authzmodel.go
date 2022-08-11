@@ -79,7 +79,7 @@ func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openf
 
 	for _, relation := range tupleToUsersetTargets {
 		if ok := topLevelRelations[relation]; !ok {
-			return serverErrors.UnknownRelation(relation)
+			return serverErrors.UnknownRelationWhenWritingAuthzModel(relation)
 		}
 	}
 
@@ -119,7 +119,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Users
 			return nil, serverErrors.CannotAllowMultipleReferencesToOneRelation
 		}
 		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.UnknownRelation(relation)
+			return nil, serverErrors.UnknownRelationWhenWritingAuthzModel(relation)
 		}
 	case *openfgapb.Userset_Union:
 		for _, us := range t.Union.GetChild() {
@@ -151,7 +151,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Users
 	case *openfgapb.Userset_TupleToUserset:
 		relation := t.TupleToUserset.GetTupleset().GetRelation()
 		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.UnknownRelation(relation)
+			return nil, serverErrors.UnknownRelationWhenWritingAuthzModel(relation)
 		}
 		// We don't have enough information to validate these targets here so pass them up to where we do.
 		relation = t.TupleToUserset.GetComputedUserset().GetRelation()

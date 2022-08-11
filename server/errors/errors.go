@@ -108,8 +108,12 @@ func InvalidObjectFormat(tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_object_format), fmt.Sprintf("Invalid object format for tuple '%s'", tuple.String()))
 }
 
-func UnknownRelation(relation string) error {
+func UnknownRelationWhenWritingAuthzModel(relation string) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_unknown_relation), fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation))
+}
+
+func UnknownRelationWhenListingObjects(relation, typeName string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_unknown_relation), fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, typeName))
 }
 
 func DuplicateTupleInWrite(tk *openfgapb.TupleKey) error {

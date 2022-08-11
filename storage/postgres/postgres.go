@@ -108,6 +108,19 @@ func (p *Postgres) Close(ctx context.Context) error {
 	return nil
 }
 
+func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
+	defer span.End()
+
+	stmt := "SELECT DISTINCT object_type, object_id FROM tuple WHERE store = $1 AND object_type = $2"
+	rows, err := p.pool.Query(ctx, stmt, store, objectType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ObjectIterator{rows: rows}, nil
+}
+
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.Read")
 	defer span.End()

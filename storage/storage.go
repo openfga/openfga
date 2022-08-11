@@ -12,6 +12,7 @@ import (
 const DefaultPageSize = 50
 
 var TupleIteratorDone = errors.New("no more tuples in iterator")
+var ObjectIteratorDone = errors.New("no more objects in iterator")
 
 type PaginationOptions struct {
 	PageSize int
@@ -38,6 +39,14 @@ type TupleIterator interface {
 	Stop()
 }
 
+// ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
+// returns an ObjectIteratorDone error.
+type ObjectIterator interface {
+	Next() (string, error)
+	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
+	Stop()
+}
+
 // Typesafe aliases for Write arguments.
 
 type Writes = []*openfgapb.TupleKey
@@ -49,6 +58,11 @@ type TupleBackend interface {
 	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
 	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+
+	// ListObjectsByType returns all the objects of a specific type.
+	// You can assume that the type has already been validated.
+	// The result can't have duplicate elements.
+	ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.

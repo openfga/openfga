@@ -784,19 +784,19 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTuplesPerWrite)
+	require.EqualValues(t, val.Int(), config.MaxTuplesPerWrite)
 
 	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTypesPerAuthorizationModel)
+	require.EqualValues(t, val.Int(), config.MaxTypesPerAuthorizationModel)
 
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.ChangelogHorizonOffset)
+	require.EqualValues(t, val.Int(), config.ChangelogHorizonOffset)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.ResolveNodeLimit)
+	require.EqualValues(t, val.Int(), config.ResolveNodeLimit)
 
 	val = res.Get("properties.grpc.properties.tls.$ref")
 	require.True(t, val.Exists())
