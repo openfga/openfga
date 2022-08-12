@@ -20,6 +20,18 @@
             "type": "integer",
             "default": 25
         },
+        "listObjectsDeadline": {
+            "description": "The timeout deadline for serving ListObjects requests",
+            "type": "string",
+            "format": "duration",
+            "default": "3s"
+        },
+        "listObjectsMaxResults": {
+            "description": "The maximum results to return in ListObjects responses",
+            "type": "integer",
+            "minimum": 0,
+            "default": 1000
+        },
         "playground": {
             "type": "object",
             "properties": {
