@@ -810,4 +810,12 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), config.GRPC.TLS.Enabled)
 	require.Equal(t, val.Bool(), config.HTTP.TLS.Enabled)
+
+	val = res.Get("properties.listObjectsDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.ListObjectsDeadline.String())
+
+	val = res.Get("properties.listObjectsMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.ListObjectsMaxResults)
 }
