@@ -11,6 +11,7 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
@@ -39,14 +40,9 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
-	allResults, _ := q.Meter.SyncInt64().Counter(
-		"openfga.listObjects.completeResults",
-		instrument.WithDescription("Number of requests that return complete results"),
-		instrument.WithUnit(unit.Dimensionless),
-	)
-	partialResults, _ := q.Meter.SyncInt64().Counter(
-		"openfga.listObjects.partialResults",
-		instrument.WithDescription("Number of requests that return partial results because they timed out"),
+	listObjectsCounter, err := q.Meter.SyncInt64().Counter(
+		"openfga.listObjects.results",
+		instrument.WithDescription("Number of requests that return results"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
@@ -75,14 +71,18 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		}, resultsChan, errChan, resolvedChan)
 	}()
 
+	attributes := make([]attribute.KeyValue, 1)
+
 	select {
 	case <-timeoutCtx.Done():
-		partialResults.Add(timeoutCtx, 1)
+		attributes = append(attributes, attribute.Bool("complete_results", false))
 	case <-resolvedChan:
-		allResults.Add(timeoutCtx, 1)
+		attributes = append(attributes, attribute.Bool("complete_results", true))
 	case genericError := <-errChan:
 		return nil, genericError
 	}
+
+	listObjectsCounter.Add(ctx, 1, attributes...)
 
 	objectIDs := make([]string, 0)
 	for objectID := range resultsChan {
@@ -175,7 +175,6 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	iter, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
 		errChan <- err
-		close(errChan)
 		return
 	}
 	defer iter.Stop()
@@ -203,7 +202,6 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 				break
 			} else {
 				errChan <- err
-				close(errChan)
 				return
 			}
 		}
@@ -225,7 +223,6 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 
 	close(resultsChan)
 	close(resolvedChan)
-	close(errChan)
 }
 
 func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound uint32, resultsChan chan<- string) error {
