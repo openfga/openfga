@@ -10,7 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * [ListObjects API](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
 
-  The ListObjects API provides a way to list all of the objects (of a particular type) that a user has a relationship with. It provides a solution to the [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) use case for access-aware filtering on smaller object collections.
+  ```
+  $ curl -X POST ${FGA_SERVER_URI}/stores/${FGA_STORE_ID}/list-objects \
+  -H 'Content-Type: application/json'
+  -d '{"user":"anne", "type":"document", "relation":"can_view"}'
+
+  {"object_ids":["object_id_1", "object_id_2"]}
+  ```
+
+  The ListObjects API provides a way to list all of the objects (of a particular type) that a user has a relationship with. It provides a solution to the [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) use case for access-aware filtering on smaller object collections. It implements the [ListObjects RFC](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md).
+
+  This addition brings with it two new server configuration options `--listObjects-deadline` and `--listObjects-max-results`. These configurations help protect the server from excessively long lived and large responses.
+
+  > ⚠️ If `--listObjects-deadline` or `--listObjects-max-results` are provided, the endpoint may only return a subset of the data. For example, if you limit the deadline to 1s and the results would take 2s to stream back, then you'll only get half of the results. If the response would contain 2 results but you limit the max results to 1, then you'll only get the one.
+
 
 * Support for presharedkey authentication in the Playground (#141)
 
