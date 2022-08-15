@@ -67,8 +67,8 @@ github.com/Masterminds/semver/v3 v3.1.1 h1:hLg3sBzpNErnxhQtUy/mmLR2I9foDujNK030I
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/Masterminds/squirrel v1.5.3 h1:YPpoceAcxuzIljlr5iWpNKaql7hLeG1KLSrhvdHpkZc=
 github.com/Masterminds/squirrel v1.5.3/go.mod h1:NNaOrjSoIDfDA40n7sr2tPNZRfjzjA400rg+riTZj10=
-github.com/MicahParks/keyfunc v1.2.0 h1:qiUfvtvvcoS0JXcHtoqglT29WyvuL0l3tkBlzp0QmsU=
-github.com/MicahParks/keyfunc v1.2.0/go.mod h1:a4yfunv77gZ0RgTNw7tOYS+bjtHk5565e+1dPz+YJI8=
+github.com/MicahParks/keyfunc v1.2.2 h1:MtA/6bnmhcyDMarVF9QRQmfKg1ssKxH1C+k3Gw8DY1g=
+github.com/MicahParks/keyfunc v1.2.2/go.mod h1:GWZYIBflWXRPShQPMFRrUg+8buvyD0IWeg3Fi2rcrME=
 github.com/Microsoft/go-winio v0.5.2 h1:a9IhgEQBCUEk6QCdml9CiJGhAws+YwffDHEMp1VMrpA=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
