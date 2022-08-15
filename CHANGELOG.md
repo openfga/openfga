@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2022-08-12
+### Added
+* [ListObjects API](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
+
+  The ListObjects API provides a way to list all of the objects (of a particular type) that a user has a relationship with. It provides a solution to the [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) use case for access-aware filtering on smaller object collections. It implements the [ListObjects RFC](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md).
+
+  This addition brings with it two new server configuration options `--listObjects-deadline` and `--listObjects-max-results`. These configurations help protect the server from excessively long lived and large responses.
+
+  > ⚠️ If `--listObjects-deadline` or `--listObjects-max-results` are provided, the endpoint may only return a subset of the data. If you provide the deadline but returning all of the results would take longer than the deadline, then you may not get all of the results. If you limit the max results to 1, then you'll get at most 1 result.
+
+* Support for presharedkey authentication in the Playground (#141)
+
+  The embedded Playground now works if you run OpenFGA using one or more preshared keys for authentication. OIDC authentication remains unsupported for the Playground at this time.
+
+
 ## [0.1.7] - 2022-07-29
 ### Added
 * `migrate` CLI command (#56)
@@ -98,7 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
 [0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
 [0.1.5]: https://github.com/openfga/openfga/releases/tag/v0.1.5
