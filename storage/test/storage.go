@@ -19,28 +19,14 @@ var (
 	}
 )
 
-// DatastoreTester provides a generic datastore suite a means of initializing
-// a particular datastore.
-type DatastoreTester[T any] interface {
-	// New creates a new datastore instance for a single test.
-	New() (T, error)
-}
-
-type DatastoreTesterFunc func() (storage.OpenFGADatastore, error)
-
-func (f DatastoreTesterFunc) New() (storage.OpenFGADatastore, error) {
-	return f()
-}
-
-// All runs all generic datastore tests on a DatastoreTester.
-func TestAll(t *testing.T, dbTester DatastoreTester[storage.OpenFGADatastore]) {
-	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, dbTester) })
-	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, dbTester) })
-	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { TestWriteAndReadAuthorizationModel(t, dbTester) })
-	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, dbTester) })
-	t.Run("TestReadTypeDefinition", func(t *testing.T) { ReadTypeDefinitionTest(t, dbTester) })
-	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, dbTester) })
-	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, dbTester) })
-	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, dbTester) })
-	t.Run("TestStore", func(t *testing.T) { TestStore(t, dbTester) })
+func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
+	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
+	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
+	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { TestWriteAndReadAuthorizationModel(t, ds) })
+	t.Run("TestReadAuthorizationModels", func(t *testing.T) { ReadAuthorizationModelsTest(t, ds) })
+	t.Run("TestReadTypeDefinition", func(t *testing.T) { ReadTypeDefinitionTest(t, ds) })
+	t.Run("TestFindLatestAuthorizationModelID", func(t *testing.T) { FindLatestAuthorizationModelIDTest(t, ds) })
+	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
+	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
+	t.Run("TestStore", func(t *testing.T) { TestStore(t, ds) })
 }

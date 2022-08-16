@@ -79,6 +79,8 @@ type Config struct {
 	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
+	ListObjectsDeadline    time.Duration
+	ListObjectsMaxResults  uint32
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 }
@@ -153,6 +155,68 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
 	return server, nil
+}
+
+func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
+	storeID := req.GetStoreId()
+	targetObjectType := req.GetType()
+
+	ctx, span := s.tracer.Start(ctx, "listObjects", trace.WithAttributes(
+		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
+		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(targetObjectType)},
+	))
+	defer span.End()
+
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
+	}
+
+	q := &commands.ListObjectsQuery{
+		Datastore:             s.datastore,
+		Logger:                s.logger,
+		Tracer:                s.tracer,
+		Meter:                 s.meter,
+		ListObjectsDeadline:   s.config.ListObjectsDeadline,
+		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+	}
+
+	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
+		StoreId:              storeID,
+		ContextualTuples:     req.GetContextualTuples(),
+		AuthorizationModelId: modelID,
+		Type:                 targetObjectType,
+		Relation:             req.Relation,
+		User:                 req.User,
+	})
+}
+
+func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
+	storeID := req.GetStoreId()
+	ctx := context.Background()
+	ctx, span := s.tracer.Start(ctx, "streamedListObjects", trace.WithAttributes(
+		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
+		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
+	))
+	defer span.End()
+
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	if err != nil {
+		return err
+	}
+	q := &commands.ListObjectsQuery{
+		Datastore:             s.datastore,
+		Logger:                s.logger,
+		Tracer:                s.tracer,
+		Meter:                 s.meter,
+		ListObjectsDeadline:   s.config.ListObjectsDeadline,
+		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+	}
+
+	req.AuthorizationModelId = modelID
+	return q.ExecuteStreamed(ctx, req, srv)
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
