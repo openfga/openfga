@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -87,22 +86,25 @@ type ObjectIterator struct {
 
 var _ storage.ObjectIterator = (*ObjectIterator)(nil)
 
-func (o *ObjectIterator) Next() (string, error) {
+func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
-		return "", storage.ObjectIteratorDone
+		return nil, storage.ObjectIteratorDone
 	}
 
 	var objectID, objectType string
 	if err := o.rows.Scan(&objectType, &objectID); err != nil {
-		return "", handlePostgresError(err)
+		return nil, handlePostgresError(err)
 	}
 
 	if o.rows.Err() != nil {
-		return "", handlePostgresError(o.rows.Err())
+		return nil, handlePostgresError(o.rows.Err())
 	}
 
-	return tupleUtils.BuildObject(objectType, objectID), nil
+	return &openfgapb.Object{
+		Type: objectType,
+		Id:   objectID,
+	}, nil
 }
 
 func (o *ObjectIterator) Stop() {

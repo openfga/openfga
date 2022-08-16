@@ -210,7 +210,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(timeoutCtx, object, input, objectsFound, resultsChan)
+			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
