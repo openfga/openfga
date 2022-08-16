@@ -14,6 +14,8 @@ type tupleIterator struct {
 	rows pgx.Rows
 }
 
+var _ storage.TupleIterator = (*tupleIterator)(nil)
+
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
 		t.Stop()
