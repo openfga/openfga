@@ -9,6 +9,7 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -103,7 +104,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
+	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
@@ -194,9 +195,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	}
 
 	for {
-		usersetTuple, err := iter.next()
+		usersetTuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.IteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -240,7 +241,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	}
 
 	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.stop()
+	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
@@ -412,9 +413,9 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.next()
+		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.IteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -463,7 +464,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	}
 
 	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.stop()
+	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()

@@ -14,104 +14,54 @@ import (
 	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// MockTupleIterator is a mock of TupleIterator interface.
-type MockTupleIterator struct {
+// MockIterator is a mock of Iterator interface.
+type MockIterator[T any] struct {
 	ctrl     *gomock.Controller
-	recorder *MockTupleIteratorMockRecorder
+	recorder *MockIteratorMockRecorder[T]
 }
 
-// MockTupleIteratorMockRecorder is the mock recorder for MockTupleIterator.
-type MockTupleIteratorMockRecorder struct {
-	mock *MockTupleIterator
+// MockIteratorMockRecorder is the mock recorder for MockIterator.
+type MockIteratorMockRecorder[T any] struct {
+	mock *MockIterator[T]
 }
 
-// NewMockTupleIterator creates a new mock instance.
-func NewMockTupleIterator(ctrl *gomock.Controller) *MockTupleIterator {
-	mock := &MockTupleIterator{ctrl: ctrl}
-	mock.recorder = &MockTupleIteratorMockRecorder{mock}
+// NewMockIterator creates a new mock instance.
+func NewMockIterator[T any](ctrl *gomock.Controller) *MockIterator[T] {
+	mock := &MockIterator[T]{ctrl: ctrl}
+	mock.recorder = &MockIteratorMockRecorder[T]{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTupleIterator) EXPECT() *MockTupleIteratorMockRecorder {
+func (m *MockIterator[T]) EXPECT() *MockIteratorMockRecorder[T] {
 	return m.recorder
 }
 
 // Next mocks base method.
-func (m *MockTupleIterator) Next() (*openfgav1.Tuple, error) {
+func (m *MockIterator[T]) Next() (T, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(*openfgav1.Tuple)
+	ret0, _ := ret[0].(T)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Next indicates an expected call of Next.
-func (mr *MockTupleIteratorMockRecorder) Next() *gomock.Call {
+func (mr *MockIteratorMockRecorder[T]) Next() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockTupleIterator)(nil).Next))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockIterator[T])(nil).Next))
 }
 
 // Stop mocks base method.
-func (m *MockTupleIterator) Stop() {
+func (m *MockIterator[T]) Stop() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Stop")
 }
 
 // Stop indicates an expected call of Stop.
-func (mr *MockTupleIteratorMockRecorder) Stop() *gomock.Call {
+func (mr *MockIteratorMockRecorder[T]) Stop() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockTupleIterator)(nil).Stop))
-}
-
-// MockObjectIterator is a mock of ObjectIterator interface.
-type MockObjectIterator struct {
-	ctrl     *gomock.Controller
-	recorder *MockObjectIteratorMockRecorder
-}
-
-// MockObjectIteratorMockRecorder is the mock recorder for MockObjectIterator.
-type MockObjectIteratorMockRecorder struct {
-	mock *MockObjectIterator
-}
-
-// NewMockObjectIterator creates a new mock instance.
-func NewMockObjectIterator(ctrl *gomock.Controller) *MockObjectIterator {
-	mock := &MockObjectIterator{ctrl: ctrl}
-	mock.recorder = &MockObjectIteratorMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockObjectIterator) EXPECT() *MockObjectIteratorMockRecorder {
-	return m.recorder
-}
-
-// Next mocks base method.
-func (m *MockObjectIterator) Next() (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Next indicates an expected call of Next.
-func (mr *MockObjectIteratorMockRecorder) Next() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockObjectIterator)(nil).Next))
-}
-
-// Stop mocks base method.
-func (m *MockObjectIterator) Stop() {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Stop")
-}
-
-// Stop indicates an expected call of Stop.
-func (mr *MockObjectIteratorMockRecorder) Stop() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockObjectIterator)(nil).Stop))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockIterator[T])(nil).Stop))
 }
 
 // MockTupleBackend is a mock of TupleBackend interface.

@@ -1,12 +1,8 @@
 package tuple
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/go-errors/errors"
-	"github.com/openfga/openfga/pkg/utils"
-	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -57,40 +53,4 @@ func ValidateUser(tk *openfgapb.TupleKey) error {
 		return &InvalidTupleError{Reason: "the 'user' field must be a non-empty string", TupleKey: tk}
 	}
 	return nil
-}
-
-// ValidateTuple returns whether a *openfgapb.TupleKey is valid
-func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgapb.Userset, error) {
-	if err := ValidateUser(tk); err != nil {
-		return nil, err
-	}
-	return ValidateObjectsRelations(ctx, backend, store, authorizationModelID, tk, dbCallsCounter)
-}
-
-// ValidateObjectsRelations returns whether a tuple's object and relations are valid
-func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID string, t *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) (*openfgapb.Userset, error) {
-	if !IsValidRelation(t.GetRelation()) {
-		return nil, &InvalidTupleError{Reason: "invalid relation", TupleKey: t}
-	}
-	if !IsValidObject(t.GetObject()) {
-		return nil, &InvalidObjectFormatError{TupleKey: t}
-	}
-	objectType, objectID := SplitObject(t.GetObject())
-	if objectType == "" || objectID == "" {
-		return nil, &InvalidObjectFormatError{TupleKey: t}
-	}
-
-	dbCallsCounter.AddReadCall()
-	ns, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, &TypeNotFoundError{TypeName: objectType}
-		}
-		return nil, err
-	}
-	userset, ok := ns.Relations[t.Relation]
-	if !ok {
-		return nil, &RelationNotFoundError{Relation: t.GetRelation(), TypeName: ns.GetType(), TupleKey: t}
-	}
-	return userset, nil
 }

@@ -48,7 +48,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, storage.TupleIteratorDone
+		return nil, storage.IteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
@@ -56,23 +56,6 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 }
 
 func (s *staticIterator) Stop() {}
-
-type StaticObjectIterator struct {
-	objects []string
-}
-
-var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
-
-func (s *StaticObjectIterator) Next() (string, error) {
-	if len(s.objects) == 0 {
-		return "", storage.ObjectIteratorDone
-	}
-	next, rest := s.objects[0], s.objects[1:]
-	s.objects = rest
-	return next, nil
-}
-
-func (s *StaticObjectIterator) Stop() {}
 
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
@@ -133,7 +116,7 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 	defer span.End()
 
 	uniqueObjects := make(map[string]bool, 0)
-	matches := make([]string, 0)
+	matches := make([]*openfgapb.Object, 0)
 	for _, t := range s.tuples[store] {
 		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
@@ -141,11 +124,12 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 		_, found := uniqueObjects[t.Key.Object]
 		if !found {
 			uniqueObjects[t.Key.Object] = true
-			matches = append(matches, t.Key.Object)
+			objectType, objectID := tupleUtils.SplitObject(t.Key.Object)
+			matches = append(matches, &openfgapb.Object{Type: objectType, Id: objectID})
 		}
 	}
 
-	return &StaticObjectIterator{objects: matches}, nil
+	return storage.NewStaticObjectIterator(matches), nil
 }
 
 // Read See storage.TupleBackend.Read

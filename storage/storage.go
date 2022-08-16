@@ -3,16 +3,17 @@ package storage
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-errors/errors"
+	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 const DefaultPageSize = 50
 
-var TupleIteratorDone = errors.New("no more tuples in iterator")
-var ObjectIteratorDone = errors.New("no more objects in iterator")
+var IteratorDone = errors.New("iterator done")
 
 type PaginationOptions struct {
 	PageSize int
@@ -31,21 +32,210 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an TupleIteratorDone error.
-type TupleIterator interface {
-	Next() (*openfgapb.Tuple, error)
-	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
+type Iterator[T any] interface {
+	Next() (T, error)
 	Stop()
 }
 
 // ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an ObjectIteratorDone error.
-type ObjectIterator interface {
-	Next() (string, error)
-	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
-	Stop()
+// returns an IteratorDone error.
+type ObjectIterator = Iterator[*openfgapb.Object]
+
+// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
+// returns an IteratorDone error.
+type TupleIterator = Iterator[*openfgapb.Tuple]
+
+// TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next() until it
+// returns an IteratorDone error.
+type TupleKeyIterator = Iterator[*openfgapb.TupleKey]
+
+// UniqueObjectIterator takes two ObjectIterators and yields an ObjectIterator that returns only distinct objects with the
+// duplicates removed.
+func UniqueObjectIterator(iter1, iter2 ObjectIterator) (ObjectIterator, error) {
+	objectMap := map[string]*openfgapb.Object{}
+
+	for {
+		val, err := iter1.Next()
+		if err != nil {
+			if errors.Is(err, IteratorDone) {
+				break
+			}
+			return nil, err
+		}
+
+		objectMap[tuple.ObjectKey(val)] = val
+	}
+
+	for {
+		val, err := iter2.Next()
+		if err != nil {
+			if errors.Is(err, IteratorDone) {
+				break
+			}
+			return nil, err
+		}
+
+		objectMap[tuple.ObjectKey(val)] = val
+	}
+
+	iter := &channelledStaticIterator[*openfgapb.Object]{
+		iteratorCh: make(chan *openfgapb.Object, len(objectMap)),
+		size:       uint64(len(objectMap)),
+	}
+	for _, object := range objectMap {
+		iter.iteratorCh <- object
+	}
+
+	return iter, nil
 }
+
+type combinedIterator[T any] struct {
+	iter1, iter2 Iterator[T]
+}
+
+func (c *combinedIterator[T]) Next() (T, error) {
+	val, err := c.iter1.Next()
+	if err != nil {
+		if !errors.Is(err, IteratorDone) {
+			return val, err
+		}
+	} else {
+		return val, nil
+	}
+
+	val, err = c.iter2.Next()
+	if err != nil {
+		if !errors.Is(err, IteratorDone) {
+			return val, err
+		}
+	}
+
+	return val, err
+}
+
+func (c *combinedIterator[T]) Stop() {
+	c.iter1.Stop()
+	c.iter2.Stop()
+}
+
+// NewCombinedIterator takes two generic iterators of a given type T and combines them into a single iterator that yields
+// all of the values from both iterators. If the two iterators yield the same value then duplicates will be returned.
+func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
+	return &combinedIterator[T]{iter1, iter2}
+}
+
+// NewStaticTupleKeyIterator returns a TupleKeyIterator that iterates over the provided slice.
+func NewStaticTupleKeyIterator(tupleKeys []*openfgapb.TupleKey) TupleKeyIterator {
+	iter := &staticIterator[*openfgapb.TupleKey]{
+		items: tupleKeys,
+	}
+
+	return iter
+}
+
+type tupleKeyIterator struct {
+	iter TupleIterator
+}
+
+var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
+
+func (t *tupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
+	tuple, err := t.iter.Next()
+	return tuple.GetKey(), err
+}
+
+func (t *tupleKeyIterator) Stop() {
+	t.iter.Stop()
+}
+
+// NewTupleKeyIteratorFromTupleIterator takes a TupleIterator and yields all of the TupleKeys from it as a TupleKeyIterator.
+func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
+	return &tupleKeyIterator{iter}
+}
+
+// NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
+// contained in the provided list of TupleKeys.
+func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
+
+	iter := &channelledStaticIterator[*openfgapb.Object]{
+		iteratorCh: make(chan *openfgapb.Object, len(tupleKeys)),
+		size:       uint64(len(tupleKeys)),
+	}
+
+	for _, tk := range tupleKeys {
+		objectType, objectID := tuple.SplitObject(tk.GetObject())
+		iter.iteratorCh <- &openfgapb.Object{Type: objectType, Id: objectID}
+	}
+
+	return iter
+}
+
+// channelledStaticIterator implements the Iterator interface for a static list of any generic type using channels.
+// It is safe for concurrent use.
+type channelledStaticIterator[T any] struct {
+	iteratorCh chan T
+	size       uint64
+	index      uint64
+}
+
+func (c *channelledStaticIterator[T]) Next() (T, error) {
+	if c.iteratorCh != nil && atomic.LoadUint64(&c.index) < c.size {
+		val := <-c.iteratorCh
+		atomic.AddUint64(&c.index, 1)
+		return val, nil
+	}
+
+	var val T
+	return val, IteratorDone
+}
+
+func (c *channelledStaticIterator[T]) Stop() {
+	close(c.iteratorCh)
+	c.iteratorCh = nil
+}
+
+type staticIterator[T any] struct {
+	items []T
+}
+
+func (s *staticIterator[T]) Next() (T, error) {
+	var val T
+	if len(s.items) == 0 {
+		return val, IteratorDone
+	}
+
+	next, rest := s.items[0], s.items[1:]
+	s.items = rest
+
+	return next, nil
+}
+
+func (s *staticIterator[T]) Stop() {}
+
+type staticObjectIterator struct {
+	objects []*openfgapb.Object
+}
+
+var _ ObjectIterator = (*staticObjectIterator)(nil)
+
+// NewStaticObjectIterator returns an ObjectIterator that iterates over the provided slice of objects.
+func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
+	return &staticObjectIterator{objects}
+}
+
+func (s *staticObjectIterator) Next() (*openfgapb.Object, error) {
+
+	if len(s.objects) == 0 {
+		return nil, IteratorDone
+	}
+
+	next, rest := s.objects[0], s.objects[1:]
+	s.objects = rest
+
+	return next, nil
+}
+
+func (s *staticObjectIterator) Stop() {}
 
 // Typesafe aliases for Write arguments.
 

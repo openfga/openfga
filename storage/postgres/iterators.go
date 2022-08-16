@@ -5,7 +5,6 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -19,7 +18,7 @@ var _ storage.TupleIterator = (*tupleIterator)(nil)
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
 		t.Stop()
-		return nil, storage.TupleIteratorDone
+		return nil, storage.IteratorDone
 	}
 
 	var record tupleRecord
@@ -43,7 +42,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.IteratorDone {
 				return res, nil, nil
 			}
 			return nil, nil, err
@@ -55,7 +54,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	// This is why we have LIMIT+1 in the query.
 	tupleRecord, err := t.next()
 	if err != nil {
-		if errors.Is(err, storage.TupleIteratorDone) {
+		if errors.Is(err, storage.IteratorDone) {
 			return res, nil, nil
 		}
 		return nil, nil, err
@@ -87,22 +86,22 @@ type ObjectIterator struct {
 
 var _ storage.ObjectIterator = (*ObjectIterator)(nil)
 
-func (o *ObjectIterator) Next() (string, error) {
+func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
-		return "", storage.ObjectIteratorDone
+		return nil, storage.IteratorDone
 	}
 
 	var objectID, objectType string
 	if err := o.rows.Scan(&objectType, &objectID); err != nil {
-		return "", handlePostgresError(err)
+		return nil, handlePostgresError(err)
 	}
 
 	if o.rows.Err() != nil {
-		return "", handlePostgresError(o.rows.Err())
+		return nil, handlePostgresError(o.rows.Err())
 	}
 
-	return tupleUtils.BuildObject(objectType, objectID), nil
+	return &openfgapb.Object{Type: objectType, Id: objectID}, nil
 }
 
 func (o *ObjectIterator) Stop() {
