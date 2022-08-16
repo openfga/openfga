@@ -77,9 +77,7 @@ func TestCombinedIterator(t *testing.T) {
 	}
 
 	iter1 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[0]})
-
 	iter2 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[1]})
-
 	iter := NewCombinedIterator(iter1, iter2)
 
 	var actual []*openfgapb.TupleKey
