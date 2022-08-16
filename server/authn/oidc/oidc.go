@@ -3,7 +3,7 @@ package oidc
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -152,7 +152,7 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 		return nil, errors.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, errors.Errorf("error reading response body: %v", err)
 	}

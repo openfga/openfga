@@ -2,7 +2,7 @@ package http
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -36,7 +36,7 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 	if contentType != "application/json" {
 		t.Errorf("Expect content type application/json, actual %s", contentType)
 	}
-	data, err := ioutil.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
@@ -71,7 +71,7 @@ func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
 	if contentType != "application/json" {
 		t.Errorf("Expect content type application/json, actual %s", contentType)
 	}
-	data, err := ioutil.ReadAll(res.Body)
+	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		t.Errorf("Expect error to be nil but actual %v", err)
 	}
