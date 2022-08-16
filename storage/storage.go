@@ -42,7 +42,7 @@ type TupleIterator interface {
 // ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
 // returns an ObjectIteratorDone error.
 type ObjectIterator interface {
-	Next() (string, error)
+	Next() (*openfgapb.Object, error)
 	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
 	Stop()
 }

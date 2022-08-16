@@ -88,10 +88,10 @@ func (m *MockObjectIterator) EXPECT() *MockObjectIteratorMockRecorder {
 }
 
 // Next mocks base method.
-func (m *MockObjectIterator) Next() (string, error) {
+func (m *MockObjectIterator) Next() (*openfgav1.Object, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Next")
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(*openfgav1.Object)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

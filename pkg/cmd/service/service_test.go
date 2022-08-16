@@ -9,7 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -280,7 +280,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to execute request")
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 
 			stringBody := string(body)
@@ -392,7 +392,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 
 			require.Equal(t, test.want.header, acceptedHeader)
 
-			_, err = ioutil.ReadAll(res.Body)
+			_, err = io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 		})
 	}
@@ -461,7 +461,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to execute request")
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 
 			stringBody := string(body)
@@ -729,7 +729,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
 
-	jsonSchema, err := ioutil.ReadFile(".config-schema.json")
+	jsonSchema, err := os.ReadFile(".config-schema.json")
 	require.NoError(t, err)
 
 	res := gjson.ParseBytes(jsonSchema)
