@@ -2,7 +2,7 @@ package test
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -153,7 +153,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 
 func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (context.Context, storage.OpenFGADatastore, string, error) {
 	ctx := context.Background()
-	data, err := ioutil.ReadFile(gitHubTestDataFile)
+	data, err := os.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		return nil, nil, "", err
 	}
