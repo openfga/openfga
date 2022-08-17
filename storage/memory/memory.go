@@ -125,7 +125,10 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 		if !found {
 			uniqueObjects[t.Key.Object] = true
 			objectType, objectID := tupleUtils.SplitObject(t.Key.Object)
-			matches = append(matches, &openfgapb.Object{Type: objectType, Id: objectID})
+			matches = append(matches, &openfgapb.Object{
+				Type: objectType,
+				Id:   objectID,
+			})
 		}
 	}
 

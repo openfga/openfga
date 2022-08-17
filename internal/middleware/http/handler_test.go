@@ -49,7 +49,7 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 	}
 }
 
-func TestCustomHTTPErrorHandlerSpeicalEncoding(t *testing.T) {
+func TestCustomHTTPErrorHandlerSpecialEncoding(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
 	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_assertions_too_many_items), "invalid character '<' looking for beginning of value,")

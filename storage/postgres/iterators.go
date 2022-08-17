@@ -80,13 +80,13 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type ObjectIterator struct {
+type objectIterator struct {
 	rows pgx.Rows
 }
 
-var _ storage.ObjectIterator = (*ObjectIterator)(nil)
+var _ storage.ObjectIterator = (*objectIterator)(nil)
 
-func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
+func (o *objectIterator) Next() (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
 		return nil, storage.IteratorDone
@@ -101,9 +101,12 @@ func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
 		return nil, handlePostgresError(o.rows.Err())
 	}
 
-	return &openfgapb.Object{Type: objectType, Id: objectID}, nil
+	return &openfgapb.Object{
+		Type: objectType,
+		Id:   objectID,
+	}, nil
 }
 
-func (o *ObjectIterator) Stop() {
+func (o *objectIterator) Stop() {
 	o.rows.Close()
 }
