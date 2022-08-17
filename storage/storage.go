@@ -3,7 +3,6 @@ package storage
 
 import (
 	"context"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -78,15 +77,12 @@ func UniqueObjectIterator(iter1, iter2 ObjectIterator) (ObjectIterator, error) {
 		objectMap[tuple.ObjectKey(val)] = val
 	}
 
-	iter := &channelledStaticIterator[*openfgapb.Object]{
-		iteratorCh: make(chan *openfgapb.Object, len(objectMap)),
-		size:       uint64(len(objectMap)),
-	}
-	for _, object := range objectMap {
-		iter.iteratorCh <- object
+	objects := make([]*openfgapb.Object, 0, len(objectMap))
+	for _, obj := range objectMap {
+		objects = append(objects, obj)
 	}
 
-	return iter, nil
+	return NewStaticObjectIterator(objects), nil
 }
 
 type combinedIterator[T any] struct {
@@ -157,41 +153,13 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 // contained in the provided list of TupleKeys.
 func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
 
-	iter := &channelledStaticIterator[*openfgapb.Object]{
-		iteratorCh: make(chan *openfgapb.Object, len(tupleKeys)),
-		size:       uint64(len(tupleKeys)),
-	}
-
+	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
 		objectType, objectID := tuple.SplitObject(tk.GetObject())
-		iter.iteratorCh <- &openfgapb.Object{Type: objectType, Id: objectID}
+		objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
 	}
 
-	return iter
-}
-
-// channelledStaticIterator implements the Iterator interface for a static list of any generic type using channels.
-// It is safe for concurrent use.
-type channelledStaticIterator[T any] struct {
-	iteratorCh chan T
-	size       uint64
-	index      uint64
-}
-
-func (c *channelledStaticIterator[T]) Next() (T, error) {
-	if c.iteratorCh != nil && atomic.LoadUint64(&c.index) < c.size {
-		val := <-c.iteratorCh
-		atomic.AddUint64(&c.index, 1)
-		return val, nil
-	}
-
-	var val T
-	return val, IteratorDone
-}
-
-func (c *channelledStaticIterator[T]) Stop() {
-	close(c.iteratorCh)
-	c.iteratorCh = nil
+	return NewStaticObjectIterator(objects)
 }
 
 type staticIterator[T any] struct {
