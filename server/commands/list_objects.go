@@ -153,7 +153,7 @@ func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, ta
 	}
 	_, ok := definition.Relations[relation]
 	if !ok {
-		return serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
+		return serverErrors.RelationNotFound(relation, targetObjectType, nil)
 	}
 	return nil
 }
