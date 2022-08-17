@@ -35,13 +35,18 @@ func NewRPCTransport(l logger.Logger) *RPCTransport {
 	return &RPCTransport{logger: l}
 }
 
+type streamKey struct{}
+
 func (g *RPCTransport) SetHeader(ctx context.Context, key, value string) {
-	if err := grpc.SetHeader(ctx, metadata.Pairs(key, value)); err != nil {
-		g.logger.ErrorWithContext(
-			ctx,
-			"failed to set grpc header",
-			logger.Error(err),
-			logger.String("header", key),
-		)
+	rpcContext, _ := ctx.Value(streamKey{}).(grpc.ServerTransportStream)
+	if rpcContext != nil {
+		if err := grpc.SetHeader(ctx, metadata.Pairs(key, value)); err != nil {
+			g.logger.ErrorWithContext(
+				ctx,
+				"failed to set grpc header",
+				logger.Error(err),
+				logger.String("header", key),
+			)
+		}
 	}
 }

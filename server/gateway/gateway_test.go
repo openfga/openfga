@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
@@ -15,8 +14,7 @@ func TestRPCTransport(t *testing.T) {
 	logger := logger.ZapLogger{Logger: zap.New(observerLogger)}
 	transport := NewRPCTransport(&logger)
 	transport.SetHeader(context.Background(), "test", "test")
-	log := logs.All()[0]
-	if !strings.Contains(log.Message, "failed to set grpc header") {
-		t.Fatalf("expected to fail setting the header, got %v", log)
+	if len(logs.All()) > 0 {
+		t.Fatalf("expected no errors, got %v", logs.All())
 	}
 }
