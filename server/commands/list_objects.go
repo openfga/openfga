@@ -40,9 +40,9 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
-	listObjectsCounter, err := q.Meter.SyncInt64().Counter(
+	listObjectsGauge, err := q.Meter.AsyncInt64().Gauge(
 		"openfga.listObjects.results",
-		instrument.WithDescription("Number of requests that return results"),
+		instrument.WithDescription("Number of results returned by ListObjects"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
@@ -82,12 +82,12 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, genericError
 	}
 
-	listObjectsCounter.Add(ctx, 1, attributes...)
-
 	objectIDs := make([]string, 0)
 	for objectID := range resultsChan {
 		objectIDs = append(objectIDs, objectID)
 	}
+
+	listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
 
 	return &openfgapb.ListObjectsResponse{
 		ObjectIds: objectIDs,
