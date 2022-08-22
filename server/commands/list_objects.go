@@ -40,9 +40,9 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
-	listObjectsCounter, err := q.Meter.SyncInt64().Counter(
+	listObjectsGauge, err := q.Meter.AsyncInt64().Gauge(
 		"openfga.listObjects.results",
-		instrument.WithDescription("Number of requests that return results"),
+		instrument.WithDescription("Number of results returned by ListObjects"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
@@ -82,12 +82,12 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, genericError
 	}
 
-	listObjectsCounter.Add(ctx, 1, attributes...)
-
 	objectIDs := make([]string, 0)
 	for objectID := range resultsChan {
 		objectIDs = append(objectIDs, objectID)
 	}
+
+	listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
 
 	return &openfgapb.ListObjectsResponse{
 		ObjectIds: objectIDs,
@@ -187,7 +187,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 			}
 			t := t
 			checkFunction := func() error {
-				return q.internalCheck(timeoutCtx, t.Object, input, objectsFound, resultsChan)
+				return q.internalCheck(timeoutCtx, t.Object, input, &objectsFound, resultsChan)
 			}
 
 			g.Go(checkFunction)
@@ -210,7 +210,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, objectsFound, resultsChan)
+			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, &objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
@@ -225,7 +225,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	close(resolvedChan)
 }
 
-func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound uint32, resultsChan chan<- string) error {
+func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound *uint32, resultsChan chan<- string) error {
 	_, objectID := tuple.SplitObject(object)
 	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
 
@@ -245,9 +245,9 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, inp
 		return nil
 	}
 
-	if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
+	if resp.Allowed && atomic.LoadUint32(objectsFound) < q.ListObjectsMaxResults {
 		resultsChan <- objectID
-		atomic.AddUint32(&objectsFound, 1)
+		atomic.AddUint32(objectsFound, 1)
 	}
 
 	return nil
