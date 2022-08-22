@@ -60,9 +60,21 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("list objects", func(t *testing.T) {
 		testCases := []listObjectsTestCase{
 			{
-				name:           "does not return duplicates and respects maximum length allowed",
+				name:           "does not return duplicates",
 				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID, nil),
 				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedError:  nil,
+			},
+
+			{
+				name: "respects max results",
+				request: newListObjectsRequest(store, "repo", "admin", "anna", modelID, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "anna",
+						Relation: "admin",
+						Object:   "repo:7",
+					}}}),
+				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
 				expectedError:  nil,
 			},
 			{
@@ -142,10 +154,13 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				if len(res.ObjectIds) > defaultListObjectsMaxResults {
 					t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(res.ObjectIds))
 				}
-				less := func(a, b string) bool { return a < b }
-				if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
-					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+				if !subset(res.ObjectIds, test.expectedResult) {
+					less := func(a, b string) bool { return a < b }
+					if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
+						t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+					}
 				}
+
 			}
 		})
 	}
@@ -177,4 +192,20 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	}
 
 	return ctx, datastore, modelID, nil
+}
+
+// subset returns true if the first slice is a subset of second
+func subset(first, second []string) bool {
+	set := make(map[string]bool)
+	for _, value := range second {
+		set[value] = true
+	}
+
+	for _, value := range first {
+		if _, found := set[value]; !found {
+			return false
+		}
+	}
+
+	return true
 }
