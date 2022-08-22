@@ -29,16 +29,18 @@ type CheckQuery struct {
 	meter            metric.Meter
 	datastore        storage.OpenFGADatastore
 	resolveNodeLimit uint32
+	parentQuery      string
 }
 
 // NewCheckQuery creates a CheckQuery with specified `tupleBackend` and `typeDefinitionReadBackend` to use for storage
-func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.Meter, l logger.Logger, resolveNodeLimit uint32) *CheckQuery {
+func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.Meter, l logger.Logger, resolveNodeLimit uint32, parentQuery string) *CheckQuery {
 	return &CheckQuery{
 		logger:           l,
 		tracer:           t,
 		meter:            m,
 		datastore:        datastore,
 		resolveNodeLimit: resolveNodeLimit,
+		parentQuery:      parentQuery,
 	}
 }
 
@@ -70,12 +72,12 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
 	if err != nil {
-		utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
+		utils.LogDBStats(ctx, query.logger, query.parentQuery, rc.metadata.GetReadCalls(), 0)
 		return nil, err
 	}
 
 	if err := query.resolveNode(ctx, rc, userset); err != nil {
-		utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
+		utils.LogDBStats(ctx, query.logger, query.parentQuery, rc.metadata.GetReadCalls(), 0)
 		return nil, err
 	}
 
@@ -85,7 +87,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 		resolution = r.GetResolution()
 	}
 
-	utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
+	utils.LogDBStats(ctx, query.logger, query.parentQuery, rc.metadata.GetReadCalls(), 0)
 	if statCheckResolutionDepth != nil {
 		statCheckResolutionDepth.Observe(ctx, int64(rc.metadata.GetResolve()))
 	}

@@ -227,7 +227,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 
 func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound *uint32, resultsChan chan<- string) error {
 	_, objectID := tuple.SplitObject(object)
-	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
+	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit, "listObjects")
 
 	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              input.storeID,
