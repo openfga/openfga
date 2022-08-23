@@ -78,8 +78,7 @@ func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKe
 	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
 	if tuple != nil {
 		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, typeName, tuple.String())
-	}
-	if typeName != "" {
+	} else if typeName != "" {
 		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, typeName)
 	}
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
