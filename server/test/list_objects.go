@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -60,9 +61,21 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("list objects", func(t *testing.T) {
 		testCases := []listObjectsTestCase{
 			{
-				name:           "does not return duplicates and respects maximum length allowed",
+				name:           "does not return duplicates",
 				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID, nil),
 				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedError:  nil,
+			},
+
+			{
+				name: "respects max results",
+				request: newListObjectsRequest(store, "repo", "admin", "anna", modelID, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "anna",
+						Relation: "admin",
+						Object:   "repo:7",
+					}}}),
+				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
 				expectedError:  nil,
 			},
 			{
@@ -125,12 +138,53 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 }
 
+type mockStreamServer struct {
+	grpc.ServerStream
+	channel chan string
+}
+
+func NewMockStreamServer(size int) *mockStreamServer {
+	return &mockStreamServer{
+		channel: make(chan string, size),
+	}
+}
+
+func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error {
+	x.channel <- m.ObjectId
+	return nil
+}
+
 func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
-	var res *openfgapb.ListObjectsResponse
-	var err error
+	sortFn := func(a, b string) bool { return a < b }
+
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			res, err = listObjectsQuery.Execute(ctx, test.request)
+			server := NewMockStreamServer(len(test.expectedResult))
+			err := listObjectsQuery.ExecuteStreamed(ctx, &openfgapb.StreamedListObjectsRequest{
+				StoreId:              test.request.StoreId,
+				AuthorizationModelId: test.request.AuthorizationModelId,
+				Type:                 test.request.Type,
+				Relation:             test.request.Relation,
+				User:                 test.request.User,
+				ContextualTuples:     test.request.ContextualTuples,
+			}, server)
+			close(server.channel)
+			require.ErrorIs(t, err, test.expectedError)
+			streamedObjectIds := make([]string, 0, len(test.expectedResult))
+			for x := range server.channel {
+				streamedObjectIds = append(streamedObjectIds, x)
+			}
+			if len(streamedObjectIds) > defaultListObjectsMaxResults {
+				t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(streamedObjectIds))
+			}
+			if !subset(streamedObjectIds, test.expectedResult) {
+				if diff := cmp.Diff(streamedObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
+					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+				}
+			}
+		})
+		t.Run(test.name+"streaming", func(t *testing.T) {
+			res, err := listObjectsQuery.Execute(ctx, test.request)
 
 			if res == nil && err == nil {
 				t.Error("Expected an error or a response, got neither")
@@ -142,10 +196,12 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				if len(res.ObjectIds) > defaultListObjectsMaxResults {
 					t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(res.ObjectIds))
 				}
-				less := func(a, b string) bool { return a < b }
-				if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
-					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+				if !subset(res.ObjectIds, test.expectedResult) {
+					if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
+						t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+					}
 				}
+
 			}
 		})
 	}
@@ -177,4 +233,20 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	}
 
 	return ctx, datastore, modelID, nil
+}
+
+// subset returns true if the first slice is a subset of second
+func subset(first, second []string) bool {
+	set := make(map[string]bool)
+	for _, value := range second {
+		set[value] = true
+	}
+
+	for _, value := range first {
+		if _, found := set[value]; !found {
+			return false
+		}
+	}
+
+	return true
 }
