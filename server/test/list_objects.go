@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -137,12 +138,53 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 	})
 }
 
+type mockStreamServer struct {
+	grpc.ServerStream
+	channel chan string
+}
+
+func NewMockStreamServer(size int) *mockStreamServer {
+	return &mockStreamServer{
+		channel: make(chan string, size),
+	}
+}
+
+func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error {
+	x.channel <- m.ObjectId
+	return nil
+}
+
 func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
-	var res *openfgapb.ListObjectsResponse
-	var err error
+	sortFn := func(a, b string) bool { return a < b }
+
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			res, err = listObjectsQuery.Execute(ctx, test.request)
+			server := NewMockStreamServer(len(test.expectedResult))
+			err := listObjectsQuery.ExecuteStreamed(ctx, &openfgapb.StreamedListObjectsRequest{
+				StoreId:              test.request.StoreId,
+				AuthorizationModelId: test.request.AuthorizationModelId,
+				Type:                 test.request.Type,
+				Relation:             test.request.Relation,
+				User:                 test.request.User,
+				ContextualTuples:     test.request.ContextualTuples,
+			}, server)
+			close(server.channel)
+			require.ErrorIs(t, err, test.expectedError)
+			streamedObjectIds := make([]string, 0, len(test.expectedResult))
+			for x := range server.channel {
+				streamedObjectIds = append(streamedObjectIds, x)
+			}
+			if len(streamedObjectIds) > defaultListObjectsMaxResults {
+				t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(streamedObjectIds))
+			}
+			if !subset(streamedObjectIds, test.expectedResult) {
+				if diff := cmp.Diff(streamedObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
+					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
+				}
+			}
+		})
+		t.Run(test.name+"streaming", func(t *testing.T) {
+			res, err := listObjectsQuery.Execute(ctx, test.request)
 
 			if res == nil && err == nil {
 				t.Error("Expected an error or a response, got neither")
@@ -155,8 +197,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 					t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(res.ObjectIds))
 				}
 				if !subset(res.ObjectIds, test.expectedResult) {
-					less := func(a, b string) bool { return a < b }
-					if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(less)); diff != "" {
+					if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
 						t.Errorf("object ID mismatch (-got +want):\n%s", diff)
 					}
 				}
