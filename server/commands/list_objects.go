@@ -171,7 +171,6 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	g := new(errgroup.Group)
 	g.SetLimit(maximumConcurrentChecks)
 	var objectsFound = new(uint32)
-	*objectsFound = 0
 
 	iter, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
