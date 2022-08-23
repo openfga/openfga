@@ -170,7 +170,7 @@ type PerformChecksInput struct {
 func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *PerformChecksInput, resultsChan chan<- string, errChan chan<- error, resolvedChan chan<- struct{}) {
 	g := new(errgroup.Group)
 	g.SetLimit(maximumConcurrentChecks)
-	var objectsFound uint32
+	var objectsFound = new(uint32)
 
 	iter, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
@@ -182,12 +182,12 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	// iterate over the contextual tuples
 	if input.ctxTuples != nil {
 		for _, t := range input.ctxTuples.TupleKeys {
-			if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+			if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
 				break
 			}
 			t := t
 			checkFunction := func() error {
-				return q.internalCheck(timeoutCtx, t.Object, input, &objectsFound, resultsChan)
+				return q.internalCheck(timeoutCtx, t.Object, input, objectsFound, resultsChan)
 			}
 
 			g.Go(checkFunction)
@@ -205,12 +205,12 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 				return
 			}
 		}
-		if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
 			break
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, &objectsFound, resultsChan)
+			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
