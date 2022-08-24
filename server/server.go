@@ -490,13 +490,13 @@ func (m AuthenticationOverride) AuthFuncOverride(ctx context.Context, fullMethod
 	return ctx, nil
 }
 
-type openfgHealthServer struct {
+type openfgaHealthServer struct {
 	healthv1pb.UnimplementedHealthServer
 	Server *Server
 	AuthenticationOverride
 }
 
-func (o openfgHealthServer) Check(ctx context.Context, request *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
+func (o openfgaHealthServer) Check(ctx context.Context, request *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
 	_, err := o.Server.IsReady(ctx)
 	if err != nil {
 		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
@@ -505,8 +505,8 @@ func (o openfgHealthServer) Check(ctx context.Context, request *healthv1pb.Healt
 	}
 }
 
-func (o openfgHealthServer) Watch(request *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
-	return status.Error(codes.Unimplemented, "unimplemented health endpoint")
+func (o openfgaHealthServer) Watch(request *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "unimplemented streaming endpoint")
 }
 
 // Run starts server execution, and blocks until complete, returning any server errors. To close the
@@ -532,7 +532,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
-	healthServer := &openfgHealthServer{Server: s}
+	healthServer := &openfgaHealthServer{Server: s}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
