@@ -120,7 +120,7 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 				name:           "returns error if unknown relation",
 				request:        newListObjectsRequest(store, "repo", "unknown", "anna", modelID, nil),
 				expectedResult: nil,
-				expectedError:  serverErrors.UnknownRelationWhenListingObjects("unknown", "repo"),
+				expectedError:  serverErrors.RelationNotFound("unknown", "repo", nil),
 			},
 		}
 
