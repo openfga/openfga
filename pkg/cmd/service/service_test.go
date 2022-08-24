@@ -25,11 +25,13 @@ import (
 	"github.com/openfga/openfga/server/authn/mocks"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func init() {
@@ -71,20 +73,23 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 	require.NoError(t, err)
 	defer conn.Close()
 
-	client := http.Client{}
+	client := healthv1pb.NewHealthClient(conn)
 
 	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
+	policy.MaxElapsedTime = 3 * time.Second
 
 	err = backoff.Retry(func() error {
-		url := "http://localhost:8080"
-		if transportCredentials != nil {
-			url = "https://localhost:8081"
-		}
-		_, err := client.Get(fmt.Sprintf("%s/test", url))
+		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
+			Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+		})
 		if err != nil {
 			return err
 		}
+
+		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
+			return fmt.Errorf("not serving")
+		}
+
 		return nil
 	}, policy)
 	require.NoError(t, err)
@@ -596,7 +601,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		})
 
-		_, err = client.Get("https://localhost:8081/test")
+		_, err = client.Get("https://localhost:8080/healthz")
 		require.NoError(t, err)
 
 		cancel()
@@ -688,7 +693,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 
 	ensureServiceUp(t, nil)
 
-	_, err = http.Get("http://localhost:8080/test")
+	_, err = http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
 
@@ -712,7 +717,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 
 	ensureServiceUp(t, nil)
 
-	resp, err := http.Get("http://localhost:8080/test")
+	resp, err := http.Get("http://localhost:8080/healthz")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

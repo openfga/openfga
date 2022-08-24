@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
@@ -27,8 +28,10 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
@@ -478,6 +481,34 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
+type AuthenticationOverride struct{}
+
+var _ grpc_auth.ServiceAuthFuncOverride = (*AuthenticationOverride)(nil)
+
+// AuthFuncOverride skips middleware/AuthFunc
+func (m AuthenticationOverride) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
+	return ctx, nil
+}
+
+type openfgHealthServer struct {
+	healthv1pb.UnimplementedHealthServer
+	Server *Server
+	AuthenticationOverride
+}
+
+func (o openfgHealthServer) Check(ctx context.Context, request *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
+	_, err := o.Server.IsReady(ctx)
+	if err != nil {
+		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
+	} else {
+		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
+	}
+}
+
+func (o openfgHealthServer) Watch(request *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "unimplemented health endpoint")
+}
+
 // Run starts server execution, and blocks until complete, returning any server errors. To close the
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
@@ -501,6 +532,8 @@ func (s *Server) Run(ctx context.Context) error {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
+	healthServer := &openfgHealthServer{Server: s}
+	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
 	rpcAddr := s.config.GRPCServer.Addr
@@ -545,7 +578,11 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 		defer conn.Close()
 
-		var muxOpts []runtime.ServeMuxOption
+		healthClient := healthv1pb.NewHealthClient(conn)
+
+		muxOpts := []runtime.ServeMuxOption{
+			runtime.WithHealthzEndpoint(healthClient),
+		}
 		muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
 		muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
 
@@ -553,22 +590,6 @@ func (s *Server) Run(ctx context.Context) error {
 
 		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
 			return err
-		}
-
-		// health endpoint
-		if err := mux.HandlePath(http.MethodGet, "/test", func(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
-			_, err := s.IsReady(ctx)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-			} else {
-				w.WriteHeader(http.StatusOK)
-			}
-		}); err != nil {
-			s.logger.Error(
-				"failed to register http handler",
-				logger.String("method", http.MethodGet),
-				logger.String("path", "/test"),
-			)
 		}
 
 		httpServer = &http.Server{
