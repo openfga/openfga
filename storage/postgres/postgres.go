@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -62,20 +63,7 @@ func WithTracer(t trace.Tracer) PostgresOption {
 }
 
 func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error) {
-
-	pgxConfig, err := pgxpool.ParseConfig(uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse config from uri: %v", err)
-	}
-
-	dbpool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intialize postgres connection: %v", err)
-	}
-
-	p := &Postgres{
-		pool: dbpool,
-	}
+	p := &Postgres{}
 
 	for _, opt := range opts {
 		opt(p)
@@ -96,6 +84,22 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	if p.maxTypesInTypeDefinition == 0 {
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
+
+	var pool *pgxpool.Pool
+	err := backoff.Retry(func() error {
+		var err error
+		pool, err = pgxpool.Connect(context.Background(), uri)
+		if err != nil {
+			p.logger.Info("waiting for Postgres")
+			return err
+		}
+		return nil
+	}, backoff.NewExponentialBackOff())
+	if err != nil {
+		return nil, fmt.Errorf("failed to intialize Postgres connection: %v", err)
+	}
+
+	p.pool = pool
 
 	return p, nil
 }

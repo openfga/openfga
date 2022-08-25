@@ -40,9 +40,6 @@ func NewRunCommand() *cobra.Command {
 }
 
 func run(_ *cobra.Command, _ []string) {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	config, err := service.GetServiceConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +62,9 @@ func run(_ *cobra.Command, _ []string) {
 		zap.String("commit", build.Commit),
 		zap.String("go-version", runtime.Version()),
 	)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
