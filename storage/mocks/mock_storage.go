@@ -64,6 +64,56 @@ func (mr *MockTupleIteratorMockRecorder) Stop() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockTupleIterator)(nil).Stop))
 }
 
+// MockObjectIterator is a mock of ObjectIterator interface.
+type MockObjectIterator struct {
+	ctrl     *gomock.Controller
+	recorder *MockObjectIteratorMockRecorder
+}
+
+// MockObjectIteratorMockRecorder is the mock recorder for MockObjectIterator.
+type MockObjectIteratorMockRecorder struct {
+	mock *MockObjectIterator
+}
+
+// NewMockObjectIterator creates a new mock instance.
+func NewMockObjectIterator(ctrl *gomock.Controller) *MockObjectIterator {
+	mock := &MockObjectIterator{ctrl: ctrl}
+	mock.recorder = &MockObjectIteratorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockObjectIterator) EXPECT() *MockObjectIteratorMockRecorder {
+	return m.recorder
+}
+
+// Next mocks base method.
+func (m *MockObjectIterator) Next() (*openfgav1.Object, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Next")
+	ret0, _ := ret[0].(*openfgav1.Object)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Next indicates an expected call of Next.
+func (mr *MockObjectIteratorMockRecorder) Next() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockObjectIterator)(nil).Next))
+}
+
+// Stop mocks base method.
+func (m *MockObjectIterator) Stop() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Stop")
+}
+
+// Stop indicates an expected call of Stop.
+func (mr *MockObjectIteratorMockRecorder) Stop() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stop", reflect.TypeOf((*MockObjectIterator)(nil).Stop))
+}
+
 // MockTupleBackend is a mock of TupleBackend interface.
 type MockTupleBackend struct {
 	ctrl     *gomock.Controller
@@ -85,6 +135,21 @@ func NewMockTupleBackend(ctrl *gomock.Controller) *MockTupleBackend {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockTupleBackend) EXPECT() *MockTupleBackendMockRecorder {
 	return m.recorder
+}
+
+// ListObjectsByType mocks base method.
+func (m *MockTupleBackend) ListObjectsByType(ctx context.Context, store, objectType string) (storage.ObjectIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, store, objectType)
+	ret0, _ := ret[0].(storage.ObjectIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListObjectsByType indicates an expected call of ListObjectsByType.
+func (mr *MockTupleBackendMockRecorder) ListObjectsByType(ctx, store, objectType interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockTupleBackend)(nil).ListObjectsByType), ctx, store, objectType)
 }
 
 // MaxTuplesInWriteOperation mocks base method.
@@ -745,6 +810,21 @@ func (m *MockOpenFGADatastore) IsReady(ctx context.Context) (bool, error) {
 func (mr *MockOpenFGADatastoreMockRecorder) IsReady(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsReady", reflect.TypeOf((*MockOpenFGADatastore)(nil).IsReady), ctx)
+}
+
+// ListObjectsByType mocks base method.
+func (m *MockOpenFGADatastore) ListObjectsByType(ctx context.Context, store, objectType string) (storage.ObjectIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, store, objectType)
+	ret0, _ := ret[0].(storage.ObjectIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListObjectsByType indicates an expected call of ListObjectsByType.
+func (mr *MockOpenFGADatastoreMockRecorder) ListObjectsByType(ctx, store, objectType interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListObjectsByType), ctx, store, objectType)
 }
 
 // ListStores mocks base method.

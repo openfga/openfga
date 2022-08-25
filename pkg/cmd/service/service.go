@@ -107,8 +107,24 @@ type PlaygroundConfig struct {
 	Port    int
 }
 
-// OpenFGAConfig defines server configurations specific to the OpenFGA server itself.
-type OpenFGAConfig struct {
+// ProfilerConfig defines server configurations specific to pprof profiling.
+type ProfilerConfig struct {
+	Enabled bool
+	Addr    string
+}
+
+type Config struct {
+	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+
+	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
+	// before the server will respond. This is to protect the server from misuse of the
+	// ListObjects endpoints.
+	ListObjectsDeadline time.Duration
+
+	// ListObjectsMaxResults defines the maximum number of ListObjects results to accumulate
+	// before the server will respond. This is to protect the server from misuse of the
+	// ListObjects endpoints.
+	ListObjectsMaxResults uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
@@ -121,18 +137,7 @@ type OpenFGAConfig struct {
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
-}
 
-// ProfilerConfig defines server configurations specific to pprof profiling.
-type ProfilerConfig struct {
-	Enabled bool
-	Addr    string
-}
-
-type Config struct {
-	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
-
-	OpenFGA    OpenFGAConfig
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
 	HTTP       HTTPConfig
@@ -145,12 +150,12 @@ type Config struct {
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		OpenFGA: OpenFGAConfig{
-			MaxTuplesPerWrite:             100,
-			MaxTypesPerAuthorizationModel: 100,
-			ChangelogHorizonOffset:        0,
-			ResolveNodeLimit:              25,
-		},
+		MaxTuplesPerWrite:             100,
+		MaxTypesPerAuthorizationModel: 100,
+		ChangelogHorizonOffset:        0,
+		ResolveNodeLimit:              25,
+		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
+		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -245,7 +250,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		datastore = memory.New(tracer, config.OpenFGA.MaxTuplesPerWrite, config.OpenFGA.MaxTypesPerAuthorizationModel)
+		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "postgres":
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
@@ -331,8 +336,10 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
 			CORSAllowedHeaders: config.HTTP.CORSAllowedHeaders,
 		},
-		ResolveNodeLimit:       config.OpenFGA.ResolveNodeLimit,
-		ChangelogHorizonOffset: config.OpenFGA.ChangelogHorizonOffset,
+		ResolveNodeLimit:       config.ResolveNodeLimit,
+		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+		ListObjectsDeadline:    config.ListObjectsDeadline,
+		ListObjectsMaxResults:  config.ListObjectsMaxResults,
 		UnaryInterceptors:      interceptors,
 		MuxOptions:             nil,
 	})

@@ -2,7 +2,7 @@ package test
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/id"
@@ -1508,7 +1508,7 @@ var checkQueryTests = []checkQueryTest{
 }
 
 func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
-	data, err := ioutil.ReadFile(gitHubTestDataFile)
+	data, err := os.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1681,7 +1681,7 @@ var result *openfgapb.CheckResponse //nolint
 
 func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 
-	data, err := ioutil.ReadFile(gitHubTestDataFile)
+	data, err := os.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1730,7 +1730,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 }
 
 func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
-	data, err := ioutil.ReadFile(gitHubTestDataFile)
+	data, err := os.ReadFile(gitHubTestDataFile)
 	if err != nil {
 		b.Fatal(err)
 	}
