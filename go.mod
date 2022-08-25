@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/Masterminds/squirrel v1.5.3
-	github.com/MicahParks/keyfunc v1.2.0
+	github.com/MicahParks/keyfunc v1.2.2
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/docker/docker v20.10.16+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -23,8 +23,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
-	github.com/tidwall/gjson v1.14.2
-	go.buf.build/openfga/go/openfga/api v1.2.27
+	github.com/tidwall/gjson v1.14.3
+	go.buf.build/openfga/go/openfga/api v1.2.28
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.34.0
 	go.opentelemetry.io/otel v1.9.0
 	go.opentelemetry.io/otel/metric v0.31.0
@@ -80,6 +80,7 @@ require (
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
+	golang.org/x/mod v0.5.0 // indirect
 	golang.org/x/net v0.0.0-20220728211354-c7608f3a8462 // indirect
 	golang.org/x/sys v0.0.0-20220731174439-a90be440212d // indirect
 	golang.org/x/text v0.3.7 // indirect

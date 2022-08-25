@@ -57,6 +57,23 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
+type StaticObjectIterator struct {
+	objects []*openfgapb.Object
+}
+
+var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
+
+func (s *StaticObjectIterator) Next() (*openfgapb.Object, error) {
+	if len(s.objects) == 0 {
+		return nil, storage.ObjectIteratorDone
+	}
+	next, rest := s.objects[0], s.objects[1:]
+	s.objects = rest
+	return next, nil
+}
+
+func (s *StaticObjectIterator) Stop() {}
+
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
@@ -109,6 +126,30 @@ func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationMo
 // used by this storage adapter instance.
 func (s *MemoryBackend) Close(ctx context.Context) error {
 	return nil
+}
+
+func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
+	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
+	defer span.End()
+
+	uniqueObjects := make(map[string]bool, 0)
+	matches := make([]*openfgapb.Object, 0)
+	for _, t := range s.tuples[store] {
+		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
+			continue
+		}
+		_, found := uniqueObjects[t.Key.Object]
+		if !found {
+			uniqueObjects[t.Key.Object] = true
+			_, objectID := tupleUtils.SplitObject(t.Key.Object)
+			matches = append(matches, &openfgapb.Object{
+				Type: objectType,
+				Id:   objectID,
+			})
+		}
+	}
+
+	return &StaticObjectIterator{objects: matches}, nil
 }
 
 // Read See storage.TupleBackend.Read
