@@ -88,17 +88,19 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	var pool *pgxpool.Pool
+	attempt := 1
 	err := backoff.Retry(func() error {
 		var err error
 		pool, err = pgxpool.Connect(context.Background(), uri)
 		if err != nil {
-			p.logger.Info("waiting for Postgres")
+			p.logger.Info(fmt.Sprintf("failed to initialize Postgres connection: (attempt #%d)", attempt))
+			attempt++
 			return err
 		}
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intialize Postgres connection: %v", err)
+		return nil, errors.Errorf("failed to initialize Postgres connection: %v", err)
 	}
 
 	p.pool = pool
