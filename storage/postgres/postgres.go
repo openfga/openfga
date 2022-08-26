@@ -85,6 +85,8 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 5 * time.Minute
 	var pool *pgxpool.Pool
 	err := backoff.Retry(func() error {
 		var err error
@@ -94,7 +96,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 			return err
 		}
 		return nil
-	}, backoff.NewExponentialBackOff())
+	}, policy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intialize Postgres connection: %v", err)
 	}
