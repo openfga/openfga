@@ -13,8 +13,10 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/retryablehttp"
-
 	"github.com/openfga/openfga/server/authn"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -28,7 +30,13 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	JWKRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval, _ = time.ParseDuration("48h")
+
+	errInvalidAudience = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	errInvalidClaims   = status.Error(codes.Code(openfgapb.AuthErrorCode_invalid_claims), "invalid claims")
+	errInvalidIssuer   = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	errInvalidSubject  = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	errInvalidToken    = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
@@ -50,7 +58,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
 	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
-		return nil, errors.New("missing bearer token")
+		return nil, authn.ErrMissingBearerToken
 	}
 
 	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
@@ -58,33 +66,32 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
-
 	if err != nil {
-		return nil, errors.Errorf("error parsing token: %v", err)
+		return nil, errInvalidToken
 	}
 
 	if !token.Valid {
-		return nil, errors.Errorf("invalid token")
+		return nil, errInvalidToken
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, errors.Errorf("invalid claims")
+		return nil, errInvalidClaims
 	}
 
 	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
-		return nil, errors.New("invalid issuer")
+		return nil, errInvalidIssuer
 	}
 
 	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
-		return nil, errors.New("invalid audience")
+		return nil, errInvalidAudience
 	}
 
 	// optional subject
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
-			return nil, errors.New("invalid subject")
+			return nil, errInvalidSubject
 		}
 	}
 
@@ -126,8 +133,8 @@ func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          retryablehttp.New().StandardClient(),
-		RefreshInterval: JWKRefreshInterval,
+		Client:          oidc.httpClient,
+		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
 		return nil, errors.Errorf("Error fetching keys from %v: %v", oidc.JwksURI, err)

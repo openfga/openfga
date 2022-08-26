@@ -51,7 +51,7 @@ const (
 func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
 	t.Helper()
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
@@ -76,7 +76,7 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 	client := healthv1pb.NewHealthClient(conn)
 
 	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 3 * time.Second
+	policy.MaxElapsedTime = 10 * time.Second
 
 	err = backoff.Retry(func() error {
 		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
@@ -253,7 +253,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
 		authHeader:    "Bearer incorrectkey",
-		expectedError: "unauthorized",
+		expectedError: "unauthenticated",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
@@ -438,7 +438,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with invalid token fails",
 		authHeader:    "Bearer incorrecttoken",
-		expectedError: "error parsing token",
+		expectedError: "invalid bearer token",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
