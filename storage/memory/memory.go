@@ -58,14 +58,14 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 func (s *staticIterator) Stop() {}
 
 type StaticObjectIterator struct {
-	objects []string
+	objects []*openfgapb.Object
 }
 
 var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
 
-func (s *StaticObjectIterator) Next() (string, error) {
+func (s *StaticObjectIterator) Next() (*openfgapb.Object, error) {
 	if len(s.objects) == 0 {
-		return "", storage.ObjectIteratorDone
+		return nil, storage.ObjectIteratorDone
 	}
 	next, rest := s.objects[0], s.objects[1:]
 	s.objects = rest
@@ -133,7 +133,7 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 	defer span.End()
 
 	uniqueObjects := make(map[string]bool, 0)
-	matches := make([]string, 0)
+	matches := make([]*openfgapb.Object, 0)
 	for _, t := range s.tuples[store] {
 		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
@@ -141,7 +141,11 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 		_, found := uniqueObjects[t.Key.Object]
 		if !found {
 			uniqueObjects[t.Key.Object] = true
-			matches = append(matches, t.Key.Object)
+			_, objectID := tupleUtils.SplitObject(t.Key.Object)
+			matches = append(matches, &openfgapb.Object{
+				Type: objectType,
+				Id:   objectID,
+			})
 		}
 	}
 
