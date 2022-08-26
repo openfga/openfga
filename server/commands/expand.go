@@ -94,7 +94,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.ErrTupleIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
@@ -174,7 +174,7 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.ErrTupleIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)

@@ -198,7 +198,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	for {
 		object, err := iter.Next()
 		if err != nil {
-			if errors.Is(err, storage.ObjectIteratorDone) {
+			if errors.Is(err, storage.ErrObjectIteratorDone) {
 				break
 			} else {
 				errChan <- err

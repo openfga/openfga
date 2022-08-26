@@ -11,8 +11,10 @@ import (
 
 const DefaultPageSize = 50
 
-var TupleIteratorDone = errors.New("no more tuples in iterator")
-var ObjectIteratorDone = errors.New("no more objects in iterator")
+var (
+	ErrTupleIteratorDone  = errors.New("no more tuples in iterator")
+	ErrObjectIteratorDone = errors.New("no more objects in iterator")
+)
 
 type PaginationOptions struct {
 	PageSize int
@@ -32,7 +34,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 // TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an TupleIteratorDone error.
+// returns an ErrTupleIteratorDone error.
 type TupleIterator interface {
 	Next() (*openfgapb.Tuple, error)
 	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.
@@ -40,7 +42,7 @@ type TupleIterator interface {
 }
 
 // ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an ObjectIteratorDone error.
+// returns an ErrObjectIteratorDone error.
 type ObjectIterator interface {
 	Next() (*openfgapb.Object, error)
 	// Stop will release any resources held by the iterator. It must be safe to be called multiple times.

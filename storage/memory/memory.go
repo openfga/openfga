@@ -19,6 +19,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+var errObjectOrUserMustBeSpecified = errors.New("either object or user must be specified")
+
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
 	continuationToken []byte
@@ -48,7 +50,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, storage.TupleIteratorDone
+		return nil, storage.ErrTupleIteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
@@ -65,7 +67,7 @@ var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
 
 func (s *StaticObjectIterator) Next() (*openfgapb.Object, error) {
 	if len(s.objects) == 0 {
-		return nil, storage.ObjectIteratorDone
+		return nil, storage.ErrObjectIteratorDone
 	}
 	next, rest := s.objects[0], s.objects[1:]
 	s.objects = rest
@@ -243,7 +245,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
@@ -348,7 +350,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
@@ -370,7 +372,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}

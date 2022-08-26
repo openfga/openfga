@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -65,12 +64,12 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 
 	pgxConfig, err := pgxpool.ParseConfig(uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse config from uri: %v", err)
+		return nil, errors.Errorf("failed to parse config from uri: %v", err)
 	}
 
 	dbpool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intialize postgres connection: %v", err)
+		return nil, errors.Errorf("failed to intialize postgres connection: %v", err)
 	}
 
 	p := &Postgres{

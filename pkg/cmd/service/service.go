@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/go-errors/errors"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
@@ -214,12 +214,12 @@ func GetServiceConfig() (*Config, error) {
 	if err != nil {
 		_, ok := err.(viper.ConfigFileNotFoundError)
 		if !ok {
-			return nil, fmt.Errorf("failed to load server config: %w", err)
+			return nil, errors.Errorf("failed to load server config: %w", err)
 		}
 	}
 
 	if err := viper.Unmarshal(config); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal server config: %w", err)
+		return nil, errors.Errorf("failed to unmarshal server config: %w", err)
 	}
 
 	return config, nil
@@ -259,10 +259,10 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 
 		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize postgres datastore: %v", err)
+			return nil, errors.Errorf("failed to initialize postgres datastore: %v", err)
 		}
 	default:
-		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+		return nil, errors.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
@@ -307,10 +307,10 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
 	default:
-		return nil, fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
+		return nil, errors.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize authenticator: %v", err)
+		return nil, errors.Errorf("failed to initialize authenticator: %v", err)
 	}
 
 	interceptors := []grpc.UnaryServerInterceptor{
@@ -344,7 +344,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		MuxOptions:             nil,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize openfga server: %v", err)
+		return nil, errors.Errorf("failed to initialize openfga server: %v", err)
 	}
 
 	return &service{
