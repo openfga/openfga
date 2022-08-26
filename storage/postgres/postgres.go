@@ -86,7 +86,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	}
 
 	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 5 * time.Minute
+	policy.MaxElapsedTime = 1 * time.Minute
 	var pool *pgxpool.Pool
 	err := backoff.Retry(func() error {
 		var err error
