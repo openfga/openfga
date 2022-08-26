@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authn/mocks"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -229,7 +229,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	retryClient := retryablehttp.New().StandardClient()
+	retryClient := retryablehttp.NewClient().StandardClient()
 
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
@@ -382,7 +382,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
 			req.Header.Set("Access-Control-Request-Headers", test.args.header)
 
-			res, err := http.DefaultClient.Do(req)
+			res, err := retryablehttp.NewClient().StandardClient().Do(req)
 			require.NoError(t, err, "Failed to execute request")
 			defer res.Body.Close()
 
@@ -404,7 +404,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	retryClient := retryablehttp.New().StandardClient()
+	retryClient := retryablehttp.NewClient().StandardClient()
 
 	const localOIDCServerURL = "http://localhost:8083"
 
@@ -562,6 +562,9 @@ func TestHTTPServingTLS(t *testing.T) {
 
 		ensureServiceUp(t, nil)
 
+		_, err = retryablehttp.NewClient().Get("http://localhost:8080/healthz")
+		require.NoError(t, err)
+
 		cancel()
 		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
@@ -593,13 +596,12 @@ func TestHTTPServingTLS(t *testing.T) {
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
-		client := retryablehttp.NewWithClient(http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs: certPool,
-				},
+		client := retryablehttp.NewClient()
+		client.HTTPClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certPool,
 			},
-		})
+		}
 
 		_, err = client.Get("https://localhost:8080/healthz")
 		require.NoError(t, err)
@@ -612,7 +614,8 @@ func TestHTTPServingTLS(t *testing.T) {
 }
 
 func TestGRPCServingTLS(t *testing.T) {
-	logger := logger.NewNoopLogger()
+	logger, err := logger.NewTextLogger()
+	require.NoError(t, err)
 
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
@@ -654,6 +657,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		config.HTTP.Enabled = false
 
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
@@ -671,8 +675,8 @@ func TestGRPCServingTLS(t *testing.T) {
 		ensureServiceUp(t, creds)
 
 		cancel()
-		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
+		require.NoError(t, g.Wait())
 	})
 }
 
@@ -717,7 +721,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 
 	ensureServiceUp(t, nil)
 
-	resp, err := http.Get("http://localhost:8080/healthz")
+	resp, err := retryablehttp.NewClient().Get("http://localhost:8080/healthz")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

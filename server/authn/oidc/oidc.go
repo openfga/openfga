@@ -12,7 +12,7 @@ import (
 	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
 	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/openfga/openfga/pkg/retryablehttp"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/server/authn"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
@@ -46,7 +46,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 	oidc := &RemoteOidcAuthenticator{
 		IssuerURL:  issuerURL,
 		Audience:   audience,
-		httpClient: retryablehttp.New().StandardClient(),
+		httpClient: retryablehttp.NewClient().StandardClient(),
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
