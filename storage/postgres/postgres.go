@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -17,6 +16,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -93,7 +93,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		var err error
 		pool, err = pgxpool.Connect(context.Background(), uri)
 		if err != nil {
-			p.logger.Info(fmt.Sprintf("failed to initialize Postgres connection: (attempt #%d)", attempt))
+			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
 			attempt++
 			return err
 		}
