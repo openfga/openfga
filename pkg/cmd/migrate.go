@@ -4,12 +4,14 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/openfga/openfga/assets"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -26,32 +28,19 @@ func NewMigrateCommand() *cobra.Command {
 		RunE:  runMigration,
 	}
 
-	cmd.Flags().String(datastoreEngineFlag, "", "(required) the database engine to run the migrations for")
-	cmdutil.MustMarkFlagRequired(cmd, datastoreEngineFlag)
+	viper.SetEnvPrefix("OPENFGA")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
 
-	cmd.Flags().String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
-	cmdutil.MustMarkFlagRequired(cmd, datastoreURIFlag)
-
-	cmd.Flags().Uint(versionFlag, 0, `the version to migrate to. If omitted, the latest version of the schema will be used`)
+	bindMigrateFlags(cmd)
 
 	return cmd
 }
 
-func runMigration(cmd *cobra.Command, _ []string) error {
-	engine, err := cmd.Flags().GetString(datastoreEngineFlag)
-	if err != nil {
-		return err
-	}
-
-	uri, err := cmd.Flags().GetString(datastoreURIFlag)
-	if err != nil {
-		return err
-	}
-
-	version, err := cmd.Flags().GetUint(versionFlag)
-	if err != nil {
-		return err
-	}
+func runMigration(_ *cobra.Command, _ []string) error {
+	engine := viper.GetString(datastoreEngineFlag)
+	uri := viper.GetString(datastoreURIFlag)
+	version := viper.GetUint(versionFlag)
 
 	goose.SetLogger(goose.NopLogger())
 
@@ -94,4 +83,17 @@ func runMigration(cmd *cobra.Command, _ []string) error {
 	default:
 		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
+}
+
+func bindMigrateFlags(cmd *cobra.Command) {
+	flags := cmd.Flags()
+
+	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
+	cmdutil.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
+
+	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	cmdutil.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
+
+	flags.Uint(versionFlag, 0, "`the version to migrate to. If omitted, the latest version of the schema will be used`")
+	cmdutil.MustBindPFlag("version", flags.Lookup(versionFlag))
 }
