@@ -259,7 +259,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 
 		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to initialize postgres datastore: %v", err)
+			return nil, fmt.Errorf("failed to initialize Postgres datastore: %v", err)
 		}
 	default:
 		return nil, fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)

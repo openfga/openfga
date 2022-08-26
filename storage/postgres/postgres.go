@@ -3,9 +3,9 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -62,20 +63,7 @@ func WithTracer(t trace.Tracer) PostgresOption {
 }
 
 func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error) {
-
-	pgxConfig, err := pgxpool.ParseConfig(uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse config from uri: %v", err)
-	}
-
-	dbpool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to intialize postgres connection: %v", err)
-	}
-
-	p := &Postgres{
-		pool: dbpool,
-	}
+	p := &Postgres{}
 
 	for _, opt := range opts {
 		opt(p)
@@ -96,6 +84,26 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	if p.maxTypesInTypeDefinition == 0 {
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
+
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 1 * time.Minute
+	var pool *pgxpool.Pool
+	attempt := 1
+	err := backoff.Retry(func() error {
+		var err error
+		pool, err = pgxpool.Connect(context.Background(), uri)
+		if err != nil {
+			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
+			attempt++
+			return err
+		}
+		return nil
+	}, policy)
+	if err != nil {
+		return nil, errors.Errorf("failed to initialize Postgres connection: %v", err)
+	}
+
+	p.pool = pool
 
 	return p, nil
 }
