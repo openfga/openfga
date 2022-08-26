@@ -628,6 +628,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		config.HTTP.Enabled = false
 
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
