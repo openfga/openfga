@@ -467,7 +467,12 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 		return nil, handlePostgresError(err)
 	}
 
-	return store, nil
+	createdStore, err := p.GetStore(ctx, store.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	return createdStore, nil
 }
 
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
