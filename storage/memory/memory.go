@@ -336,7 +336,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
 	for _, t := range s.tuples[store] {
-		if match(key, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.User {
+		if match(key, t.Key) {
 			return t, nil
 		}
 	}

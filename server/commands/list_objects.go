@@ -40,9 +40,9 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, err
 	}
 
-	listObjectsCounter, err := q.Meter.SyncInt64().Counter(
+	listObjectsGauge, err := q.Meter.AsyncInt64().Gauge(
 		"openfga.listObjects.results",
-		instrument.WithDescription("Number of requests that return results"),
+		instrument.WithDescription("Number of results returned by ListObjects"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
 	if err != nil {
@@ -82,12 +82,12 @@ func (q *ListObjectsQuery) Execute(ctx context.Context, req *openfgapb.ListObjec
 		return nil, genericError
 	}
 
-	listObjectsCounter.Add(ctx, 1, attributes...)
-
 	objectIDs := make([]string, 0)
 	for objectID := range resultsChan {
 		objectIDs = append(objectIDs, objectID)
 	}
+
+	listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
 
 	return &openfgapb.ListObjectsResponse{
 		ObjectIds: objectIDs,
@@ -153,7 +153,7 @@ func (q *ListObjectsQuery) validateInput(ctx context.Context, storeID string, ta
 	}
 	_, ok := definition.Relations[relation]
 	if !ok {
-		return serverErrors.UnknownRelationWhenListingObjects(relation, targetObjectType)
+		return serverErrors.RelationNotFound(relation, targetObjectType, nil)
 	}
 	return nil
 }
@@ -170,7 +170,7 @@ type PerformChecksInput struct {
 func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *PerformChecksInput, resultsChan chan<- string, errChan chan<- error, resolvedChan chan<- struct{}) {
 	g := new(errgroup.Group)
 	g.SetLimit(maximumConcurrentChecks)
-	var objectsFound uint32
+	var objectsFound = new(uint32)
 
 	iter1, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
@@ -198,7 +198,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 				return
 			}
 		}
-		if atomic.LoadUint32(&objectsFound) >= q.ListObjectsMaxResults {
+		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
 			break
 		}
 
@@ -218,13 +218,13 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	close(resolvedChan)
 }
 
-func (q *ListObjectsQuery) internalCheck(ctx context.Context, object *openfgapb.Object, input *PerformChecksInput, objectsFound uint32, resultsChan chan<- string) error {
+func (q *ListObjectsQuery) internalCheck(ctx context.Context, obj *openfgapb.Object, input *PerformChecksInput, objectsFound *uint32, resultsChan chan<- string) error {
 	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
 
 	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              input.storeID,
 		AuthorizationModelId: input.authModelID,
-		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(object), input.relation, input.user),
+		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), input.relation, input.user),
 		ContextualTuples:     input.ctxTuples,
 	})
 	if err != nil {
@@ -233,9 +233,9 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, object *openfgapb.
 		return nil
 	}
 
-	if resp.Allowed && atomic.LoadUint32(&objectsFound) < q.ListObjectsMaxResults {
-		resultsChan <- object.Id
-		atomic.AddUint32(&objectsFound, 1)
+	if resp.Allowed && atomic.LoadUint32(objectsFound) < q.ListObjectsMaxResults {
+		resultsChan <- obj.Id
+		atomic.AddUint32(objectsFound, 1)
 	}
 
 	return nil
