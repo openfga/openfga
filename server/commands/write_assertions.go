@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/logger"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -33,7 +33,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 
 	dbCallsCounter := utils.NewDBCallCounter()
 	for _, assertion := range assertions {
-		if _, err := tupleUtils.ValidateTuple(ctx, w.datastore, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
+		if _, err := validation.ValidateTuple(ctx, w.datastore, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}

@@ -8,6 +8,7 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -60,7 +61,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		if _, err := tupleUtils.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter); err != nil {
+		if _, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}

@@ -126,7 +126,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	return &ObjectIterator{rows: rows}, nil
+	return &objectIterator{rows: rows}, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
