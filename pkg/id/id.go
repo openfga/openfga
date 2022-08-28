@@ -38,6 +38,16 @@ func NewStringFromTime(time time.Time) (string, error) {
 	return id.value.String(), nil
 }
 
+// MustNewString returns an ID as a string and panics if one cannot be generated.
+func MustNewString() string {
+	id, err := NewString()
+	if err != nil {
+		panic(err)
+	}
+
+	return id
+}
+
 func NewString() (string, error) {
 	return NewStringFromTime(time.Now())
 }

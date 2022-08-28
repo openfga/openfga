@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -141,4 +142,51 @@ func TestUniqueObjectIterator(t *testing.T) {
 	}
 
 	require.Equal(t, expected, actual)
+}
+
+func ExampleNewUniqueObjectIterator() {
+
+	contextualTuples := []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
+		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
+	}
+
+	iter1 := NewTupleKeyObjectIterator(contextualTuples)
+
+	// this would generally be a database call
+	iter2 := NewStaticObjectIterator([]*openfgapb.Object{
+		{
+			Type: "document",
+			Id:   "doc1",
+		},
+		{
+			Type: "document",
+			Id:   "doc2",
+		},
+	})
+
+	// pass the contextual tuples iterator (iter1) first since it's more
+	// constrained than the other iterator (iter2). In practice iter2 will
+	// be coming from a database that should guarantee uniqueness over the
+	// objects yielded.
+	iter := NewUniqueObjectIterator(iter1, iter2)
+	defer iter.Stop()
+
+	var objects []string
+	for {
+		obj, err := iter.Next()
+		if err != nil {
+			if err == ErrIteratorDone {
+				break
+			}
+
+			// handle the error in some way
+			panic(err)
+		}
+
+		objects = append(objects, tuple.ObjectKey(obj))
+	}
+
+	fmt.Println(objects)
+	// Output: [document:doc1 document:doc2]
 }

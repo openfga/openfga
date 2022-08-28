@@ -56,6 +56,9 @@ type uniqueObjectIterator struct {
 
 // NewUniqueObjectIterator returns an ObjectIterator that iterates over two ObjectIterators and yields only distinct
 // objects with the duplicates removed.
+//
+// iter1 should generally be provided by a constrained iterator (e.g. contextual tuples) and iter2 should be provided
+// by a storage iterator that already guarantees uniqueness.
 func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
 	return &uniqueObjectIterator{
 		iter1: iter1,
@@ -65,6 +68,7 @@ func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
 
 var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 
+// Next returns the next most unique object from the two underlying iterators.
 func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 
 	for {
@@ -85,6 +89,7 @@ func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 		}
 	}
 
+	// assumption is that iter2 yields unique values to begin with
 	for {
 		obj, err := u.iter2.Next()
 		if err != nil {
@@ -97,7 +102,6 @@ func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 
 		_, ok := u.objects.Load(tuple.ObjectKey(obj))
 		if !ok {
-			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
 			return obj, nil
 		}
 	}

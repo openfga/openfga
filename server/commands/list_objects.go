@@ -172,14 +172,15 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	g.SetLimit(maximumConcurrentChecks)
 	var objectsFound = new(uint32)
 
-	iter1, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
+	iter1 := storage.NewTupleKeyObjectIterator(input.ctxTuples.GetTupleKeys())
+
+	iter2, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
 	if err != nil {
 		errChan <- err
 		return
 	}
 
-	iter2 := storage.NewTupleKeyObjectIterator(input.ctxTuples.GetTupleKeys())
-
+	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
 	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	if err != nil {
 		errChan <- err
