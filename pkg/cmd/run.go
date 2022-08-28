@@ -34,15 +34,12 @@ func NewRunCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	bindFlags(cmd)
+	bindRunFlags(cmd)
 
 	return cmd
 }
 
 func run(_ *cobra.Command, _ []string) {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	config, err := service.GetServiceConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +62,9 @@ func run(_ *cobra.Command, _ []string) {
 		zap.String("commit", build.Commit),
 		zap.String("go-version", runtime.Version()),
 	)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -223,9 +223,9 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 	return openfgaLogger, err
 }
 
-// bindFlags binds the cobra cmd flags to the equivalent config value being managed
+// bindRunFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
-func bindFlags(cmd *cobra.Command) {
+func bindRunFlags(cmd *cobra.Command) {
 
 	defaultConfig := service.DefaultConfig()
 
