@@ -207,30 +207,13 @@ func (s *staticIterator[T]) Next() (T, error) {
 
 func (s *staticIterator[T]) Stop() {}
 
-type staticObjectIterator struct {
-	objects []*openfgapb.Object
-}
-
-var _ ObjectIterator = (*staticObjectIterator)(nil)
-
 // NewStaticObjectIterator returns an ObjectIterator that iterates over the provided slice of objects.
 func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
-	return &staticObjectIterator{objects}
-}
 
-func (s *staticObjectIterator) Next() (*openfgapb.Object, error) {
-
-	if len(s.objects) == 0 {
-		return nil, ErrIteratorDone
+	return &staticIterator[*openfgapb.Object]{
+		items: objects,
 	}
-
-	next, rest := s.objects[0], s.objects[1:]
-	s.objects = rest
-
-	return next, nil
 }
-
-func (s *staticObjectIterator) Stop() {}
 
 // Typesafe aliases for Write arguments.
 
