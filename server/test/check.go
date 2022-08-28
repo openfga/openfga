@@ -145,18 +145,8 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"reader": {
-					Userset: &openfgapb.Userset_ComputedUserset{
-						ComputedUserset: &openfgapb.ObjectRelation{
-							Relation: "writer",
-						},
-					}},
-				"writer": {
-					Userset: &openfgapb.Userset_ComputedUserset{
-						ComputedUserset: &openfgapb.ObjectRelation{
-							Relation: "reader",
-						},
-					}},
+				"reader": ComputedUserset("", "writer"),
+				"writer": ComputedUserset("", "reader"),
 			},
 		}},
 		resolveNodeLimit: defaultResolveNodeLimit,
@@ -173,15 +163,8 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"reader": {
-					Userset: &openfgapb.Userset_This{},
-				},
-				"writer": {
-					Userset: &openfgapb.Userset_ComputedUserset{
-						ComputedUserset: &openfgapb.ObjectRelation{
-							Relation: "reader",
-						},
-					}},
+				"reader": This(),
+				"writer": ComputedUserset("", "reader"),
 			},
 		}},
 		resolveNodeLimit: 2,
@@ -198,27 +181,11 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"writer": {
-					Userset: &openfgapb.Userset_This{},
-				},
-				"reader": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{
-							Child: []*openfgapb.Userset{
-								{
-									Userset: &openfgapb.Userset_This{},
-								},
-								{
-									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Relation: "writer",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+				"writer": This(),
+				"reader": Union(
+					This(),
+					ComputedUserset("", "writer"),
+				),
 			},
 		}},
 		resolveNodeLimit: 2,
@@ -309,15 +276,7 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"admin": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_This{
-								This: &openfgapb.DirectUserset{},
-							}},
-						}},
-					},
-				},
+				"admin": Union(This()),
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{
@@ -347,15 +306,7 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"admin": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_This{
-								This: &openfgapb.DirectUserset{},
-							}},
-						}},
-					},
-				},
+				"admin": Union(This()),
 			},
 		}},
 		tuples: []*openfgapb.TupleKey{
@@ -385,17 +336,7 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"admin": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "owner",
-								},
-							}},
-						}},
-					},
-				},
+				"admin": Union(ComputedUserset("", "owner")),
 				"owner": {},
 			},
 		}},
@@ -426,18 +367,10 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"reader": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_This{}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "writer",
-								},
-							}},
-						}},
-					},
-				},
+				"reader": Union(
+					This(),
+					ComputedUserset("", "writer"),
+				),
 				"writer": {},
 			},
 		}},
@@ -468,9 +401,7 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"admin": {
-					Userset: &openfgapb.Userset_This{},
-				},
+				"admin": This(),
 			},
 		}, {
 			Type: "team",
@@ -500,18 +431,10 @@ var checkQueryTests = []checkQueryTest{
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
-				"reader": {
-					Userset: &openfgapb.Userset_Union{
-						Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_This{}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "writer",
-								},
-							}},
-						}},
-					},
-				},
+				"reader": Union(
+					This(),
+					ComputedUserset("", "writer"),
+				),
 				"writer": {},
 			},
 		}, {
@@ -544,22 +467,10 @@ var checkQueryTests = []checkQueryTest{
 			// pretend you can only create an organization user in an openfga store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
-				"create_organization_user": {
-					Userset: &openfgapb.Userset_Intersection{
-						Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "create_user",
-								},
-							}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "write_organization",
-								},
-							}},
-						}},
-					},
-				},
+				"create_organization_user": Intersection(
+					ComputedUserset("", "create_user"),
+					ComputedUserset("", "write_organization"),
+				),
 				"create_user":        {},
 				"write_organization": {},
 			},
@@ -586,22 +497,10 @@ var checkQueryTests = []checkQueryTest{
 			// pretend you can only create an organization user in an openfga store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
-				"create_organization_user": {
-					Userset: &openfgapb.Userset_Intersection{
-						Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "create_user",
-								},
-							}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "write_organization",
-								},
-							}},
-						}},
-					},
-				},
+				"create_organization_user": Intersection(
+					ComputedUserset("", "create_user"),
+					ComputedUserset("", "write_organization"),
+				),
 				"write_organization": {},
 				"create_user":        {},
 			},
@@ -630,38 +529,14 @@ var checkQueryTests = []checkQueryTest{
 			// pretend you can only create an organization user in an openfga store if
 			// you can create a user AND write an organization in a store
 			Relations: map[string]*openfgapb.Userset{
-				"create_organization_user": {
-					Userset: &openfgapb.Userset_Intersection{
-						Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "create_user",
-								},
-							}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "write_organization",
-								},
-							}},
-						}},
-					},
-				},
-				"create_user": {
-					Userset: &openfgapb.Userset_Intersection{
-						Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "create_user_a",
-								},
-							}},
-							{Userset: &openfgapb.Userset_ComputedUserset{
-								ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "create_user_b",
-								},
-							}},
-						}},
-					},
-				},
+				"create_organization_user": Intersection(
+					ComputedUserset("", "create_user"),
+					ComputedUserset("", "write_organization"),
+				),
+				"create_user": Intersection(
+					ComputedUserset("", "create_user_a"),
+					ComputedUserset("", "create_user_b"),
+				),
 				"write_organization": {},
 				"create_user_a":      {},
 				"create_user_b":      {},
@@ -690,22 +565,7 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Difference{
-							Difference: &openfgapb.Difference{
-								Base: &openfgapb.Userset{
-									Userset: &openfgapb.Userset_This{},
-								},
-								Subtract: &openfgapb.Userset{
-									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Relation: "banned",
-										},
-									},
-								},
-							},
-						},
-					},
+					"admin":  Difference(This(), ComputedUserset("", "banned")),
 					"banned": {},
 				},
 			},
@@ -730,22 +590,7 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Difference{
-							Difference: &openfgapb.Difference{
-								Base: &openfgapb.Userset{
-									Userset: &openfgapb.Userset_This{},
-								},
-								Subtract: &openfgapb.Userset{
-									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Relation: "banned",
-										},
-									},
-								},
-							},
-						},
-					},
+					"admin":  Difference(This(), ComputedUserset("", "banned")),
 					"banned": {},
 				},
 			},
@@ -770,22 +615,10 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "manager",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "repo_admin",
-									},
-								}}},
-							}},
-						},
-					},
+					"admin": Union(
+						This(),
+						TupleToUserset("manager", "$TUPLE_USERSET_OBJECT", "repo_admin"),
+					),
 				},
 			},
 			{
@@ -816,80 +649,28 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "manager",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "repo_admin",
-									},
-								}}},
-							}},
-						},
-					},
-					"maintainer": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "admin",
-								}}},
-							}},
-						},
-					},
-					"writer": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "maintainer",
-								}}},
-								{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "manager",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "repo_writer",
-									},
-								}}},
-							}},
-						},
-					},
-					"triager": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "writer",
-								}}},
-							}},
-						},
-					},
-					"reader": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "triager",
-								}}},
-								{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "manager",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "repo_reader",
-									},
-								}}},
-							}},
-						},
-					},
+					"admin": Union(
+						This(),
+						TupleToUserset("manager", "$TUPLE_USERSET_OBJECT", "repo_admin"),
+					),
+					"maintainer": Union(
+						This(),
+						ComputedUserset("", "admin"),
+					),
+					"writer": Union(
+						This(),
+						ComputedUserset("", "maintainer"),
+						TupleToUserset("manager", "$TUPLE_USERSET_OBJECT", "repo_writer"),
+					),
+					"triager": Union(
+						This(),
+						ComputedUserset("", "writer"),
+					),
+					"reader": Union(
+						This(),
+						ComputedUserset("", "triager"),
+						TupleToUserset("manager", "$TUPLE_USERSET_OBJECT", "repo_reader"),
+					),
 				},
 			},
 			{
@@ -919,37 +700,17 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
-					"parent": {Userset: &openfgapb.Userset_This{}},
-					"owner":  {Userset: &openfgapb.Userset_This{}},
-					"editor": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "owner",
-								}}},
-							}},
-						},
-					},
-					"viewer": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-									Relation: "editor",
-								}}},
-								{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "parent",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "viewer",
-									},
-								}}},
-							}},
-						},
-					},
+					"parent": This(),
+					"owner":  This(),
+					"editor": Union(
+						This(),
+						ComputedUserset("", "owner"),
+					),
+					"viewer": Union(
+						This(),
+						ComputedUserset("", "editor"),
+						TupleToUserset("parent", "$TUPLE_USERSET_OBJECT", "viewer"),
+					),
 				},
 			},
 		},
@@ -1202,13 +963,13 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "team",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {Userset: &openfgapb.Userset_This{}},
+					"member": This(),
 				},
 			},
 			{
 				Type: "org",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {Userset: &openfgapb.Userset_This{}},
+					"member": This(),
 				},
 			},
 		},
@@ -1236,13 +997,13 @@ var checkQueryTests = []checkQueryTest{
 			{
 				Type: "team",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {Userset: &openfgapb.Userset_This{}},
+					"member": This(),
 				},
 			},
 			{
 				Type: "org",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {Userset: &openfgapb.Userset_This{}},
+					"member": This(),
 				},
 			},
 		},
@@ -1250,6 +1011,42 @@ var checkQueryTests = []checkQueryTest{
 		response: &openfgapb.CheckResponse{
 			Allowed: true,
 		},
+	},
+	{
+		name:             "CheckWithUsersetContainingUndefinedType",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": This(),
+				},
+			},
+		},
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+		},
+		err: serverErrors.TypeNotFound("group"),
+	},
+	{
+		name:             "CheckWithUsersetContainingUndefinedRelation",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": This(),
+				},
+			},
+		},
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+		},
+		err: serverErrors.RelationNotFound(
+			"editor",
+			"document",
+			tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+		),
 	},
 }
 
@@ -1317,23 +1114,19 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	originalTD := []*openfgapb.TypeDefinition{{
 		Type: "repo",
 		Relations: map[string]*openfgapb.Userset{
-			"owner": {Userset: &openfgapb.Userset_This{}},
-			"editor": {
-				Userset: &openfgapb.Userset_Union{
-					Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-						{Userset: &openfgapb.Userset_This{}},
-						{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "owner"}}},
-					}},
-				},
-			},
+			"owner": This(),
+			"editor": Union(
+				This(),
+				ComputedUserset("", "owner"),
+			),
 		},
 	}}
 
 	updatedTD := []*openfgapb.TypeDefinition{{
 		Type: "repo",
 		Relations: map[string]*openfgapb.Userset{
-			"owner":  {Userset: &openfgapb.Userset_This{}},
-			"editor": {Userset: &openfgapb.Userset_This{}},
+			"owner":  This(),
+			"editor": This(),
 		},
 	}}
 

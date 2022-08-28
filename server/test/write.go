@@ -2,13 +2,13 @@ package test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -17,7 +17,7 @@ import (
 )
 
 type writeCommandTest struct {
-	_name           string
+	name            string
 	typeDefinitions []*openfgapb.TypeDefinition
 	tuples          []*openfgapb.TupleKey
 	request         *openfgapb.WriteRequest
@@ -25,22 +25,18 @@ type writeCommandTest struct {
 	response        *openfgapb.WriteResponse
 }
 
-var tk = &openfgapb.TupleKey{
-	Object:   "repository:openfga/openfga",
-	Relation: "administrator",
-	User:     "github|alice@openfga",
-}
+var tk = tuple.NewTupleKey("repository:openfga/openfga", "administrator", "github|alice@openfga")
 
 var writeCommandTests = []writeCommandTest{
 	{
-		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
+		name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input
 		request: &openfgapb.WriteRequest{},
 		// output
 		err: serverErrors.InvalidWriteInput,
 	},
 	{
-		_name: "ExecuteWithSameTupleInWritesReturnsError",
+		name: "ExecuteWithSameTupleInWritesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -58,7 +54,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
 	{
-		_name: "ExecuteWithSameTupleInDeletesReturnsError",
+		name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -76,7 +72,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
 	{
-		_name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
+		name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -95,7 +91,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
 	{
-		_name: "ExecuteDeleteTupleWhichDoesNotExistReturnsError",
+		name: "ExecuteDeleteTupleWhichDoesNotExistReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -113,7 +109,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)),
 	},
 	{
-		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
+		name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
@@ -127,7 +123,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.TypeNotFound("repository"),
 	},
 	{
-		_name: "ExecuteWithWriteTupleWithMissingUserError",
+		name: "ExecuteWithWriteTupleWithMissingUserError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
@@ -137,16 +133,15 @@ var writeCommandTests = []writeCommandTest{
 		}},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:openfga",
-				Relation: "owner",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "owner", ""),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
+		err: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", tuple.NewTupleKey("repo:openfga", "owner", "")),
 	},
 	{
-		_name: "ExecuteWithWriteTupleWithMissingObjectError",
+		name: "ExecuteWithWriteTupleWithMissingObjectError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
@@ -156,19 +151,15 @@ var writeCommandTests = []writeCommandTest{
 		}},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Relation: "owner",
-				User:     "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("", "owner", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-			Relation: "owner",
-			User:     "elbuo@github.com",
-		}),
+		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("", "owner", "elbuo@github.com")),
 	},
 	{
-		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
+		name: "ExecuteWithWriteTupleWithInvalidRelationError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
@@ -178,16 +169,15 @@ var writeCommandTests = []writeCommandTest{
 		}},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object: "repo:openfga",
-				User:   "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("invalid relation", &openfgapb.TupleKey{Object: "repo:openfga", User: "elbuo@github.com"}),
+		err: serverErrors.InvalidTuple("invalid relation", tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com")),
 	},
 	{
-		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
+		name: "ExecuteWithWriteTupleWithNotFoundRelationError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
@@ -197,18 +187,19 @@ var writeCommandTests = []writeCommandTest{
 		}},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:openfga",
-				Relation: "BadRelation",
-				User:     "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound("BadRelation", "repo",
-			&openfgapb.TupleKey{Object: "repo:openfga", Relation: "BadRelation", User: "elbuo@github.com"}),
+		err: serverErrors.RelationNotFound(
+			"undefined",
+			"repo",
+			tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+		),
 	},
 	{
-		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
+		name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
@@ -221,7 +212,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "ExecuteWithInvalidObjectFormatReturnsError",
+		name: "ExecuteWithInvalidObjectFormatReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type:      "repo",
@@ -229,22 +220,16 @@ var writeCommandTests = []writeCommandTest{
 		}},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				// invalid because it has no :
-				Object:   "openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				// invalid because object has no :
+				tuple.NewTupleKey("openfga", "owner", "github|jose@openfga"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-			Object:   "openfga",
-			Relation: "owner",
-			User:     "github|jose@openfga",
-		}),
+		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("openfga", "owner", "github|jose@openfga")),
 	},
 	{
-		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
+		name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
 			Type: "repo",
@@ -261,22 +246,18 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "github|jose@openfga",
-				},
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
 			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound("writer", "repo", &openfgapb.TupleKey{
-			Object:   "repo:openfga/openfga",
-			Relation: "writer",
-			User:     "github|jose@openfga",
-		}),
+		err: serverErrors.RelationNotFound(
+			"writer",
+			"repo",
+			tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
+		),
 	},
 	{
-		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
+		name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -292,25 +273,17 @@ var writeCommandTests = []writeCommandTest{
 				},
 			}},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
 			}},
 		},
 	},
 	{
-		_name: "ExecuteSucceedsForWriteOnly",
+		name: "ExecuteSucceedsForWriteOnly",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -335,31 +308,15 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
 	},
 	{
-		_name: "ExecuteSucceedsForDeleteOnly",
+		name: "ExecuteSucceedsForDeleteOnly",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -382,55 +339,23 @@ var writeCommandTests = []writeCommandTest{
 				},
 			}},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "admin",
-				User:     "github|jose@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "writer",
-				User:     "team:openfga/iam#member",
-			},
-			{
-				Object:   "team:openfga/iam",
-				Relation: "member",
-				User:     "iaco@openfga",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+			tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
 	},
 	{
-		_name: "ExecuteSucceedsForWriteAndDelete",
+		name: "ExecuteSucceedsForWriteAndDelete",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -453,54 +378,66 @@ var writeCommandTests = []writeCommandTest{
 				},
 			}},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|yenkel@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "reader",
-				User:     "team:openfga/platform#member",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|yenkel@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "reader",
-					User:     "team:openfga/platform#member",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 			}},
 		},
+	},
+	{
+		name: "undefined type in userset value",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+				},
+			},
+		},
+		err: serverErrors.TypeNotFound("group"),
+	},
+	{
+		name: "undefined type relation in userset value",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+				},
+			},
+		},
+		err: serverErrors.RelationNotFound("editor", "document", tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor")),
 	},
 }
 
@@ -511,7 +448,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	for _, test := range writeCommandTests {
-		t.Run(test._name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			store := testutils.CreateRandomString(10)
 			modelID, err := id.NewString()
 			require.NoError(err)
@@ -531,23 +468,11 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = modelID
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
-			if test.err != nil {
-				if gotErr == nil {
-					t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
-				}
-				if !errors.Is(gotErr, test.err) {
-					t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, gotErr)
-				}
-			}
+			require.ErrorIs(gotErr, test.err)
 
-			if test.err == nil && gotErr != nil {
-				t.Errorf("[%s] Did not expect an error but got one: %v", test._name, gotErr)
-			}
-
+			// todo: validate the response bodies are equivalent
 			if test.response != nil {
-				if resp == nil {
-					t.Error("Expected non nil response, got nil")
-				}
+				require.NotNil(resp)
 			}
 		})
 	}
