@@ -197,7 +197,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	for {
 		usersetTuple, err := iter.Next()
 		if err != nil {
-			if err == storage.IteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -415,7 +415,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.IteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)

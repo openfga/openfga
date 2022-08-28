@@ -57,7 +57,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 	for {
 		tk, err := iter.Next()
 		if err != nil {
-			if errors.Is(err, IteratorDone) {
+			if errors.Is(err, ErrIteratorDone) {
 				break
 			}
 			require.Fail(t, "no error was expected")
@@ -84,7 +84,7 @@ func TestCombinedIterator(t *testing.T) {
 	for {
 		tk, err := iter.Next()
 		if err != nil {
-			if errors.Is(err, IteratorDone) {
+			if errors.Is(err, ErrIteratorDone) {
 				break
 			}
 			require.Fail(t, "no error was expected")
@@ -101,4 +101,44 @@ func TestCombinedIterator(t *testing.T) {
 	if diff := cmp.Diff(actual, expected, cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)
 	}
+}
+
+func TestUniqueObjectIterator(t *testing.T) {
+
+	expected := []string{
+		"document:1",
+		"document:2",
+		"document:3",
+		"document:4",
+	}
+
+	iter1 := NewStaticObjectIterator([]*openfgapb.Object{
+		{Type: "document", Id: "1"},
+		{Type: "document", Id: "2"},
+		{Type: "document", Id: "2"},
+	})
+	iter2 := NewStaticObjectIterator([]*openfgapb.Object{
+		{Type: "document", Id: "2"},
+		{Type: "document", Id: "3"},
+		{Type: "document", Id: "4"},
+	})
+
+	iter := NewUniqueObjectIterator(iter1, iter2)
+	defer iter.Stop()
+
+	var actual []string
+	for {
+		obj, err := iter.Next()
+		if err != nil {
+			if errors.Is(err, ErrIteratorDone) {
+				break
+			}
+
+			require.Fail(t, "no error was expected")
+		}
+
+		actual = append(actual, tuple.ObjectKey(obj))
+	}
+
+	require.Equal(t, expected, actual)
 }

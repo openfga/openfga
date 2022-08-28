@@ -3,6 +3,7 @@ package storage
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-errors/errors"
@@ -12,7 +13,7 @@ import (
 
 const DefaultPageSize = 50
 
-var IteratorDone = errors.New("iterator done")
+var ErrIteratorDone = errors.New("iterator done")
 
 type PaginationOptions struct {
 	PageSize int
@@ -37,52 +38,74 @@ type Iterator[T any] interface {
 }
 
 // ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an IteratorDone error.
+// returns an ErrIteratorDone error.
 type ObjectIterator = Iterator[*openfgapb.Object]
 
 // TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an IteratorDone error.
+// returns an ErrIteratorDone error.
 type TupleIterator = Iterator[*openfgapb.Tuple]
 
 // TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an IteratorDone error.
+// returns an ErrIteratorDone error.
 type TupleKeyIterator = Iterator[*openfgapb.TupleKey]
 
-// UniqueObjectIterator takes two ObjectIterators and yields an ObjectIterator that returns only distinct objects with the
-// duplicates removed.
-func UniqueObjectIterator(iter1, iter2 ObjectIterator) (ObjectIterator, error) {
-	objectMap := map[string]*openfgapb.Object{}
+type uniqueObjectIterator struct {
+	iter1, iter2 ObjectIterator
+	objects      sync.Map
+}
+
+// NewUniqueObjectIterator returns an ObjectIterator that iterates over two ObjectIterators and yields only distinct
+// objects with the duplicates removed.
+func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
+	return &uniqueObjectIterator{
+		iter1: iter1,
+		iter2: iter2,
+	}
+}
+
+var _ ObjectIterator = (*uniqueObjectIterator)(nil)
+
+func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 
 	for {
-		val, err := iter1.Next()
+		obj, err := u.iter1.Next()
 		if err != nil {
-			if errors.Is(err, IteratorDone) {
+			if err == ErrIteratorDone {
 				break
 			}
+
 			return nil, err
 		}
 
-		objectMap[tuple.ObjectKey(val)] = val
+		// if the object has not already been seen, then store it and return it
+		_, ok := u.objects.Load(tuple.ObjectKey(obj))
+		if !ok {
+			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
+			return obj, nil
+		}
 	}
 
 	for {
-		val, err := iter2.Next()
+		obj, err := u.iter2.Next()
 		if err != nil {
-			if errors.Is(err, IteratorDone) {
-				break
+			if err == ErrIteratorDone {
+				return nil, ErrIteratorDone
 			}
+
 			return nil, err
 		}
 
-		objectMap[tuple.ObjectKey(val)] = val
+		_, ok := u.objects.Load(tuple.ObjectKey(obj))
+		if !ok {
+			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
+			return obj, nil
+		}
 	}
+}
 
-	objects := make([]*openfgapb.Object, 0, len(objectMap))
-	for _, obj := range objectMap {
-		objects = append(objects, obj)
-	}
-
-	return NewStaticObjectIterator(objects), nil
+func (u *uniqueObjectIterator) Stop() {
+	u.iter1.Stop()
+	u.iter2.Stop()
 }
 
 type combinedIterator[T any] struct {
@@ -92,7 +115,7 @@ type combinedIterator[T any] struct {
 func (c *combinedIterator[T]) Next() (T, error) {
 	val, err := c.iter1.Next()
 	if err != nil {
-		if !errors.Is(err, IteratorDone) {
+		if !errors.Is(err, ErrIteratorDone) {
 			return val, err
 		}
 	} else {
@@ -101,7 +124,7 @@ func (c *combinedIterator[T]) Next() (T, error) {
 
 	val, err = c.iter2.Next()
 	if err != nil {
-		if !errors.Is(err, IteratorDone) {
+		if !errors.Is(err, ErrIteratorDone) {
 			return val, err
 		}
 	}
@@ -169,7 +192,7 @@ type staticIterator[T any] struct {
 func (s *staticIterator[T]) Next() (T, error) {
 	var val T
 	if len(s.items) == 0 {
-		return val, IteratorDone
+		return val, ErrIteratorDone
 	}
 
 	next, rest := s.items[0], s.items[1:]
@@ -194,7 +217,7 @@ func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
 func (s *staticObjectIterator) Next() (*openfgapb.Object, error) {
 
 	if len(s.objects) == 0 {
-		return nil, IteratorDone
+		return nil, ErrIteratorDone
 	}
 
 	next, rest := s.objects[0], s.objects[1:]

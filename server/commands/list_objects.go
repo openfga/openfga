@@ -180,7 +180,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 
 	iter2 := storage.NewTupleKeyObjectIterator(input.ctxTuples.GetTupleKeys())
 
-	iter, err := storage.UniqueObjectIterator(iter1, iter2)
+	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	if err != nil {
 		errChan <- err
 		return
@@ -191,7 +191,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	for {
 		object, err := iter.Next()
 		if err != nil {
-			if errors.Is(err, storage.IteratorDone) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			} else {
 				errChan <- err

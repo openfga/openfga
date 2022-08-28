@@ -317,8 +317,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 
 		// Then the iterator should run out
-		if _, err := gotTuples.Next(); !errors.Is(err, storage.IteratorDone) {
-			t.Fatalf("got '%v', want '%v'", err, storage.IteratorDone)
+		if _, err := gotTuples.Next(); !errors.Is(err, storage.ErrIteratorDone) {
+			t.Fatalf("got '%v', want '%v'", err, storage.ErrIteratorDone)
 		}
 
 		if diff := cmp.Diff(gotTupleKeys, tks[:2], cmpOpts...); diff != "" {
@@ -335,8 +335,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 		defer gotTuples.Stop()
 
-		if _, err := gotTuples.Next(); !errors.Is(err, storage.IteratorDone) {
-			t.Fatalf("got '%v', want '%v'", err, storage.IteratorDone)
+		if _, err := gotTuples.Next(); !errors.Is(err, storage.ErrIteratorDone) {
+			t.Fatalf("got '%v', want '%v'", err, storage.ErrIteratorDone)
 		}
 	})
 }

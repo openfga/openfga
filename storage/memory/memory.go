@@ -48,7 +48,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, storage.IteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
