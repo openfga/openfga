@@ -373,17 +373,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		},
 	}
 
+	client := retryablehttp.NewClient()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
 			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
 			req.Header.Set("Access-Control-Request-Headers", test.args.header)
 
-			res, err := retryablehttp.NewClient().StandardClient().Do(req)
+			res, err := client.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 			defer res.Body.Close()
 
