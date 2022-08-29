@@ -668,7 +668,7 @@ func (o *openfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthC
 		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
 	}
 
-	return nil, status.Error(codes.NotFound, "")
+	return nil, status.Errorf(codes.NotFound, "service '%s' is not registered with the Health server", service)
 }
 
 func (o *openfgaHealthServer) Watch(req *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
