@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
@@ -37,7 +38,10 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(t, err)
 
 			require.Equal(t, test.request.Name, resp.Name)
-			require.NotEmpty(t, resp.Id)
+
+			_, err = id.Parse(resp.Id)
+			require.NoError(t, err)
+
 			require.NotEmpty(t, resp.CreatedAt)
 			require.NotEmpty(t, resp.UpdatedAt)
 			require.Equal(t, resp.CreatedAt, resp.UpdatedAt)
