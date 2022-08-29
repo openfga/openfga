@@ -2,6 +2,9 @@ package tuple
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestSplitObjectId(t *testing.T) {
@@ -54,6 +57,14 @@ func TestSplitObjectId(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestObjectKey(t *testing.T) {
+	key := ObjectKey(&openfgav1.Object{
+		Type: "document",
+		Id:   "1",
+	})
+	require.Equal(t, "document:1", key)
 }
 
 func TestSplitObjectRelation(t *testing.T) {
