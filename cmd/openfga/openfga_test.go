@@ -237,7 +237,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 
 	s, ok := status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.Unauthenticated.String(), s.Code().String())
+	require.Equal(t, codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), s.Code())
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key1")
 	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
@@ -259,8 +259,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 
 	s, ok = status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.PermissionDenied.String(), s.Code().String())
-
+	require.Equal(t, codes.Code(openfgapb.AuthErrorCode_unauthenticated), s.Code())
 }
 
 // connect connects to the underlying grpc server of the OpenFGATester and
