@@ -48,7 +48,7 @@ const (
 	openFGAGRPCAddr   = "localhost:8081"
 )
 
-func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
+func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials, useHTTPToo bool) {
 	t.Helper()
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -93,6 +93,11 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 		return nil
 	}, policy)
 	require.NoError(t, err)
+
+	if useHTTPToo {
+		_, err = retryablehttp.NewClient().Get("http://localhost:8080/healthz")
+		require.NoError(t, err)
+	}
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -248,7 +253,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
@@ -322,7 +327,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	type args struct {
 		origin string
@@ -430,7 +435,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	trustedToken, err := trustedIssuerServer.GetToken(openFGAServerAddr, "some-user")
 	require.NoError(t, err)
@@ -560,10 +565,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
-
-		_, err = retryablehttp.NewClient().Get("http://localhost:8080/healthz")
-		require.NoError(t, err)
+		ensureServiceUp(t, nil, true)
 
 		cancel()
 		require.NoError(t, g.Wait())
@@ -592,7 +594,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
+		ensureServiceUp(t, nil, false)
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
@@ -614,8 +616,7 @@ func TestHTTPServingTLS(t *testing.T) {
 }
 
 func TestGRPCServingTLS(t *testing.T) {
-	logger, err := logger.NewTextLogger()
-	require.NoError(t, err)
+	logger := logger.NewNoopLogger()
 
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
@@ -639,7 +640,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
+		ensureServiceUp(t, nil, false)
 
 		cancel()
 		require.NoError(t, g.Wait())
@@ -673,7 +674,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, creds)
+		ensureServiceUp(t, creds, false)
 
 		cancel()
 		require.NoError(t, service.Close(ctx))
@@ -696,7 +697,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, false)
 
 	_, err = http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
@@ -720,13 +721,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
-
-	resp, err := retryablehttp.NewClient().Get("http://localhost:8080/healthz")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	ensureServiceUp(t, nil, true)
 
 	cancel()
 }
