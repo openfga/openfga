@@ -242,8 +242,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
-	logger, _ := logger.NewTextLogger()
-	service, err := BuildService(config, logger)
+	service, err := BuildService(config, logger.NewNoopLogger())
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
