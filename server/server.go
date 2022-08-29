@@ -137,11 +137,11 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
-				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				if serverErrors.IsValidEncodedError(actualCode) {
-					dependencies.Logger.ErrorWithContext(c, "grpc error", logger.Error(e), logger.String("request_url", r.URL.String()))
+				if internalError, ok := e.(serverErrors.InternalError); ok {
+					e = internalError.Internal()
 				}
-
+				dependencies.Logger.ErrorWithContext(c, "grpc_error", logger.Error(e), logger.String("request_url", r.URL.String()))
+				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
 			}),
 		},
