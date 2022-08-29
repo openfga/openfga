@@ -48,7 +48,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, storage.TupleIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
@@ -56,23 +56,6 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 }
 
 func (s *staticIterator) Stop() {}
-
-type StaticObjectIterator struct {
-	objects []*openfgapb.Object
-}
-
-var _ storage.ObjectIterator = (*StaticObjectIterator)(nil)
-
-func (s *StaticObjectIterator) Next() (*openfgapb.Object, error) {
-	if len(s.objects) == 0 {
-		return nil, storage.ObjectIteratorDone
-	}
-	next, rest := s.objects[0], s.objects[1:]
-	s.objects = rest
-	return next, nil
-}
-
-func (s *StaticObjectIterator) Stop() {}
 
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
@@ -141,7 +124,7 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 		_, found := uniqueObjects[t.Key.Object]
 		if !found {
 			uniqueObjects[t.Key.Object] = true
-			_, objectID := tupleUtils.SplitObject(t.Key.Object)
+			objectType, objectID := tupleUtils.SplitObject(t.Key.Object)
 			matches = append(matches, &openfgapb.Object{
 				Type: objectType,
 				Id:   objectID,
@@ -149,7 +132,7 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 		}
 	}
 
-	return &StaticObjectIterator{objects: matches}, nil
+	return storage.NewStaticObjectIterator(matches), nil
 }
 
 // Read See storage.TupleBackend.Read
@@ -353,7 +336,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
 	for _, t := range s.tuples[store] {
-		if match(key, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.User {
+		if match(key, t.Key) {
 			return t, nil
 		}
 	}

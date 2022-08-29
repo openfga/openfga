@@ -126,7 +126,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	return &ObjectIterator{rows: rows}, nil
+	return &objectIterator{rows: rows}, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -244,8 +244,11 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
+
 	row := p.pool.QueryRow(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
-		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), tupleUtils.User)
+		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), userType)
+
 	var record tupleRecord
 	if err := row.Scan(&record.objectType, &record.objectID, &record.relation, &record.user); err != nil {
 		return nil, handlePostgresError(err)
