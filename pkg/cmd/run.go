@@ -34,15 +34,12 @@ func NewRunCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	bindFlags(cmd)
+	bindRunFlags(cmd)
 
 	return cmd
 }
 
 func run(_ *cobra.Command, _ []string) {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
 	config, err := service.GetServiceConfig()
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +62,9 @@ func run(_ *cobra.Command, _ []string) {
 		zap.String("commit", build.Commit),
 		zap.String("go-version", runtime.Version()),
 	)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
@@ -223,9 +223,9 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 	return openfgaLogger, err
 }
 
-// bindFlags binds the cobra cmd flags to the equivalent config value being managed
+// bindRunFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
-func bindFlags(cmd *cobra.Command) {
+func bindRunFlags(cmd *cobra.Command) {
 
 	defaultConfig := service.DefaultConfig()
 
@@ -299,15 +299,21 @@ func bindFlags(cmd *cobra.Command) {
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	cmdutil.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
 
-	cmd.Flags().Int("max-tuples-per-write", defaultConfig.OpenFGA.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
+	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	cmdutil.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
 
-	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.OpenFGA.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 	cmdutil.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authorization-model"))
 
-	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.OpenFGA.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
+	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 	cmdutil.MustBindPFlag("changelogHorizonOffset", cmd.Flags().Lookup("changelog-horizon-offset"))
 
-	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.OpenFGA.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
+	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
 	cmdutil.MustBindPFlag("resolveNodeLimit", cmd.Flags().Lookup("resolve-node-limit"))
+
+	cmd.Flags().Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
+	cmdutil.MustBindPFlag("listObjectsDeadline", cmd.Flags().Lookup("listObjects-deadline"))
+
+	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
+	cmdutil.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
 }

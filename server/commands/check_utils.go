@@ -348,24 +348,32 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 	return tuple.GetKey(), nil
 }
 
-func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (*tupleKeyIterator, error) {
+func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (storage.TupleKeyIterator, error) {
 	cUsersetTuples := rc.contextualTuples.readUsersetTuples(rc.tk)
 	rc.metadata.AddReadCall()
 	usersetTuples, err := backend.ReadUsersetTuples(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
 	}
-	return newTupleKeyIterator(cUsersetTuples, usersetTuples), nil
+
+	iter1 := storage.NewStaticTupleKeyIterator(cUsersetTuples)
+	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(usersetTuples)
+
+	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (*tupleKeyIterator, error) {
+func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (storage.TupleKeyIterator, error) {
 	cTuples := rc.contextualTuples.read(tk)
 	rc.metadata.AddReadCall()
 	tuples, err := backend.Read(ctx, rc.store, tk)
 	if err != nil {
 		return nil, err
 	}
-	return newTupleKeyIterator(cTuples, tuples), nil
+
+	iter1 := storage.NewStaticTupleKeyIterator(cTuples)
+	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(tuples)
+
+	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
 type contextualTuples struct {
@@ -396,37 +404,6 @@ func (c *contextualTuples) readUsersetTuples(tk *openfgapb.TupleKey) []*openfgap
 		}
 	}
 	return res
-}
-
-type tupleKeyIterator struct {
-	contextualTuples []*openfgapb.TupleKey
-	tIterator        storage.TupleIterator
-}
-
-func newTupleKeyIterator(contextualTuples []*openfgapb.TupleKey, iter storage.TupleIterator) *tupleKeyIterator {
-	return &tupleKeyIterator{
-		contextualTuples: contextualTuples,
-		tIterator:        iter,
-	}
-}
-
-func (t *tupleKeyIterator) next() (*openfgapb.TupleKey, error) {
-	if len(t.contextualTuples) > 0 {
-		res, rest := t.contextualTuples[0], t.contextualTuples[1:]
-		t.contextualTuples = rest
-		return res, nil
-	}
-
-	r, err := t.tIterator.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	return r.GetKey(), nil
-}
-
-func (t *tupleKeyIterator) stop() {
-	t.tIterator.Stop()
 }
 
 func validateAndPreprocessTuples(keyToCheck *openfgapb.TupleKey, tupleKeys []*openfgapb.TupleKey) (*contextualTuples, error) {

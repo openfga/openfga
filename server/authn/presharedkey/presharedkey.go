@@ -4,10 +4,7 @@ import (
 	"context"
 
 	"github.com/go-errors/errors"
-	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/server/authn"
 )
 
@@ -30,9 +27,9 @@ func NewPresharedKeyAuthenticator(validKeys []string) (*PresharedKeyAuthenticato
 }
 
 func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.AuthClaims, error) {
-	authHeader, err := grpcAuth.AuthFromMD(ctx, "Bearer")
+	authHeader, err := grpc_auth.AuthFromMD(ctx, "Bearer")
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "missing bearer token")
+		return nil, authn.ErrMissingBearerToken
 	}
 
 	if _, found := pka.ValidKeys[authHeader]; found {
@@ -41,7 +38,7 @@ func (pka *PresharedKeyAuthenticator) Authenticate(ctx context.Context) (*authn.
 		}, nil
 	}
 
-	return nil, status.Errorf(codes.PermissionDenied, "unauthorized")
+	return nil, authn.ErrUnauthenticated
 }
 
 func (pka *PresharedKeyAuthenticator) Close() {}

@@ -3,7 +3,7 @@ package oidc
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -11,12 +11,12 @@ import (
 	"github.com/MicahParks/keyfunc"
 	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
-	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/pkg/retryablehttp"
+	"github.com/openfga/openfga/server/authn"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/openfga/openfga/server/authn"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -30,7 +30,13 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	JWKRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval, _ = time.ParseDuration("48h")
+
+	errInvalidAudience = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
+	errInvalidClaims   = status.Error(codes.Code(openfgapb.AuthErrorCode_invalid_claims), "invalid claims")
+	errInvalidIssuer   = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_issuer), "invalid issuer")
+	errInvalidSubject  = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_subject), "invalid subject")
+	errInvalidToken    = status.Error(codes.Code(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token), "invalid bearer token")
 )
 
 var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
@@ -50,9 +56,9 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 }
 
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
-	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
+	authHeader, err := grpc_auth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "missing bearer token")
+		return nil, authn.ErrMissingBearerToken
 	}
 
 	jwtParser := jwt.NewParser(jwt.WithValidMethods([]string{"RS256"}))
@@ -60,33 +66,32 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 	token, err := jwtParser.Parse(authHeader, func(token *jwt.Token) (any, error) {
 		return oidc.JWKs.Keyfunc(token)
 	})
-
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "failed to parse the provided token: %v", err)
+		return nil, errInvalidToken
 	}
 
 	if !token.Valid {
-		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token is invalid")
+		return nil, errInvalidToken
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has malformed auth claims")
+		return nil, errInvalidClaims
 	}
 
 	if ok := claims.VerifyIssuer(oidc.IssuerURL, true); !ok {
-		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has an invalid 'issuer' claim")
+		return nil, errInvalidIssuer
 	}
 
 	if ok := claims.VerifyAudience(oidc.Audience, true); !ok {
-		return nil, status.Errorf(codes.Unauthenticated, "the provided auth token has an invalid 'audience' claim")
+		return nil, errInvalidAudience
 	}
 
 	// optional subject
 	var subject = ""
 	if subjectClaim, ok := claims["sub"]; ok {
 		if subject, ok = subjectClaim.(string); !ok {
-			return nil, status.Errorf(codes.Unauthenticated, "the provided auth token is missing the 'sub' claim")
+			return nil, errInvalidSubject
 		}
 	}
 
@@ -128,8 +133,8 @@ func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
 
 func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 	jwks, err := keyfunc.Get(oidc.JwksURI, keyfunc.Options{
-		Client:          retryablehttp.New().StandardClient(),
-		RefreshInterval: JWKRefreshInterval,
+		Client:          oidc.httpClient,
+		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
 		return nil, errors.Errorf("Error fetching keys from %v: %v", oidc.JwksURI, err)
@@ -154,7 +159,7 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 		return nil, errors.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
 	}
 
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, errors.Errorf("error reading response body: %v", err)
 	}

@@ -9,6 +9,7 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -44,12 +45,12 @@ func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.
 
 // Execute the query in `checkRequest`, returning the response or an error.
 func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	statCheckResolutionDepth, _ := query.meter.SyncInt64().Counter(
+	statCheckResolutionDepth, _ := query.meter.AsyncInt64().Gauge(
 		"openfga.check.resolution.depth",
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
-	statCheckDBCalls, _ := query.meter.SyncInt64().Counter(
+	statCheckDBCalls, _ := query.meter.AsyncInt64().Gauge(
 		"openfga.check.db.calls",
 		instrument.WithDescription("Number of db queries needed to execute check requests"),
 		instrument.WithUnit(unit.Dimensionless),
@@ -87,10 +88,10 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
 	if statCheckResolutionDepth != nil {
-		statCheckResolutionDepth.Add(ctx, int64(rc.metadata.GetResolve()))
+		statCheckResolutionDepth.Observe(ctx, int64(rc.metadata.GetResolve()))
 	}
 	if statCheckDBCalls != nil {
-		statCheckDBCalls.Add(ctx, int64(rc.metadata.GetReadCalls()))
+		statCheckDBCalls.Observe(ctx, int64(rc.metadata.GetReadCalls()))
 	}
 
 	return &openfgapb.CheckResponse{
@@ -103,7 +104,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
+	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
@@ -194,9 +195,9 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	}
 
 	for {
-		usersetTuple, err := iter.next()
+		usersetTuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -240,7 +241,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	}
 
 	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.stop()
+	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
@@ -412,9 +413,9 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.next()
+		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return serverErrors.HandleError("", err)
@@ -463,7 +464,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	}
 
 	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.stop()
+	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
