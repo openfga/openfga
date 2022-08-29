@@ -30,6 +30,12 @@ func NewTupleKey(object, relation, user string) *openfgapb.TupleKey {
 	}
 }
 
+// ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
+// is the string 'objectType:objectId'.
+func ObjectKey(obj *openfgapb.Object) string {
+	return fmt.Sprintf("%s:%s", obj.Type, obj.Id)
+}
+
 // SplitObject splits an object into an objectType and an objectID. If no type is present, it returns the empty string
 // and the original object.
 func SplitObject(object string) (string, string) {
