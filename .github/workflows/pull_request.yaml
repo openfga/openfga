@@ -69,24 +69,22 @@ jobs:
             echo "::set-output name=go-build::$(go env GOCACHE)"
             echo "::set-output name=go-mod::$(go env GOMODCACHE)"
 
-        # Cache go build cache, used to speedup go test
+        # Cache go build and go mod cache, used to speedup go test
         - uses: actions/cache@v3
           with:
-            path: ${{ steps.go-cache-paths.outputs.go-build }}
-            key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-
-        # Cache go mod cache, used to speedup builds
-        - uses: actions/cache@v3
-          with:
-            path: ${{ steps.go-cache-paths.outputs.go-mod }}
-            key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+            path: |
+              ${{ steps.go-cache-paths.outputs.go-mod }}
+              ${{ steps.go-cache-paths.outputs.go-build }}
+            key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+            restore-keys: |
+              ${{ runner.os }}-go
 
         # build the openfga/openfga image for the functional tests
         - uses: docker/build-push-action@v2
           with:
             file: Dockerfile
-            push: false
-            tags: "openfga/openfga:latest"
+            push: false # don't publish the built container for functional tests
+            tags: "openfga/openfga:functionaltest"
 
         - name: Functional Tests
           run: make functional-test

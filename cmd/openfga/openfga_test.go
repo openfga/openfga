@@ -16,6 +16,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -71,7 +72,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 			nat.Port("8081/tcp"): {},
 			nat.Port("3000/tcp"): {},
 		},
-		Image: "openfga/openfga",
+		Image: "openfga/openfga:functionaltest",
 		Cmd:   cmd,
 	}
 
@@ -502,7 +503,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId:              "1",
 				AuthorizationModelId: testutils.RandomID(t),
-				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -513,7 +514,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId:              testutils.RandomID(t) + "A",
 				AuthorizationModelId: testutils.RandomID(t),
-				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -524,7 +525,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				AuthorizationModelId: testutils.RandomID(t),
-				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -535,7 +536,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId:              testutils.RandomID(t),
 				AuthorizationModelId: testutils.RandomID(t) + "A",
-				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -546,7 +547,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId:              testutils.RandomID(t),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				TupleKey:             tuple("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -567,7 +568,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId: testutils.RandomID(t),
 				// AuthorizationModelId is generated automatically during testData bootstrap
-				TupleKey: tuple("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+				TupleKey: tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
 				Trace:    true,
 			},
 			output: output{
@@ -599,7 +600,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				},
 				tuples: &openfgapb.TupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{
-						tuple("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+						tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
 					},
 				},
 			},
@@ -956,12 +957,4 @@ func HTTPCheckTest(t *testing.T) {
 
 func HTTPExpandTest(t *testing.T) {
 
-}
-
-func tuple(object, relation, user string) *openfgapb.TupleKey {
-	return &openfgapb.TupleKey{
-		Object:   object,
-		Relation: relation,
-		User:     user,
-	}
 }
