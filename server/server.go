@@ -41,8 +41,8 @@ const (
 )
 
 var (
-	ErrNilTokenEncoder = fmt.Errorf("tokenEncoder must be a non-nil interface value")
-	ErrNilTransport    = fmt.Errorf("transport must be a non-nil interface value")
+	ErrNilTokenEncoder = errors.Errorf("tokenEncoder must be a non-nil interface value")
+	ErrNilTransport    = errors.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
