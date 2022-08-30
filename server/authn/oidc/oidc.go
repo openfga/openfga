@@ -11,7 +11,7 @@ import (
 	"github.com/MicahParks/keyfunc"
 	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
-	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/server/authn"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -56,7 +56,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 }
 
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
-	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
+	authHeader, err := grpcauth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
 	}
