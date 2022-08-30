@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -147,6 +148,29 @@ type Config struct {
 	Profiler   ProfilerConfig
 }
 
+func DefaultConfigWithRandomPorts() (*Config, error) {
+	config := DefaultConfig()
+
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		return nil, err
+	}
+	defer l.Close()
+	httpPort := l.Addr().(*net.TCPAddr).Port
+
+	l, err = net.Listen("tcp", "")
+	if err != nil {
+		return nil, err
+	}
+	defer l.Close()
+	grpcPort := l.Addr().(*net.TCPAddr).Port
+
+	config.GRPC.Addr = fmt.Sprintf(":%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf(":%d", httpPort)
+
+	return config, nil
+}
+
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -227,6 +251,8 @@ func GetServiceConfig() (*Config, error) {
 
 type service struct {
 	server        *server.Server
+	grpcPort      string
+	httpPort      string
 	datastore     storage.OpenFGADatastore
 	authenticator authn.Authenticator
 }
@@ -239,6 +265,18 @@ func (s *service) Close(ctx context.Context) error {
 
 func (s *service) Run(ctx context.Context) error {
 	return s.server.Run(ctx)
+}
+
+// GetHTTPPort returns the configured or auto-assigned port that the underlying HTTP service is running
+// on.
+func (s *service) GetHTTPPort() string {
+	return s.httpPort
+}
+
+// GetGRPCPort returns the configured or auto-assigned port that the underlying grpc service is running
+// on.
+func (s *service) GetGRPCPort() string {
+	return s.grpcPort
 }
 
 func BuildService(config *Config, logger logger.Logger) (*service, error) {
@@ -347,8 +385,20 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		return nil, errors.Errorf("failed to initialize openfga server: %v", err)
 	}
 
+	_, grpcPort, err := net.SplitHostPort(config.GRPC.Addr)
+	if err != nil {
+		return nil, errors.Errorf("failed to split the host:port from the provided grpc address '%s': %v", config.GRPC.Addr, err)
+	}
+
+	_, httpPort, err := net.SplitHostPort(config.HTTP.Addr)
+	if err != nil {
+		return nil, errors.Errorf("failed to split the host:port from the provided HTTP address '%s': %v", config.HTTP.Addr, err)
+	}
+
 	return &service{
 		server:        openFgaServer,
+		grpcPort:      grpcPort,
+		httpPort:      httpPort,
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
