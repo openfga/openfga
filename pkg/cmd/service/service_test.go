@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authn/mocks"
@@ -87,7 +88,7 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 		}
 
 		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return fmt.Errorf("not serving")
+			return errors.Errorf("not serving")
 		}
 
 		return nil
