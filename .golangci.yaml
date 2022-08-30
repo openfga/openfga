@@ -4,6 +4,13 @@ run:
 
 linters:
   enable:
+    - errname
+    - forbidigo
     - gofmt
     - goimports
     - stylecheck
+
+linters-settings:
+  forbidigo:
+    forbid:
+      - '^fmt\.Errorf$'
