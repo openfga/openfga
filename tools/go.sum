@@ -102,8 +102,6 @@ github.com/cncf/udpa/go v0.0.0-20201120205902-5459f2c99403/go.mod h1:WmhPx2Nbnht
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cristalhq/acmd v0.7.0/go.mod h1:LG5oa43pE/BbxtfMoImHCQN++0Su7dzipdgBjMCBVDQ=
-github.com/curioswitch/go-reassign v0.1.2 h1:ekM07+z+VFT560Exz4mTv0/s1yU9gem6CJc/tlYpkmI=
-github.com/curioswitch/go-reassign v0.1.2/go.mod h1:bFJIHgtTM3hRm2sKXSPkbwNjSFyGURQXyn4IXD2qwfQ=
 github.com/daixiang0/gci v0.6.3 h1:wUAqXChk8HbwXn8AfxD9DYSCp9Bpz1L3e6Q4Roe+q9E=
 github.com/daixiang0/gci v0.6.3/go.mod h1:EpVfrztufwVgQRXjnX4zuNinEpLj5OmMjtu/+MB0V0c=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -212,8 +210,8 @@ github.com/golangci/go-misc v0.0.0-20220329215616-d24fe342adfe h1:6RGUuS7EGotKx6
 github.com/golangci/go-misc v0.0.0-20220329215616-d24fe342adfe/go.mod h1:gjqyPShc/m8pEMpk0a3SeagVb0kaqvhscv+i9jI5ZhQ=
 github.com/golangci/gofmt v0.0.0-20190930125516-244bba706f1a h1:iR3fYXUjHCR97qWS8ch1y9zPNsgXThGwjKPrYfqMPks=
 github.com/golangci/gofmt v0.0.0-20190930125516-244bba706f1a/go.mod h1:9qCChq59u/eW8im404Q2WWTrnBUQKjpNYKMbU4M7EFU=
-github.com/golangci/golangci-lint v1.49.0 h1:I8WHOavragDttlLHtSraHn/h39C+R60bEQ5NoGcHQr8=
-github.com/golangci/golangci-lint v1.49.0/go.mod h1:+V/7lLv449R6w9mQ3WdV0EKh7Je/jTylMeSwBZcLeWE=
+github.com/golangci/golangci-lint v1.48.0 h1:hRiBNk9iRqdAKMa06ntfEiLyza1/3IE9rHLNJaek4a8=
+github.com/golangci/golangci-lint v1.48.0/go.mod h1:5N+oxduCho+7yuccW69upg/O7cxjfR/d+IQeiNxGmKM=
 github.com/golangci/lint-1 v0.0.0-20191013205115-297bf364a8e0 h1:MfyDlzVjl1hoaPzPD4Gpb/QgoRfSBR0jdhwGyAWwMSA=
 github.com/golangci/lint-1 v0.0.0-20191013205115-297bf364a8e0/go.mod h1:66R6K6P6VWk9I95jvqGxkqJxVWGFy9XlDwLwVz1RCFg=
 github.com/golangci/maligned v0.0.0-20180506175553-b1d89398deca h1:kNY3/svz5T29MYHubXix4aDDuE3RWHkPvopM/EDv/MA=
@@ -466,8 +464,6 @@ github.com/ryanrolds/sqlclosecheck v0.3.0 h1:AZx+Bixh8zdUBxUA1NxbxVAS78vTPq4rCb8
 github.com/ryanrolds/sqlclosecheck v0.3.0/go.mod h1:1gREqxyTGR3lVtpngyFo3hZAgk0KCtEdgEkHwDbigdA=
 github.com/sanposhiho/wastedassign/v2 v2.0.7 h1:J+6nrY4VW+gC9xFzUc+XjPD3g3wF3je/NsJFwFK7Uxc=
 github.com/sanposhiho/wastedassign/v2 v2.0.7/go.mod h1:KyZ0MWTwxxBmfwn33zh3k1dmsbF2ud9pAAGfoLfjhtI=
-github.com/sashamelentyev/interfacebloat v1.1.0 h1:xdRdJp0irL086OyW1H/RTZTr1h/tMEOsumirXcOJqAw=
-github.com/sashamelentyev/interfacebloat v1.1.0/go.mod h1:+Y9yU5YdTkrNvoX0xHc84dxiN1iBi9+G8zZIhPVoNjQ=
 github.com/sashamelentyev/usestdlibvars v1.13.0 h1:uObNudVEEHf6JbOJy5bgKJloA1bWjxR9fwgNFpPzKnI=
 github.com/sashamelentyev/usestdlibvars v1.13.0/go.mod h1:D2Wb7niIYmTB+gB8z7kh8tyP5ccof1dQ+SFk+WW5NtY=
 github.com/securego/gosec/v2 v2.13.1 h1:7mU32qn2dyC81MH9L2kefnQyRMUarfDER3iQyMHcjYM=
@@ -534,8 +530,6 @@ github.com/tetafro/godot v1.4.11 h1:BVoBIqAf/2QdbFmSwAWnaIqDivZdOV0ZRwEm6jivLKw=
 github.com/tetafro/godot v1.4.11/go.mod h1:LR3CJpxDVGlYOWn3ZZg1PgNZdTUvzsZWu8xaEohUpn8=
 github.com/timakin/bodyclose v0.0.0-20210704033933-f49887972144 h1:kl4KhGNsJIbDHS9/4U9yQo1UcPQM0kOMJHn29EoH/Ro=
 github.com/timakin/bodyclose v0.0.0-20210704033933-f49887972144/go.mod h1:Qimiffbc6q9tBWlVV6x0P9sat/ao1xEkREYPPj9hphk=
-github.com/timonwong/logrlint v0.4.0 h1:NO1LBfWw9DEByynMNuCbvzczXSS08wTTjOVu/4cWPdg=
-github.com/timonwong/logrlint v0.4.0/go.mod h1:5V+qRnjYXE74IDzxox865j/FoTfEEoJDyV0yT3RMu6g=
 github.com/tomarrell/wrapcheck/v2 v2.6.2 h1:3dI6YNcrJTQ/CJQ6M/DUkc0gnqYSIk6o0rChn9E/D0M=
 github.com/tomarrell/wrapcheck/v2 v2.6.2/go.mod h1:ao7l5p0aOlUNJKI0qVwB4Yjlqutd0IvAB9Rdwyilxvg=
 github.com/tommy-muehle/go-mnd/v2 v2.5.0 h1:iAj0a8e6+dXSL7Liq0aXPox36FiN1dBbjA6lt9fl65s=
