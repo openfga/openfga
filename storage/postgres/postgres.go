@@ -464,13 +464,20 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
 
-	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())"
-	_, err := p.pool.Exec(ctx, stmt, store.Id, store.Name)
+	var id, name string
+	var createdAt time.Time
+	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, name, created_at"
+	err := p.pool.QueryRow(ctx, stmt, store.Id, store.Name).Scan(&id, &name, &createdAt)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
 
-	return store, nil
+	return &openfgapb.Store{
+		Id:        id,
+		Name:      name,
+		CreatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(createdAt),
+	}, nil
 }
 
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
