@@ -8,15 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [0.2.1] - 2022-08-29
+## [0.2.1] - 2022-08-30
 ### Added
 * Support Check API calls on userset types of users (#146)
 * Add backoff when connecting to Postgres (#188)
 
 ### Fixed
 * Improve logging of internal server errors (#193)
-* Use Postgres in Docker compose (#195)
-* Authorization errors (#144)
+* Use Postgres in the sample Docker Compose file (#195)
+* Emit authorization errors (#144)
 * Telemetry in Check and ListObjects APIs (#177)
 * ListObjects API: respect the value of ListObjectsMaxResults (#181)
 
