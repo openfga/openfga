@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -15,6 +16,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -61,20 +63,7 @@ func WithTracer(t trace.Tracer) PostgresOption {
 }
 
 func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error) {
-
-	pgxConfig, err := pgxpool.ParseConfig(uri)
-	if err != nil {
-		return nil, errors.Errorf("failed to parse config from uri: %v", err)
-	}
-
-	dbpool, err := pgxpool.ConnectConfig(context.Background(), pgxConfig)
-	if err != nil {
-		return nil, errors.Errorf("failed to intialize postgres connection: %v", err)
-	}
-
-	p := &Postgres{
-		pool: dbpool,
-	}
+	p := &Postgres{}
 
 	for _, opt := range opts {
 		opt(p)
@@ -95,6 +84,26 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	if p.maxTypesInTypeDefinition == 0 {
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
+
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 1 * time.Minute
+	var pool *pgxpool.Pool
+	attempt := 1
+	err := backoff.Retry(func() error {
+		var err error
+		pool, err = pgxpool.Connect(context.Background(), uri)
+		if err != nil {
+			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
+			attempt++
+			return err
+		}
+		return nil
+	}, policy)
+	if err != nil {
+		return nil, errors.Errorf("failed to initialize Postgres connection: %v", err)
+	}
+
+	p.pool = pool
 
 	return p, nil
 }
@@ -117,7 +126,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	return &ObjectIterator{rows: rows}, nil
+	return &objectIterator{rows: rows}, nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -235,8 +244,11 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
+
 	row := p.pool.QueryRow(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
-		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), tupleUtils.User)
+		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), userType)
+
 	var record tupleRecord
 	if err := row.Scan(&record.objectType, &record.objectID, &record.relation, &record.user); err != nil {
 		return nil, handlePostgresError(err)

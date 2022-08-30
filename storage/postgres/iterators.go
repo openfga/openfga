@@ -18,7 +18,7 @@ var _ storage.TupleIterator = (*tupleIterator)(nil)
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
 		t.Stop()
-		return nil, storage.ErrTupleIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 
 	var record tupleRecord
@@ -42,7 +42,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.ErrTupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				return res, nil, nil
 			}
 			return nil, nil, err
@@ -54,7 +54,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	// This is why we have LIMIT+1 in the query.
 	tupleRecord, err := t.next()
 	if err != nil {
-		if errors.Is(err, storage.ErrTupleIteratorDone) {
+		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, nil, nil
 		}
 		return nil, nil, err
@@ -80,16 +80,16 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type ObjectIterator struct {
+type objectIterator struct {
 	rows pgx.Rows
 }
 
-var _ storage.ObjectIterator = (*ObjectIterator)(nil)
+var _ storage.ObjectIterator = (*objectIterator)(nil)
 
-func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
+func (o *objectIterator) Next() (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
-		return nil, storage.ErrObjectIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 
 	var objectID, objectType string
@@ -107,6 +107,6 @@ func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
 	}, nil
 }
 
-func (o *ObjectIterator) Stop() {
+func (o *objectIterator) Stop() {
 	o.rows.Close()
 }

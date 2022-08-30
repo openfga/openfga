@@ -172,33 +172,27 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	g.SetLimit(maximumConcurrentChecks)
 	var objectsFound = new(uint32)
 
-	iter, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
+	iter1 := storage.NewTupleKeyObjectIterator(input.ctxTuples.GetTupleKeys())
+
+	iter2, err := q.Datastore.ListObjectsByType(timeoutCtx, input.storeID, input.objectType)
+	if err != nil {
+		errChan <- err
+		return
+	}
+
+	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
+	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	if err != nil {
 		errChan <- err
 		return
 	}
 	defer iter.Stop()
 
-	// iterate over the contextual tuples
-	if input.ctxTuples != nil {
-		for _, t := range input.ctxTuples.TupleKeys {
-			if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
-				break
-			}
-			t := t
-			checkFunction := func() error {
-				return q.internalCheck(timeoutCtx, t.Object, input, objectsFound, resultsChan)
-			}
-
-			g.Go(checkFunction)
-		}
-	}
-
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
 		object, err := iter.Next()
 		if err != nil {
-			if errors.Is(err, storage.ErrObjectIteratorDone) {
+			if errors.Is(err, storage.ErrIteratorDone) {
 				break
 			} else {
 				errChan <- err
@@ -210,7 +204,7 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(timeoutCtx, tuple.BuildObject(object.Type, object.Id), input, objectsFound, resultsChan)
+			return q.internalCheck(timeoutCtx, object, input, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
@@ -225,19 +219,14 @@ func (q *ListObjectsQuery) performChecks(timeoutCtx context.Context, input *Perf
 	close(resolvedChan)
 }
 
-func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, input *PerformChecksInput, objectsFound *uint32, resultsChan chan<- string) error {
-	_, objectID := tuple.SplitObject(object)
+func (q *ListObjectsQuery) internalCheck(ctx context.Context, obj *openfgapb.Object, input *PerformChecksInput, objectsFound *uint32, resultsChan chan<- string) error {
 	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
 
 	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              input.storeID,
 		AuthorizationModelId: input.authModelID,
-		TupleKey: &openfgapb.TupleKey{
-			Object:   object,
-			Relation: input.relation,
-			User:     input.user,
-		},
-		ContextualTuples: input.ctxTuples,
+		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), input.relation, input.user),
+		ContextualTuples:     input.ctxTuples,
 	})
 	if err != nil {
 		// ignore the error. we don't want to abort everything if one of the checks failed.
@@ -246,7 +235,7 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, object string, inp
 	}
 
 	if resp.Allowed && atomic.LoadUint32(objectsFound) < q.ListObjectsMaxResults {
-		resultsChan <- objectID
+		resultsChan <- obj.Id
 		atomic.AddUint32(objectsFound, 1)
 	}
 

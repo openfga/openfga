@@ -33,7 +33,7 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 
 #### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA using `docker compose`.
+[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
@@ -44,7 +44,7 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 2. Then, run the following command:
 
    ```bash
-   docker compose up openfga
+   docker compose up
    ```
 
 #### Pre-compiled Binaries
@@ -105,28 +105,6 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
    ```bash
    ./openfga run
    ```
-
-### Running with Postgres
-
-This section assumes that you have cloned the repository.
-
-To run OpenFGA with the Postgres datastore engine first build OpenFGA and start Postgres in a container:
-```
-make build
-docker compose up -d postgres
-```
-Then run the following commands:
-```bash
-./openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
-./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
-```
-You should see `using 'postgres' storage engine` in the logs.
-
-When you are done you can stop the Postgres container with:
-
-```bash
-docker compose down
-```
 
 ### Verifying the Installation
 

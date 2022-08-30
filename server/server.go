@@ -137,11 +137,11 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
-				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				if serverErrors.IsValidEncodedError(actualCode) {
-					dependencies.Logger.ErrorWithContext(c, "grpc error", logger.Error(e), logger.String("request_url", r.URL.String()))
+				if internalError, ok := e.(serverErrors.InternalError); ok {
+					e = internalError.Internal()
 				}
-
+				dependencies.Logger.ErrorWithContext(c, "grpc_error", logger.Error(e), logger.String("request_url", r.URL.String()))
+				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
 			}),
 		},
@@ -481,34 +481,6 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
-type AuthenticationOverride struct{}
-
-var _ grpc_auth.ServiceAuthFuncOverride = (*AuthenticationOverride)(nil)
-
-// AuthFuncOverride skips middleware/AuthFunc
-func (m AuthenticationOverride) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
-	return ctx, nil
-}
-
-type openfgaHealthServer struct {
-	healthv1pb.UnimplementedHealthServer
-	Server *Server
-	AuthenticationOverride
-}
-
-func (o openfgaHealthServer) Check(ctx context.Context, request *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
-	_, err := o.Server.IsReady(ctx)
-	if err != nil {
-		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
-	} else {
-		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
-	}
-}
-
-func (o openfgaHealthServer) Watch(request *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
-	return status.Error(codes.Unimplemented, "unimplemented streaming endpoint")
-}
-
 // Run starts server execution, and blocks until complete, returning any server errors. To close the
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
@@ -532,7 +504,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
-	healthServer := &openfgaHealthServer{Server: s}
+	healthServer := &openfgaHealthServer{HealthChecker: s}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
@@ -661,4 +633,44 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
+}
+
+// HealthChecker defines an interface that services can implement for server health checks.
+type HealthChecker interface {
+	IsReady(ctx context.Context) (bool, error)
+}
+
+type openfgaHealthServer struct {
+	healthv1pb.UnimplementedHealthServer
+	HealthChecker
+}
+
+var _ grpc_auth.ServiceAuthFuncOverride = (*openfgaHealthServer)(nil)
+
+// AuthFuncOverride implements the grpc_auth.ServiceAuthFuncOverride interface by bypassing authn middleware.
+func (o *openfgaHealthServer) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
+	return ctx, nil
+}
+
+func (o *openfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
+
+	service := req.GetService()
+	if service == "" || service == openfgapb.OpenFGAService_ServiceDesc.ServiceName {
+		ready, err := o.HealthChecker.IsReady(ctx)
+		if err != nil {
+			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
+		}
+
+		if !ready {
+			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, nil
+		}
+
+		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "service '%s' is not registered with the Health server", service)
+}
+
+func (o *openfgaHealthServer) Watch(req *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "unimplemented streaming endpoint")
 }

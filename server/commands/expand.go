@@ -7,6 +7,7 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -94,7 +95,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.ErrTupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
@@ -174,7 +175,7 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 	for {
 		tuple, err := iter.Next()
 		if err != nil {
-			if err == storage.ErrTupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
@@ -308,7 +309,7 @@ func (query *ExpandQuery) getUserset(ctx context.Context, store, modelID string,
 	ctx, span := query.tracer.Start(ctx, "getUserset")
 	defer span.End()
 
-	userset, err := tupleUtils.ValidateObjectsRelations(ctx, query.datastore, store, modelID, tk, metadata)
+	userset, err := validation.ValidateObjectsRelations(ctx, query.datastore, store, modelID, tk, metadata)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
