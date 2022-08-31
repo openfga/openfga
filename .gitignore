@@ -1,6 +1,7 @@
 bin
 .idea
 .vscode
+openfga
 
 dist/
 
