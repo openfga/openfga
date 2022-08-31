@@ -112,8 +112,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgapb.Userset{
 								"writer": {
 									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "",
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "owner",
 										},
 									},
@@ -137,12 +136,10 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 								"viewer": {
 									Userset: &openfgapb.Userset_TupleToUserset{
 										TupleToUserset: &openfgapb.TupleToUserset{
-											Tupleset: &openfgapb.ObjectRelation{
-												Object:   "",
+											Tupleset: &openfgapb.Tupleset{
 												Relation: "writer",
 											},
-											ComputedUserset: &openfgapb.ObjectRelation{
-												Object:   "$TUPLE_USERSET_OBJECT",
+											ComputedUserset: &openfgapb.ComputedUserset{
 												Relation: "owner",
 											},
 										},
@@ -170,8 +167,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 											Child: []*openfgapb.Userset{
 												{Userset: &openfgapb.Userset_This{}},
 												{Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Object:   "",
+													ComputedUserset: &openfgapb.ComputedUserset{
 														Relation: "owner",
 													},
 												}},
@@ -199,14 +195,12 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 									Userset: &openfgapb.Userset_Difference{
 										Difference: &openfgapb.Difference{
 											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "writer",
 												},
 											}},
 											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "owner",
 												},
 											}},
@@ -233,14 +227,12 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 									Userset: &openfgapb.Userset_Difference{
 										Difference: &openfgapb.Difference{
 											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "owner",
 												},
 											}},
 											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "writer",
 												},
 											}},
@@ -266,12 +258,10 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 								"viewer": {
 									Userset: &openfgapb.Userset_TupleToUserset{
 										TupleToUserset: &openfgapb.TupleToUserset{
-											Tupleset: &openfgapb.ObjectRelation{
-												Object:   "",
+											Tupleset: &openfgapb.Tupleset{
 												Relation: "owner",
 											},
-											ComputedUserset: &openfgapb.ObjectRelation{
-												Object:   "$TUPLE_USERSET_OBJECT",
+											ComputedUserset: &openfgapb.ComputedUserset{
 												Relation: "from",
 											},
 										},
@@ -296,12 +286,10 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 								"viewer": {
 									Userset: &openfgapb.Userset_TupleToUserset{
 										TupleToUserset: &openfgapb.TupleToUserset{
-											Tupleset: &openfgapb.ObjectRelation{
-												Object:   "",
+											Tupleset: &openfgapb.Tupleset{
 												Relation: "writer",
 											},
-											ComputedUserset: &openfgapb.ObjectRelation{
-												Object:   "$TUPLE_USERSET_OBJECT",
+											ComputedUserset: &openfgapb.ComputedUserset{
 												Relation: "owner",
 											},
 										},
@@ -324,8 +312,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgapb.Userset{
 								"writer": {
 									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "",
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "reader",
 										},
 									},
@@ -340,8 +327,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgapb.Userset{
 								"owner": {
 									Userset: &openfgapb.Userset_ComputedUserset{
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "",
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "writer",
 										},
 									},
@@ -368,8 +354,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 											Child: []*openfgapb.Userset{
 												{Userset: &openfgapb.Userset_This{}},
 												{Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Object:   "",
+													ComputedUserset: &openfgapb.ComputedUserset{
 														Relation: "owner",
 													},
 												}},
@@ -397,8 +382,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 										Difference: &openfgapb.Difference{
 											Base: &openfgapb.Userset{Userset: &openfgapb.Userset_This{}},
 											Subtract: &openfgapb.Userset{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Object:   "",
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "viewer",
 												},
 											}},
@@ -426,7 +410,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 										Union: &openfgapb.Usersets{
 											Child: []*openfgapb.Userset{
 												{Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
+													ComputedUserset: &openfgapb.ComputedUserset{
 														Relation: "viewer",
 													},
 												}},
@@ -453,7 +437,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 									Userset: &openfgapb.Userset_Intersection{
 										Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
 											{Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "viewer",
 												},
 											}},

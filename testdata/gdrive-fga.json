@@ -26,7 +26,6 @@
                                         "relation": "parent"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "owner"
                                     }
                                 }
@@ -51,7 +50,6 @@
                                         "relation": "parent"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "writer"
                                     }
                                 }
@@ -76,7 +74,6 @@
                                         "relation": "parent"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "commenter"
                                     }
                                 }
@@ -101,7 +98,6 @@
                                         "relation": "parent"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "reader"
                                     }
                                 }

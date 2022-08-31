@@ -26,7 +26,6 @@
                                         "relation": "parent"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "reader"
                                     }
                                 }

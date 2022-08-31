@@ -121,18 +121,15 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 }
 
 // resolveComputedUserset builds a leaf node containing the result of resolving a ComputedUserset rewrite.
-func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, computedUserset *openfgapb.ComputedUserset, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
 
 	var span trace.Span
 	_, span = query.tracer.Start(ctx, "resolveComputedUserset")
 	defer span.End()
 
 	computed := &openfgapb.TupleKey{
-		Object:   userset.GetObject(),
-		Relation: userset.GetRelation(),
-	}
-	if len(computed.Object) == 0 {
-		computed.Object = tk.Object
+		Object:   tk.GetObject(),
+		Relation: computedUserset.GetRelation(),
 	}
 	if len(computed.Relation) == 0 {
 		computed.Relation = tk.Relation
@@ -152,13 +149,13 @@ func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *o
 }
 
 // resolveTupleToUserset creates a new leaf node containing the result of expanding a TupleToUserset rewrite.
-func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store string, userset *openfgapb.TupleToUserset, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store string, tupleToUserset *openfgapb.TupleToUserset, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveTupleToUserset")
 	defer span.End()
 
 	tsKey := &openfgapb.TupleKey{
 		Object:   tk.GetObject(),
-		Relation: userset.GetTupleset().GetRelation(),
+		Relation: tupleToUserset.GetTupleset().GetRelation(),
 	}
 	if tsKey.GetRelation() == "" {
 		tsKey.Relation = tk.GetRelation()
@@ -189,9 +186,9 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 		// We only proceed in the case that tRelation == userset.GetComputedUserset().GetRelation().
 		// tRelation may be empty, and in this case, we set it to userset.GetComputedUserset().GetRelation().
 		if tRelation == "" {
-			tRelation = userset.GetComputedUserset().GetRelation()
+			tRelation = tupleToUserset.GetComputedUserset().GetRelation()
 		}
-		if tRelation != userset.GetComputedUserset().GetRelation() {
+		if tRelation != tupleToUserset.GetComputedUserset().GetRelation() {
 			continue
 		}
 		cs := &openfgapb.TupleKey{

@@ -15,7 +15,6 @@
                                         "relation": "manager"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "manager"
                                     }
                                 }
@@ -37,7 +36,6 @@
                             "relation": "submitter"
                         },
                         "computedUserset": {
-                            "object": "$TUPLE_USERSET_OBJECT",
                             "relation": "manager"
                         }
                     }

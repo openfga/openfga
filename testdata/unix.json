@@ -60,7 +60,6 @@
                             "relation": "parent"
                         },
                         "computedUserset": {
-                            "object": "$TUPLE_USERSET_OBJECT",
                             "relation": "executor"
                         }
                     }
@@ -130,7 +129,6 @@
                                                     "relation": "parent"
                                                 },
                                                 "computedUserset": {
-                                                    "object": "$TUPLE_USERSET_OBJECT",
                                                     "relation": "executor"
                                                 }
                                             }

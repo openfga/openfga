@@ -92,7 +92,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 							"admin": {},
 							"writer": {
 								Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
+									ComputedUserset: &openfgapb.ComputedUserset{
 										Relation: "admin",
 									},
 								},
@@ -135,11 +135,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 							"admin": {
 								Userset: &openfgapb.Userset_TupleToUserset{
 									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
+										Tupleset: &openfgapb.Tupleset{
 											Relation: "manager",
 										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "repo_admin",
 										},
 									},
@@ -206,11 +205,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 							"admin": {
 								Userset: &openfgapb.Userset_TupleToUserset{
 									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
+										Tupleset: &openfgapb.Tupleset{
 											Relation: "manager",
 										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "repo_admin",
 										},
 									},
@@ -282,10 +280,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 							"admin": {
 								Userset: &openfgapb.Userset_TupleToUserset{
 									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
+										Tupleset: &openfgapb.Tupleset{
 											Relation: "manager",
 										},
-										ComputedUserset: &openfgapb.ObjectRelation{
+										ComputedUserset: &openfgapb.ComputedUserset{
 											Relation: "repo_admin",
 										},
 									},
@@ -361,7 +359,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 											},
 											{
 												Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
+													ComputedUserset: &openfgapb.ComputedUserset{
 														Relation: "admin",
 													},
 												},
@@ -439,14 +437,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 									Difference: &openfgapb.Difference{
 										Base: &openfgapb.Userset{
 											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "admin",
 												},
 											},
 										},
 										Subtract: &openfgapb.Userset{
 											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "banned",
 												},
 											},
@@ -521,7 +519,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 											},
 											{
 												Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
+													ComputedUserset: &openfgapb.ComputedUserset{
 														Relation: "admin",
 													},
 												},
@@ -606,11 +604,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 														{
 															Userset: &openfgapb.Userset_TupleToUserset{
 																TupleToUserset: &openfgapb.TupleToUserset{
-																	Tupleset: &openfgapb.ObjectRelation{
+																	Tupleset: &openfgapb.Tupleset{
 																		Relation: "owner",
 																	},
-																	ComputedUserset: &openfgapb.ObjectRelation{
-																		Object:   "$TUPLE_USERSET_OBJECT",
+																	ComputedUserset: &openfgapb.ComputedUserset{
 																		Relation: "repo_writer",
 																	},
 																},
@@ -622,7 +619,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 										},
 										Subtract: &openfgapb.Userset{
 											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
+												ComputedUserset: &openfgapb.ComputedUserset{
 													Relation: "banned_writer",
 												},
 											},

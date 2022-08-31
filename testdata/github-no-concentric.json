@@ -15,7 +15,6 @@
                                         "relation": "owner"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "repo_admin"
                                     }
                                 }
@@ -44,7 +43,6 @@
                                         "relation": "owner"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "repo_writer"
                                     }
                                 }
@@ -73,7 +71,6 @@
                                         "relation": "owner"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "repo_reader"
                                     }
                                 }
@@ -147,7 +144,6 @@
                                         "relation": "owner"
                                     },
                                     "computedUserset": {
-                                        "object": "$TUPLE_USERSET_OBJECT",
                                         "relation": "owner"
                                     }
                                 }
