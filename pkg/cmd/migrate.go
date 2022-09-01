@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-errors/errors"
 	_ "github.com/jackc/pgx/v4/stdlib"
+    _ "github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/assets"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/pressly/goose/v3"
@@ -78,6 +79,41 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		}
 
 		if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	case "mysql":
+		db, err := sql.Open("mysql", uri)
+		if err != nil {
+			log.Fatal("failed to parse the config from the connection uri", err)
+		}
+
+		if err := goose.SetDialect("mysql"); err != nil {
+			log.Fatal("failed to initialize the migrate command", err)
+		}
+
+		goose.SetBaseFS(assets.EmbedMigrations)
+
+		if version > 0 {
+			currentVersion, err := goose.GetDBVersion(db)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			int64Version := int64(version)
+			if int64Version < currentVersion {
+				if err := goose.DownTo(db, assets.MySQLMigrationDir, int64Version); err != nil {
+					log.Fatal(err)
+				}
+			}
+
+			if err := goose.UpTo(db, assets.MySQLMigrationDir, int64Version); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		if err := goose.Up(db, assets.MySQLMigrationDir); err != nil {
 			log.Fatal(err)
 		}
 

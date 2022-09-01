@@ -9,6 +9,7 @@ require (
 	github.com/docker/docker v20.10.18+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-errors/errors v1.4.2
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang-jwt/jwt/v4 v4.4.2
 	github.com/golang/mock v1.6.0
 	github.com/google/go-cmp v0.5.9
@@ -18,6 +19,7 @@ require (
 	github.com/jackc/pgx/v4 v4.17.2
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
+	github.com/pkg/errors v0.9.1
 	github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735
 	github.com/rs/cors v1.8.2
 	github.com/spf13/cobra v1.5.0

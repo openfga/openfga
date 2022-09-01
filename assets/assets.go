@@ -4,6 +4,7 @@ import "embed"
 
 const (
 	PostgresMigrationDir = "migrations/postgres"
+	MySQLMigrationDir = "migrations/mysql"
 )
 
 //go:embed migrations/*
