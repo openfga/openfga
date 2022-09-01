@@ -58,7 +58,7 @@ func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openf
 		return serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
 
-	if err := usersetRewritesAreValid(tds); err != nil {
+	if err := areUsersetRewritesValid(tds); err != nil {
 		return err
 	}
 
@@ -78,7 +78,7 @@ func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
 	return false
 }
 
-func usersetRewritesAreValid(tds []*openfgapb.TypeDefinition) error {
+func areUsersetRewritesValid(tds []*openfgapb.TypeDefinition) error {
 	allRelations := map[string]struct{}{}
 	typeRelations := map[string]map[string]struct{}{}
 	for _, td := range tds {
@@ -92,7 +92,7 @@ func usersetRewritesAreValid(tds []*openfgapb.TypeDefinition) error {
 
 	for _, td := range tds {
 		for relationName, usersetRewrite := range td.GetRelations() {
-			err := usersetRewriteIsValid(allRelations, typeRelations[td.GetType()], relationName, usersetRewrite)
+			err := isUsersetRewriteValid(allRelations, typeRelations[td.GetType()], relationName, usersetRewrite)
 			if err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func usersetRewritesAreValid(tds []*openfgapb.TypeDefinition) error {
 	return nil
 }
 
-func usersetRewriteIsValid(allRelations map[string]struct{}, typeRelations map[string]struct{}, relationName string, usersetRewrite *openfgapb.Userset) error {
+func isUsersetRewriteValid(allRelations map[string]struct{}, typeRelations map[string]struct{}, relationName string, usersetRewrite *openfgapb.Userset) error {
 	if usersetRewrite.GetUserset() == nil {
 		return serverErrors.EmptyRewrites(relationName)
 	}
@@ -128,25 +128,25 @@ func usersetRewriteIsValid(allRelations map[string]struct{}, typeRelations map[s
 		}
 	case *openfgapb.Userset_Union:
 		for _, child := range t.Union.GetChild() {
-			err := usersetRewriteIsValid(allRelations, typeRelations, relationName, child)
+			err := isUsersetRewriteValid(allRelations, typeRelations, relationName, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Intersection:
 		for _, child := range t.Intersection.GetChild() {
-			err := usersetRewriteIsValid(allRelations, typeRelations, relationName, child)
+			err := isUsersetRewriteValid(allRelations, typeRelations, relationName, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Difference:
-		err := usersetRewriteIsValid(allRelations, typeRelations, relationName, t.Difference.Base)
+		err := isUsersetRewriteValid(allRelations, typeRelations, relationName, t.Difference.Base)
 		if err != nil {
 			return err
 		}
 
-		err = usersetRewriteIsValid(allRelations, typeRelations, relationName, t.Difference.Subtract)
+		err = isUsersetRewriteValid(allRelations, typeRelations, relationName, t.Difference.Subtract)
 		if err != nil {
 			return err
 		}
