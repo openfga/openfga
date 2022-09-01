@@ -49,114 +49,108 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 }
 
 func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openfgapb.TypeDefinition) error {
-	types := map[string]bool{}
-	topLevelRelations := map[string]bool{}
-	var tupleToUsersetTargets []string
-
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
 	if len(tds) > w.backend.MaxTypesInTypeDefinition() {
 		return serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
-	for _, td := range tds {
-		// Don't allow two type definitions with the same type
-		if _, ok := types[td.GetType()]; ok {
-			return serverErrors.CannotAllowDuplicateTypesInOneRequest
-		} else {
-			types[td.GetType()] = true
-		}
 
-		relations := td.GetRelations()
-		for relationName := range relations {
-			topLevelRelations[relationName] = true
-		}
-
-		targets, err := validateTypeDefinition(td)
-		if err != nil {
-			return err
-		}
-		tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
+	if containsDuplicateType(tds) {
+		return serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
 
-	for _, relation := range tupleToUsersetTargets {
-		if ok := topLevelRelations[relation]; !ok {
-			return serverErrors.RelationNotFound(relation, "", nil)
+	if err := usersetRewritesAreValid(tds); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
+	seenTypes := map[string]struct{}{}
+
+	for _, td := range tds {
+		if _, ok := seenTypes[td.GetType()]; ok {
+			return true
+		}
+		seenTypes[td.GetType()] = struct{}{}
+	}
+
+	return false
+}
+
+func usersetRewritesAreValid(tds []*openfgapb.TypeDefinition) error {
+	allRelations := map[string]struct{}{}
+	typeRelations := map[string]map[string]struct{}{}
+	for _, td := range tds {
+		typeName := td.GetType()
+		typeRelations[typeName] = map[string]struct{}{}
+		for relationName := range td.GetRelations() {
+			typeRelations[typeName][relationName] = struct{}{}
+			allRelations[relationName] = struct{}{}
+		}
+	}
+
+	for _, td := range tds {
+		for relationName, usersetRewrite := range td.GetRelations() {
+			err := usersetRewriteIsValid(allRelations, typeRelations[td.GetType()], relationName, usersetRewrite)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
 }
 
-func validateTypeDefinition(td *openfgapb.TypeDefinition) ([]string, error) {
-	topLevelRelations := map[string]bool{}
-	relations := td.GetRelations()
-	for relation := range relations {
-		topLevelRelations[relation] = true
+func usersetRewriteIsValid(allRelations map[string]struct{}, typeRelations map[string]struct{}, relationName string, usersetRewrite *openfgapb.Userset) error {
+	if usersetRewrite.GetUserset() == nil {
+		return serverErrors.EmptyRewrites(relationName)
 	}
 
-	var tupleToUsersetTargets []string
-	for relation, userset := range relations {
-		if userset.GetUserset() == nil {
-			return nil, serverErrors.EmptyRelationDefinition(td.GetType(), relation)
-		}
-		targets, err := validateUserset(topLevelRelations, userset, relation)
-		if err != nil {
-			return nil, err
-		}
-		tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
-	}
-
-	return tupleToUsersetTargets, nil
-}
-
-// validateUserset ensures that usersets do not contain relations that are not top-level
-func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Userset, name string) ([]string, error) {
-	var tupleToUsersetTargets []string
-
-	switch t := userset.GetUserset().(type) {
+	switch t := usersetRewrite.GetUserset().(type) {
 	case *openfgapb.Userset_ComputedUserset:
 		relation := t.ComputedUserset.GetRelation()
-		if relation == name {
-			return nil, serverErrors.CannotAllowMultipleReferencesToOneRelation
+		if relation == relationName {
+			return serverErrors.CannotAllowMultipleReferencesToOneRelation
 		}
-		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.RelationNotFound(relation, "", nil)
+		if _, ok := typeRelations[relation]; !ok {
+			return serverErrors.RelationNotFound(relation, "", nil)
+		}
+	case *openfgapb.Userset_TupleToUserset:
+		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
+		if _, ok := allRelations[tupleset]; !ok {
+			return serverErrors.RelationNotFound(tupleset, "", nil)
+		}
+
+		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
+		if _, ok := typeRelations[computedUserset]; !ok {
+			return serverErrors.RelationNotFound(computedUserset, "", nil)
 		}
 	case *openfgapb.Userset_Union:
-		for _, us := range t.Union.GetChild() {
-			targets, err := validateUserset(topLevelRelations, us, name)
+		for _, child := range t.Union.GetChild() {
+			err := usersetRewriteIsValid(allRelations, typeRelations, relationName, child)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
 		}
 	case *openfgapb.Userset_Intersection:
-		for _, us := range t.Intersection.GetChild() {
-			targets, err := validateUserset(topLevelRelations, us, name)
+		for _, child := range t.Intersection.GetChild() {
+			err := usersetRewriteIsValid(allRelations, typeRelations, relationName, child)
 			if err != nil {
-				return nil, err
+				return err
 			}
-			tupleToUsersetTargets = append(tupleToUsersetTargets, targets...)
 		}
 	case *openfgapb.Userset_Difference:
-		targets1, err := validateUserset(topLevelRelations, t.Difference.Base, name)
+		err := usersetRewriteIsValid(allRelations, typeRelations, relationName, t.Difference.Base)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		tupleToUsersetTargets = append(tupleToUsersetTargets, targets1...)
-		targets2, err := validateUserset(topLevelRelations, t.Difference.Subtract, name)
+
+		err = usersetRewriteIsValid(allRelations, typeRelations, relationName, t.Difference.Subtract)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		tupleToUsersetTargets = append(tupleToUsersetTargets, targets2...)
-	case *openfgapb.Userset_TupleToUserset:
-		relation := t.TupleToUserset.GetTupleset().GetRelation()
-		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.RelationNotFound(relation, "", nil)
-		}
-		// We don't have enough information to validate these targets here so pass them up to where we do.
-		relation = t.TupleToUserset.GetComputedUserset().GetRelation()
-		tupleToUsersetTargets = append(tupleToUsersetTargets, relation)
 	}
 
-	return tupleToUsersetTargets, nil
+	return nil
 }
