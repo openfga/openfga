@@ -504,7 +504,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
-	healthServer := &openfgaHealthServer{HealthChecker: s}
+	healthServer := &OpenfgaHealthServer{HealthChecker: s}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
@@ -640,19 +640,19 @@ type HealthChecker interface {
 	IsReady(ctx context.Context) (bool, error)
 }
 
-type openfgaHealthServer struct {
+type OpenfgaHealthServer struct {
 	healthv1pb.UnimplementedHealthServer
 	HealthChecker
 }
 
-var _ grpc_auth.ServiceAuthFuncOverride = (*openfgaHealthServer)(nil)
+var _ grpc_auth.ServiceAuthFuncOverride = (*OpenfgaHealthServer)(nil)
 
 // AuthFuncOverride implements the grpc_auth.ServiceAuthFuncOverride interface by bypassing authn middleware.
-func (o *openfgaHealthServer) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
+func (o *OpenfgaHealthServer) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
 	return ctx, nil
 }
 
-func (o *openfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
+func (o *OpenfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
 
 	service := req.GetService()
 	if service == "" || service == openfgapb.OpenFGAService_ServiceDesc.ServiceName {
@@ -671,6 +671,6 @@ func (o *openfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthC
 	return nil, status.Errorf(codes.NotFound, "service '%s' is not registered with the Health server", service)
 }
 
-func (o *openfgaHealthServer) Watch(req *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
+func (o *OpenfgaHealthServer) Watch(req *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
 	return status.Error(codes.Unimplemented, "unimplemented streaming endpoint")
 }
