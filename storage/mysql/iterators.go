@@ -23,11 +23,11 @@ func (t *tupleIterator) next() (*tupleRecord, error) {
 
 	var record tupleRecord
 	if err := t.rows.Scan(&record.store, &record.objectType, &record.objectID, &record.relation, &record.user, &record.ulid, &record.insertedAt); err != nil {
-		return nil, handleSQLError(err)
+		return nil, handleMySQLError(err)
 	}
 
 	if t.rows.Err() != nil {
-		return nil, handleSQLError(t.rows.Err())
+		return nil, handleMySQLError(t.rows.Err())
 	}
 
 	return &record, nil
@@ -94,11 +94,11 @@ func (o *objectIterator) Next() (*openfgapb.Object, error) {
 
 	var objectID, objectType string
 	if err := o.rows.Scan(&objectType, &objectID); err != nil {
-		return nil, handleSQLError(err)
+		return nil, handleMySQLError(err)
 	}
 
 	if o.rows.Err() != nil {
-		return nil, handleSQLError(o.rows.Err())
+		return nil, handleMySQLError(o.rows.Err())
 	}
 
 	return &openfgapb.Object{

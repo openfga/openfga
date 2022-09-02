@@ -89,7 +89,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 	if opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
-    println(sb.ToSql())  
+
 	return sb.ToSql()
 }
 
@@ -192,7 +192,7 @@ func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
 }
 
 
-func handleSQLError(err error, args ...interface{}) error {
+func handleMySQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
     } else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
