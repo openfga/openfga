@@ -19,6 +19,8 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 	switch engine {
 	case "postgres":
 		return NewPostgresTestContainer().RunPostgresTestContainer(t)
+	case "mysql":
+		return NewMySQLTestContainer().RunMySQLTestContainer(t)
 	default:
 		t.Fatalf("'%s' engine is not supported by RunDatastoreTestContainer", engine)
 		return nil

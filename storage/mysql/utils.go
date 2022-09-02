@@ -5,14 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/go-sql-driver/mysql"
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
-	"github.com/openfga/openfga/storage"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	log "github.com/openfga/openfga/pkg/logger"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/storage"
 	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -89,7 +89,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 	if opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
-
+    println(sb.ToSql())  
 	return sb.ToSql()
 }
 
@@ -141,7 +141,7 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	sb := psql.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
 		From("changelog").
 		Where(squirrel.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
+		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
 		OrderBy("inserted_at ASC")
 
 	if objectTypeFilter != "" {
@@ -161,7 +161,6 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 	if opts.PageSize > 0 {
 		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
 	}
-
 	return sb.ToSql()
 }
 
@@ -196,7 +195,7 @@ func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
 func handleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
-	} else if strings.Contains(err.Error(), "duplicate key value") {
+    } else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
 				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))

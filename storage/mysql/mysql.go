@@ -166,10 +166,19 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return err
 		}
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-        _, err = tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
+        r, err := tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
         if err != nil {
 			return handleSQLError(err)
         }
+
+        affectedRows, err := r.RowsAffected();
+        if err != nil {
+			return handleSQLError(err)
+        }
+
+		if  affectedRows != 1 {
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
+		}
 
 
         _, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, ulid)
@@ -177,20 +186,6 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return handleSQLError(err)
         }
 	}
-
-	// deleteResults := tx.SendBatch(ctx, deleteBatch)
-	// for i := 0; i < deleteBatch.Len(); i++ {
-	// 	tag, err := deleteResults.Exec()
-	// 	if err != nil {
-	// 		return handleSQLError(err)
-	// 	}
-	// 	if tag.RowsAffected() != 1 {
-	// 		return storage.InvalidWriteInputError(deletes[i], openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-	// 	}
-	// }
-	// if err := deleteResults.Close(); err != nil {
-	// 	return err
-	// }
 
 	for _, tk := range writes {
 		ulid, err := id.NewStringFromTime(now)
@@ -200,28 +195,14 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
         _, err = tx.ExecContext(ctx, `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), ulid)
         if err != nil {
-			return handleSQLError(err)
+			return handleSQLError(err, tk)
         }
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)
         if err != nil {
-			return handleSQLError(err)
+			return handleSQLError(err, tk)
         }
 	}
-
-	// writeResults := tx.SendBatch(ctx, writeBatch)
-	// for i := 0; i < writeBatch.Len(); i++ {
-	// 	if _, err := writeResults.Exec(); err != nil {
-	// 		return handleSQLError(err, writes[i])
-	// 	}
-	// }
-	// if err := writeResults.Close(); err != nil {
-	// 	return err
-	// }
-
-	// if err := tx.SendBatch(ctx, changelogBatch).Close(); err != nil {
-	// 	return err
-	// }
 
 	if err := tx.Commit(); err != nil {
 		return handleSQLError(err)
@@ -443,7 +424,7 @@ func (m *MySQL) WriteAuthorizationModel(
 			return err
 		}
 
-		tx.ExecContext(ctx, stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
+		_, err = tx.ExecContext(ctx, stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
         if err != nil {
             return handleSQLError(err)
         }
