@@ -158,7 +158,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	sortFn := func(a, b string) bool { return a < b }
 
 	for _, test := range testCases {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.name+"/streaming", func(t *testing.T) {
 			server := NewMockStreamServer(len(test.expectedResult))
 			err := listObjectsQuery.ExecuteStreamed(ctx, &openfgapb.StreamedListObjectsRequest{
 				StoreId:              test.request.StoreId,
@@ -183,7 +183,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				}
 			}
 		})
-		t.Run(test.name+"streaming", func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			res, err := listObjectsQuery.Execute(ctx, test.request)
 
 			if res == nil && err == nil {
