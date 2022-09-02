@@ -11,8 +11,6 @@ CREATE TABLE tuple (
 		PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
 
--- CREATE INDEX idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user';
--- CREATE INDEX idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';
 CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);
 
 CREATE TABLE authorization_model (
