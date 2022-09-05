@@ -6,18 +6,17 @@ import (
 	"encoding/json"
 	"time"
 
-    _ "github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
 )
 
 const (
@@ -26,9 +25,9 @@ const (
 )
 
 type MySQL struct {
-    db *sql.DB
-	tracer trace.Tracer
-	logger logger.Logger
+	db                       *sql.DB
+	tracer                   trace.Tracer
+	logger                   logger.Logger
 	maxTuplesInWrite         int
 	maxTypesInTypeDefinition int
 }
@@ -82,18 +81,18 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
-    db, err := sql.Open("mysql", uri)
-    if err != nil {
+	db, err := sql.Open("mysql", uri)
+	if err != nil {
 		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
-    }
-    m.db = db
+	}
+	m.db = db
 
 	return m, nil
 }
 
 // Close closes the datastore and cleans up any residual resources.
-func (m * MySQL) Close(ctx context.Context) error {
-    return nil
+func (m *MySQL) Close(ctx context.Context) error {
+	return nil
 }
 
 func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
@@ -166,25 +165,24 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return err
 		}
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-        r, err := tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
-        if err != nil {
+		r, err := tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
+		if err != nil {
 			return handleMySQLError(err)
-        }
+		}
 
-        affectedRows, err := r.RowsAffected();
-        if err != nil {
+		affectedRows, err := r.RowsAffected()
+		if err != nil {
 			return handleMySQLError(err)
-        }
+		}
 
-		if  affectedRows != 1 {
+		if affectedRows != 1 {
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-
-        _, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, ulid)
-        if err != nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, ulid)
+		if err != nil {
 			return handleMySQLError(err)
-        }
+		}
 	}
 
 	for _, tk := range writes {
@@ -193,15 +191,15 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return err
 		}
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-        _, err = tx.ExecContext(ctx, `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), ulid)
-        if err != nil {
+		_, err = tx.ExecContext(ctx, `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), ulid)
+		if err != nil {
 			return handleMySQLError(err, tk)
-        }
+		}
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)
-        if err != nil {
+		if err != nil {
 			return handleMySQLError(err, tk)
-        }
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -412,11 +410,11 @@ func (m *MySQL) WriteAuthorizationModel(
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, type, type_definition) VALUES (?, ?, ?, ?)"
 
-    tx, err := m.db.BeginTx(ctx, nil)
-    if err != nil {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
 		return handleMySQLError(err)
-    }
-    defer rollbackTx(ctx, tx, m.logger)
+	}
+	defer rollbackTx(ctx, tx, m.logger)
 
 	for _, typeDef := range tds.GetTypeDefinitions() {
 		marshalledTypeDef, err := proto.Marshal(typeDef)
@@ -425,12 +423,12 @@ func (m *MySQL) WriteAuthorizationModel(
 		}
 
 		_, err = tx.ExecContext(ctx, stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
-        if err != nil {
-            return handleMySQLError(err)
-        }
+		if err != nil {
+			return handleMySQLError(err)
+		}
 	}
 
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		return handleMySQLError(err)
 	}

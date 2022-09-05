@@ -301,13 +301,13 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		if err != nil {
 			return nil, errors.Errorf("failed to initialize postgres datastore: %v", err)
 		}
-    case "mysql":
-        opts := []mysql.MySQLOption{
+	case "mysql":
+		opts := []mysql.MySQLOption{
 			mysql.WithLogger(logger),
 			mysql.WithTracer(tracer),
-        }
+		}
 
-        datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
+		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
 		if err != nil {
 			return nil, errors.Errorf("failed to initialize mysql datastore: %v", err)
 		}

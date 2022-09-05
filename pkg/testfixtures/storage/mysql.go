@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-    _ "github.com/go-sql-driver/mysql"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	_ "github.com/go-sql-driver/mysql"
 
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
@@ -47,7 +47,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
 	require.NoError(t, err)
 
-    _, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
 	require.NoError(t, err)
 
 	containerCfg := container.Config{
@@ -66,8 +66,8 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		PublishAllPorts: false,
 		PortBindings: nat.PortMap{
 			"3306/tcp": []nat.PortBinding{
-                 { HostPort: "3306"  },
-            },
+				{HostPort: "3306"},
+			},
 		},
 	}
 
@@ -121,7 +121,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		addr:  fmt.Sprintf("localhost:%s", p[0].HostPort),
 		creds: "root:secret",
 	}
-    
+
 	uri := fmt.Sprintf("%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.creds, mySQLTestContainer.addr)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
@@ -135,7 +135,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 			if err != nil {
 				return err
 			}
-            err = mySQLTestContainer.conn.Ping()
+			err = mySQLTestContainer.conn.Ping()
 			if err != nil {
 				return err
 			}
@@ -174,4 +174,3 @@ func (m *mySQLTestContainer) GetConnectionURI() string {
 		"defaultdb",
 	)
 }
-

@@ -191,11 +191,10 @@ func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
 	}
 }
 
-
 func handleMySQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
-    } else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
+	} else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
 				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
