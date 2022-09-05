@@ -8,7 +8,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-* Support for MySQL storage backend (#TODO)
+* Support for MySQL storage backend (#210)
 
 ## [0.2.2] - 2022-09-15
 ### Fixed
