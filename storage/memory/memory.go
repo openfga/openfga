@@ -566,7 +566,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgapb.TypeDefinitions) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgapb.TypeDefinition) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -584,7 +584,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 	s.authorizationModels[store][id] = &AuthorizationModelEntry{
 		model: &openfgapb.AuthorizationModel{
 			Id:              id,
-			TypeDefinitions: tds.GetTypeDefinitions(),
+			TypeDefinitions: tds,
 		},
 		latest: true,
 	}

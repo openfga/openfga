@@ -51,14 +51,12 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	state := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"viewer": {
-						Userset: &openfgapb.Userset_This{},
-					},
+	state := []*openfgapb.TypeDefinition{
+		{
+			Type: "repo",
+			Relations: map[string]*openfgapb.Userset{
+				"viewer": {
+					Userset: &openfgapb.Userset_This{},
 				},
 			},
 		},
@@ -87,15 +85,11 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	emptyState := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{},
-	}
-
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, emptyState)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{})
 	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)

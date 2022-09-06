@@ -352,7 +352,7 @@ func (mr *MockTypeDefinitionWriteBackendMockRecorder) MaxTypesInTypeDefinition()
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockTypeDefinitionWriteBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgav1.TypeDefinitions) error {
+func (m *MockTypeDefinitionWriteBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
 	ret0, _ := ret[0].(error)
@@ -464,7 +464,7 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadTypeDefinition(ctx, sto
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockAuthorizationModelBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgav1.TypeDefinitions) error {
+func (m *MockAuthorizationModelBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
 	ret0, _ := ret[0].(error)
@@ -1004,7 +1004,7 @@ func (mr *MockOpenFGADatastoreMockRecorder) WriteAssertions(ctx, store, modelID,
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockOpenFGADatastore) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgav1.TypeDefinitions) error {
+func (m *MockOpenFGADatastore) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
 	ret0, _ := ret[0].(error)

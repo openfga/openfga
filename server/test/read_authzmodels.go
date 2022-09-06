@@ -27,7 +27,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 
 	tests := []struct {
 		name                      string
-		backendState              map[string]*openfgapb.TypeDefinitions
+		backendState              map[string][]*openfgapb.TypeDefinition
 		request                   *openfgapb.ReadAuthorizationModelsRequest
 		expectedNumModelsReturned int
 	}{
@@ -40,10 +40,8 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 		},
 		{
 			name: "empty for requested store",
-			backendState: map[string]*openfgapb.TypeDefinitions{
-				"another-store": {
-					TypeDefinitions: []*openfgapb.TypeDefinition{},
-				},
+			backendState: map[string][]*openfgapb.TypeDefinition{
+				"another-store": {},
 			},
 			request: &openfgapb.ReadAuthorizationModelsRequest{
 				StoreId: store,
@@ -52,12 +50,10 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 		},
 		{
 			name: "multiple type definitions",
-			backendState: map[string]*openfgapb.TypeDefinitions{
+			backendState: map[string][]*openfgapb.TypeDefinition{
 				store: {
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "ns1",
-						},
+					{
+						Type: "ns1",
 					},
 				},
 			},
@@ -95,13 +91,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	tds := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "ns1",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
 	store := testutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
@@ -170,13 +160,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	tds := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)

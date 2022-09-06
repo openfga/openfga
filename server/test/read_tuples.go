@@ -28,15 +28,9 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	backendState := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "ns1",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, backendState)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
 	writes := []*openfgapb.TupleKey{
@@ -115,15 +109,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	state := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{{Type: "repo"}})
 	require.NoError(err)
 
 	q := commands.NewReadTuplesQuery(datastore, logger, encoder)
