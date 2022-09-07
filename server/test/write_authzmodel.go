@@ -51,7 +51,6 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: nil,
 		},
 		{
 			_name: "fails if too many types",
