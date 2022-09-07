@@ -98,7 +98,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.EmptyRewrites("owner"),
+			err: errors.EmptyRewrites("repo", "owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
