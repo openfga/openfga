@@ -18,7 +18,7 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions *openfgapb.TypeDefinitions, tuples []*openfgapb.TupleKey) (string, error) {
+func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
 	modelID, err := id.NewString()
 	if err != nil {
 		return "", err
@@ -35,20 +35,18 @@ func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore
 func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
 		name            string
-		typeDefinitions *openfgapb.TypeDefinitions
+		typeDefinitions []*openfgapb.TypeDefinition
 		tuples          []*openfgapb.TupleKey
 		request         *openfgapb.ExpandRequest
 		expected        *openfgapb.ExpandResponse
 	}{
 		{
 			name: "simple direct",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {},
 					},
 				},
 			},
@@ -84,17 +82,15 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "computed userset",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-							"writer": {
-								Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "admin",
-									},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {},
+						"writer": {
+							Userset: &openfgapb.Userset_ComputedUserset{
+								ComputedUserset: &openfgapb.ObjectRelation{
+									Relation: "admin",
 								},
 							},
 						},
@@ -127,32 +123,30 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "tuple to userset",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {
+							Userset: &openfgapb.Userset_TupleToUserset{
+								TupleToUserset: &openfgapb.TupleToUserset{
+									Tupleset: &openfgapb.ObjectRelation{
+										Relation: "manager",
+									},
+									ComputedUserset: &openfgapb.ObjectRelation{
+										Object:   "$TUPLE_USERSET_OBJECT",
+										Relation: "repo_admin",
 									},
 								},
 							},
-							"manager": {},
 						},
+						"manager": {},
 					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"repo_admin": {},
-						},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"repo_admin": {},
 					},
 				},
 			},
@@ -198,32 +192,30 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "tuple to userset II",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {
+							Userset: &openfgapb.Userset_TupleToUserset{
+								TupleToUserset: &openfgapb.TupleToUserset{
+									Tupleset: &openfgapb.ObjectRelation{
+										Relation: "manager",
+									},
+									ComputedUserset: &openfgapb.ObjectRelation{
+										Object:   "$TUPLE_USERSET_OBJECT",
+										Relation: "repo_admin",
 									},
 								},
 							},
-							"manager": {},
 						},
+						"manager": {},
 					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"repo_admin": {},
-						},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"repo_admin": {},
 					},
 				},
 			},
@@ -274,31 +266,29 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "tuple to userset implicit",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Relation: "repo_admin",
-										},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {
+							Userset: &openfgapb.Userset_TupleToUserset{
+								TupleToUserset: &openfgapb.TupleToUserset{
+									Tupleset: &openfgapb.ObjectRelation{
+										Relation: "manager",
+									},
+									ComputedUserset: &openfgapb.ObjectRelation{
+										Relation: "repo_admin",
 									},
 								},
 							},
-							"manager": {},
 						},
+						"manager": {},
 					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"repo_admin": {},
-						},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"repo_admin": {},
 					},
 				},
 			},
@@ -344,26 +334,24 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "simple union",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-							"writer": {
-								Userset: &openfgapb.Userset_Union{
-									Union: &openfgapb.Usersets{
-										Child: []*openfgapb.Userset{
-											{
-												Userset: &openfgapb.Userset_This{
-													This: &openfgapb.DirectUserset{},
-												},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {},
+						"writer": {
+							Userset: &openfgapb.Userset_Union{
+								Union: &openfgapb.Usersets{
+									Child: []*openfgapb.Userset{
+										{
+											Userset: &openfgapb.Userset_This{
+												This: &openfgapb.DirectUserset{},
 											},
-											{
-												Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Relation: "admin",
-													},
+										},
+										{
+											Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
+													Relation: "admin",
 												},
 											},
 										},
@@ -427,28 +415,26 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "simple difference",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin":  {},
-							"banned": {},
-							"active_admin": {
-								Userset: &openfgapb.Userset_Difference{
-									Difference: &openfgapb.Difference{
-										Base: &openfgapb.Userset{
-											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Relation: "admin",
-												},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin":  {},
+						"banned": {},
+						"active_admin": {
+							Userset: &openfgapb.Userset_Difference{
+								Difference: &openfgapb.Difference{
+									Base: &openfgapb.Userset{
+										Userset: &openfgapb.Userset_ComputedUserset{
+											ComputedUserset: &openfgapb.ObjectRelation{
+												Relation: "admin",
 											},
 										},
-										Subtract: &openfgapb.Userset{
-											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Relation: "banned",
-												},
+									},
+									Subtract: &openfgapb.Userset{
+										Userset: &openfgapb.Userset_ComputedUserset{
+											ComputedUserset: &openfgapb.ObjectRelation{
+												Relation: "banned",
 											},
 										},
 									},
@@ -503,27 +489,25 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "simple intersection",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						// Writers must be both directly in 'writers', and in 'admins'
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-							"writer": {
-								Userset: &openfgapb.Userset_Intersection{
-									Intersection: &openfgapb.Usersets{
-										Child: []*openfgapb.Userset{
-											{
-												Userset: &openfgapb.Userset_This{
-													This: &openfgapb.DirectUserset{},
-												},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					// Writers must be both directly in 'writers', and in 'admins'
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin": {},
+						"writer": {
+							Userset: &openfgapb.Userset_Intersection{
+								Intersection: &openfgapb.Usersets{
+									Child: []*openfgapb.Userset{
+										{
+											Userset: &openfgapb.Userset_This{
+												This: &openfgapb.DirectUserset{},
 											},
-											{
-												Userset: &openfgapb.Userset_ComputedUserset{
-													ComputedUserset: &openfgapb.ObjectRelation{
-														Relation: "admin",
-													},
+										},
+										{
+											Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
+													Relation: "admin",
 												},
 											},
 										},
@@ -581,38 +565,36 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "complex tree",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				// Users can write if they are direct members of writers, or repo_writers
-				// in the org, unless they are also in banned_writers
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin":         {},
-							"owner":         {},
-							"banned_writer": {},
-							"writer": {
-								Userset: &openfgapb.Userset_Difference{
-									Difference: &openfgapb.Difference{
-										Base: &openfgapb.Userset{
-											Userset: &openfgapb.Userset_Union{
-												Union: &openfgapb.Usersets{
-													Child: []*openfgapb.Userset{
-														{
-															Userset: &openfgapb.Userset_This{
-																This: &openfgapb.DirectUserset{},
-															},
+			// Users can write if they are direct members of writers, or repo_writers
+			// in the org, unless they are also in banned_writers
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin":         {},
+						"owner":         {},
+						"banned_writer": {},
+						"writer": {
+							Userset: &openfgapb.Userset_Difference{
+								Difference: &openfgapb.Difference{
+									Base: &openfgapb.Userset{
+										Userset: &openfgapb.Userset_Union{
+											Union: &openfgapb.Usersets{
+												Child: []*openfgapb.Userset{
+													{
+														Userset: &openfgapb.Userset_This{
+															This: &openfgapb.DirectUserset{},
 														},
-														{
-															Userset: &openfgapb.Userset_TupleToUserset{
-																TupleToUserset: &openfgapb.TupleToUserset{
-																	Tupleset: &openfgapb.ObjectRelation{
-																		Relation: "owner",
-																	},
-																	ComputedUserset: &openfgapb.ObjectRelation{
-																		Object:   "$TUPLE_USERSET_OBJECT",
-																		Relation: "repo_writer",
-																	},
+													},
+													{
+														Userset: &openfgapb.Userset_TupleToUserset{
+															TupleToUserset: &openfgapb.TupleToUserset{
+																Tupleset: &openfgapb.ObjectRelation{
+																	Relation: "owner",
+																},
+																ComputedUserset: &openfgapb.ObjectRelation{
+																	Object:   "$TUPLE_USERSET_OBJECT",
+																	Relation: "repo_writer",
 																},
 															},
 														},
@@ -620,11 +602,11 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 												},
 											},
 										},
-										Subtract: &openfgapb.Userset{
-											Userset: &openfgapb.Userset_ComputedUserset{
-												ComputedUserset: &openfgapb.ObjectRelation{
-													Relation: "banned_writer",
-												},
+									},
+									Subtract: &openfgapb.Userset{
+										Userset: &openfgapb.Userset_ComputedUserset{
+											ComputedUserset: &openfgapb.ObjectRelation{
+												Relation: "banned_writer",
 											},
 										},
 									},
@@ -632,11 +614,11 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 							},
 						},
 					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"repo_writer": {},
-						},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"repo_writer": {},
 					},
 				},
 			},
@@ -747,7 +729,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
 		name            string
-		typeDefinitions *openfgapb.TypeDefinitions
+		typeDefinitions []*openfgapb.TypeDefinition
 		tuples          []*openfgapb.TupleKey
 		request         *openfgapb.ExpandRequest
 		expected        error
@@ -808,11 +790,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			name: "relation not found",
-			typeDefinitions: &openfgapb.TypeDefinitions{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-					},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
 				},
 			},
 			request: &openfgapb.ExpandRequest{

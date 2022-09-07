@@ -517,7 +517,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.typeDefinitions != nil {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 				require.NoError(err)
 			}
 

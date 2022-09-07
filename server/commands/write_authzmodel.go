@@ -29,14 +29,14 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	typeDefinitions := req.GetTypeDefinitions()
+	typeDefinitions := req.GetTypeDefinitions().GetTypeDefinitions()
 
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
-	if len(typeDefinitions.GetTypeDefinitions()) > w.backend.MaxTypesInTypeDefinition() {
+	if len(typeDefinitions) > w.backend.MaxTypesInTypeDefinition() {
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	if err := validateAuthorizationModel(typeDefinitions.GetTypeDefinitions()); err != nil {
+	if err := validateAuthorizationModel(typeDefinitions); err != nil {
 		return nil, err
 	}
 

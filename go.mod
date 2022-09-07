@@ -15,7 +15,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
 	github.com/hashicorp/go-retryablehttp v0.7.1
-	github.com/jackc/pgx/v4 v4.17.1
+	github.com/jackc/pgx/v4 v4.17.2
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735
@@ -25,7 +25,7 @@ require (
 	github.com/spf13/viper v1.12.0
 	github.com/stretchr/testify v1.8.0
 	github.com/tidwall/gjson v1.14.3
-	go.buf.build/openfga/go/openfga/api v1.2.28
+	go.buf.build/openfga/go/openfga/api v1.2.29
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.34.0
 	go.opentelemetry.io/otel v1.9.0
 	go.opentelemetry.io/otel/metric v0.31.0
@@ -76,8 +76,8 @@ require (
 	github.com/subosito/gotenv v1.3.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
-	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.6 // indirect
-	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.43 // indirect
+	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.7 // indirect
+	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.46 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/goleak v1.1.12 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

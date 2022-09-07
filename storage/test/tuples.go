@@ -131,18 +131,11 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 
 		err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk1, tk2})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		changes, continuationToken, err := datastore.ReadChanges(ctx, store, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
-		if err != nil {
-			t.Errorf("expected no error but got '%v'", err)
-		}
-
-		if len(continuationToken) == 0 {
-			t.Errorf("expected empty token but got '%s'", continuationToken)
-		}
+		require.NoError(t, err)
+		require.NotEmpty(t, continuationToken)
 
 		expectedChanges := []*openfgapb.TupleChange{
 			{
