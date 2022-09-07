@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -32,22 +31,22 @@ type testCase struct {
 }
 
 var tkMaria = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "maria",
 }
 var tkMariaOrg = &openfgapb.TupleKey{
-	Object:   "org:auth0",
+	Object:   "org:openfga",
 	Relation: "member",
 	User:     "maria",
 }
 var tkCraig = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "craig",
 }
 var tkYamil = &openfgapb.TupleKey{
-	Object:   "repo:auth0/openfgapb",
+	Object:   "repo:openfga/openfgapb",
 	Relation: "admin",
 	User:     "yamil",
 }
@@ -61,9 +60,9 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 	}
 }
 
-func TestReadChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, dbTester)
+	ctx, backend, tracer, err := setup(store, datastore)
 	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -249,9 +248,9 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	}
 }
 
-func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, dbTester)
+	ctx, backend, tracer, err := setup(store, datastore)
 	require.NoError(t, err)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
@@ -265,17 +264,12 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, dbTester tes
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func setup(store string, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 
-	datastore, err := dbTester.New()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
 	writes := []*openfgapb.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
+	err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	if err != nil {
 		return nil, nil, nil, err
 	}

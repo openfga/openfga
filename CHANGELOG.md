@@ -4,7 +4,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
+
 ## [Unreleased]
+
+## [0.2.1] - 2022-08-30
+### Added
+* Support Check API calls on userset types of users (#146)
+* Add backoff when connecting to Postgres (#188)
+
+### Fixed
+* Improve logging of internal server errors (#193)
+* Use Postgres in the sample Docker Compose file (#195)
+* Emit authorization errors (#144)
+* Telemetry in Check and ListObjects APIs (#177)
+* ListObjects API: respect the value of ListObjectsMaxResults (#181)
+
+
+## [0.2.0] - 2022-08-12
+### Added
+* [ListObjects API](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
+
+  The ListObjects API provides a way to list all of the objects (of a particular type) that a user has a relationship with. It provides a solution to the [Search with Permissions (Option 3)](https://openfga.dev/docs/interacting/search-with-permissions#option-3-build-a-list-of-ids-then-search) use case for access-aware filtering on smaller object collections. It implements the [ListObjects RFC](https://github.com/openfga/rfcs/blob/main/20220714-listObjects-api.md).
+
+  This addition brings with it two new server configuration options `--listObjects-deadline` and `--listObjects-max-results`. These configurations help protect the server from excessively long lived and large responses.
+
+  > ⚠️ If `--listObjects-deadline` or `--listObjects-max-results` are provided, the endpoint may only return a subset of the data. If you provide the deadline but returning all of the results would take longer than the deadline, then you may not get all of the results. If you limit the max results to 1, then you'll get at most 1 result.
+
+* Support for presharedkey authentication in the Playground (#141)
+
+  The embedded Playground now works if you run OpenFGA using one or more preshared keys for authentication. OIDC authentication remains unsupported for the Playground at this time.
+
+
+## [0.1.7] - 2022-07-29
+### Added
+* `migrate` CLI command (#56)
+
+  The `migrate` command has been added to the OpenFGA CLI to assist with bootstrapping and managing database schema migrations. See the usage for more info.
+
+  ```
+  ➜ openfga migrate -h
+  The migrate command is used to migrate the database schema needed for OpenFGA.
+
+  Usage:
+    openfga migrate [flags]
+
+  Flags:
+        --datastore-engine string   (required) the database engine to run the migrations for
+        --datastore-uri string      (required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')
+    -h, --help                      help for migrate
+        --version uint              the version to migrate to. If omitted, the latest version of the schema will be used
+  ```
 
 ## [0.1.6] - 2022-07-27
 ### Fixed
@@ -78,7 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
+[0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
 [0.1.5]: https://github.com/openfga/openfga/releases/tag/v0.1.5
 [0.1.4]: https://github.com/openfga/openfga/releases/tag/v0.1.4

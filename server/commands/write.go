@@ -8,6 +8,7 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -60,7 +61,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		tupleUserset, err := tupleUtils.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter)
+		tupleUserset, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter)
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
@@ -69,6 +70,13 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		err = validateHasDirectRelationship(tupleUserset, tk)
 		if err != nil {
 			return err
+		}
+	}
+
+	for _, tk := range deletes {
+		// For delete, we only need to ensure it is well form but no need to validate whether relation exists
+		if err := tupleUtils.ValidateUser(tk); err != nil {
+			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
 

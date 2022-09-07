@@ -9,7 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"os"
@@ -20,8 +20,9 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-errors/errors"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/retryablehttp"
 	"github.com/openfga/openfga/server/authn/mocks"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -34,24 +35,30 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func init() {
+var (
+	openFGAServerAddr string
+	openFGAGRPCAddr   string
+)
+
+func TestMain(m *testing.M) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../..")
 	err := os.Chdir(dir)
 	if err != nil {
 		panic(err)
 	}
+
+	config := DefaultConfig()
+	openFGAServerAddr = fmt.Sprintf("http://localhost%s", config.HTTP.Addr)
+	openFGAGRPCAddr = fmt.Sprintf("localhost%s", config.GRPC.Addr)
+
+	os.Exit(m.Run())
 }
 
-const (
-	openFGAServerAddr = "http://localhost:8080"
-	openFGAGRPCAddr   = "localhost:8081"
-)
-
-func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials) {
+func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
@@ -76,7 +83,7 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 	client := healthv1pb.NewHealthClient(conn)
 
 	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 3 * time.Second
+	policy.MaxElapsedTime = 10 * time.Second
 
 	err = backoff.Retry(func() error {
 		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
@@ -87,12 +94,17 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 		}
 
 		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return fmt.Errorf("not serving")
+			return errors.Errorf("not serving")
 		}
 
 		return nil
 	}, policy)
 	require.NoError(t, err)
+
+	if httpHealthCheck {
+		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("%s/healthz", openFGAServerAddr))
+		require.NoError(t, err)
+	}
 }
 
 func genCert(t *testing.T, template, parent *x509.Certificate, pub *rsa.PublicKey, priv *rsa.PrivateKey) (*x509.Certificate, []byte) {
@@ -217,7 +229,6 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
@@ -229,8 +240,6 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	retryClient := retryablehttp.New().StandardClient()
-
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
@@ -248,12 +257,12 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
 		authHeader:    "Bearer incorrectkey",
-		expectedError: "unauthorized",
+		expectedError: "unauthenticated",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
@@ -268,10 +277,11 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		expectedError: "",
 	}}
 
+	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -280,28 +290,27 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to execute request")
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 
 			stringBody := string(body)
 
 			if test.expectedError == "" && strings.Contains(stringBody, "code") {
-				t.Fatalf("Expected no error but got %v", stringBody)
+				t.Fatalf("Expected no error but got '%v'", stringBody)
 			}
 
 			if !strings.Contains(stringBody, test.expectedError) && test.expectedError != "" {
-				t.Fatalf("Expected %v to contain %v", stringBody, test.expectedError)
+				t.Fatalf("Expected '%v' to contain '%v'", stringBody, test.expectedError)
 			}
 		})
 	}
 
 	cancel()
-	require.NoError(t, g.Wait())
 	require.NoError(t, service.Close(ctx))
+	require.NoError(t, g.Wait())
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-
 	config, err := GetServiceConfig()
 	require.NoError(t, err)
 
@@ -322,7 +331,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	type args struct {
 		origin string
@@ -372,17 +381,19 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		},
 	}
 
+	client := retryablehttp.NewClient()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
 			req.Header.Set("Access-Control-Request-Method", "OPTIONS")
 			req.Header.Set("Access-Control-Request-Headers", test.args.header)
 
-			res, err := http.DefaultClient.Do(req)
+			res, err := client.Do(req)
 			require.NoError(t, err, "Failed to execute request")
 			defer res.Body.Close()
 
@@ -392,7 +403,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 
 			require.Equal(t, test.want.header, acceptedHeader)
 
-			_, err = ioutil.ReadAll(res.Body)
+			_, err = io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 		})
 	}
@@ -404,8 +415,6 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	retryClient := retryablehttp.New().StandardClient()
-
 	const localOIDCServerURL = "http://localhost:8083"
 
 	config, err := GetServiceConfig()
@@ -430,7 +439,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, true)
 
 	trustedToken, err := trustedIssuerServer.GetToken(openFGAServerAddr, "some-user")
 	require.NoError(t, err)
@@ -438,7 +447,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	tests := []authTest{{
 		_name:         "Header with invalid token fails",
 		authHeader:    "Bearer incorrecttoken",
-		expectedError: "error parsing token",
+		expectedError: "invalid bearer token",
 	}, {
 		_name:         "Missing header fails",
 		authHeader:    "",
@@ -449,10 +458,11 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		expectedError: "",
 	}}
 
+	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := http.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -461,7 +471,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			require.NoError(t, err, "Failed to execute request")
 
 			defer res.Body.Close()
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			require.NoError(t, err, "Failed to read response")
 
 			stringBody := string(body)
@@ -476,8 +486,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	}
 
 	cancel()
-	require.NoError(t, g.Wait())
 	require.NoError(t, service.Close(ctx))
+	require.NoError(t, g.Wait())
 }
 
 func TestTLSFailureSettings(t *testing.T) {
@@ -560,7 +570,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
+		ensureServiceUp(t, nil, true)
 
 		cancel()
 		require.NoError(t, g.Wait())
@@ -580,6 +590,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
 
+		fmt.Println(config)
+
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
@@ -589,17 +601,16 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
+		ensureServiceUp(t, nil, false)
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
-		client := retryablehttp.NewWithClient(http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					RootCAs: certPool,
-				},
+		client := retryablehttp.NewClient()
+		client.HTTPClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certPool,
 			},
-		})
+		}
 
 		_, err = client.Get("https://localhost:8080/healthz")
 		require.NoError(t, err)
@@ -625,6 +636,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		config.HTTP.Enabled = false
 
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
@@ -635,11 +647,11 @@ func TestGRPCServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil)
+		ensureServiceUp(t, nil, false)
 
 		cancel()
-		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
+		require.NoError(t, g.Wait())
 	})
 
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
@@ -654,6 +666,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		config.HTTP.Enabled = false
 
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
@@ -668,11 +681,11 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, creds)
+		ensureServiceUp(t, creds, false)
 
 		cancel()
-		require.NoError(t, g.Wait())
 		require.NoError(t, service.Close(ctx))
+		require.NoError(t, g.Wait())
 	})
 }
 
@@ -691,7 +704,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
+	ensureServiceUp(t, nil, false)
 
 	_, err = http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
@@ -715,21 +728,16 @@ func TestHTTPServerEnabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil)
-
-	resp, err := http.Get("http://localhost:8080/healthz")
-	require.NoError(t, err)
-	defer resp.Body.Close()
-
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	ensureServiceUp(t, nil, true)
 
 	cancel()
 }
 
 func TestDefaultConfig(t *testing.T) {
-	config := DefaultConfig()
+	config, err := GetServiceConfig()
+	require.NoError(t, err)
 
-	jsonSchema, err := ioutil.ReadFile(".config-schema.json")
+	jsonSchema, err := os.ReadFile(".config-schema.json")
 	require.NoError(t, err)
 
 	res := gjson.ParseBytes(jsonSchema)
@@ -784,19 +792,19 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTuplesPerWrite)
+	require.EqualValues(t, val.Int(), config.MaxTuplesPerWrite)
 
 	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.MaxTypesPerAuthorizationModel)
+	require.EqualValues(t, val.Int(), config.MaxTypesPerAuthorizationModel)
 
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.ChangelogHorizonOffset)
+	require.EqualValues(t, val.Int(), config.ChangelogHorizonOffset)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.OpenFGA.ResolveNodeLimit)
+	require.EqualValues(t, val.Int(), config.ResolveNodeLimit)
 
 	val = res.Get("properties.grpc.properties.tls.$ref")
 	require.True(t, val.Exists())
@@ -810,4 +818,12 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), config.GRPC.TLS.Enabled)
 	require.Equal(t, val.Bool(), config.HTTP.TLS.Enabled)
+
+	val = res.Get("properties.listObjectsDeadline.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), config.ListObjectsDeadline.String())
+
+	val = res.Get("properties.listObjectsMaxResults.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), config.ListObjectsMaxResults)
 }

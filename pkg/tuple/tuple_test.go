@@ -2,6 +2,9 @@ package tuple
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/require"
+	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestSplitObjectId(t *testing.T) {
@@ -54,6 +57,14 @@ func TestSplitObjectId(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestObjectKey(t *testing.T) {
+	key := ObjectKey(&openfgav1.Object{
+		Type: "document",
+		Id:   "1",
+	})
+	require.Equal(t, "document:1", key)
 }
 
 func TestSplitObjectRelation(t *testing.T) {
@@ -216,7 +227,7 @@ func TestIsValidUser(t *testing.T) {
 		valid bool
 	}{
 		{
-			name:  "anne@auth0.com",
+			name:  "anne@openfga",
 			valid: true,
 		},
 		{
@@ -244,7 +255,7 @@ func TestIsValidUser(t *testing.T) {
 			valid: false,
 		},
 		{
-			name:  "anne@auth0 .com", // empty space
+			name:  "anne@openfga .com", // empty space
 			valid: false,
 		},
 	} {
@@ -264,7 +275,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 		want UserType
 	}{
 		{
-			name: "anne@auth0.com",
+			name: "anne@openfga",
 			want: User,
 		},
 		{
@@ -280,7 +291,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 			want: UserSet,
 		},
 		{
-			name: "github|jon.allie@auth0.com",
+			name: "github|jon.allie@openfga",
 			want: User,
 		},
 	} {

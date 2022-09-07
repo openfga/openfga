@@ -12,7 +12,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -27,9 +26,9 @@ type writeCommandTest struct {
 }
 
 var tk = &openfgapb.TupleKey{
-	Object:   "repository:auth0/express-jwt",
+	Object:   "repository:openfga/openfga",
 	Relation: "administrator",
-	User:     "github|alice@auth0.com",
+	User:     "github|alice@openfga",
 }
 
 var writeCommandTests = []writeCommandTest{
@@ -370,12 +369,12 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:auth0",
+				Object:   "repo:openfga",
 				Relation: "owner",
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("missing user", &openfgapb.TupleKey{Object: "repo:auth0", Relation: "owner"}),
+		err: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
@@ -411,12 +410,12 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object: "repo:auth0",
+				Object: "repo:openfga",
 				User:   "elbuo@github.com",
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("invalid relation", &openfgapb.TupleKey{Object: "repo:auth0", User: "elbuo@github.com"}),
+		err: serverErrors.InvalidTuple("invalid relation", &openfgapb.TupleKey{Object: "repo:openfga", User: "elbuo@github.com"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
@@ -430,14 +429,14 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:auth0",
+				Object:   "repo:openfga",
 				Relation: "BadRelation",
 				User:     "elbuo@github.com",
 			}}},
 		},
 		// output
 		err: serverErrors.RelationNotFound("BadRelation", "repo",
-			&openfgapb.TupleKey{Object: "repo:auth0", Relation: "BadRelation", User: "elbuo@github.com"}),
+			&openfgapb.TupleKey{Object: "repo:openfga", Relation: "BadRelation", User: "elbuo@github.com"}),
 	},
 	{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
@@ -463,16 +462,16 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				// invalid because it has no :
-				Object:   "auth0",
+				Object:   "openfga",
 				Relation: "owner",
-				User:     "github|jose@auth0.com",
+				User:     "github|jose@openfga",
 			}}},
 		},
 		// output
 		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-			Object:   "auth0",
+			Object:   "openfga",
 			Relation: "owner",
-			User:     "github|jose@auth0.com",
+			User:     "github|jose@openfga",
 		}),
 	},
 	{
@@ -494,17 +493,17 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			}},
 		},
 		// output
 		err: serverErrors.RelationNotFound("writer", "repo", &openfgapb.TupleKey{
-			Object:   "repo:auth0/express-jwt",
+			Object:   "repo:openfga/openfga",
 			Relation: "writer",
-			User:     "github|jose@auth0.com",
+			User:     "github|jose@openfga",
 		}),
 	},
 	{
@@ -525,18 +524,18 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "org:auth0",
+				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|jose@auth0.com",
+				User:     "github|jose@openfga",
 			},
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 			}},
 		},
@@ -568,24 +567,24 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "team:auth0/iam#member",
+					User:     "team:openfga/iam#member",
 				},
 				{
-					Object:   "team:auth0/iam",
+					Object:   "team:openfga/iam",
 					Relation: "member",
-					User:     "iaco@auth0.com",
+					User:     "iaco@openfga",
 				},
 			}},
 		},
@@ -615,48 +614,48 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "org:auth0",
+				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|jose@auth0.com",
+				User:     "github|jose@openfga",
 			},
 			{
-				Object:   "repo:auth0/express-jwt",
+				Object:   "repo:openfga/openfga",
 				Relation: "admin",
-				User:     "github|jose@auth0.com",
+				User:     "github|jose@openfga",
 			},
 			{
-				Object:   "repo:auth0/express-jwt",
+				Object:   "repo:openfga/openfga",
 				Relation: "writer",
-				User:     "team:auth0/iam#member",
+				User:     "team:openfga/iam#member",
 			},
 			{
-				Object:   "team:auth0/iam",
+				Object:   "team:openfga/iam",
 				Relation: "member",
-				User:     "iaco@auth0.com",
+				User:     "iaco@openfga",
 			},
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "team:auth0/iam#member",
+					User:     "team:openfga/iam#member",
 				},
 				{
-					Object:   "team:auth0/iam",
+					Object:   "team:openfga/iam",
 					Relation: "member",
-					User:     "iaco@auth0.com",
+					User:     "iaco@openfga",
 				},
 			}},
 		},
@@ -686,64 +685,61 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		tuples: []*openfgapb.TupleKey{
 			{
-				Object:   "org:auth0",
+				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|yenkel@auth0.com",
+				User:     "github|yenkel@openfga",
 			},
 			{
-				Object:   "repo:auth0/express-jwt",
+				Object:   "repo:openfga/openfga",
 				Relation: "reader",
-				User:     "team:auth0/platform#member",
+				User:     "team:openfga/platform#member",
 			},
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@auth0.com",
+					User:     "github|jose@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "team:auth0/iam#member",
+					User:     "team:openfga/iam#member",
 				},
 				{
-					Object:   "team:auth0/iam",
+					Object:   "team:openfga/iam",
 					Relation: "member",
-					User:     "iaco@auth0.com",
+					User:     "iaco@openfga",
 				},
 			}},
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				{
-					Object:   "org:auth0",
+					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|yenkel@auth0.com",
+					User:     "github|yenkel@openfga",
 				},
 				{
-					Object:   "repo:auth0/express-jwt",
+					Object:   "repo:openfga/openfga",
 					Relation: "reader",
-					User:     "team:auth0/platform#member",
+					User:     "team:openfga/platform#member",
 				},
 			}},
 		},
 	},
 }
 
-func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	for _, test := range writeCommandTests {
 		t.Run(test._name, func(t *testing.T) {
@@ -752,7 +748,7 @@ func TestWriteCommand(t *testing.T, dbTester teststorage.DatastoreTester[storage
 			require.NoError(err)
 
 			if test.typeDefinitions != nil {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 				require.NoError(err)
 			}
 

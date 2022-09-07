@@ -16,10 +16,23 @@ services:
       timeout: 5s
       retries: 5
 
+  migrate:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    image: openfga/openfga:latest
+    container_name: migrate
+    command: migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
+    networks:
+      - default
+
   openfga:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     image: openfga/openfga:latest
     container_name: openfga
-    command: run
+    command: run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
     networks:
       - default
     ports:

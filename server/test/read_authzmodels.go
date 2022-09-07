@@ -12,13 +12,12 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(20)
 
 	require := require.New(t)
@@ -26,12 +25,9 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 
-	datastore, err := dbTester.New()
-	require.NoError(err)
-
 	tests := []struct {
 		name                      string
-		backendState              map[string]*openfgapb.TypeDefinitions
+		backendState              map[string][]*openfgapb.TypeDefinition
 		request                   *openfgapb.ReadAuthorizationModelsRequest
 		expectedNumModelsReturned int
 	}{
@@ -44,10 +40,8 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 		},
 		{
 			name: "empty for requested store",
-			backendState: map[string]*openfgapb.TypeDefinitions{
-				"another-store": {
-					TypeDefinitions: []*openfgapb.TypeDefinition{},
-				},
+			backendState: map[string][]*openfgapb.TypeDefinition{
+				"another-store": {},
 			},
 			request: &openfgapb.ReadAuthorizationModelsRequest{
 				StoreId: store,
@@ -56,12 +50,10 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 		},
 		{
 			name: "multiple type definitions",
-			backendState: map[string]*openfgapb.TypeDefinitions{
+			backendState: map[string][]*openfgapb.TypeDefinition{
 				store: {
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "ns1",
-						},
+					{
+						Type: "ns1",
 					},
 				},
 			},
@@ -94,21 +86,12 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, dbTester teststorage
 	}
 }
 
-func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	datastore, err := dbTester.New()
-	require.NoError(err)
-
-	tds := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "ns1",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
 	store := testutils.CreateRandomString(10)
 	modelID1, err := id.NewString()
@@ -168,25 +151,16 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, dbTester teststorage.Da
 	require.ErrorContains(err, "Invalid continuation token")
 }
 
-func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	tds := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)

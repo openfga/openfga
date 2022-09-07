@@ -10,12 +10,10 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
-	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAuthorizationModelTestSettings struct {
 		_name    string
 		request  *openfgapb.WriteAuthorizationModelRequest
@@ -23,12 +21,8 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 		err      error
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)
 	for i := 0; i < datastore.MaxTypesInTypeDefinition(); i++ {
@@ -129,7 +123,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
@@ -159,7 +153,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInUnion",
@@ -190,7 +184,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
@@ -224,7 +218,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
@@ -258,7 +252,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
@@ -288,7 +282,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
@@ -318,7 +312,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
@@ -357,7 +351,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("writer"),
+			err: errors.RelationNotFound("writer", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
@@ -388,7 +382,7 @@ func TestWriteAuthorizationModel(t *testing.T, dbTester teststorage.DatastoreTes
 					},
 				},
 			},
-			err: errors.UnknownRelation("owner"),
+			err: errors.RelationNotFound("owner", "", nil),
 		},
 		{
 			_name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",

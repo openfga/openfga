@@ -29,7 +29,9 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	if err := w.validateAuthorizationModel(req.GetTypeDefinitions().GetTypeDefinitions()); err != nil {
+	typeDefinitions := req.GetTypeDefinitions().GetTypeDefinitions()
+
+	if err := w.validateAuthorizationModel(typeDefinitions); err != nil {
 		return nil, err
 	}
 
@@ -39,7 +41,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, req.GetTypeDefinitions()); err != nil {
+	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, typeDefinitions); err != nil {
 		return nil, serverErrors.HandleError("Error writing authorization model configuration", err)
 	}
 
@@ -79,7 +81,7 @@ func (w *WriteAuthorizationModelCommand) validateAuthorizationModel(tds []*openf
 
 	for _, relation := range tupleToUsersetTargets {
 		if ok := topLevelRelations[relation]; !ok {
-			return serverErrors.UnknownRelation(relation)
+			return serverErrors.RelationNotFound(relation, "", nil)
 		}
 	}
 
@@ -119,7 +121,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Users
 			return nil, serverErrors.CannotAllowMultipleReferencesToOneRelation
 		}
 		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.UnknownRelation(relation)
+			return nil, serverErrors.RelationNotFound(relation, "", nil)
 		}
 	case *openfgapb.Userset_Union:
 		for _, us := range t.Union.GetChild() {
@@ -151,7 +153,7 @@ func validateUserset(topLevelRelations map[string]bool, userset *openfgapb.Users
 	case *openfgapb.Userset_TupleToUserset:
 		relation := t.TupleToUserset.GetTupleset().GetRelation()
 		if ok := topLevelRelations[relation]; !ok {
-			return nil, serverErrors.UnknownRelation(relation)
+			return nil, serverErrors.RelationNotFound(relation, "", nil)
 		}
 		// We don't have enough information to validate these targets here so pass them up to where we do.
 		relation = t.TupleToUserset.GetComputedUserset().GetRelation()

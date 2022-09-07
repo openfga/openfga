@@ -4,12 +4,18 @@ import (
 	"context"
 
 	"github.com/MicahParks/keyfunc"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type ctxKey string
 
 var (
 	authClaimsContextKey = ctxKey("auth-claims")
+
+	ErrUnauthenticated    = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
+	ErrMissingBearerToken = status.Error(codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), "missing bearer token")
 )
 
 type Authenticator interface {
@@ -34,7 +40,7 @@ func (n NoopAuthenticator) Authenticate(requestContext context.Context) (*AuthCl
 
 func (n NoopAuthenticator) Close() {}
 
-//AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
+// AuthClaims contains claims that are included in OIDC standard claims. https://openid.net/specs/openid-connect-core-1_0.html#IDToken
 type AuthClaims struct {
 	Subject string
 	Scopes  map[string]bool

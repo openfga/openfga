@@ -14,50 +14,40 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	store := testutils.CreateRandomString(10)
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	backendState := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "ns1",
-			},
-		},
-	}
+	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, backendState)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
 	require.NoError(err)
 
 	writes := []*openfgapb.TupleKey{
 		{
-			Object:   "repo:auth0/foo",
+			Object:   "repo:openfga/foo",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 		{
-			Object:   "repo:auth0/bar",
+			Object:   "repo:openfga/bar",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 		{
-			Object:   "repo:auth0/baz",
+			Object:   "repo:openfga/baz",
 			Relation: "admin",
-			User:     "github|jon.allie@auth0.com",
+			User:     "github|jon.allie@openfga",
 		},
 	}
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
@@ -105,13 +95,10 @@ func TestReadTuplesQuery(t *testing.T, dbTester teststorage.DatastoreTester[stor
 	}
 }
 
-func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststorage.DatastoreTester[storage.OpenFGADatastore]) {
+func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-
-	datastore, err := dbTester.New()
-	require.NoError(err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
 	require.NoError(err)
@@ -122,15 +109,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, dbTester teststor
 	modelID, err := id.NewString()
 	require.NoError(err)
 
-	state := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{{Type: "repo"}})
 	require.NoError(err)
 
 	q := commands.NewReadTuplesQuery(datastore, logger, encoder)

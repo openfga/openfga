@@ -74,8 +74,14 @@ func TypeNotFound(t string) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", t))
 }
 
-func RelationNotFound(relation string, typeDefinition string, tuple *openfgapb.TupleKey) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", relation, typeDefinition, tuple.String()))
+func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKey) error {
+	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
+	if tuple != nil {
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, typeName, tuple.String())
+	} else if typeName != "" {
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, typeName)
+	}
+	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
 func EmptyRelationDefinition(typeDefinition, relation string) error {
@@ -106,10 +112,6 @@ func DuplicateContextualTuple(tk *openfgapb.TupleKey) error {
 // InvalidObjectFormat is used when an object does not have a type and id part
 func InvalidObjectFormat(tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_object_format), fmt.Sprintf("Invalid object format for tuple '%s'", tuple.String()))
-}
-
-func UnknownRelation(relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_unknown_relation), fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation))
 }
 
 func DuplicateTupleInWrite(tk *openfgapb.TupleKey) error {

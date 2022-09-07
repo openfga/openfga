@@ -19,6 +19,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+var errObjectOrUserMustBeSpecified = errors.New("either object or user must be specified")
+
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
 	continuationToken []byte
@@ -48,7 +50,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
-		return nil, storage.TupleIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
@@ -109,6 +111,30 @@ func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationMo
 // used by this storage adapter instance.
 func (s *MemoryBackend) Close(ctx context.Context) error {
 	return nil
+}
+
+func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
+	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
+	defer span.End()
+
+	uniqueObjects := make(map[string]bool, 0)
+	matches := make([]*openfgapb.Object, 0)
+	for _, t := range s.tuples[store] {
+		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
+			continue
+		}
+		_, found := uniqueObjects[t.Key.Object]
+		if !found {
+			uniqueObjects[t.Key.Object] = true
+			objectType, objectID := tupleUtils.SplitObject(t.Key.Object)
+			matches = append(matches, &openfgapb.Object{
+				Type: objectType,
+				Id:   objectID,
+			})
+		}
+	}
+
+	return storage.NewStaticObjectIterator(matches), nil
 }
 
 // Read See storage.TupleBackend.Read
@@ -202,7 +228,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
@@ -307,12 +333,12 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
 	for _, t := range s.tuples[store] {
-		if match(key, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.User {
+		if match(key, t.Key) {
 			return t, nil
 		}
 	}
@@ -329,7 +355,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	defer s.mu.Unlock()
 
 	if key.Object == "" && key.User == "" {
-		err := errors.New("either object or user must be specified")
+		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
 		return nil, openfgaerrors.ErrorWithStack(err)
 	}
@@ -540,7 +566,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds *openfgapb.TypeDefinitions) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgapb.TypeDefinition) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -558,7 +584,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 	s.authorizationModels[store][id] = &AuthorizationModelEntry{
 		model: &openfgapb.AuthorizationModel{
 			Id:              id,
-			TypeDefinitions: tds.GetTypeDefinitions(),
+			TypeDefinitions: tds,
 		},
 		latest: true,
 	}

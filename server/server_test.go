@@ -21,7 +21,6 @@ import (
 	"github.com/openfga/openfga/storage/memory"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
 	"github.com/openfga/openfga/storage/postgres"
-	teststorage "github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,60 +36,36 @@ func init() {
 func TestOpenFGAServer(t *testing.T) {
 
 	t.Run("TestPostgresDatastore", func(t *testing.T) {
-		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "postgres")
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-		test.TestAll(t, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
-			ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
-				ds, err := postgres.NewPostgresDatastore(uri)
-				require.NoError(t, err)
+		uri := testDatastore.GetConnectionURI()
+		ds, err := postgres.NewPostgresDatastore(uri)
+		require.NoError(t, err)
 
-				return ds
-			})
-
-			return ds, nil
-		}))
+		test.RunAllTests(t, ds)
 	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
-		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(t, "memory")
-
-		test.TestAll(t, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
-			ds := testEngine.NewDatastore(t, func(engine, uri string) storage.OpenFGADatastore {
-				return memory.New(telemetry.NewNoopTracer(), 10, 24)
-			})
-
-			return ds, nil
-		}))
+		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		test.RunAllTests(t, ds)
 	})
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
 
-	b.Run("TestPostgresDatastore", func(b *testing.B) {
-		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(b, "postgres")
+	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
-		test.BenchmarkAll(b, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
-			ds := testEngine.NewDatastore(b, func(engine, uri string) storage.OpenFGADatastore {
-				ds, err := postgres.NewPostgresDatastore(uri)
-				require.NoError(b, err)
+		uri := testDatastore.GetConnectionURI()
+		ds, err := postgres.NewPostgresDatastore(uri)
+		require.NoError(b, err)
 
-				return ds
-			})
-
-			return ds, nil
-		}))
+		test.RunAllBenchmarks(b, ds)
 	})
 
-	b.Run("TestMemoryDatastore", func(b *testing.B) {
-		testEngine := storagefixtures.RunOpenFGADatastoreTestEngine(b, "memory")
-
-		test.BenchmarkAll(b, teststorage.DatastoreTesterFunc(func() (storage.OpenFGADatastore, error) {
-			ds := testEngine.NewDatastore(b, func(engine, uri string) storage.OpenFGADatastore {
-				return memory.New(telemetry.NewNoopTracer(), 10, 24)
-			})
-
-			return ds, nil
-		}))
+	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
+		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		test.RunAllBenchmarks(b, ds)
 	})
 }
 
