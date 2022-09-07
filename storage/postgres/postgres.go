@@ -429,25 +429,25 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 func (p *Postgres) WriteAuthorizationModel(
 	ctx context.Context,
 	store, modelID string,
-	tds *openfgapb.TypeDefinitions,
+	tds []*openfgapb.TypeDefinition,
 ) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds.GetTypeDefinitions()) > p.MaxTypesInTypeDefinition() {
+	if len(tds) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, type, type_definition) VALUES ($1, $2, $3, $4)"
 
 	inserts := &pgx.Batch{}
-	for _, typeDef := range tds.GetTypeDefinitions() {
-		marshalledTypeDef, err := proto.Marshal(typeDef)
+	for _, td := range tds {
+		marshalledTypeDef, err := proto.Marshal(td)
 		if err != nil {
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, modelID, td.GetType(), marshalledTypeDef)
 	}
 
 	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {

@@ -221,7 +221,7 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	if err != nil {
 		return nil, nil, "", err
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	if err != nil {
 		return nil, nil, "", err
 	}
