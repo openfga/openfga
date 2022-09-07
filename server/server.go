@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-errors/errors"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
@@ -20,6 +19,7 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
+	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/storage"
 	"github.com/rs/cors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -28,7 +28,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
@@ -504,7 +503,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// nosemgrep: grpc-server-insecure-connection
 	grpcServer := grpc.NewServer(opts...)
 	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
-	healthServer := &OpenfgaHealthServer{HealthChecker: s}
+	healthServer := &health.Checker{TargetService: s, TargetServiceName: openfgapb.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
 	reflection.Register(grpcServer)
 
@@ -633,44 +632,4 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
-}
-
-// HealthChecker defines an interface that services can implement for server health checks.
-type HealthChecker interface {
-	IsReady(ctx context.Context) (bool, error)
-}
-
-type OpenfgaHealthServer struct {
-	healthv1pb.UnimplementedHealthServer
-	HealthChecker
-}
-
-var _ grpc_auth.ServiceAuthFuncOverride = (*OpenfgaHealthServer)(nil)
-
-// AuthFuncOverride implements the grpc_auth.ServiceAuthFuncOverride interface by bypassing authn middleware.
-func (o *OpenfgaHealthServer) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
-	return ctx, nil
-}
-
-func (o *OpenfgaHealthServer) Check(ctx context.Context, req *healthv1pb.HealthCheckRequest) (*healthv1pb.HealthCheckResponse, error) {
-
-	service := req.GetService()
-	if service == "" || service == openfgapb.OpenFGAService_ServiceDesc.ServiceName {
-		ready, err := o.HealthChecker.IsReady(ctx)
-		if err != nil {
-			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, err
-		}
-
-		if !ready {
-			return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_NOT_SERVING}, nil
-		}
-
-		return &healthv1pb.HealthCheckResponse{Status: healthv1pb.HealthCheckResponse_SERVING}, nil
-	}
-
-	return nil, status.Errorf(codes.NotFound, "service '%s' is not registered with the Health server", service)
-}
-
-func (o *OpenfgaHealthServer) Watch(req *healthv1pb.HealthCheckRequest, server healthv1pb.Health_WatchServer) error {
-	return status.Error(codes.Unimplemented, "unimplemented streaming endpoint")
 }
