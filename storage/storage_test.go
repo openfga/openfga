@@ -2,7 +2,6 @@ package storage
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -187,6 +186,5 @@ func ExampleNewUniqueObjectIterator() {
 		objects = append(objects, tuple.ObjectKey(obj))
 	}
 
-	fmt.Println(objects)
 	// Output: [document:doc1 document:doc2]
 }
