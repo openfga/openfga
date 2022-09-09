@@ -590,8 +590,6 @@ func TestHTTPServingTLS(t *testing.T) {
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
 
-		fmt.Println(config)
-
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
 
