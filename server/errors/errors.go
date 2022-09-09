@@ -84,8 +84,8 @@ func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKe
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
-func EmptyRelationDefinition(typeDefinition, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("Type definition '%s' contains an empty relation definition '%s'", typeDefinition, relation))
+func EmptyRewrites(objectType, relation string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("The definition of relation '%s' on type '%s' is invalid", relation, objectType))
 }
 
 func ExceededEntityLimit(entity string, limit int) error {
