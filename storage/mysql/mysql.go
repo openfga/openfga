@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
@@ -15,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -81,10 +83,24 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
-	db, err := sql.Open("mysql", uri)
+    policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 1 * time.Minute
+	var db *sql.DB
+	attempt := 1
+	err := backoff.Retry(func() error {
+		var err error
+		db, err = sql.Open("mysql", uri)
+		if err != nil {
+			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt))
+			attempt++
+			return err
+		}
+		return nil
+	}, policy)
 	if err != nil {
-		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
+		return nil, errors.Errorf("failed to initialize MySQL connection: %v", err)
 	}
+
 	m.db = db
 
 	return m, nil
