@@ -203,5 +203,6 @@ func handlePostgresError(err error, args ...interface{}) error {
 		}
 		return openfgaerrors.ErrorWithStack(storage.ErrCollision)
 	}
-	return openfgaerrors.ErrorWithStack(err)
+
+	return errors.WrapPrefix(err, "postgres error", 0)
 }
