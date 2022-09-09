@@ -399,12 +399,12 @@ func (m *MySQL) MaxTypesInTypeDefinition() int {
 func (m *MySQL) WriteAuthorizationModel(
 	ctx context.Context,
 	store, modelID string,
-	tds *openfgapb.TypeDefinitions,
+	tds []*openfgapb.TypeDefinition,
 ) error {
 	ctx, span := m.tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds.GetTypeDefinitions()) > m.MaxTypesInTypeDefinition() {
+	if len(tds) > m.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesInTypeDefinition)
 	}
 
@@ -416,7 +416,7 @@ func (m *MySQL) WriteAuthorizationModel(
 	}
 	defer rollbackTx(ctx, tx, m.logger)
 
-	for _, typeDef := range tds.GetTypeDefinitions() {
+	for _, typeDef := range tds {
 		marshalledTypeDef, err := proto.Marshal(typeDef)
 		if err != nil {
 			return err
