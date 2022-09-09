@@ -179,6 +179,8 @@ The core [OpenFGA](https://github.com/openfga/openfga) service has been in use b
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
 
+OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by @twintag. Auth0 is not using it in a production environment.
+
 The OpenFGA team will do its best to address all production issues with high priority.
 
 ## Contributing

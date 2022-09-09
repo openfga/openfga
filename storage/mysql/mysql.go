@@ -639,7 +639,7 @@ func (m *MySQL) ReadChanges(
 	return changes, contToken, nil
 }
 
-// IsReady reports whether this Postgres datastore instance is ready
+// IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
 func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
