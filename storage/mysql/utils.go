@@ -60,8 +60,7 @@ func unmarshallContToken(from string) (*contToken, error) {
 }
 
 func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, []any, error) {
-	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	sb := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := squirrel.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(squirrel.Eq{"store": store}).
 		OrderBy("ulid")
@@ -94,8 +93,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 }
 
 func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) (string, []any, error) {
-	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	sb := psql.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := squirrel.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(squirrel.Eq{"store": store}).
 		Where(squirrel.Eq{"user_type": tupleUtils.UserSet}).
@@ -116,8 +114,7 @@ func buildReadUsersetTuplesQuery(store string, tupleKey *openfgapb.TupleKey) (st
 }
 
 func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error) {
-	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	sb := psql.Select("id", "name", "created_at", "updated_at").
+	sb := squirrel.Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(squirrel.Eq{"deleted_at": nil}).
 		OrderBy("id")
@@ -137,8 +134,7 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error)
 }
 
 func buildReadChangesQuery(store, objectTypeFilter string, opts storage.PaginationOptions, horizonOffset time.Duration) (string, []any, error) {
-	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	sb := psql.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := squirrel.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
 		From("changelog").
 		Where(squirrel.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
@@ -165,8 +161,7 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 }
 
 func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOptions) (string, []any, error) {
-	psql := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Question)
-	sb := psql.Select("authorization_model_id").Distinct().
+	sb := squirrel.Select("authorization_model_id").Distinct().
 		From("authorization_model").
 		Where(squirrel.Eq{"store": store}).
 		OrderBy("authorization_model_id DESC")
