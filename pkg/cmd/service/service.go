@@ -315,6 +315,7 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 
 	interceptors := []grpc.UnaryServerInterceptor{
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewErrorLoggingInterceptor(logger),
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
