@@ -3,8 +3,8 @@ package assets
 import "embed"
 
 const (
-	PostgresMigrationDir = "migrations/postgres"
 	MySQLMigrationDir    = "migrations/mysql"
+	PostgresMigrationDir = "migrations/postgres"
 )
 
 //go:embed migrations/*

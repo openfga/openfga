@@ -14,7 +14,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	_ "github.com/go-sql-driver/mysql"
-
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"

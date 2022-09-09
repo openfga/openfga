@@ -291,16 +291,6 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
-	case "postgres":
-		opts := []postgres.PostgresOption{
-			postgres.WithLogger(logger),
-			postgres.WithTracer(tracer),
-		}
-
-		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
-		if err != nil {
-			return nil, errors.Errorf("failed to initialize postgres datastore: %v", err)
-		}
 	case "mysql":
 		opts := []mysql.MySQLOption{
 			mysql.WithLogger(logger),
@@ -310,6 +300,16 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
 		if err != nil {
 			return nil, errors.Errorf("failed to initialize mysql datastore: %v", err)
+		}
+	case "postgres":
+		opts := []postgres.PostgresOption{
+			postgres.WithLogger(logger),
+			postgres.WithTracer(tracer),
+		}
+
+		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
+		if err != nil {
+			return nil, errors.Errorf("failed to initialize postgres datastore: %v", err)
 		}
 	default:
 		return nil, errors.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
