@@ -127,12 +127,12 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 		}
 	case *openfgapb.Userset_TupleToUserset:
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
-		if _, ok := allRelations[tupleset]; !ok {
+		if _, ok := relationsOnType[tupleset]; !ok {
 			return serverErrors.RelationNotFound(tupleset, "", nil)
 		}
 
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
-		if _, ok := relationsOnType[computedUserset]; !ok {
+		if _, ok := allRelations[computedUserset]; !ok {
 			return serverErrors.RelationNotFound(computedUserset, "", nil)
 		}
 	case *openfgapb.Userset_Union:
