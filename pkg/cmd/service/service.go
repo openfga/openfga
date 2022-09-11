@@ -169,7 +169,7 @@ func DefaultConfig() *Config {
 			Enabled:            true,
 			Addr:               ":8080",
 			TLS:                TLSConfig{Enabled: false},
-			UpstreamTimeout:    3 * time.Second,
+			UpstreamTimeout:    5 * time.Second,
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedHeaders: []string{"*"},
 		},

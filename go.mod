@@ -15,7 +15,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
 	github.com/hashicorp/go-retryablehttp v0.7.1
-	github.com/jackc/pgx/v4 v4.17.2
+	github.com/jackc/pgx/v5 v5.0.0-beta.5
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/pressly/goose/v3 v3.6.2-0.20220713121812-0a7297073735
@@ -49,14 +49,9 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
-	github.com/jackc/pgconn v1.13.0 // indirect
-	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
-	github.com/jackc/pgtype v1.12.0 // indirect
-	github.com/jackc/puddle v1.3.0 // indirect
+	github.com/jackc/puddle/v2 v2.0.0-beta.2 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/magiconair/properties v1.8.6 // indirect
