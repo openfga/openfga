@@ -61,7 +61,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 						{
 							Type: "group",
 							Relations: map[string]*openfgapb.Userset{
-								"group": {Userset: &openfgapb.Userset_This{}},
+								"member": {Userset: &openfgapb.Userset_This{}},
 							},
 						},
 						{
@@ -528,7 +528,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 		t.Run(test._name, func(t *testing.T) {
 			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
 			resp, err := cmd.Execute(ctx, test.request)
-			require.Equal(t, test.err, err)
+			require.ErrorIs(t, err, test.err)
 
 			if err == nil {
 				require.True(t, id.IsValid(resp.AuthorizationModelId))
