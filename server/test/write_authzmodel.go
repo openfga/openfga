@@ -53,6 +53,63 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
+			_name: "succeeds part II",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "somestoreid",
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "group",
+							Relations: map[string]*openfgapb.Userset{
+								"member": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"owner": {Userset: &openfgapb.Userset_This{}},
+								"reader": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_ComputedUserset{
+														ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"},
+													},
+												},
+											},
+										},
+									},
+								},
+								"writer": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_TupleToUserset{
+														TupleToUserset: &openfgapb.TupleToUserset{
+															Tupleset:        &openfgapb.ObjectRelation{Relation: "owner"},
+															ComputedUserset: &openfgapb.ObjectRelation{Relation: "member"},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			_name: "fails if too many types",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: "somestoreid",
@@ -471,7 +528,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 		t.Run(test._name, func(t *testing.T) {
 			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
 			resp, err := cmd.Execute(ctx, test.request)
-			require.Equal(t, test.err, err)
+			require.ErrorIs(t, err, test.err)
 
 			if err == nil {
 				require.True(t, id.IsValid(resp.AuthorizationModelId))
