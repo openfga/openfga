@@ -11,8 +11,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-var supportedSchemaVersions = map[string]struct{}{"1.0": {}, "1.1": {}}
-
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
 type WriteAuthorizationModelCommand struct {
 	backend storage.TypeDefinitionWriteBackend
@@ -31,23 +29,24 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	schemaVersion := req.GetSchemaVersion()
-	if schemaVersion == "" {
-		schemaVersion = "1.0"
-	}
-
-	if _, ok := supportedSchemaVersions[schemaVersion]; !ok {
+	var schemaVersion openfgapb.SchemaVersion
+	switch req.GetSchemaVersion() {
+	case "", "1.0":
+		schemaVersion = openfgapb.SchemaVersion_SCHEMA_VERSION_1_0
+	case "1.1":
+		schemaVersion = openfgapb.SchemaVersion_SCHEMA_VERSION_1_1
+	default:
 		return nil, serverErrors.UnsupportedSchemaVersion
 	}
 
-	typeDefinitions := req.GetTypeDefinitions().GetTypeDefinitions()
+	typeDefinitions := req.GetTypeDefinitions()
 
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
 	if len(typeDefinitions) > w.backend.MaxTypesInTypeDefinition() {
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	if err := validateAuthorizationModel(req.GetSchemaVersion(), typeDefinitions); err != nil {
+	if err := validateAuthorizationModel(schemaVersion, typeDefinitions); err != nil {
 		return nil, err
 	}
 
@@ -77,7 +76,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 //     a. For a type (e.g. user) this means checking that this type is in the model
 //     b. For a type#relation this means checking that this type with this relation is in the model
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func validateAuthorizationModel(version string, tds []*openfgapb.TypeDefinition) error {
+func validateAuthorizationModel(schemaVersion openfgapb.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
 	if containsDuplicateTypes(tds) {
 		return serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
@@ -86,7 +85,7 @@ func validateAuthorizationModel(version string, tds []*openfgapb.TypeDefinition)
 		return err
 	}
 
-	if version == "1.1" {
+	if schemaVersion == openfgapb.SchemaVersion_SCHEMA_VERSION_1_1 {
 		if err := areRelationalTypesValid(tds); err != nil {
 			return err
 		}
