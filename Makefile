@@ -37,11 +37,11 @@ start-postgres-container:
 .PHONY: migrate-postgres
 migrate-postgres: build
 	# nosemgrep: detected-username-and-password-in-uri
-	./openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres?sslmode=disable'
+	./openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
 .PHONY: run-postgres
 run-postgres: build
-	./openfga run --datastore-engine postgres --datastore-uri postgres://postgres:password@localhost:5432/postgres?sslmode=disable
+	./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
 .PHONY: go-generate
 go-generate: install-tools
