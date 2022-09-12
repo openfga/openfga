@@ -33,6 +33,7 @@ run: build ## Run the OpenFGA server with in-memory storage
 .PHONY: start-postgres-container
 start-postgres-container:
 	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
+	@echo \> use \'postgres://postgres:password@localhost:5432/postgres\' to connect to postgres
 
 .PHONY: migrate-postgres
 migrate-postgres: build
