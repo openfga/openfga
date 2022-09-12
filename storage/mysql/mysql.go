@@ -91,10 +91,17 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		var err error
 		db, err = sql.Open("mysql", uri)
 		if err != nil {
-			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt))
+			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt), zap.String("action", "open database"))
 			attempt++
 			return err
 		}
+
+        err = db.Ping()
+        if err != nil {
+			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt), zap.String("action", "ping database"))
+			attempt++
+			return err
+        }
 		return nil
 	}, policy)
 	if err != nil {
@@ -108,7 +115,7 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close(ctx context.Context) error {
-	return nil
+	return m.db.Close();
 }
 
 func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
