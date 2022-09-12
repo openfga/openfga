@@ -49,7 +49,64 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "fails if too many types",
+			_name: "succeeds part II",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "somestoreid",
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "group",
+							Relations: map[string]*openfgapb.Userset{
+								"member": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"owner": {Userset: &openfgapb.Userset_This{}},
+								"reader": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_ComputedUserset{
+														ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"},
+													},
+												},
+											},
+										},
+									},
+								},
+								"writer": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_TupleToUserset{
+														TupleToUserset: &openfgapb.TupleToUserset{
+															Tupleset:        &openfgapb.ObjectRelation{Relation: "owner"},
+															ComputedUserset: &openfgapb.ObjectRelation{Relation: "member"},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			_name: "fails if too many types",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: &openfgapb.TypeDefinitions{
