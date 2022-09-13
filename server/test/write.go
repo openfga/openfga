@@ -28,7 +28,7 @@ type writeCommandTest struct {
 var tk = &openfgapb.TupleKey{
 	Object:   "repository:openfga/openfga",
 	Relation: "administrator",
-	User:     "github|alice@openfga",
+	User:     "user:github|alice@openfga",
 }
 
 var writeCommandTests = []writeCommandTest{
@@ -43,6 +43,10 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithSameTupleInWritesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -61,6 +65,10 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectUnionRelationshipReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -94,20 +102,24 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@openfga.com",
+				User:     "user:github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@openfga.com",
+			User:     "user:github|alice@openfga.com",
 		}),
 	},
 	{
 		_name: "ExecuteWithWriteToIndirectIntersectionRelationshipReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -141,20 +153,24 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@openfga.com",
+				User:     "user:github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@openfga.com",
+			User:     "user:github|alice@openfga.com",
 		}),
 	},
 	{
 		_name: "ExecuteWithWriteToIndirectDifferenceRelationshipReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -202,20 +218,24 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@openfga.com",
+				User:     "user:github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@openfga.com",
+			User:     "user:github|alice@openfga.com",
 		}),
 	},
 	{
 		_name: "ExecuteWithWriteToIndirectComputerUsersetRelationshipReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -237,20 +257,24 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@openfga.com",
+				User:     "user:github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@openfga.com",
+			User:     "user:github|alice@openfga.com",
 		}),
 	},
 	{
 		_name: "ExecuteWithWriteToIndirectTupleToUsersetRelationshipReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -278,20 +302,24 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
 				Object:   "repository:openfga/openfga",
 				Relation: "viewer",
-				User:     "github|alice@openfga.com",
+				User:     "user:github|alice@openfga.com",
 			}}},
 		},
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
 			Relation: "viewer",
-			User:     "github|alice@openfga.com",
+			User:     "user:github|alice@openfga.com",
 		}),
 	},
 	{
 		_name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -310,6 +338,10 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
@@ -330,6 +362,10 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
 					"administrator": {},
@@ -346,10 +382,15 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
-		typeDefinitions: []*openfgapb.TypeDefinition{{
-			Type:      "repo",
-			Relations: map[string]*openfgapb.Userset{},
-		}},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type:      "repo",
+				Relations: map[string]*openfgapb.Userset{},
+			}},
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
@@ -361,6 +402,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithMissingUserError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
@@ -380,6 +424,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
@@ -402,6 +449,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
@@ -421,6 +471,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
 				"owner": {},
@@ -442,6 +495,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type:      "repo",
 			Relations: map[string]*openfgapb.Userset{},
 		}},
@@ -455,6 +511,9 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithInvalidObjectFormatReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type:      "repo",
 			Relations: map[string]*openfgapb.Userset{},
 		}},
@@ -464,20 +523,23 @@ var writeCommandTests = []writeCommandTest{
 				// invalid because it has no :
 				Object:   "openfga",
 				Relation: "owner",
-				User:     "github|jose@openfga",
+				User:     "user:github|jose@openfga",
 			}}},
 		},
 		// output
 		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
 			Object:   "openfga",
 			Relation: "owner",
-			User:     "github|jose@openfga",
+			User:     "user:github|jose@openfga",
 		}),
 	},
 	{
 		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{{
+			Type:      "user",
+			Relations: map[string]*openfgapb.Userset{},
+		}, {
 			Type: "repo",
 			Relations: map[string]*openfgapb.Userset{
 				"admin": {},
@@ -495,7 +557,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 			}},
 		},
@@ -503,7 +565,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.RelationNotFound("writer", "repo", &openfgapb.TupleKey{
 			Object:   "repo:openfga/openfga",
 			Relation: "writer",
-			User:     "github|jose@openfga",
+			User:     "user:github|jose@openfga",
 		}),
 	},
 	{
@@ -526,7 +588,7 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|jose@openfga",
+				User:     "user:github|jose@openfga",
 			},
 		},
 		// input
@@ -535,7 +597,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 			}},
 		},
@@ -569,12 +631,12 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
@@ -616,12 +678,12 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|jose@openfga",
+				User:     "user:github|jose@openfga",
 			},
 			{
 				Object:   "repo:openfga/openfga",
 				Relation: "admin",
-				User:     "github|jose@openfga",
+				User:     "user:github|jose@openfga",
 			},
 			{
 				Object:   "repo:openfga/openfga",
@@ -640,12 +702,12 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
@@ -687,7 +749,7 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Object:   "org:openfga",
 				Relation: "owner",
-				User:     "github|yenkel@openfga",
+				User:     "user:github|yenkel@openfga",
 			},
 			{
 				Object:   "repo:openfga/openfga",
@@ -701,12 +763,12 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "user:github|jose@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
@@ -723,7 +785,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Object:   "org:openfga",
 					Relation: "owner",
-					User:     "github|yenkel@openfga",
+					User:     "user:github|yenkel@openfga",
 				},
 				{
 					Object:   "repo:openfga/openfga",
@@ -732,6 +794,298 @@ var writeCommandTests = []writeCommandTest{
 				},
 			}},
 		},
+	},
+	{
+		_name: "Delete succeeds even if user field contains a type that is not allowed by the current authorization model",
+		tuples: []*openfgapb.TupleKey{
+			{
+				Object:   "org:openfga",
+				Relation: "owner",
+				User:     "impossible:1",
+			},
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "org",
+				Relations: map[string]*openfgapb.Userset{
+					"owner": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"owner": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "user",
+								},
+							},
+						},
+					},
+				},
+			}},
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "org:openfga",
+					Relation: "owner",
+					User:     "impossible:1",
+				},
+			}}},
+	},
+	{
+		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "group",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "user:abc",
+				},
+			}}},
+		err: serverErrors.InvalidTuple("Object of type user is not allowed to have relation reader with document:budget", &openfgapb.TupleKey{
+			Object:   "document:budget",
+			Relation: "reader",
+			User:     "user:abc",
+		}),
+	},
+	{
+		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows user:...)",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "user",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "user:bob",
+				},
+			}}},
+	},
+	{
+		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...#member)",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type:     "group",
+									Relation: "member",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "user:abc",
+				},
+			}}},
+		err: serverErrors.InvalidTuple("Object of type user is not allowed to have relation reader with document:budget", &openfgapb.TupleKey{
+			Object:   "document:budget",
+			Relation: "reader",
+			User:     "user:abc",
+		}),
+	},
+	{
+		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows group:...#member)",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type:     "group",
+									Relation: "member",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "group:abc#member",
+				},
+			}}},
+	},
+	{
+		_name: "Write succeeds if user is * and type references a specific type",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "group",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "*",
+				},
+			}}},
+	},
+	{
+		_name: "Write fails if user is * and type does not reference a specific type",
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type:      "user",
+				Relations: map[string]*openfgapb.Userset{},
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationalMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type:     "group",
+									Relation: "member",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				{
+					Object:   "document:budget",
+					Relation: "reader",
+					User:     "*",
+				},
+			}}},
+		err: serverErrors.InvalidTuple("User=* is not allowed to have relation reader with document:budget", &openfgapb.TupleKey{
+			Object:   "document:budget",
+			Relation: "reader",
+			User:     "*",
+		}),
 	},
 }
 

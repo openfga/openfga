@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -67,8 +68,10 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		}
 
 		// Validate that we are not trying to write to an indirect-only relationship
-		err = validateHasDirectRelationship(tupleUserset, tk)
-		if err != nil {
+		if err := validateHasDirectRelationship(tupleUserset, tk); err != nil {
+			return err
+		}
+		if err := c.validateTypes(ctx, store, modelID, tk, dbCallsCounter); err != nil {
 			return err
 		}
 	}
@@ -85,6 +88,63 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	return nil
+}
+
+// validateTypes makes sure that when writing a tuple, the types are compatible.
+// 1. If the tuple is of the form (person:bob, reader, doc:budget), then the type "doc", relation "reader" allows type "person".
+// 2. If the tuple is of the form (group:abc#member, reader, doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
+// 3. If the tuple is of type (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" has "allow public" = true
+func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelId string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
+	objectType, _ := tupleUtils.SplitObject(tk.GetObject()) // e.g. "doc"
+
+	dbCallsCounter.AddReadCall()
+	typeDefinition, err := c.datastore.ReadTypeDefinition(ctx, store, authorizationModelId, objectType)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &tupleUtils.TypeNotFoundError{TypeName: objectType}
+		}
+		return err
+	}
+	if typeDefinition.Metadata == nil {
+		// authorization model is old and does not have type information
+		return nil
+	}
+	relationInformation := typeDefinition.Metadata.Relations[tk.Relation]
+
+	userType, userId := tupleUtils.SplitObject(tk.GetUser()) // e.g. (person, bob) or (group, abc#member) or ("", *)
+
+	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
+
+	// case 1
+	if userRel == "" && userId != "* " {
+		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+			if typeInformation.Type == userType {
+				return nil
+			}
+		}
+	}
+
+	// case 2
+	if userRel != "" {
+		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+			if typeInformation.Type == userType && typeInformation.Relation == userRel {
+				return nil
+			}
+		}
+	}
+
+	// case 3
+	if userId == "*" {
+		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+			if typeInformation.Type != "" && typeInformation.Relation == "" {
+				return nil
+			}
+		}
+
+		return serverErrors.InvalidTuple(fmt.Sprintf("User=* is not allowed to have relation %s with %s", tk.Relation, tk.Object), tk)
+	}
+
+	return serverErrors.InvalidTuple(fmt.Sprintf("Object of type %s is not allowed to have relation %s with %s", userType, tk.Relation, tk.Object), tk)
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
