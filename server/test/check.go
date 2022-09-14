@@ -1251,6 +1251,45 @@ var checkQueryTests = []checkQueryTest{
 			Allowed: true,
 		},
 	},
+	{
+		name:             "Check with TupleToUserset involving no object or userset",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"parent": {
+						Userset: &openfgapb.Userset_This{},
+					},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+								ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
+		},
+		response: &openfgapb.CheckResponse{
+			Allowed: false,
+		},
+	},
 }
 
 func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {

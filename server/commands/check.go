@@ -425,6 +425,10 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			break // the user was resolved already, avoid launching extra lookups
 		}
 
+		if !tupleUtils.IsValidObject(tuple.GetUser()) && !tupleUtils.IsObjectRelation(tuple.GetUser()) {
+			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
+		}
+
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation()
 
