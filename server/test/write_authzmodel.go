@@ -110,6 +110,31 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 			err: errors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
 		},
 		{
+			name: "empty relations is valid",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "repo",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "zero length relations is valid",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type:      "repo",
+							Relations: map[string]*openfgapb.Userset{},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "ExecuteWriteFailsIfSameTypeTwice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -131,7 +156,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 			err: errors.CannotAllowDuplicateTypesInOneRequest,
 		},
 		{
-			name: "ExecuteWriteFailsIfEmptyRelationDefinition",
+			name: "ExecuteWriteFailsIfEmptyRewrites",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
