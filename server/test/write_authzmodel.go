@@ -599,8 +599,8 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 											Type: "user",
 										},
 										{
-											Type:          "group",
-											RelationOrAny: &openfgapb.RelationReference_Relation{Relation: "member"},
+											Type:     "group",
+											Relation: "member",
 										},
 									},
 								},
@@ -610,8 +610,8 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 											Type: "user",
 										},
 										{
-											Type:          "group",
-											RelationOrAny: &openfgapb.RelationReference_Relation{Relation: "admin"},
+											Type:     "group",
+											Relation: "admin",
 										},
 									},
 								},
@@ -683,8 +683,8 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
-											Type:          "group",
-											RelationOrAny: &openfgapb.RelationReference_Relation{Relation: "admin"},
+											Type:     "group",
+											Relation: "admin",
 										},
 									},
 								},
@@ -797,64 +797,6 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 				},
 			},
 			err: errors.NonassignableRelationHasAType("document", "reader"),
-		},
-		{
-			name: "user:* is valid when a user type exists",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:          "user",
-											RelationOrAny: &openfgapb.RelationReference_Any{Any: true},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "user:* with no user type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:          "user",
-											RelationOrAny: &openfgapb.RelationReference_Any{Any: true},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.InvalidRelationType("document", "reader", "user", ""),
 		},
 	}
 
