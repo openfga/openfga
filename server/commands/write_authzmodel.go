@@ -5,6 +5,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -29,16 +30,10 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	var schemaVersion openfgapb.SchemaVersion
-	switch req.GetSchemaVersion() {
-	case "", "1.0":
-		schemaVersion = openfgapb.SchemaVersion_SCHEMA_VERSION_1_0
-	case "1.1":
-		schemaVersion = openfgapb.SchemaVersion_SCHEMA_VERSION_1_1
-	default:
+	schemaVersion := typesystem.NewSchemaVersion(req.GetSchemaVersion())
+	if schemaVersion == typesystem.SchemaVersionUnspecified {
 		return nil, serverErrors.UnsupportedSchemaVersion
 	}
-
 	typeDefinitions := req.GetTypeDefinitions()
 
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
@@ -76,7 +71,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 //     a. For a type (e.g. user) this means checking that this type is in the model
 //     b. For a type#relation this means checking that this type with this relation is in the model
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func validateAuthorizationModel(schemaVersion openfgapb.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
+func validateAuthorizationModel(schemaVersion typesystem.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
 	if containsDuplicateTypes(tds) {
 		return serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
@@ -85,7 +80,7 @@ func validateAuthorizationModel(schemaVersion openfgapb.SchemaVersion, tds []*op
 		return err
 	}
 
-	if schemaVersion == openfgapb.SchemaVersion_SCHEMA_VERSION_1_1 {
+	if schemaVersion == typesystem.SchemaVersion1_1 {
 		if err := areRelationalTypesValid(tds); err != nil {
 			return err
 		}
@@ -200,7 +195,7 @@ func areRelationalTypesValid(tds []*openfgapb.TypeDefinition) error {
 	// 1. If it is a type (e.g. user) then this type is a type in the model
 	// 2. If it is a type#relation then this type with this relation is in the model
 	for _, td := range tds {
-		for _relation, _ := range td.GetRelations() {
+		for _relation := range td.GetRelations() {
 			metadata, ok := td.GetMetadata().GetRelations()[_relation]
 			if ok {
 				for _, userType := range metadata.GetDirectlyRelatedUserTypes() {
