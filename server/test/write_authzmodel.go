@@ -537,7 +537,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -567,7 +567,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"member": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"admin": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -592,7 +592,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"writer": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -646,7 +646,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -679,7 +679,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -711,7 +711,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"writer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -742,7 +742,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_This{}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"writer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
@@ -776,7 +776,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 							"reader": {Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"}}},
 						},
 						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationalMetadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
 								"writer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
