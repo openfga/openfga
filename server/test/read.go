@@ -555,7 +555,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			modelID, err := id.NewString()
 			require.NoError(err)
 
-			err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+			err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 			require.NoError(err)
 
 			if test.tuples != nil {

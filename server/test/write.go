@@ -58,6 +58,237 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
 	{
+		_name: "ExecuteWithWriteToIndirectUnionRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_Union{
+							Union: &openfgapb.Usersets{
+								Child: []*openfgapb.Userset{
+									{Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
+											Object:   "",
+											Relation: "writer",
+										},
+									}},
+									{Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
+											Object:   "",
+											Relation: "owner",
+										},
+									}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
+		_name: "ExecuteWithWriteToIndirectIntersectionRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_Intersection{
+							Intersection: &openfgapb.Usersets{
+								Child: []*openfgapb.Userset{
+									{Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
+											Object:   "",
+											Relation: "writer",
+										},
+									}},
+									{Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
+											Object:   "",
+											Relation: "owner",
+										},
+									}},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
+		_name: "ExecuteWithWriteToIndirectDifferenceRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"banned": {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_Difference{
+							Difference: &openfgapb.Difference{
+								Base: &openfgapb.Userset{
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
+														Object:   "",
+														Relation: "writer",
+													},
+												}},
+												{Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
+														Object:   "",
+														Relation: "owner",
+													},
+												}},
+											},
+										},
+									},
+								},
+								Subtract: &openfgapb.Userset{
+									Userset: &openfgapb.Userset_ComputedUserset{
+										ComputedUserset: &openfgapb.ObjectRelation{
+											Relation: "banned",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
+		_name: "ExecuteWithWriteToIndirectComputerUsersetRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_ComputedUserset{
+							ComputedUserset: &openfgapb.ObjectRelation{
+								Object:   "",
+								Relation: "writer",
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
+		_name: "ExecuteWithWriteToIndirectTupleToUsersetRelationshipReturnsError",
+		// state
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repository",
+				Relations: map[string]*openfgapb.Userset{
+					"writer": {Userset: &openfgapb.Userset_This{}},
+					"owner":  {Userset: &openfgapb.Userset_This{}},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset: &openfgapb.ObjectRelation{
+									Object:   "",
+									Relation: "writer",
+								},
+								ComputedUserset: &openfgapb.ObjectRelation{
+									Object:   "",
+									Relation: "writer",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+				Object:   "repository:openfga/openfga",
+				Relation: "viewer",
+				User:     "github|alice@openfga.com",
+			}}},
+		},
+		// output
+		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
+			Object:   "repository:openfga/openfga",
+			Relation: "viewer",
+			User:     "github|alice@openfga.com",
+		}),
+	},
+	{
 		_name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
 		typeDefinitions: []*openfgapb.TypeDefinition{
@@ -517,7 +748,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.typeDefinitions != nil {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 				require.NoError(err)
 			}
 

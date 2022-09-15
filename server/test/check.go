@@ -1272,9 +1272,9 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(t, err)
 
 			if test.useGitHubTypeDefinition {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions()})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 			} else {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{TypeDefinitions: test.typeDefinitions})
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 			}
 			require.NoError(t, err)
 
@@ -1341,13 +1341,13 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	originalModelID, err := id.NewString()
 	require.NoError(t, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, originalModelID, &openfgapb.TypeDefinitions{TypeDefinitions: originalTD})
+	err = datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
 	require.NoError(t, err)
 
 	updatedModelID, err := id.NewString()
 	require.NoError(t, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, &openfgapb.TypeDefinitions{TypeDefinitions: updatedTD})
+	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, updatedTD)
 	require.NoError(t, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{Object: "repo:openfgapb", Relation: "owner", User: "yenkel"}})
@@ -1408,7 +1408,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	modelID, err := id.NewString()
 	require.NoError(b, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
@@ -1451,7 +1451,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	modelID, err := id.NewString()
 	require.NoError(b, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, &gitHubTypeDefinitions)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)

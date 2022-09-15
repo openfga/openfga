@@ -47,6 +47,16 @@ func (i *RelationNotFoundError) Error() string {
 	return fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", i.Relation, i.TypeName, i.TupleKey.String())
 }
 
+// IndirectWriteError is used to categorize errors specific to write check logic
+type IndirectWriteError struct {
+	Reason   string
+	TupleKey *openfgapb.TupleKey
+}
+
+func (i *IndirectWriteError) Error() string {
+	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+}
+
 // ValidateUser returns whether the user is valid.  If not, return error
 func ValidateUser(tk *openfgapb.TupleKey) error {
 	if !IsValidUser(tk.GetUser()) {

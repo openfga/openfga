@@ -84,8 +84,8 @@ func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKe
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
-func EmptyRelationDefinition(typeDefinition, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("Type definition '%s' contains an empty relation definition '%s'", typeDefinition, relation))
+func EmptyRewrites(objectType, relation string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("The definition of relation '%s' on type '%s' is invalid", relation, objectType))
 }
 
 func ExceededEntityLimit(entity string, limit int) error {
@@ -118,6 +118,10 @@ func DuplicateTupleInWrite(tk *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_cannot_allow_duplicate_tuples_in_one_request), fmt.Sprintf("duplicate tuple in write: user: '%s', relation: '%s', object: '%s'", tk.GetUser(), tk.GetRelation(), tk.GetObject()))
 }
 
+func WriteToIndirectRelationError(reason string, tk *openfgapb.TupleKey) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tk.String(), reason))
+}
+
 func WriteFailedDueToInvalidInput(err error) error {
 	if err != nil {
 		return status.Error(codes.Code(openfgapb.ErrorCode_write_failed_due_to_invalid_input), err.Error())
@@ -148,6 +152,8 @@ func HandleTupleValidateError(err error) error {
 		return TypeNotFound(t.TypeName)
 	case *tuple.RelationNotFoundError:
 		return RelationNotFound(t.Relation, t.TypeName, t.TupleKey)
+	case *tuple.IndirectWriteError:
+		return WriteToIndirectRelationError(t.Reason, t.TupleKey)
 	}
 
 	return HandleError("", err)

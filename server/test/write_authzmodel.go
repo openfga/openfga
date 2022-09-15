@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAuthorizationModelTestSettings struct {
-		_name    string
-		request  *openfgapb.WriteAuthorizationModelRequest
-		response *openfgapb.WriteAuthorizationModelResponse
-		err      error
+		_name   string
+		request *openfgapb.WriteAuthorizationModelRequest
+		err     error
 	}
 
 	ctx := context.Background()
@@ -50,8 +51,63 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err:      nil,
-			response: &openfgapb.WriteAuthorizationModelResponse{},
+		},
+		{
+			_name: "succeeds part II",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: "somestoreid",
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "group",
+							Relations: map[string]*openfgapb.Userset{
+								"member": {Userset: &openfgapb.Userset_This{}},
+							},
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"owner": {Userset: &openfgapb.Userset_This{}},
+								"reader": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_ComputedUserset{
+														ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"},
+													},
+												},
+											},
+										},
+									},
+								},
+								"writer": {
+									Userset: &openfgapb.Userset_Union{
+										Union: &openfgapb.Usersets{
+											Child: []*openfgapb.Userset{
+												{
+													Userset: &openfgapb.Userset_This{},
+												},
+												{
+													Userset: &openfgapb.Userset_TupleToUserset{
+														TupleToUserset: &openfgapb.TupleToUserset{
+															Tupleset:        &openfgapb.ObjectRelation{Relation: "owner"},
+															ComputedUserset: &openfgapb.ObjectRelation{Relation: "member"},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			_name: "fails if too many types",
@@ -61,8 +117,32 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					TypeDefinitions: items,
 				},
 			},
-			err:      errors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
-			response: nil,
+			err: errors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
+		},
+		{
+			_name: "empty relations is valid",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "repo",
+						},
+					},
+				},
+			},
+		},
+		{
+			_name: "zero length relations is valid",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				TypeDefinitions: &openfgapb.TypeDefinitions{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type:      "repo",
+							Relations: map[string]*openfgapb.Userset{},
+						},
+					},
+				},
+			},
 		},
 		{
 			_name: "ExecuteWriteFailsIfSameTypeTwice",
@@ -87,7 +167,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 			err: errors.CannotAllowDuplicateTypesInOneRequest,
 		},
 		{
-			_name: "ExecuteWriteFailsIfEmptyRelationDefinition",
+			_name: "ExecuteWriteFailsIfEmptyRewrites",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				TypeDefinitions: &openfgapb.TypeDefinitions{
 					TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -100,7 +180,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.EmptyRelationDefinition("repo", "owner"),
+			err: errors.EmptyRewrites("repo", "owner"),
 		},
 		{
 			_name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
@@ -472,25 +552,11 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
-			actualResponse, actualError := cmd.Execute(ctx, test.request)
+			resp, err := cmd.Execute(ctx, test.request)
+			require.ErrorIs(t, err, test.err)
 
-			if test.err != nil {
-				if actualError == nil {
-					t.Fatalf("[%s] Expected error '%s', but got none", test._name, test.err)
-				}
-				if test.err.Error() != actualError.Error() {
-					t.Fatalf("[%s] Expected error '%s', actual '%s'", test._name, test.err, actualError)
-				}
-			}
-
-			if test.response != nil {
-				if actualError != nil {
-					t.Fatalf("[%s] Expected no error but got '%s'", test._name, actualError)
-				}
-
-				if actualResponse == nil {
-					t.Fatalf("Expected non nil response, got nil")
-				}
+			if err == nil {
+				require.True(t, id.IsValid(resp.AuthorizationModelId))
 			}
 		})
 	}
