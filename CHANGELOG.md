@@ -137,8 +137,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Early support for preshared key or OIDC authentication methods
 
 [Unreleased]: https://github.com/openfga/openfga/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.0
-[0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.0
+[0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
+[0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1
 [0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
 [0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6
