@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func ensureServiceUp(t *testing.T, grpcPort, httpPort string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -65,7 +65,7 @@ func ensureServiceUp(t *testing.T, grpcPort, httpPort string, transportCredentia
 
 	conn, err := grpc.DialContext(
 		timeoutCtx,
-		fmt.Sprintf("localhost:%s", grpcPort),
+		fmt.Sprintf("localhost:%d", s.GetGRPCAddrPort().Port()),
 		dialOpts...,
 	)
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func ensureServiceUp(t *testing.T, grpcPort, httpPort string, transportCredentia
 	require.NoError(t, err)
 
 	if httpHealthCheck {
-		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("http://localhost:%s/healthz", httpPort))
+		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("http://localhost:%d/healthz", s.GetHTTPAddrPort().Port()))
 		require.NoError(t, err)
 	}
 }
@@ -248,7 +248,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
@@ -272,7 +272,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%s/stores", service.GetHTTPPort()), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -322,7 +322,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	type args struct {
 		origin string
@@ -377,7 +377,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://localhost:%s/stores", service.GetHTTPPort()), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
@@ -430,7 +430,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
@@ -453,7 +453,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%s/stores", service.GetHTTPPort()), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -561,7 +561,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, true)
+		ensureServiceUp(t, service, nil, true)
 
 		cancel()
 		require.NoError(t, g.Wait())
@@ -590,7 +590,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, false)
+		ensureServiceUp(t, service, nil, false)
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
@@ -601,7 +601,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err = client.Get(fmt.Sprintf("https://localhost:%s/healthz", service.GetHTTPPort()))
+		_, err = client.Get(fmt.Sprintf("https://localhost:%d/healthz", service.GetHTTPAddrPort().Port()))
 		require.NoError(t, err)
 
 		cancel()
@@ -636,7 +636,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, false)
+		ensureServiceUp(t, service, nil, false)
 
 		cancel()
 		require.NoError(t, service.Close(ctx))
@@ -670,7 +670,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), creds, false)
+		ensureServiceUp(t, service, creds, false)
 
 		cancel()
 		require.NoError(t, service.Close(ctx))
@@ -693,7 +693,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, false)
+	ensureServiceUp(t, service, nil, false)
 
 	_, err = http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
@@ -717,7 +717,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, service.GetGRPCPort(), service.GetHTTPPort(), nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	cancel()
 }

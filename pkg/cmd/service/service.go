@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -165,8 +166,8 @@ func DefaultConfigWithRandomPorts() (*Config, error) {
 	defer l.Close()
 	grpcPort := l.Addr().(*net.TCPAddr).Port
 
-	config.GRPC.Addr = fmt.Sprintf(":%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf(":%d", httpPort)
+	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
 
 	return config, nil
 }
@@ -186,12 +187,12 @@ func DefaultConfig() *Config {
 		},
 		GRPC: GRPCConfig{
 			Enabled: true,
-			Addr:    ":8081",
+			Addr:    "0.0.0.0:8081",
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
 			Enabled:            true,
-			Addr:               ":8080",
+			Addr:               "0.0.0.0:8080",
 			TLS:                TLSConfig{Enabled: false},
 			UpstreamTimeout:    3 * time.Second,
 			CORSAllowedOrigins: []string{"*"},
@@ -251,8 +252,8 @@ func GetServiceConfig() (*Config, error) {
 
 type service struct {
 	server        *server.Server
-	grpcPort      string
-	httpPort      string
+	grpcAddr      netip.AddrPort
+	httpAddr      netip.AddrPort
 	datastore     storage.OpenFGADatastore
 	authenticator authn.Authenticator
 }
@@ -269,14 +270,14 @@ func (s *service) Run(ctx context.Context) error {
 
 // GetHTTPPort returns the configured or auto-assigned port that the underlying HTTP service is running
 // on.
-func (s *service) GetHTTPPort() string {
-	return s.httpPort
+func (s *service) GetHTTPAddrPort() netip.AddrPort {
+	return s.httpAddr
 }
 
 // GetGRPCPort returns the configured or auto-assigned port that the underlying grpc service is running
 // on.
-func (s *service) GetGRPCPort() string {
-	return s.grpcPort
+func (s *service) GetGRPCAddrPort() netip.AddrPort {
+	return s.grpcAddr
 }
 
 func BuildService(config *Config, logger logger.Logger) (*service, error) {
@@ -356,6 +357,16 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		middleware.NewErrorLoggingInterceptor(logger),
 	}
 
+	grpcAddr, err := netip.ParseAddrPort(config.GRPC.Addr)
+	if err != nil {
+		return nil, errors.Errorf("failed to parse the 'grpc.addr' config: %v", err)
+	}
+
+	httpAddr, err := netip.ParseAddrPort(config.HTTP.Addr)
+	if err != nil {
+		return nil, errors.Errorf("failed to parse the 'http.addr' config: %v", err)
+	}
+
 	openFgaServer, err := server.New(&server.Dependencies{
 		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
 		Tracer:       tracer,
@@ -364,12 +375,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
 		GRPCServer: server.GRPCServerConfig{
-			Addr:      config.GRPC.Addr,
+			Addr:      grpcAddr,
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
 			Enabled:            config.HTTP.Enabled,
-			Addr:               config.HTTP.Addr,
+			Addr:               httpAddr,
 			TLSConfig:          httpTLSConfig,
 			UpstreamTimeout:    config.HTTP.UpstreamTimeout,
 			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
@@ -386,20 +397,10 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		return nil, errors.Errorf("failed to initialize openfga server: %v", err)
 	}
 
-	_, grpcPort, err := net.SplitHostPort(config.GRPC.Addr)
-	if err != nil {
-		return nil, errors.Errorf("failed to split the host:port from the provided grpc address '%s': %v", config.GRPC.Addr, err)
-	}
-
-	_, httpPort, err := net.SplitHostPort(config.HTTP.Addr)
-	if err != nil {
-		return nil, errors.Errorf("failed to split the host:port from the provided HTTP address '%s': %v", config.HTTP.Addr, err)
-	}
-
 	return &service{
 		server:        openFgaServer,
-		grpcPort:      grpcPort,
-		httpPort:      httpPort,
+		grpcAddr:      grpcAddr,
+		httpAddr:      httpAddr,
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil
