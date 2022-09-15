@@ -544,7 +544,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 		err     error
 	}{
 		{
-			name: "succeeds",
+			name: "succeeds on a valid model with a type type",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				SchemaVersion: "1.1",
 				StoreId:       storeID,
@@ -573,7 +573,7 @@ func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore stor
 			},
 		},
 		{
-			name: "succeeds part 2",
+			name: "succeeds on a valid model with a type and type#relation type",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				SchemaVersion: "1.1",
 				StoreId:       storeID,
