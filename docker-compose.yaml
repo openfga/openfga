@@ -1,40 +1,61 @@
 version: '3.8'
+
+networks:
+  openfga:
+
 services:
-  postgres:
+  db:
     image: postgres:14
-    container_name: postgres
     networks:
-      - default
-    ports:
-      - "5432:5432"
+      - openfga
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=openfga
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  migrate:
+  pause:
+    image: ubuntu
+    command: sleep 5
     depends_on:
-      postgres:
-        condition: service_healthy
-    image: openfga/openfga:latest
-    container_name: migrate
-    command: migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
+      db:
+        condition: service_started
+
+  migrate:
+    image: openfga/openfga
+    depends_on:
+      pause:
+        condition: service_completed_successfully
+    command: |
+      migrate
+    environment: 
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@db:5432/openfga
     networks:
-      - default
+      - openfga
 
   openfga:
+    image: openfga/openfga
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@db:5432/openfga
+      - OPENFGA_LOG_FORMAT=json
+    command: run
     depends_on:
+      db:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
-    image: openfga/openfga:latest
-    container_name: openfga
-    command: run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
     networks:
-      - default
+      - openfga
     ports:
+      # Needed for the http server
       - "8080:8080"
+      # Needed for the grpc server (if used)
+      - "8081:8081"
+      # Needed for the playground (Do not enable in prod!)
       - "3000:3000"
