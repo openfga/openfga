@@ -1252,10 +1252,72 @@ var checkQueryTests = []checkQueryTest{
 		},
 	},
 	{
+		name:             "CheckUsersetAsUser_WithContextualTuples",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+			ContextualTuples: &openfgapb.ContextualTupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+					tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
+				},
+			},
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "org",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
+		},
+	},
+	{
+		name:             "CheckUsersetAsUser_WithContextualTuples",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+			ContextualTuples: &openfgapb.ContextualTupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+					tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
+				},
+			},
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "org",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
+		},
+	},
+	{
 		name:             "Check with TupleToUserset involving no object or userset",
 		resolveNodeLimit: defaultResolveNodeLimit,
 		request: &openfgapb.CheckRequest{
-			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
 		},
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -1285,9 +1347,51 @@ var checkQueryTests = []checkQueryTest{
 		},
 		tuples: []*openfgapb.TupleKey{
 			tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
+			tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
 		},
 		response: &openfgapb.CheckResponse{
 			Allowed: false,
+		},
+	},
+	{
+		name:             "TupleToUserset Check Passes when at least one tupleset relation resolves",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"parent": {
+						Userset: &openfgapb.Userset_This{},
+					},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+								ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
+			tuple.NewTupleKey("document:doc1", "parent", "folder:folder1"),
+			tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
+		},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
 		},
 	},
 }
