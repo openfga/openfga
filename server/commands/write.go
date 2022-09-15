@@ -94,11 +94,11 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 // 1. If the tuple is of the form (person:bob, reader, doc:budget), then the type "doc", relation "reader" allows type "person".
 // 2. If the tuple is of the form (group:abc#member, reader, doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
 // 3. If the tuple is of type (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" has "allow public" = true
-func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelId string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
+func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
 	objectType, _ := tupleUtils.SplitObject(tk.GetObject()) // e.g. "doc"
 
 	dbCallsCounter.AddReadCall()
-	typeDefinition, err := c.datastore.ReadTypeDefinition(ctx, store, authorizationModelId, objectType)
+	typeDefinition, err := c.datastore.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return &tupleUtils.TypeNotFoundError{TypeName: objectType}
@@ -111,12 +111,12 @@ func (c *WriteCommand) validateTypes(ctx context.Context, store string, authoriz
 	}
 	relationInformation := typeDefinition.Metadata.Relations[tk.Relation]
 
-	userType, userId := tupleUtils.SplitObject(tk.GetUser()) // e.g. (person, bob) or (group, abc#member) or ("", *)
+	userType, userID := tupleUtils.SplitObject(tk.GetUser()) // e.g. (person, bob) or (group, abc#member) or ("", *)
 
 	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
 
 	// case 1
-	if userRel == "" && userId != "* " {
+	if userRel == "" && userID != "* " {
 		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
 			if typeInformation.Type == userType {
 				return nil
@@ -134,7 +134,7 @@ func (c *WriteCommand) validateTypes(ctx context.Context, store string, authoriz
 	}
 
 	// case 3
-	if userId == "*" {
+	if userID == "*" {
 		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
 			if typeInformation.Type != "" && typeInformation.Relation == "" {
 				return nil

@@ -116,11 +116,9 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 		{
 			name: "empty relations is valid",
 			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-						},
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
 					},
 				},
 			},
@@ -128,12 +126,10 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 		{
 			name: "zero length relations is valid",
 			request: &openfgapb.WriteAuthorizationModelRequest{
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type:      "repo",
-							Relations: map[string]*openfgapb.Userset{},
-						},
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type:      "repo",
+						Relations: map[string]*openfgapb.Userset{},
 					},
 				},
 			},

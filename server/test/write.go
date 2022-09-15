@@ -815,7 +815,7 @@ var writeCommandTests = []writeCommandTest{
 					"owner": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"owner": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -854,7 +854,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -893,7 +893,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -933,7 +933,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -979,7 +979,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -1020,7 +1020,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
@@ -1060,7 +1060,7 @@ var writeCommandTests = []writeCommandTest{
 					"reader": {Userset: &openfgapb.Userset_This{}},
 				},
 				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationalMetadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 								{
