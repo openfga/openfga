@@ -9,6 +9,64 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+func TestSchemaVersion(t *testing.T) {
+	t.Run("convert from string to SchemaVersion", func(t *testing.T) {
+		var tests = []struct {
+			input  string
+			output SchemaVersion
+		}{
+			{
+				input:  "",
+				output: SchemaVersion1_0,
+			},
+			{
+				input:  "1.0",
+				output: SchemaVersion1_0,
+			},
+			{
+				input:  "1.1",
+				output: SchemaVersion1_1,
+			},
+			{
+				input:  "1.2",
+				output: SchemaVersionUnspecified,
+			},
+			{
+				input:  "xyz",
+				output: SchemaVersionUnspecified,
+			},
+		}
+
+		for _, test := range tests {
+			require.Equal(t, test.output, NewSchemaVersion(test.input))
+		}
+	})
+
+	t.Run("convert from SchemaVersion to string", func(t *testing.T) {
+		var tests = []struct {
+			input  SchemaVersion
+			output string
+		}{
+			{
+				input:  SchemaVersion1_0,
+				output: "1.0",
+			},
+			{
+				input:  SchemaVersion1_1,
+				output: "1.1",
+			},
+			{
+				input:  SchemaVersionUnspecified,
+				output: "unspecified",
+			},
+		}
+
+		for _, test := range tests {
+			require.Equal(t, test.output, test.input.String())
+		}
+	})
+}
+
 func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
 	id, err := id.NewString()
 	require.NoError(t, err)
