@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -456,4 +457,60 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 			t.Fatalf("got empty, want non-empty")
 		}
 	})
+}
+
+func ReverseReadTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
+
+	require := require.New(t)
+	ctx := context.Background()
+
+	storeID, err := id.NewString()
+	require.NoError(err)
+
+	err = datastore.Write(
+		ctx,
+		storeID,
+		nil,
+		[]*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+			tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
+		},
+	)
+	require.NoError(err)
+
+	iter, err := datastore.ReverseReadTuples(
+		ctx,
+		storeID,
+		storage.ReverseReadTuplesFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgapb.ObjectRelation{
+				{
+					Object: "user:jon",
+				},
+				{
+					Object:   "group:eng",
+					Relation: "member",
+				},
+			},
+		},
+	)
+	require.NoError(err)
+
+	var objects []string
+	for {
+		tp, err := iter.Next()
+		if err != nil {
+			if err == storage.ErrIteratorDone {
+				break
+			}
+
+			require.Fail(err.Error())
+		}
+
+		objects = append(objects, tp.GetKey().GetObject())
+	}
+
+	require.Equal([]string{"document:doc1", "document:doc2"}, objects)
 }

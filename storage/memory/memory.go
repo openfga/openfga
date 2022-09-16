@@ -371,6 +371,14 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	return &staticIterator{tuples: matches}, nil
 }
 
+func (s *MemoryBackend) ReverseReadTuples(
+	ctx context.Context,
+	store string,
+	filter storage.ReverseReadTuplesFilter,
+) (storage.TupleIterator, error) {
+	return nil, errors.New("not implemented")
+}
+
 // ReadByStore See storage.TupleBackend.ReadByStore
 func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadByStore")

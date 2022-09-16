@@ -274,6 +274,10 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return &tupleIterator{rows: rows}, nil
 }
 
+func (p *Postgres) ReverseReadTuples(ctx context.Context, store string, opts storage.ReverseReadTuplesFilter) (storage.TupleIterator, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
 	defer span.End()

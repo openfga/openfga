@@ -230,28 +230,73 @@ type TupleBackend interface {
 	// ListObjectsByType returns all the objects of a specific type.
 	// You can assume that the type has already been validated.
 	// The result can't have duplicate elements.
-	ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error)
+	ListObjectsByType(
+		ctx context.Context,
+		store string,
+		objectType string,
+	) (ObjectIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
-	ReadPage(context.Context, string, *openfgapb.TupleKey, PaginationOptions) ([]*openfgapb.Tuple, []byte, error)
+	ReadPage(
+		ctx context.Context,
+		store string,
+		tk *openfgapb.TupleKey,
+		opts PaginationOptions,
+	) ([]*openfgapb.Tuple, []byte, error)
 
 	// Write updates data in the tuple backend, performing all delete operations in
 	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
 	// It is expected that
 	// - there is at most 10 deletes/writes
 	// - no duplicate item in delete/write list
-	Write(context.Context, string, Deletes, Writes) error
+	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
-	ReadUserTuple(context.Context, string, *openfgapb.TupleKey) (*openfgapb.Tuple, error)
+	ReadUserTuple(
+		ctx context.Context,
+		store string,
+		tk *openfgapb.TupleKey,
+	) (*openfgapb.Tuple, error)
 
-	ReadUsersetTuples(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+	ReadUsersetTuples(
+		ctx context.Context,
+		store string,
+		tk *openfgapb.TupleKey,
+	) (TupleIterator, error)
+
+	// ReverseReadTuples performs a reverse read of relationship tuples starting at one or
+	// more user(s) or userset(s) and filtered by object type and relation.
+	//
+	// For example, given the following relationship tuples:
+	//   document:doc1, viewer, user:jon
+	//   document:doc2, viewer, group:eng#member
+	//   document:doc3, editor, user:jon
+	//
+	// ReverseReadTuples for ['user:jon', 'group:eng#member'] filtered by 'document#viewer' would
+	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
+	ReverseReadTuples(
+		ctx context.Context,
+		store string,
+		filter ReverseReadTuplesFilter,
+	) (TupleIterator, error)
 
 	// ReadByStore reads the tuples associated with `store`.
-	ReadByStore(context.Context, string, PaginationOptions) ([]*openfgapb.Tuple, []byte, error)
+	ReadByStore(
+		ctx context.Context,
+		store string,
+		opts PaginationOptions,
+	) ([]*openfgapb.Tuple, []byte, error)
 
 	// MaxTuplesInWriteOperation returns the maximum number of items allowed in a single write transaction
 	MaxTuplesInWriteOperation() int
+}
+
+// ReverseReadTuplesFilter specifies the filter options that will be used to constrain the ReverseReadTuples
+// query.
+type ReverseReadTuplesFilter struct {
+	ObjectType string
+	Relation   string
+	UserFilter []*openfgapb.ObjectRelation
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
