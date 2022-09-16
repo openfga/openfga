@@ -49,19 +49,6 @@ func (m *AuthorizationModel) ToProto() *openfgapb.AuthorizationModel {
 	}
 }
 
-func (m *AuthorizationModel) GetTypeRelationsRewriteMap() map[string]map[string]*openfgapb.Userset {
-	res := map[string]map[string]*openfgapb.Userset{}
-	for _, td := range m.TypeDefinitions {
-		objectType := td.GetType()
-		res[objectType] = map[string]*openfgapb.Userset{}
-		for relation, rewrite := range td.GetRelations() {
-			res[objectType][relation] = rewrite
-		}
-	}
-
-	return res
-}
-
 // Validate validates the model according to the following rules:
 //  1. Do not allow duplicate types (or duplication relations but that is inherent in the map structure)
 //  2. For every rewrite the relations in the rewrite must:
