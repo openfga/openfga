@@ -93,7 +93,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 // validateTypes makes sure that when writing a tuple, the types are compatible.
 // 1. If the tuple is of the form (person:bob, reader, doc:budget), then the type "doc", relation "reader" allows type "person".
 // 2. If the tuple is of the form (group:abc#member, reader, doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
-// 3. If the tuple is of type (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
+// 3. If the tuple is of the form (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
 func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
 	objectType, _ := tupleUtils.SplitObject(tk.GetObject()) // e.g. "doc"
 
@@ -105,38 +105,33 @@ func (c *WriteCommand) validateTypes(ctx context.Context, store string, authoriz
 		}
 		return err
 	}
-	if typeDefinition.Metadata == nil {
-		// authorization model is old and does not have type information
+	relations := typeDefinition.GetMetadata().GetRelations()
+	if relations == nil {
+		// authorization model is old or invalid and does not have type information
 		return nil
 	}
-	relationInformation := typeDefinition.Metadata.Relations[tk.Relation]
+	relationInformation := relations[tk.Relation]
 
 	userType, userID := tupleUtils.SplitObject(tk.GetUser()) // e.g. (person, bob) or (group, abc#member) or ("", *)
 
 	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
 
 	// case 1
-	if userRel == "" && userID != "* " {
+	if userRel == "" && userID != "*" {
 		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
-			if typeInformation.Type == userType {
+			if typeInformation.GetType() == userType {
 				return nil
 			}
 		}
-	}
-
-	// case 2
-	if userRel != "" {
+	} else if userRel != "" { // case 2
 		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
-			if typeInformation.Type == userType && typeInformation.Relation == userRel {
+			if typeInformation.GetType() == userType && typeInformation.GetRelation() == userRel {
 				return nil
 			}
 		}
-	}
-
-	// case 3
-	if userID == "*" {
+	} else if userID == "*" { // case 3
 		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
-			if typeInformation.Type != "" && typeInformation.Relation == "" {
+			if typeInformation.GetType() != "" && typeInformation.GetRelation() == "" {
 				return nil
 			}
 		}
