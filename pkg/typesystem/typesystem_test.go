@@ -669,7 +669,25 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 			err: errors.InvalidRelationType("document", "reader", "group", "admin"),
 		},
 		{
-			name: "assignable relation with no types",
+			name: "assignable relation with no type: this",
+			model: &AuthorizationModel{
+				Id:      id,
+				Version: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": {
+								Userset: &openfgapb.Userset_This{},
+							},
+						},
+					},
+				},
+			},
+			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+		},
+		{
+			name: "assignable relation with no type: union",
 			model: &AuthorizationModel{
 				Id:      id,
 				Version: SchemaVersion1_1,
@@ -680,8 +698,27 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
-							"writer": {Userset: &openfgapb.Userset_This{}},
-							"reader": {Userset: &openfgapb.Userset_This{}},
+							"writer": {
+								Userset: &openfgapb.Userset_This{},
+							},
+							"reader": {
+								Userset: &openfgapb.Userset_Union{
+									Union: &openfgapb.Usersets{
+										Child: []*openfgapb.Userset{
+											{
+												Userset: &openfgapb.Userset_This{},
+											},
+											{
+												Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
+														Relation: "writer",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
 						},
 						Metadata: &openfgapb.Metadata{
 							Relations: map[string]*openfgapb.RelationMetadata{
@@ -700,7 +737,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 			err: errors.AssignableRelationHasNoTypes("document", "reader"),
 		},
 		{
-			name: "assignable relation with an empty type",
+			name: "assignable relation with no type: intersection",
 			model: &AuthorizationModel{
 				Id:      id,
 				Version: SchemaVersion1_1,
@@ -711,8 +748,27 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
-							"writer": {Userset: &openfgapb.Userset_This{}},
-							"reader": {Userset: &openfgapb.Userset_This{}},
+							"writer": {
+								Userset: &openfgapb.Userset_This{},
+							},
+							"reader": {
+								Userset: &openfgapb.Userset_Intersection{
+									Intersection: &openfgapb.Usersets{
+										Child: []*openfgapb.Userset{
+											{
+												Userset: &openfgapb.Userset_This{},
+											},
+											{
+												Userset: &openfgapb.Userset_ComputedUserset{
+													ComputedUserset: &openfgapb.ObjectRelation{
+														Relation: "writer",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
 						},
 						Metadata: &openfgapb.Metadata{
 							Relations: map[string]*openfgapb.RelationMetadata{
@@ -723,8 +779,101 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 										},
 									},
 								},
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{},
+							},
+						},
+					},
+				},
+			},
+			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+		},
+		{
+			name: "assignable relation with no type: difference base",
+			model: &AuthorizationModel{
+				Id:      id,
+				Version: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"writer": {
+								Userset: &openfgapb.Userset_This{},
+							},
+							"reader": {
+								Userset: &openfgapb.Userset_Difference{
+									Difference: &openfgapb.Difference{
+										Base: &openfgapb.Userset{
+											Userset: &openfgapb.Userset_This{},
+										},
+										Subtract: &openfgapb.Userset{
+											Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
+													Relation: "writer",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"writer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+		},
+		{
+			name: "assignable relation with no type: difference subtract",
+			model: &AuthorizationModel{
+				Id:      id,
+				Version: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"writer": {
+								Userset: &openfgapb.Userset_This{},
+							},
+							"reader": {
+								Userset: &openfgapb.Userset_Difference{
+									Difference: &openfgapb.Difference{
+										Base: &openfgapb.Userset{
+											Userset: &openfgapb.Userset_ComputedUserset{
+												ComputedUserset: &openfgapb.ObjectRelation{
+													Relation: "writer",
+												},
+											},
+										},
+										Subtract: &openfgapb.Userset{
+											Userset: &openfgapb.Userset_This{},
+										},
+									},
+								},
+							},
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"writer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
+									},
 								},
 							},
 						},
@@ -745,8 +894,14 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
-							"writer": {Userset: &openfgapb.Userset_This{}},
-							"reader": {Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"}}},
+							"writer": {
+								Userset: &openfgapb.Userset_This{},
+							},
+							"reader": {
+								Userset: &openfgapb.Userset_ComputedUserset{
+									ComputedUserset: &openfgapb.ObjectRelation{Relation: "writer"},
+								},
+							},
 						},
 						Metadata: &openfgapb.Metadata{
 							Relations: map[string]*openfgapb.RelationMetadata{
