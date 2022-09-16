@@ -14,9 +14,10 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-const storeID = "01GCD5SAJVC2Y38MJBNJ9QVZ60"
-
 func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
+	storeID, err := id.NewString()
+	require.NoError(t, err)
+
 	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)
 	for i := 0; i < datastore.MaxTypesInTypeDefinition(); i++ {
 		items[i] = &openfgapb.TypeDefinition{
@@ -537,14 +538,17 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 	}
 }
 
-func TestWriteAuthorizationModelWithRelationalTypes(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestWriteAuthorizationModelWithTypeInfo(t *testing.T, datastore storage.OpenFGADatastore) {
+	storeID, err := id.NewString()
+	require.NoError(t, err)
+
 	var tests = []struct {
 		name    string
 		request *openfgapb.WriteAuthorizationModelRequest
 		err     error
 	}{
 		{
-			name: "succeeds on a valid model with a type type",
+			name: "succeeds on a valid model with an objectType type",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				SchemaVersion: "1.1",
 				StoreId:       storeID,
