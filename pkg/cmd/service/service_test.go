@@ -35,11 +35,6 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-var (
-	openFGAServerAddr string
-	openFGAGRPCAddr   string
-)
-
 func TestMain(m *testing.M) {
 	_, filename, _, _ := runtime.Caller(0)
 	dir := path.Join(path.Dir(filename), "../../..")
@@ -48,14 +43,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	config := DefaultConfig()
-	openFGAServerAddr = fmt.Sprintf("http://localhost%s", config.HTTP.Addr)
-	openFGAGRPCAddr = fmt.Sprintf("localhost%s", config.GRPC.Addr)
-
 	os.Exit(m.Run())
 }
 
-func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -74,7 +65,7 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 
 	conn, err := grpc.DialContext(
 		timeoutCtx,
-		openFGAGRPCAddr,
+		fmt.Sprintf("localhost:%d", s.GetGRPCAddrPort().Port()),
 		dialOpts...,
 	)
 	require.NoError(t, err)
@@ -102,7 +93,7 @@ func ensureServiceUp(t *testing.T, transportCredentials credentials.TransportCre
 	require.NoError(t, err)
 
 	if httpHealthCheck {
-		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("%s/healthz", openFGAServerAddr))
+		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("http://localhost:%d/healthz", s.GetHTTPAddrPort().Port()))
 		require.NoError(t, err)
 	}
 }
@@ -240,7 +231,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	config, err := GetServiceConfig()
+	config, err := DefaultConfigWithRandomPorts()
 	require.NoError(t, err)
 
 	config.Authn.Method = "preshared"
@@ -257,7 +248,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	tests := []authTest{{
 		_name:         "Header with incorrect key fails",
@@ -281,7 +272,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -311,7 +302,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	config, err := GetServiceConfig()
+	config, err := DefaultConfigWithRandomPorts()
 	require.NoError(t, err)
 
 	config.Authn.Method = "preshared"
@@ -331,7 +322,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	type args struct {
 		origin string
@@ -386,7 +377,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
@@ -417,12 +408,12 @@ func TestHTTPServerWithCORS(t *testing.T) {
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	const localOIDCServerURL = "http://localhost:8083"
 
-	config, err := GetServiceConfig()
+	config, err := DefaultConfigWithRandomPorts()
 	require.NoError(t, err)
 
 	config.Authn.Method = "oidc"
 	config.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
-		Audience: openFGAServerAddr,
+		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
 
@@ -439,9 +430,9 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil, true)
+	ensureServiceUp(t, service, nil, true)
 
-	trustedToken, err := trustedIssuerServer.GetToken(openFGAServerAddr, "some-user")
+	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
 
 	tests := []authTest{{
@@ -462,7 +453,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("%s/stores", openFGAServerAddr), payload)
+			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("authorization", test.authHeader)
@@ -494,7 +485,7 @@ func TestTLSFailureSettings(t *testing.T) {
 	logger := logger.NewNoopLogger()
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		config, err := GetServiceConfig()
+		config, err := DefaultConfigWithRandomPorts()
 		require.NoError(t, err)
 
 		config.HTTP.TLS = TLSConfig{
@@ -553,7 +544,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := GetServiceConfig()
+		config, err := DefaultConfigWithRandomPorts()
 		require.NoError(t, err)
 
 		config.HTTP.TLS = TLSConfig{
@@ -570,7 +561,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil, true)
+		ensureServiceUp(t, service, nil, true)
 
 		cancel()
 		require.NoError(t, g.Wait())
@@ -581,7 +572,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := GetServiceConfig()
+		config, err := DefaultConfigWithRandomPorts()
 		require.NoError(t, err)
 
 		config.HTTP.TLS = TLSConfig{
@@ -589,8 +580,6 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-
-		fmt.Println(config)
 
 		service, err := BuildService(config, logger)
 		require.NoError(t, err)
@@ -601,7 +590,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil, false)
+		ensureServiceUp(t, service, nil, false)
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
@@ -612,7 +601,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err = client.Get("https://localhost:8080/healthz")
+		_, err = client.Get(fmt.Sprintf("https://localhost:%d/healthz", service.GetHTTPAddrPort().Port()))
 		require.NoError(t, err)
 
 		cancel()
@@ -629,7 +618,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := GetServiceConfig()
+		config, err := DefaultConfigWithRandomPorts()
 		require.NoError(t, err)
 
 		config.GRPC.TLS = TLSConfig{
@@ -647,7 +636,7 @@ func TestGRPCServingTLS(t *testing.T) {
 			return service.Run(ctx)
 		})
 
-		ensureServiceUp(t, nil, false)
+		ensureServiceUp(t, service, nil, false)
 
 		cancel()
 		require.NoError(t, service.Close(ctx))
@@ -658,7 +647,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := GetServiceConfig()
+		config, err := DefaultConfigWithRandomPorts()
 		require.NoError(t, err)
 
 		config.GRPC.TLS = TLSConfig{
@@ -681,7 +670,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, creds, false)
+		ensureServiceUp(t, service, creds, false)
 
 		cancel()
 		require.NoError(t, service.Close(ctx))
@@ -690,7 +679,7 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	config, err := GetServiceConfig()
+	config, err := DefaultConfigWithRandomPorts()
 	require.NoError(t, err)
 
 	config.HTTP.Enabled = false
@@ -704,7 +693,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil, false)
+	ensureServiceUp(t, service, nil, false)
 
 	_, err = http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
@@ -714,7 +703,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	config, err := GetServiceConfig()
+	config, err := DefaultConfigWithRandomPorts()
 	require.NoError(t, err)
 
 	config.HTTP.Enabled = true
@@ -728,7 +717,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 		return service.Run(ctx)
 	})
 
-	ensureServiceUp(t, nil, true)
+	ensureServiceUp(t, service, nil, true)
 
 	cancel()
 }
