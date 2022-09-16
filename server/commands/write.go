@@ -93,7 +93,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 // validateTypes makes sure that when writing a tuple, the types are compatible.
 // 1. If the tuple is of the form (person:bob, reader, doc:budget), then the type "doc", relation "reader" allows type "person".
 // 2. If the tuple is of the form (group:abc#member, reader, doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
-// 3. If the tuple is of type (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" has "allow public" = true
+// 3. If the tuple is of type (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
 func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
 	objectType, _ := tupleUtils.SplitObject(tk.GetObject()) // e.g. "doc"
 
