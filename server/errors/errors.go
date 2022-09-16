@@ -71,16 +71,16 @@ func LatestAuthorizationModelNotFound(store string) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_latest_authorization_model_not_found), fmt.Sprintf("No authorization models found for store '%s'", store))
 }
 
-func TypeNotFound(t string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", t))
+func TypeNotFound(objectType string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", objectType))
 }
 
-func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKey) error {
+func RelationNotFound(relation string, objectType string, tuple *openfgapb.TupleKey) error {
 	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
 	if tuple != nil {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, typeName, tuple.String())
-	} else if typeName != "" {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, typeName)
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, objectType, tuple.String())
+	} else if objectType != "" {
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, objectType)
 	}
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
