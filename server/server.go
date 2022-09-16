@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"reflect"
 	"strconv"
 	"time"
@@ -84,13 +85,13 @@ type Config struct {
 }
 
 type GRPCServerConfig struct {
-	Addr      string
+	Addr      netip.AddrPort
 	TLSConfig *TLSConfig
 }
 
 type HTTPServerConfig struct {
 	Enabled            bool
-	Addr               string
+	Addr               netip.AddrPort
 	UpstreamTimeout    time.Duration
 	TLSConfig          *TLSConfig
 	CORSAllowedOrigins []string
@@ -504,7 +505,7 @@ func (s *Server) Run(ctx context.Context) error {
 	reflection.Register(grpcServer)
 
 	rpcAddr := s.config.GRPCServer.Addr
-	lis, err := net.Listen("tcp", rpcAddr)
+	lis, err := net.Listen("tcp", rpcAddr.String())
 	if err != nil {
 		return err
 	}
@@ -539,7 +540,7 @@ func (s *Server) Run(ctx context.Context) error {
 		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
 
-		conn, err := grpc.DialContext(timeoutCtx, rpcAddr, dialOpts...)
+		conn, err := grpc.DialContext(timeoutCtx, rpcAddr.String(), dialOpts...)
 		if err != nil {
 			return err
 		}
@@ -560,7 +561,7 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 
 		httpServer = &http.Server{
-			Addr: s.config.HTTPServer.Addr,
+			Addr: s.config.HTTPServer.Addr.String(),
 			Handler: cors.New(cors.Options{
 				AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
 				AllowCredentials: true,
