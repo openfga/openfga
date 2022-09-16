@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -551,11 +550,10 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			store := testutils.CreateRandomString(10)
-			modelID, err := id.NewString()
-			require.NoError(err)
+			store := id.Must(id.New()).String()
+			modelID := id.Must(id.New()).String()
 
-			err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
+			err := datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
 			require.NoError(err)
 
 			if test.tuples != nil {
