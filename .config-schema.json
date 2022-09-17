@@ -116,7 +116,7 @@
                 "addr": {
                     "description": "The host:port address to serve the grpc server on.",
                     "type": "string",
-                    "default": ":8081"
+                    "default": "0.0.0.0:8081"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"
@@ -134,7 +134,7 @@
                 "addr": {
                     "description": "The host:port address to serve the HTTP server on.",
                     "type": "string",
-                    "default": ":8080"
+                    "default": "0.0.0.0:8080"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"
