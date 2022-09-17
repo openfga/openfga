@@ -9,8 +9,8 @@ type SchemaVersion int
 
 const (
 	SchemaVersionUnspecified SchemaVersion = 0
-	SchemaVersion1_0                       = 1
-	SchemaVersion1_1                       = 2
+	SchemaVersion1_0         SchemaVersion = 1
+	SchemaVersion1_1         SchemaVersion = 2
 )
 
 func NewSchemaVersion(s string) SchemaVersion {
@@ -36,14 +36,14 @@ func (v SchemaVersion) String() string {
 }
 
 type AuthorizationModel struct {
-	Id              string
+	ID              string
 	Version         SchemaVersion
 	TypeDefinitions []*openfgapb.TypeDefinition
 }
 
 func (m *AuthorizationModel) ToProto() *openfgapb.AuthorizationModel {
 	return &openfgapb.AuthorizationModel{
-		Id:              m.Id,
+		Id:              m.ID,
 		SchemaVersion:   m.Version.String(),
 		TypeDefinitions: m.TypeDefinitions,
 	}

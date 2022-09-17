@@ -78,7 +78,7 @@ func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "empty relations",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -90,7 +90,7 @@ func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "zero length relations is valid",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -122,7 +122,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "duplicate types",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -138,7 +138,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "empty rewrites",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -154,7 +154,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in computedUserset",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -174,7 +174,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in union",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -205,7 +205,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in intersection",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -236,7 +236,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference base",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -265,7 +265,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference subtract",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -294,7 +294,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset to relation which does not exist",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -314,7 +314,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a union",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -345,7 +345,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a intersection",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -376,7 +376,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference base",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -405,7 +405,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference subtract",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -434,7 +434,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where tupleset is not valid",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -483,7 +483,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where computed userset is not valid",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -550,7 +550,7 @@ func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "succeeds on a valid model with an objectType type",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -579,7 +579,7 @@ func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "succeeds on a valid model with a type and type#relation type",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -668,7 +668,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "relational type which does not exist",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -695,7 +695,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "relation type of form type#relation where relation doesn't exist",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -729,7 +729,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: this",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -747,7 +747,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: union",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -797,7 +797,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: intersection",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -847,7 +847,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference base",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -895,7 +895,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference subtract",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -943,7 +943,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "non-assignable relation with a type",
 			model: &AuthorizationModel{
-				Id:      id,
+				ID:      id,
 				Version: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{

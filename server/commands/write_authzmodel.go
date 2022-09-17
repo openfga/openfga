@@ -46,7 +46,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	model := &typesystem.AuthorizationModel{
-		Id:              id,
+		ID:              id,
 		Version:         schemaVersion,
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}

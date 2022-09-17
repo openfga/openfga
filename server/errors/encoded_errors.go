@@ -118,7 +118,7 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 		if strings.HasPrefix(reason, "value is required") {
 			return int32(openfgapb.ErrorCode_difference_base_missing_value)
 		}
-	case "Id":
+	case "ID":
 		if strings.HasPrefix(reason, "value length must be at most") {
 			return int32(openfgapb.ErrorCode_id_too_long)
 		}
