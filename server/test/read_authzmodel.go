@@ -7,7 +7,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -26,7 +25,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
 			request: &openfgapb.ReadAuthorizationModelRequest{
-				StoreId: testutils.CreateRandomString(10),
+				StoreId: id.Must(id.New()).String(),
 				Id:      "123",
 			},
 			expectedError: serverErrors.AuthorizationModelNotFound("123"),
@@ -62,11 +61,10 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 		},
 	}
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(err)
+	store := id.Must(id.New()).String()
+	modelID := id.Must(id.New()).String()
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, state)
 	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
@@ -85,11 +83,10 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(err)
+	store := id.Must(id.New()).String()
+	modelID := id.Must(id.New()).String()
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{})
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{})
 	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)

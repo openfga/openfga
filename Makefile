@@ -29,6 +29,12 @@ build: ## Build/compile the OpenFGA service
 run: build ## Run the OpenFGA server with in-memory storage
 	./openfga run
 
+
+.PHONY: start-postgres-container
+start-postgres-container:
+	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
+	@echo \> use \'postgres://postgres:password@localhost:5432/postgres\' to connect to postgres
+
 .PHONY: migrate-postgres
 migrate-postgres: build
 	# nosemgrep: detected-username-and-password-in-uri
@@ -65,8 +71,3 @@ functional-test:
 .PHONY: bench
 bench: go-generate
 	go test ./... -bench=. -run=XXX -benchmem
-
-.PHONY: initialize-db
-initialize-db: go-generate
-    #TODO wait for docker postgres container to be healthy
-	go clean -testcache; $(test_backend) go test ./storage/postgres -run TestReadTypeDefinition; \

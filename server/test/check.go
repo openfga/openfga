@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -1251,6 +1250,149 @@ var checkQueryTests = []checkQueryTest{
 			Allowed: true,
 		},
 	},
+	{
+		name:             "CheckUsersetAsUser_WithContextualTuples",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+			ContextualTuples: &openfgapb.ContextualTupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+					tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
+				},
+			},
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "org",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
+		},
+	},
+	{
+		name:             "CheckUsersetAsUser_WithContextualTuples",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+			ContextualTuples: &openfgapb.ContextualTupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+					tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
+				},
+			},
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "org",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
+		},
+	},
+	{
+		name:             "Check with TupleToUserset involving no object or userset",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"parent": {
+						Userset: &openfgapb.Userset_This{},
+					},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+								ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
+			tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
+		},
+		response: &openfgapb.CheckResponse{
+			Allowed: false,
+		},
+	},
+	{
+		name:             "TupleToUserset Check Passes when at least one tupleset relation resolves",
+		resolveNodeLimit: defaultResolveNodeLimit,
+		request: &openfgapb.CheckRequest{
+			TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+		},
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"parent": {
+						Userset: &openfgapb.Userset_This{},
+					},
+					"viewer": {
+						Userset: &openfgapb.Userset_TupleToUserset{
+							TupleToUserset: &openfgapb.TupleToUserset{
+								Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+								ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {
+						Userset: &openfgapb.Userset_This{},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
+			tuple.NewTupleKey("document:doc1", "parent", "folder:folder1"),
+			tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
+		},
+		response: &openfgapb.CheckResponse{
+			Allowed: true,
+		},
+	},
 }
 
 func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -1267,9 +1409,8 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range checkQueryTests {
 		t.Run(test.name, func(t *testing.T) {
-			store := testutils.CreateRandomString(20)
-			modelID, err := id.NewString()
-			require.NoError(t, err)
+			store := id.Must(id.New()).String()
+			modelID := id.Must(id.New()).String()
 
 			if test.useGitHubTypeDefinition {
 				err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
@@ -1337,16 +1478,13 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 		},
 	}}
 
-	store := testutils.CreateRandomString(10)
-	originalModelID, err := id.NewString()
+	store := id.Must(id.New()).String()
+
+	originalModelID := id.Must(id.New()).String()
+	err := datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
 	require.NoError(t, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
-	require.NoError(t, err)
-
-	updatedModelID, err := id.NewString()
-	require.NoError(t, err)
-
+	updatedModelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, updatedTD)
 	require.NoError(t, err)
 
@@ -1403,11 +1541,9 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
+	modelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
@@ -1446,11 +1582,9 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
+	modelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
