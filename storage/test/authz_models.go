@@ -18,10 +18,8 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGAD
 
 	ctx := context.Background()
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(t, err)
-
+	store := id.Must(id.New()).String()
+	modelID := id.Must(id.New()).String()
 	expectedModel := []*openfgapb.TypeDefinition{
 		{
 			Type: "folder",
@@ -35,7 +33,7 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGAD
 		},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, expectedModel)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, expectedModel)
 	require.NoError(t, err)
 
 	model, err := datastore.ReadAuthorizationModel(ctx, store, modelID)
@@ -61,10 +59,8 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGAD
 func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	store := testutils.CreateRandomString(10)
-	modelID1, err := id.NewString()
-	require.NoError(t, err)
-
+	store := id.Must(id.New()).String()
+	modelID1 := id.Must(id.New()).String()
 	tds1 := []*openfgapb.TypeDefinition{
 		{
 			Type: "folder",
@@ -78,12 +74,10 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, tds1)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds1)
 	require.NoError(t, err)
 
-	modelID2, err := id.NewString()
-	require.NoError(t, err)
-
+	modelID2 := id.Must(id.New()).String()
 	tds2 := []*openfgapb.TypeDefinition{
 		{
 			Type: "folder",
@@ -145,12 +139,11 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 	})
 
 	t.Run("find latests authorization model should succeed", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+		store := id.Must(id.New()).String()
 		now := time.Now()
-		oldModelID, err := id.NewStringFromTime(now)
-		require.NoError(t, err)
 
-		err = datastore.WriteAuthorizationModel(ctx, store, oldModelID, []*openfgapb.TypeDefinition{
+		oldModelID := id.Must(id.NewFromTime(now)).String()
+		err := datastore.WriteAuthorizationModel(ctx, store, oldModelID, []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
 				Relations: map[string]*openfgapb.Userset{
@@ -162,9 +155,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		})
 		require.NoError(t, err)
 
-		newModelID, err := id.NewStringFromTime(now)
-		require.NoError(t, err)
-
+		newModelID := id.Must(id.NewFromTime(now)).String()
 		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -187,19 +178,16 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		modelID, err := id.NewString()
-		require.NoError(t, err)
+		store := id.Must(id.New()).String()
+		modelID := id.Must(id.New()).String()
 
-		_, err = datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
+		_, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("read type definition should succeed", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		modelID, err := id.NewString()
-		require.NoError(t, err)
-
+		store := id.Must(id.New()).String()
+		modelID := id.Must(id.New()).String()
 		expectedTypeDef := &openfgapb.TypeDefinition{
 			Type: "folder",
 			Relations: map[string]*openfgapb.Userset{
@@ -211,7 +199,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		err = datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{expectedTypeDef})
+		err := datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{expectedTypeDef})
 		require.NoError(t, err)
 
 		typeDef, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
