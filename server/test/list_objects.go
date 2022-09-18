@@ -217,8 +217,10 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	if err := protojson.Unmarshal(data, &gitHubTypeDefinitions); err != nil {
 		return nil, nil, "", err
 	}
-
-	modelID := id.Must(id.New()).String()
+	modelID, err := id.NewString()
+	if err != nil {
+		return nil, nil, "", err
+	}
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	if err != nil {
 		return nil, nil, "", err

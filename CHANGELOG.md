@@ -8,14 +8,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [0.2.2] - 2022-09-15
-### Fixed
-* Reject direct writes if only indirect relationship allowed (#114). Thanks @dblclik!
-* Log internal errors at the grpc layer (#222)
-* Authorization model validation (#224)
-* Bug in `migrate` command (#236)
-* Skip malformed tuples involving tuple to userset definitions (#234)
-
 ## [0.2.1] - 2022-08-30
 ### Added
 * Support Check API calls on userset types of users (#146)
@@ -136,9 +128,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
-[0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
 [0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6

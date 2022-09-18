@@ -21,8 +21,13 @@ func TestStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	numStores := 10
 	var stores []*openfgapb.Store
 	for i := 0; i < numStores; i++ {
+		id, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		store := &openfgapb.Store{
-			Id:        id.Must(id.New()).String(),
+			Id:        id,
 			Name:      testutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),
 		}

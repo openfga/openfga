@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/test"
@@ -76,7 +77,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 	t.Run("no latest authorization model id found", func(t *testing.T) {
 
-		store := id.Must(id.New()).String()
+		store := testutils.CreateRandomString(10)
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -99,8 +100,12 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("read existing authorization model", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		modelID := id.Must(id.New()).String()
+		store := testutils.CreateRandomString(10)
+
+		modelID, err := id.NewString()
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -125,7 +130,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("non-valid modelID returns error", func(t *testing.T) {
-		store := id.Must(id.New()).String()
+		store := testutils.CreateRandomString(10)
 		modelID := "foo"
 		want := serverErrors.AuthorizationModelNotFound(modelID)
 

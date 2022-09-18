@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -149,29 +147,6 @@ type Config struct {
 	Profiler   ProfilerConfig
 }
 
-func DefaultConfigWithRandomPorts() (*Config, error) {
-	config := DefaultConfig()
-
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		return nil, err
-	}
-	defer l.Close()
-	httpPort := l.Addr().(*net.TCPAddr).Port
-
-	l, err = net.Listen("tcp", "")
-	if err != nil {
-		return nil, err
-	}
-	defer l.Close()
-	grpcPort := l.Addr().(*net.TCPAddr).Port
-
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
-
-	return config, nil
-}
-
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
@@ -187,12 +162,12 @@ func DefaultConfig() *Config {
 		},
 		GRPC: GRPCConfig{
 			Enabled: true,
-			Addr:    "0.0.0.0:8081",
+			Addr:    ":8081",
 			TLS:     TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
 			Enabled:            true,
-			Addr:               "0.0.0.0:8080",
+			Addr:               ":8080",
 			TLS:                TLSConfig{Enabled: false},
 			UpstreamTimeout:    5 * time.Second,
 			CORSAllowedOrigins: []string{"*"},
@@ -252,8 +227,6 @@ func GetServiceConfig() (*Config, error) {
 
 type service struct {
 	server        *server.Server
-	grpcAddr      netip.AddrPort
-	httpAddr      netip.AddrPort
 	datastore     storage.OpenFGADatastore
 	authenticator authn.Authenticator
 }
@@ -266,18 +239,6 @@ func (s *service) Close(ctx context.Context) error {
 
 func (s *service) Run(ctx context.Context) error {
 	return s.server.Run(ctx)
-}
-
-// GetHTTPPort returns the configured or auto-assigned port that the underlying HTTP service is running
-// on.
-func (s *service) GetHTTPAddrPort() netip.AddrPort {
-	return s.httpAddr
-}
-
-// GetGRPCPort returns the configured or auto-assigned port that the underlying grpc service is running
-// on.
-func (s *service) GetGRPCAddrPort() netip.AddrPort {
-	return s.grpcAddr
 }
 
 func BuildService(config *Config, logger logger.Logger) (*service, error) {
@@ -357,16 +318,6 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		middleware.NewErrorLoggingInterceptor(logger),
 	}
 
-	grpcAddr, err := netip.ParseAddrPort(config.GRPC.Addr)
-	if err != nil {
-		return nil, errors.Errorf("failed to parse the 'grpc.addr' config: %v", err)
-	}
-
-	httpAddr, err := netip.ParseAddrPort(config.HTTP.Addr)
-	if err != nil {
-		return nil, errors.Errorf("failed to parse the 'http.addr' config: %v", err)
-	}
-
 	openFgaServer, err := server.New(&server.Dependencies{
 		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
 		Tracer:       tracer,
@@ -375,12 +326,12 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		TokenEncoder: tokenEncoder,
 	}, &server.Config{
 		GRPCServer: server.GRPCServerConfig{
-			Addr:      grpcAddr,
+			Addr:      config.GRPC.Addr,
 			TLSConfig: grpcTLSConfig,
 		},
 		HTTPServer: server.HTTPServerConfig{
 			Enabled:            config.HTTP.Enabled,
-			Addr:               httpAddr,
+			Addr:               config.HTTP.Addr,
 			TLSConfig:          httpTLSConfig,
 			UpstreamTimeout:    config.HTTP.UpstreamTimeout,
 			CORSAllowedOrigins: config.HTTP.CORSAllowedOrigins,
@@ -399,8 +350,6 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 
 	return &service{
 		server:        openFgaServer,
-		grpcAddr:      grpcAddr,
-		httpAddr:      httpAddr,
 		datastore:     datastore,
 		authenticator: authenticator,
 	}, nil

@@ -45,8 +45,10 @@ func TestReadTypeDefinition(t *testing.T) {
 		memoryBackend := memory.New(otel.Tracer("noop"), 10000, 10000)
 		cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 
-		modelID := id.Must(id.New()).String()
-		err := memoryBackend.WriteAuthorizationModel(ctx, store, modelID, test.dbState)
+		modelID, err := id.NewString()
+		require.NoError(t, err)
+
+		err = memoryBackend.WriteAuthorizationModel(ctx, store, modelID, test.dbState)
 		require.NoError(t, err)
 
 		td, actualError := cachingBackend.ReadTypeDefinition(ctx, test.store, modelID, test.name)

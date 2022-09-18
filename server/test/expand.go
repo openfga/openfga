@@ -19,16 +19,16 @@ import (
 )
 
 func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
-	modelID := id.Must(id.New()).String()
-
+	modelID, err := id.NewString()
+	if err != nil {
+		return "", err
+	}
 	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, typeDefinitions); err != nil {
 		return "", err
 	}
-
 	if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples); err != nil {
 		return "", err
 	}
-
 	return modelID, nil
 }
 

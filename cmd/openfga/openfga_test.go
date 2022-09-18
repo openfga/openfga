@@ -86,7 +86,9 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		},
 	}
 
-	ulid := id.Must(id.New()).String()
+	ulid, err := id.NewString()
+	require.NoError(t, err)
+
 	name := fmt.Sprintf("openfga-%s", ulid)
 
 	ctx := context.Background()
@@ -381,7 +383,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 	require.Equal(t, resp1.Id, resp2.Id)
 
 	resp3, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
-		StoreId: id.Must(id.New()).String(),
+		StoreId: testutils.RandomID(t),
 	})
 	require.Error(t, err)
 	require.Nil(t, resp3)
@@ -464,7 +466,7 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 
 	// delete is idempotent, so if the store does not exist it's a noop
 	_, err = client.DeleteStore(context.Background(), &openfgapb.DeleteStoreRequest{
-		StoreId: id.Must(id.New()).String(),
+		StoreId: testutils.RandomID(t),
 	})
 	require.NoError(t, err)
 }
@@ -500,7 +502,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid storeID (too short)",
 			input: &openfgapb.CheckRequest{
 				StoreId:              "1",
-				AuthorizationModelId: id.Must(id.New()).String(),
+				AuthorizationModelId: testutils.RandomID(t),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
@@ -510,8 +512,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (extra chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId:              id.Must(id.New()).String() + "A",
-				AuthorizationModelId: id.Must(id.New()).String(),
+				StoreId:              testutils.RandomID(t) + "A",
+				AuthorizationModelId: testutils.RandomID(t),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
@@ -522,7 +524,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid storeID (invalid chars)",
 			input: &openfgapb.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				AuthorizationModelId: id.Must(id.New()).String(),
+				AuthorizationModelId: testutils.RandomID(t),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
@@ -532,8 +534,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid authorization model ID (extra chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId:              id.Must(id.New()).String(),
-				AuthorizationModelId: id.Must(id.New()).String() + "A",
+				StoreId:              testutils.RandomID(t),
+				AuthorizationModelId: testutils.RandomID(t) + "A",
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
@@ -543,7 +545,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid authorization model ID (invalid chars)",
 			input: &openfgapb.CheckRequest{
-				StoreId:              id.Must(id.New()).String(),
+				StoreId:              testutils.RandomID(t),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
 			},
@@ -554,8 +556,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "missing tuplekey field",
 			input: &openfgapb.CheckRequest{
-				StoreId:              id.Must(id.New()).String(),
-				AuthorizationModelId: id.Must(id.New()).String(),
+				StoreId:              testutils.RandomID(t),
+				AuthorizationModelId: testutils.RandomID(t),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -564,7 +566,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "blerb",
 			input: &openfgapb.CheckRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: testutils.RandomID(t),
 				// AuthorizationModelId is generated automatically during testData bootstrap
 				TupleKey: tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
 				Trace:    true,
@@ -678,7 +680,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid storeID (too short)",
 			input: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: "1",
-				Id:      id.Must(id.New()).String(),
+				Id:      testutils.RandomID(t),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -687,8 +689,8 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (extra chars)",
 			input: &openfgapb.ReadAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String() + "A",
-				Id:      id.Must(id.New()).String(), // ulids aren't required at this time
+				StoreId: testutils.RandomID(t) + "A",
+				Id:      testutils.CreateRandomString(26), // ulids aren't required at this time
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -697,8 +699,8 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid authorization model ID (extra chars)",
 			input: &openfgapb.ReadAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
-				Id:      id.Must(id.New()).String() + "A",
+				StoreId: testutils.RandomID(t),
+				Id:      testutils.CreateRandomString(27), // ulids aren't required at this time
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -735,7 +737,7 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 
 	client := openfgapb.NewOpenFGAServiceClient(conn)
 
-	storeID := id.Must(id.New()).String()
+	storeID := testutils.RandomID(t)
 
 	_, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 		StoreId: storeID,
@@ -817,7 +819,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid storeID (extra chars)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String() + "A",
+				StoreId: testutils.RandomID(t) + "A",
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -826,7 +828,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "missing type definitions",
 			input: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: testutils.RandomID(t),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -835,7 +837,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid type definition (empty type name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: testutils.RandomID(t),
 				TypeDefinitions: &openfgapb.TypeDefinitions{
 					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
@@ -854,7 +856,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid type definition (too many chars in name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: testutils.RandomID(t),
 				TypeDefinitions: &openfgapb.TypeDefinitions{
 					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{
@@ -873,7 +875,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		{
 			name: "invalid type definition (invalid chars in name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: testutils.RandomID(t),
 				TypeDefinitions: &openfgapb.TypeDefinitions{
 					TypeDefinitions: []*openfgapb.TypeDefinition{
 						{

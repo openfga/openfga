@@ -39,9 +39,11 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {
 
 	expected := []string{"document:doc1", "document:doc2"}
-	store := id.Must(id.New()).String()
 
-	err := ds.Write(context.Background(), store, nil, []*openfgapb.TupleKey{
+	store, err := id.NewString()
+	require.NoError(t, err)
+
+	err = ds.Write(context.Background(), store, nil, []*openfgapb.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
 		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
 		tuple.NewTupleKey("document:doc2", "editor", "maria"),

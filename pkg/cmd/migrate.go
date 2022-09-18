@@ -73,8 +73,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 			if err := goose.UpTo(db, assets.PostgresMigrationDir, int64Version); err != nil {
 				log.Fatal(err)
 			}
-
-			return nil
 		}
 
 		if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
