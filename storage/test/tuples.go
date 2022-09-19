@@ -475,6 +475,7 @@ func ReverseReadTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
 			tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
+			tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 		},
 	)
 	require.NoError(err)
