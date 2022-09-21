@@ -77,11 +77,13 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Rela
 
 	for relation, rewrite := range td.GetRelations() {
 		r := &openfgapb.Relation{
-			Rewrite: rewrite,
+			Name:     relation,
+			Rewrite:  rewrite,
+			TypeInfo: &openfgapb.RelationTypeInfo{},
 		}
 
 		if metadata, ok := td.GetMetadata().GetRelations()[relation]; ok {
-			r.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
+			r.TypeInfo.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
 		}
 
 		relations[relation] = r
@@ -203,7 +205,7 @@ func (t *TypeSystem) ValidateRelationTypeRestrictions() error {
 		}
 
 		for name, relation := range relations {
-			relatedTypes := relation.GetDirectlyRelatedUserTypes()
+			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 
 			assignable := isAssignable(relation.GetRewrite())
 			if assignable && len(relatedTypes) == 0 {
