@@ -8,6 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -746,7 +747,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			modelID := id.Must(id.New()).String()
 
 			if test.typeDefinitions != nil {
-				err := datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
+				err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, test.typeDefinitions)
 				require.NoError(err)
 			}
 

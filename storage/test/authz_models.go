@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -33,7 +34,7 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGAD
 		},
 	}
 
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID, expectedModel)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, expectedModel)
 	require.NoError(t, err)
 
 	model, err := datastore.ReadAuthorizationModel(ctx, store, modelID)
@@ -74,7 +75,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 	}
 
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds1)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID1, typesystem.SchemaVersion1_0, tds1)
 	require.NoError(t, err)
 
 	modelID2 := id.Must(id.New()).String()
@@ -91,7 +92,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds2)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, typesystem.SchemaVersion1_0, tds2)
 	require.NoError(t, err)
 
 	cmpOpts := []cmp.Option{
@@ -143,7 +144,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		now := time.Now()
 
 		oldModelID := id.Must(id.NewFromTime(now)).String()
-		err := datastore.WriteAuthorizationModel(ctx, store, oldModelID, []*openfgapb.TypeDefinition{
+		err := datastore.WriteAuthorizationModel(ctx, store, oldModelID, typesystem.SchemaVersion1_0, []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
 				Relations: map[string]*openfgapb.Userset{
@@ -156,7 +157,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		require.NoError(t, err)
 
 		newModelID := id.Must(id.NewFromTime(now)).String()
-		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, []*openfgapb.TypeDefinition{
+		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, typesystem.SchemaVersion1_0, []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
 				Relations: map[string]*openfgapb.Userset{
@@ -199,7 +200,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		err := datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{expectedTypeDef})
+		err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, []*openfgapb.TypeDefinition{expectedTypeDef})
 		require.NoError(t, err)
 
 		typeDef, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")

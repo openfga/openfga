@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/openfga/openfga/pkg/id"
+	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel"
 )
 
 const store = "openfga"
@@ -42,11 +43,11 @@ var readTypeDefinitionTests = []readTypeDefinitionTest{
 func TestReadTypeDefinition(t *testing.T) {
 	for _, test := range readTypeDefinitionTests {
 		ctx := context.Background()
-		memoryBackend := memory.New(otel.Tracer("noop"), 10000, 10000)
+		memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
 		cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 
 		modelID := id.Must(id.New()).String()
-		err := memoryBackend.WriteAuthorizationModel(ctx, store, modelID, test.dbState)
+		err := memoryBackend.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, test.dbState)
 		require.NoError(t, err)
 
 		td, actualError := cachingBackend.ReadTypeDefinition(ctx, test.store, modelID, test.name)

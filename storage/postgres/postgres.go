@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -293,18 +294,18 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	stmt := "SELECT type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
+	stmt := "SELECT version, type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
 	rows, err := p.pool.Query(ctx, stmt, store, modelID)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
 
+	var version typesystem.SchemaVersion
 	var typeDefs []*openfgapb.TypeDefinition
-
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&typeName, &marshalledTypeDef)
+		err = rows.Scan(&version, &typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handlePostgresError(err)
 		}
@@ -326,6 +327,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	return &openfgapb.AuthorizationModel{
+		SchemaVersion:   version.String(),
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -429,6 +431,7 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 func (p *Postgres) WriteAuthorizationModel(
 	ctx context.Context,
 	store, modelID string,
+	schemaVersion typesystem.SchemaVersion,
 	tds []*openfgapb.TypeDefinition,
 ) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
@@ -438,7 +441,7 @@ func (p *Postgres) WriteAuthorizationModel(
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
-	stmt := "INSERT INTO authorization_model (store, authorization_model_id, type, type_definition) VALUES ($1, $2, $3, $4)"
+	stmt := "INSERT INTO authorization_model (store, authorization_model_id, version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
 
 	inserts := &pgx.Batch{}
 	for _, td := range tds {
@@ -447,7 +450,7 @@ func (p *Postgres) WriteAuthorizationModel(
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
 	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {

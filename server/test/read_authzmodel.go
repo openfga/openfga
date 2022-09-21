@@ -7,6 +7,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -64,7 +65,7 @@ func TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel
 	store := id.Must(id.New()).String()
 	modelID := id.Must(id.New()).String()
 
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, state)
 	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
@@ -86,7 +87,7 @@ func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, 
 	store := id.Must(id.New()).String()
 	modelID := id.Must(id.New()).String()
 
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{})
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, []*openfgapb.TypeDefinition{})
 	require.NoError(err)
 
 	query := commands.NewReadAuthorizationModelQuery(datastore, logger)
