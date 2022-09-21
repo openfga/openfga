@@ -7,6 +7,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	"github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -165,7 +166,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.EmptyRewrites("repo", "owner"),
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
@@ -187,7 +188,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
@@ -214,7 +215,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInUnion",
@@ -249,7 +250,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
@@ -284,7 +285,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
@@ -319,7 +320,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
@@ -348,7 +349,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
@@ -377,7 +378,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
@@ -413,7 +414,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "bar", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("bar", "writer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
@@ -446,7 +447,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.RelationNotFound("owner", "repo", nil),
+			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",
@@ -476,7 +477,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
@@ -503,7 +504,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfIntersectionIncludesSameRelationTwice",
@@ -529,318 +530,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
-		},
-	}
-
-	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
-			resp, err := cmd.Execute(ctx, test.request)
-			require.ErrorIs(t, err, test.err)
-
-			if err == nil {
-				require.True(t, id.IsValid(resp.AuthorizationModelId))
-			}
-		})
-	}
-}
-
-func TestWriteAuthorizationModelWithTypeInfo(t *testing.T, datastore storage.OpenFGADatastore) {
-	storeID, err := id.NewString()
-	require.NoError(t, err)
-
-	var tests = []struct {
-		name    string
-		request *openfgapb.WriteAuthorizationModelRequest
-		err     error
-	}{
-		{
-			name: "succeeds on a valid model with an objectType type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "succeeds on a valid model with a type and type#relation type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"admin":  {Userset: &openfgapb.Userset_This{}},
-							"member": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-							"writer": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-										{
-											Type:     "group",
-											Relation: "member",
-										},
-									},
-								},
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-										{
-											Type:     "group",
-											Relation: "admin",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "unsupported schema version",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "xxx.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-					},
-				},
-			},
-			err: errors.UnsupportedSchemaVersion,
-		},
-		{
-			name: "relational type which doesn't exist",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "group",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.InvalidRelationType("document", "reader", "group", ""),
-		},
-		{
-			name: "relation type of form type#relation where relation doesn't exist",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": {Userset: &openfgapb.Userset_This{}},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:     "group",
-											Relation: "admin",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.InvalidRelationType("document", "reader", "group", "admin"),
-		},
-		{
-			name: "assignable relation with no types",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"writer": {Userset: &openfgapb.Userset_This{}},
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
-		},
-		{
-			name: "assignable relation with an empty type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"writer": {Userset: &openfgapb.Userset_This{}},
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
-		},
-		{
-			name: "non-assignable relation with a type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				SchemaVersion: "1.1",
-				StoreId:       storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"writer": {
-								Userset: &openfgapb.Userset_This{},
-							},
-							"reader": {
-								Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "writer",
-									},
-								},
-							},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: errors.NonassignableRelationHasAType("document", "reader"),
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 	}
 

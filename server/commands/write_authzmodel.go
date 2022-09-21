@@ -35,9 +35,24 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	schemaVersion := typesystem.NewSchemaVersion(req.GetSchemaVersion())
-	if schemaVersion == typesystem.SchemaVersionUnspecified {
+	schemaVersion, err := typesystem.NewSchemaVersion(req.GetSchemaVersion())
+	if err != nil {
 		return nil, serverErrors.UnsupportedSchemaVersion
+	}
+
+	typeSystem := typesystem.NewTypeSystem(req.GetTypeDefinitions())
+	if len(typeSystem.TypeDefinitions) != len(req.GetTypeDefinitions()) {
+		return nil, serverErrors.CannotAllowDuplicateTypesInOneRequest
+	}
+
+	if err := typeSystem.ValidateRelationRewrites(); err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
+	}
+
+	if schemaVersion == typesystem.SchemaVersion1_1 {
+		if err := typeSystem.ValidateRelationTypeRestrictions(); err != nil {
+			return nil, serverErrors.InvalidAuthorizationModelInput(err)
+		}
 	}
 
 	id, err := id.NewString()
@@ -45,18 +60,8 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, err
 	}
 
-	model := &typesystem.AuthorizationModel{
-		ID:              id,
-		Version:         schemaVersion,
-		TypeDefinitions: req.GetTypeDefinitions(),
-	}
-
-	if err := model.Validate(); err != nil {
-		return nil, err
-	}
-
 	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, model.TypeDefinitions); err != nil {
+	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, typeSystem.GetTypeDefinitions()); err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}
 

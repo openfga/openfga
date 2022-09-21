@@ -3,14 +3,12 @@ package typesystem
 import (
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
-	"github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestSchemaVersion(t *testing.T) {
-	t.Run("convert from string to SchemaVersion", func(t *testing.T) {
+	t.Run("convert string to SchemaVersion successfully", func(t *testing.T) {
 		var tests = []struct {
 			input  string
 			output SchemaVersion
@@ -27,18 +25,30 @@ func TestSchemaVersion(t *testing.T) {
 				input:  "1.1",
 				output: SchemaVersion1_1,
 			},
+		}
+
+		for _, test := range tests {
+			version, err := NewSchemaVersion(test.input)
+			require.NoError(t, err)
+			require.Equal(t, test.output, version)
+		}
+	})
+
+	t.Run("convert string to SchemaVersion errors", func(t *testing.T) {
+		var tests = []struct {
+			input string
+		}{
 			{
-				input:  "1.2",
-				output: SchemaVersionUnspecified,
+				input: "1.2",
 			},
 			{
-				input:  "xyz",
-				output: SchemaVersionUnspecified,
+				input: "1.3",
 			},
 		}
 
 		for _, test := range tests {
-			require.Equal(t, test.output, NewSchemaVersion(test.input))
+			_, err := NewSchemaVersion(test.input)
+			require.ErrorIs(t, err, ErrInvalidSchemaVersion)
 		}
 	})
 
@@ -67,21 +77,16 @@ func TestSchemaVersion(t *testing.T) {
 	})
 }
 
-func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
-	id, err := id.NewString()
-	require.NoError(t, err)
-
+func TestSuccessfulValidateRelationRewrites(t *testing.T) {
 	var tests = []struct {
-		name  string
-		model *AuthorizationModel
+		name       string
+		typeSystem *TypeSystem
 	}{
 		{
 			name: "empty relations",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			typeSystem: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"repo": {
 						Type: "repo",
 					},
 				},
@@ -89,11 +94,9 @@ func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
 		},
 		{
 			name: "zero length relations is valid",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			typeSystem: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"repo": {
 						Type:      "repo",
 						Relations: map[string]*openfgapb.Userset{},
 					},
@@ -104,44 +107,23 @@ func TestSuccessfulAuthorizationModelValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.Validate()
+			err := test.typeSystem.ValidateRelationRewrites()
 			require.NoError(t, err)
 		})
 	}
 }
 
-func TestInvalidAuthorizationModelValidations(t *testing.T) {
-	id, err := id.NewString()
-	require.NoError(t, err)
-
+func TestInvalidValidateRelationRewrites(t *testing.T) {
 	var tests = []struct {
 		name  string
-		model *AuthorizationModel
+		model *TypeSystem
 		err   error
 	}{
 		{
-			name: "duplicate types",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-					},
-					{
-						Type: "document",
-					},
-				},
-			},
-			err: errors.CannotAllowDuplicateTypesInOneRequest,
-		},
-		{
 			name: "empty rewrites",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {},
@@ -149,15 +131,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.EmptyRewrites("document", "reader"),
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: self reference in computedUserset",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -169,15 +149,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: self reference in union",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -200,15 +178,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: self reference in intersection",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -231,15 +207,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: self reference in difference base",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -260,15 +234,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: self reference in difference subtract",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -289,15 +261,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.CannotAllowMultipleReferencesToOneRelation,
+			err: InvalidRelationError("document", "reader"),
 		},
 		{
 			name: "invalid relation: computedUserset to relation which does not exist",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -309,15 +279,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "document", nil),
+			err: RelationDoesNotExistError("document", "writer"),
 		},
 		{
 			name: "invalid relation: computedUserset in a union",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -340,15 +308,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "document", nil),
+			err: RelationDoesNotExistError("document", "writer"),
 		},
 		{
 			name: "invalid relation: computedUserset in a intersection",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -371,15 +337,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "document", nil),
+			err: RelationDoesNotExistError("document", "writer"),
 		},
 		{
 			name: "invalid relation: computedUserset in a difference base",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -400,15 +364,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "document", nil),
+			err: RelationDoesNotExistError("document", "writer"),
 		},
 		{
 			name: "invalid relation: computedUserset in a difference subtract",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -429,15 +391,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("writer", "document", nil),
+			err: RelationDoesNotExistError("document", "writer"),
 		},
 		{
 			name: "invalid relation: tupleToUserset where tupleset is not valid",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"group": {
 						Type: "group",
 						Relations: map[string]*openfgapb.Userset{
 							"member": {
@@ -445,7 +405,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 							},
 						},
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -478,15 +438,13 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("notavalidrelation", "document", nil),
+			err: RelationDoesNotExistError("document", "notavalidrelation"),
 		},
 		{
 			name: "invalid relation: tupleToUserset where computed userset is not valid",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"group": {
 						Type: "group",
 						Relations: map[string]*openfgapb.Userset{
 							"member": {
@@ -494,7 +452,7 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 							},
 						},
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -527,36 +485,31 @@ func TestInvalidAuthorizationModelValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.RelationNotFound("notavalidrelation", "", nil),
+			err: RelationDoesNotExistError("", "notavalidrelation"),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.Validate()
-			require.ErrorIs(t, err, test.err)
+			err := test.model.ValidateRelationRewrites()
+			require.EqualError(t, err, test.err.Error())
 		})
 	}
 }
 
-func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
-	id, err := id.NewString()
-	require.NoError(t, err)
-
+func TestSuccessfulValidateRelationTypeRestrictions(t *testing.T) {
 	var tests = []struct {
 		name  string
-		model *AuthorizationModel
+		model *TypeSystem
 	}{
 		{
-			name: "succeeds on a valid model with an objectType type",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			name: "succeeds on a valid typeSystem with an objectType type",
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {Userset: &openfgapb.Userset_This{}},
@@ -577,15 +530,13 @@ func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "succeeds on a valid model with a type and type#relation type",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			name: "succeeds on a valid typeSystem with a type and type#relation type",
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"group": {
 						Type: "group",
 						Relations: map[string]*openfgapb.Userset{
 							"admin":  {Userset: &openfgapb.Userset_This{}},
@@ -610,7 +561,7 @@ func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
 							},
 						},
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {Userset: &openfgapb.Userset_This{}},
@@ -650,28 +601,23 @@ func TestSuccessfulAuthorizationModelWithTypeValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.Validate()
+			err := test.model.ValidateRelationTypeRestrictions()
 			require.NoError(t, err)
 		})
 	}
 }
 
 func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
-	id, err := id.NewString()
-	require.NoError(t, err)
-
 	var tests = []struct {
 		name  string
-		model *AuthorizationModel
+		model *TypeSystem
 		err   error
 	}{
 		{
 			name: "relational type which does not exist",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {Userset: &openfgapb.Userset_This{}},
@@ -690,21 +636,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.InvalidRelationType("document", "reader", "group", ""),
+			err: InvalidRelationTypeError("document", "reader", "group", ""),
 		},
 		{
 			name: "relation type of form type#relation where relation doesn't exist",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"group": {
 						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": {Userset: &openfgapb.Userset_This{}},
-						},
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {Userset: &openfgapb.Userset_This{}},
@@ -724,15 +665,13 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.InvalidRelationType("document", "reader", "group", "admin"),
+			err: InvalidRelationTypeError("document", "reader", "group", "admin"),
 		},
 		{
 			name: "assignable relation with no type: this",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"reader": {
@@ -742,18 +681,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+			err: AssignableRelationError("document", "reader"),
 		},
 		{
 			name: "assignable relation with no type: union",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"writer": {
@@ -792,18 +729,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+			err: AssignableRelationError("document", "reader"),
 		},
 		{
 			name: "assignable relation with no type: intersection",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"writer": {
@@ -842,18 +777,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+			err: AssignableRelationError("document", "reader"),
 		},
 		{
 			name: "assignable relation with no type: difference base",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"writer": {
@@ -890,18 +823,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+			err: AssignableRelationError("document", "reader"),
 		},
 		{
 			name: "assignable relation with no type: difference subtract",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"writer": {
@@ -938,18 +869,16 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.AssignableRelationHasNoTypes("document", "reader"),
+			err: AssignableRelationError("document", "reader"),
 		},
 		{
 			name: "non-assignable relation with a type",
-			model: &AuthorizationModel{
-				ID:      id,
-				Version: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
+			model: &TypeSystem{
+				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
+					"user": {
 						Type: "user",
 					},
-					{
+					"document": {
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"writer": {
@@ -982,14 +911,14 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 					},
 				},
 			},
-			err: errors.NonassignableRelationHasAType("document", "reader"),
+			err: NonAssignableRelationError("document", "reader"),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.Validate()
-			require.ErrorIs(t, err, test.err)
+			err := test.model.ValidateRelationTypeRestrictions()
+			require.EqualError(t, err, test.err.Error())
 		})
 	}
 }

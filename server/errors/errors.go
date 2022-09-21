@@ -130,21 +130,8 @@ func WriteFailedDueToInvalidInput(err error) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_write_failed_due_to_invalid_input), "Write failed due to invalid input")
 }
 
-func InvalidRelationType(objectType, relation, relationalTypeObject, relationalTypeRelation string) error {
-	relationalType := relationalTypeObject
-	if relationalTypeRelation != "" {
-		relationalType = fmt.Sprintf("%s#%s", relationalTypeObject, relationalTypeRelation)
-	}
-
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_relation_type), fmt.Sprintf("The type '%s' on '%s' in type '%s' is not valid", relationalType, relation, objectType))
-}
-
-func AssignableRelationHasNoTypes(objectType, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_relation_type), fmt.Sprintf("The assignable relation '%s' on type '%s' must contain at least one type", relation, objectType))
-}
-
-func NonassignableRelationHasAType(objectType, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_relation_type), fmt.Sprintf("The non-assignable relation '%s' on type '%s' should not contain a type", relation, objectType))
+func InvalidAuthorizationModelInput(err error) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), err.Error())
 }
 
 // HandleError is used to hide internal errors from users. Use `public` to return an error message to the user.
