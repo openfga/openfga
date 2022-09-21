@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -1410,9 +1409,8 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range checkQueryTests {
 		t.Run(test.name, func(t *testing.T) {
-			store := testutils.CreateRandomString(20)
-			modelID, err := id.NewString()
-			require.NoError(t, err)
+			store := id.Must(id.New()).String()
+			modelID := id.Must(id.New()).String()
 
 			if test.useGitHubTypeDefinition {
 				err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
@@ -1480,16 +1478,13 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 		},
 	}}
 
-	store := testutils.CreateRandomString(10)
-	originalModelID, err := id.NewString()
+	store := id.Must(id.New()).String()
+
+	originalModelID := id.Must(id.New()).String()
+	err := datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
 	require.NoError(t, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
-	require.NoError(t, err)
-
-	updatedModelID, err := id.NewString()
-	require.NoError(t, err)
-
+	updatedModelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, updatedTD)
 	require.NoError(t, err)
 
@@ -1546,11 +1541,9 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
+	modelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
@@ -1589,11 +1582,9 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
+	modelID := id.Must(id.New()).String()
 	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
