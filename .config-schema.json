@@ -68,14 +68,15 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres"],
+                    "enum": ["memory", "postgres", "mysql"],
                     "default": "memory"
                 },
                 "uri": {
                     "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
                     "type": "string",
                     "examples": [
-                        "postgres://user:pass@host:port/datastore?opts"
+                        "postgres://user:pass@host:port/datastore?opts",
+                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts"
                     ]
                 },
                 "maxCacheSize": {
