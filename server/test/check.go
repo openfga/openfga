@@ -1399,7 +1399,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(t, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(t, err)
 
@@ -1533,7 +1533,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(b, err)
 
@@ -1574,7 +1574,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(b, err)
 

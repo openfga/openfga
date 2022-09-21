@@ -213,7 +213,7 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	if err != nil {
 		return nil, nil, "", err
 	}
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	if err := protojson.Unmarshal(data, &gitHubTypeDefinitions); err != nil {
 		return nil, nil, "", err
 	}
