@@ -40,19 +40,13 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.UnsupportedSchemaVersion
 	}
 
-	typeSystem := typesystem.NewTypeSystem(req.GetTypeDefinitions())
+	typeSystem := typesystem.NewTypeSystem(schemaVersion, req.GetTypeDefinitions())
 	if len(typeSystem.TypeDefinitions) != len(req.GetTypeDefinitions()) {
 		return nil, serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
 
-	if err := typeSystem.ValidateRelationRewrites(); err != nil {
+	if err := typeSystem.Validate(); err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
-	}
-
-	if schemaVersion == typesystem.SchemaVersion1_1 {
-		if err := typeSystem.ValidateRelationTypeRestrictions(); err != nil {
-			return nil, serverErrors.InvalidAuthorizationModelInput(err)
-		}
 	}
 
 	id, err := id.NewString()

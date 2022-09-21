@@ -42,16 +42,18 @@ func (v SchemaVersion) String() string {
 }
 
 type TypeSystem struct {
+	Version         SchemaVersion
 	TypeDefinitions map[string]*openfgapb.TypeDefinition
 }
 
-func NewTypeSystem(typeDefinitions []*openfgapb.TypeDefinition) *TypeSystem {
+func NewTypeSystem(version SchemaVersion, typeDefinitions []*openfgapb.TypeDefinition) *TypeSystem {
 	tds := map[string]*openfgapb.TypeDefinition{}
 	for _, td := range typeDefinitions {
 		tds[td.GetType()] = td
 	}
 
 	return &TypeSystem{
+		Version:         version,
 		TypeDefinitions: tds,
 	}
 }
@@ -106,13 +108,34 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	return r, nil
 }
 
-// ValidateRelationRewrites validates the type system according to the following rules:
+// Validate validates the type system according to the following rules:
 //  1. For every rewrite the relations in the rewrite must:
 //     a. Be valid relations on the same type in the authorization typeSystem (in cases of computedUserset)
 //     b. Be valid relations on another existing type (in cases of tupleToUserset)
 //  2. Do not allow duplicate types or duplicate relations (but that is inherent in the map structure so nothing to
 //     actually check)
-func (t *TypeSystem) ValidateRelationRewrites() error {
+//
+// If it is a SchemaVersion1_1 type system (with types on relations), then additionally validate the type system
+// according to the following rules:
+//  3. Every type on a relation must be a valid type:
+//     a. For a type (e.g. user) this means checking that this type is in the TypeSystem
+//     b. For a type#relation this means checking that this type with this relation is in the TypeSystem
+//  4. Check that a relation is assignable if and only if it has a non-zero list of types
+func (t *TypeSystem) Validate() error {
+	if err := t.validateRelationRewrites(); err != nil {
+		return err
+	}
+
+	if t.Version == SchemaVersion1_1 {
+		if err := t.validateRelationTypeRestrictions(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *TypeSystem) validateRelationRewrites() error {
 	allRelations := map[string]struct{}{}
 	typeToRelations := map[string]map[string]struct{}{}
 	for objectType, td := range t.TypeDefinitions {
@@ -190,14 +213,7 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 	return nil
 }
 
-// ValidateRelationTypeRestrictions should only be called on SchemaVersion1_1 type systems.
-// If it is a SchemaVersion1_1 type system (with types on relations), it will validate the type system according to the
-// following rules:
-//  1. Every type on a relation must be a valid type:
-//     a. For a type (e.g. user) this means checking that this type is in the TypeSystem
-//     b. For a type#relation this means checking that this type with this relation is in the TypeSystem
-//  2. Check that a relation is assignable if and only if it has a non-zero list of types
-func (t *TypeSystem) ValidateRelationTypeRestrictions() error {
+func (t *TypeSystem) validateRelationTypeRestrictions() error {
 	for objectType := range t.TypeDefinitions {
 		relations, err := t.GetRelations(objectType)
 		if err != nil {

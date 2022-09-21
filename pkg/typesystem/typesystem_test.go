@@ -77,7 +77,7 @@ func TestSchemaVersion(t *testing.T) {
 	})
 }
 
-func TestSuccessfulValidateRelationRewrites(t *testing.T) {
+func TestSuccessfulRewriteValidations(t *testing.T) {
 	var tests = []struct {
 		name       string
 		typeSystem *TypeSystem
@@ -85,6 +85,7 @@ func TestSuccessfulValidateRelationRewrites(t *testing.T) {
 		{
 			name: "empty relations",
 			typeSystem: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"repo": {
 						Type: "repo",
@@ -95,6 +96,7 @@ func TestSuccessfulValidateRelationRewrites(t *testing.T) {
 		{
 			name: "zero length relations is valid",
 			typeSystem: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"repo": {
 						Type:      "repo",
@@ -107,13 +109,14 @@ func TestSuccessfulValidateRelationRewrites(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.typeSystem.ValidateRelationRewrites()
+			err := test.typeSystem.validateRelationRewrites()
 			require.NoError(t, err)
 		})
 	}
 }
 
-func TestInvalidValidateRelationRewrites(t *testing.T) {
+// TODO: update these to v1.1 models and combine the test functions
+func TestInvalidRewriteValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
 		model *TypeSystem
@@ -122,6 +125,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "empty rewrites",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -136,6 +140,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: self reference in computedUserset",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -154,6 +159,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: self reference in union",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -183,6 +189,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: self reference in intersection",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -212,6 +219,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference base",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -239,6 +247,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference subtract",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -266,6 +275,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset to relation which does not exist",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -284,6 +294,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a union",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -313,6 +324,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a intersection",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -342,6 +354,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference base",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -369,6 +382,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference subtract",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -396,6 +410,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where tupleset is not valid",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"group": {
 						Type: "group",
@@ -443,6 +458,7 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where computed userset is not valid",
 			model: &TypeSystem{
+				Version: SchemaVersion1_0,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"group": {
 						Type: "group",
@@ -491,13 +507,12 @@ func TestInvalidValidateRelationRewrites(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.ValidateRelationRewrites()
+			err := test.model.Validate()
 			require.EqualError(t, err, test.err.Error())
 		})
 	}
 }
-
-func TestSuccessfulValidateRelationTypeRestrictions(t *testing.T) {
+func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
 		model *TypeSystem
@@ -505,6 +520,7 @@ func TestSuccessfulValidateRelationTypeRestrictions(t *testing.T) {
 		{
 			name: "succeeds on a valid typeSystem with an objectType type",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -532,6 +548,7 @@ func TestSuccessfulValidateRelationTypeRestrictions(t *testing.T) {
 		{
 			name: "succeeds on a valid typeSystem with a type and type#relation type",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -601,13 +618,13 @@ func TestSuccessfulValidateRelationTypeRestrictions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.ValidateRelationTypeRestrictions()
+			err := test.model.Validate()
 			require.NoError(t, err)
 		})
 	}
 }
 
-func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
+func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
 		model *TypeSystem
@@ -616,6 +633,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "relational type which does not exist",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -641,6 +659,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "relation type of form type#relation where relation doesn't exist",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"group": {
 						Type: "group",
@@ -670,6 +689,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: this",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"document": {
 						Type: "document",
@@ -686,6 +706,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: union",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -734,6 +755,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: intersection",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -782,6 +804,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference base",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -828,6 +851,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference subtract",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -874,6 +898,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 		{
 			name: "non-assignable relation with a type",
 			model: &TypeSystem{
+				Version: SchemaVersion1_1,
 				TypeDefinitions: map[string]*openfgapb.TypeDefinition{
 					"user": {
 						Type: "user",
@@ -917,7 +942,7 @@ func TestInvalidAuthorizationModelWithTypeValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := test.model.ValidateRelationTypeRestrictions()
+			err := test.model.Validate()
 			require.EqualError(t, err, test.err.Error())
 		})
 	}
