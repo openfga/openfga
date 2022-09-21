@@ -111,14 +111,6 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 //  2. Do not allow duplicate types or duplicate relations (but that is inherent in the map structure so nothing to
 //     actually check)
 func (t *TypeSystem) ValidateRelationRewrites() error {
-	if err := t.areUsersetRewritesValid(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (t *TypeSystem) areUsersetRewritesValid() error {
 	allRelations := map[string]struct{}{}
 	typeToRelations := map[string]map[string]struct{}{}
 	for objectType, td := range t.TypeDefinitions {
