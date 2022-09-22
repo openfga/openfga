@@ -326,8 +326,8 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, storage.ErrNotFound
 	}
 
-	// Update the schema version lazily
-	if version == typesystem.SchemaVersionUnspecified {
+	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
+	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
 		version = typesystem.SchemaVersion1_0
 		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
 		if err != nil {
