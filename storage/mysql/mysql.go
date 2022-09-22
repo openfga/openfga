@@ -8,6 +8,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
+	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -213,11 +214,43 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		if err != nil {
 			return err
 		}
+
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		_, err = tx.ExecContext(ctx, `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), ulid)
+
+        relation := tk.GetRelation()
+        user := tk.GetUser()
+        userType := tupleUtils.GetUserTypeFromUser(user)
+
+        // Since the unique constraint/primary key present in e.g. the postgres storage backend, 
+        // would be too large for innodb (it exceeds 3072 bytes), we have to resort to manually
+        // enforcing a unique constraint.
+        result, err := tx.ExecContext(
+            ctx,
+            `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at)
+            SELECT ?, ?, ?, ?, ?, ?, ?, NOW()
+            WHERE NOT EXISTS (
+                SELECT * FROM tuple
+                WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?
+                LIMIT 1
+                FOR UPDATE
+            )`,
+            store, objectType, objectID, relation, user, userType, ulid,
+            store, objectType, objectID, relation, user, userType,
+        )
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
+
+        rowsAffected, err := result.RowsAffected();
+		if err != nil {
+			return handleMySQLError(err, tk)
+		}
+
+        if rowsAffected == 0 {
+            // We didn't insert anything, meaning that there was already one present.
+		 	return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
+        }
+
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)
 		if err != nil {
@@ -463,19 +496,32 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 	ctx, span := m.tracer.Start(ctx, "mysql.CreateStore")
 	defer span.End()
 
-	var createdAt time.Time
+    tx, err := m.db.BeginTx(ctx, &sql.TxOptions {})
+	if err != nil {
+		return nil, handleMySQLError(err)
+	}
+    defer tx.Rollback()
+
+
 	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES (?, ?, NOW(), NOW())"
-	_, err := m.db.ExecContext(ctx, stmt, store.Id, store.Name)
+	_, err = tx.ExecContext(ctx, stmt, store.Id, store.Name)
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
 
+	var createdAt time.Time
 	var id, name string
 	stmt = "SELECT id, name, created_at FROM store WHERE id = ?"
-	err = m.db.QueryRowContext(ctx, stmt, store.Id).Scan(&id, &name, &createdAt)
+	err = tx.QueryRowContext(ctx, stmt, store.Id).Scan(&id, &name, &createdAt)
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
+
+    err = tx.Commit()
+	if err != nil {
+		return nil, handleMySQLError(err)
+	}
+
 
 	return &openfgapb.Store{
 		Id:        id,
