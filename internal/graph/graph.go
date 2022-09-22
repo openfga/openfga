@@ -28,6 +28,11 @@ type RelationshipIngress struct {
 
 	// The relationship reference that defines the ingress to some target relation
 	Ingress *openfgapb.RelationReference
+
+	// TuplesetRelation defines the tupleset relation reference that relates a source
+	// object reference with a target if the type of the relationship ingress is that
+	// of a TupleToUserset
+	TuplesetRelation *openfgapb.RelationReference
 }
 
 // ConnectedObjectGraph represents a graph of relationships and the connectivity between

@@ -175,8 +175,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					Ingress: typesystem.RelationReference("document", "viewer"),
 				},
 				{
-					Type:    TupleToUsersetIngress,
-					Ingress: typesystem.RelationReference("folder", "viewer"),
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.RelationReference("folder", "viewer"),
+					TuplesetRelation: typesystem.RelationReference("document", "parent"),
 				},
 				{
 					Type:    DirectIngress,
