@@ -14,11 +14,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, ds) })
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
-	t.Run("TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel",
-		func(t *testing.T) {
-			TestReadAuthorizationModelByIDAndOneTypeDefinitionReturnsAuthorizationModel(t, ds)
-		},
-	)
+	t.Run("TestSuccessfulReadAuthorizationModelQuery", func(t *testing.T) { TestSuccessfulReadAuthorizationModelQuery(t, ds) })
 	t.Run("TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError",
 		func(t *testing.T) {
 			TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t, ds)
