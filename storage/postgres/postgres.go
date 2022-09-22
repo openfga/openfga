@@ -294,7 +294,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	stmt := "SELECT version, type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
+	stmt := "SELECT schema_version, type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
 	rows, err := p.pool.Query(ctx, stmt, store, modelID)
 	if err != nil {
 		return nil, handlePostgresError(err)
@@ -324,6 +324,13 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 
 	if len(typeDefs) == 0 {
 		return nil, storage.ErrNotFound
+	}
+
+	// Update the schema version lazily
+	if version == typesystem.SchemaVersionUnspecified {
+		version = typesystem.SchemaVersion1_0
+		// Don't worry if we error, we'll update it lazily next time
+		_, _ = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
 	}
 
 	return &openfgapb.AuthorizationModel{
@@ -441,7 +448,7 @@ func (p *Postgres) WriteAuthorizationModel(
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
-	stmt := "INSERT INTO authorization_model (store, authorization_model_id, version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
+	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
 
 	inserts := &pgx.Batch{}
 	for _, td := range tds {
