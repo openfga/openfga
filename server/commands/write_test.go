@@ -100,24 +100,11 @@ func TestValidateWriteTuples(t *testing.T) {
 		expectedError error
 	}
 
-	tracer := telemetry.NewNoopTracer()
-	logger := logger.NewNoopLogger()
-	dbCounter := utils.NewDBCallCounter()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	maxTuplesInWriteOp := 10
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
-
 	badItem := &openfgapb.TupleKey{
 		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
-
-	cmd := NewWriteCommand(mockDatastore, tracer, logger)
 
 	tests := []test{
 		{
@@ -142,6 +129,20 @@ func TestValidateWriteTuples(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			tracer := telemetry.NewNoopTracer()
+			logger := logger.NewNoopLogger()
+			dbCounter := utils.NewDBCallCounter()
+
+			mockController := gomock.NewController(t)
+			maxTuplesInWriteOp := 10
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
+			cmd := NewWriteCommand(mockDatastore, tracer, logger)
+
+			if len(test.writes) > 0 {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)
+			}
+
 			ctx := context.Background()
 			req := &openfgapb.WriteRequest{
 				StoreId: "abcd123",
@@ -153,6 +154,8 @@ func TestValidateWriteTuples(t *testing.T) {
 			if !reflect.DeepEqual(err, test.expectedError) {
 				t.Errorf("Expected error %v, got %v", test.expectedError, err)
 			}
+
+			mockController.Finish()
 		})
 	}
 }

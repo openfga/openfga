@@ -7,6 +7,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
@@ -61,6 +62,23 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		return serverErrors.InvalidWriteInput
 	}
 
+	var authModel *openfgapb.AuthorizationModel = nil
+	schemaVersion := typesystem.SchemaVersion1_0
+
+	if len(writes) > 0 {
+		// only read the auth model if we are adding tuples
+		dbCallsCounter.AddReadCall()
+		var err error
+		authModel, err = c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		if err != nil {
+			return err
+		}
+		schemaVersion, err = typesystem.NewSchemaVersion(authModel.SchemaVersion)
+		if err != nil {
+			return err
+		}
+	}
+
 	for _, tk := range writes {
 		tupleUserset, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter)
 		if err != nil {
@@ -71,7 +89,8 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		if err := validateHasDirectRelationship(tupleUserset, tk); err != nil {
 			return err
 		}
-		if err := c.validateTypes(ctx, store, modelID, tk, dbCallsCounter); err != nil {
+
+		if err := c.validateTypesForTuple(authModel, schemaVersion, tk, dbCallsCounter); err != nil {
 			return err
 		}
 	}
@@ -90,47 +109,61 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	return nil
 }
 
-// validateTypes makes sure that when writing a tuple, the types are compatible.
+// validateTypesForTuple makes sure that when writing a tuple, the types are compatible.
 // 1. If the tuple is of the form (person:bob, reader, doc:budget), then the type "doc", relation "reader" allows type "person".
 // 2. If the tuple is of the form (group:abc#member, reader, doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
 // 3. If the tuple is of the form (*, reader, doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
-func (c *WriteCommand) validateTypes(ctx context.Context, store string, authorizationModelID string, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
-	objectType, _ := tupleUtils.SplitObject(tk.GetObject()) // e.g. "doc"
-
-	dbCallsCounter.AddReadCall()
-	typeDefinition, err := c.datastore.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return &tupleUtils.TypeNotFoundError{TypeName: objectType}
-		}
-		return err
-	}
-	relations := typeDefinition.GetMetadata().GetRelations()
-	if relations == nil {
-		// authorization model is old or invalid and does not have type information
-		return nil
-	}
-	relationInformation := relations[tk.Relation]
-
-	userType, userID := tupleUtils.SplitObject(tk.GetUser()) // e.g. (person, bob) or (group, abc#member) or ("", *)
-
+func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationModel, schemaVersion typesystem.SchemaVersion, tk *openfgapb.TupleKey, dbCallsCounter utils.DBCallCounter) error {
+	objectType, _ := tupleUtils.SplitObject(tk.GetObject())    // e.g. "doc"
+	userType, userID := tupleUtils.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
 	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
+
+	// find the type information
+	var typeDefinitionForObject *openfgapb.TypeDefinition
+	var typeDefinitionForUser *openfgapb.TypeDefinition
+	for _, td := range authModel.GetTypeDefinitions() {
+		if td.GetType() == objectType {
+			typeDefinitionForObject = td
+		}
+		if td.GetType() == userType {
+			typeDefinitionForUser = td
+		}
+	}
+
+	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
+	if relationsForObject == nil {
+		if schemaVersion.String() == "1.1" {
+			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
+			return serverErrors.NewInternalError("", errors.New("invalid authorization model"))
+		} else {
+			// authorization model is old/unspecified and does not have type information
+			return nil
+		}
+	}
+
+	// at this point we know the auth model has type information
+
+	if userType != "" && typeDefinitionForUser == nil {
+		return serverErrors.InvalidWriteInput
+	}
+
+	relationInformation := relationsForObject[tk.Relation]
 
 	// case 1
 	if userRel == "" && userID != "*" {
-		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
 			if typeInformation.GetType() == userType {
 				return nil
 			}
 		}
 	} else if userRel != "" { // case 2
-		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
 			if typeInformation.GetType() == userType && typeInformation.GetRelation() == userRel {
 				return nil
 			}
 		}
 	} else if userID == "*" { // case 3
-		for _, typeInformation := range relationInformation.DirectlyRelatedUserTypes {
+		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
 			if typeInformation.GetType() != "" && typeInformation.GetRelation() == "" {
 				return nil
 			}
@@ -179,17 +212,17 @@ func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgap
 	indirectWriteErrorReason := "Attempting to write directly to an indirect only relationship"
 	switch usType := tupleUserset.Userset.(type) {
 	case *openfgapb.Userset_Intersection:
-		if !isDirectIntersection(usType, tk) {
+		if !isDirectIntersection(usType) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
 
 	case *openfgapb.Userset_Union:
-		if !isDirectUnion(usType, tk) {
+		if !isDirectUnion(usType) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
 
 	case *openfgapb.Userset_Difference:
-		if !isDirectDifference(usType, tk) {
+		if !isDirectDifference(usType) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
 		}
 
@@ -208,7 +241,7 @@ func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgap
 	return nil
 }
 
-func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.TupleKey) bool {
+func isDirectIntersection(nodes *openfgapb.Userset_Intersection) bool {
 	for _, userset := range nodes.Intersection.Child {
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
@@ -222,7 +255,7 @@ func isDirectIntersection(nodes *openfgapb.Userset_Intersection, tk *openfgapb.T
 	return false
 }
 
-func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) bool {
+func isDirectUnion(nodes *openfgapb.Userset_Union) bool {
 	for _, userset := range nodes.Union.Child {
 		switch userset.Userset.(type) {
 		case *openfgapb.Userset_This:
@@ -236,7 +269,7 @@ func isDirectUnion(nodes *openfgapb.Userset_Union, tk *openfgapb.TupleKey) bool 
 	return false
 }
 
-func isDirectDifference(node *openfgapb.Userset_Difference, tk *openfgapb.TupleKey) bool {
+func isDirectDifference(node *openfgapb.Userset_Difference) bool {
 	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
 	for _, userset := range sets {
 		switch userset.Userset.(type) {
