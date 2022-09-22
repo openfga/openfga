@@ -16,6 +16,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const (
+	IndirectWriteErrorReason = "Attempting to write directly to an indirect only relationship"
+)
+
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger    logger.Logger
@@ -86,8 +90,8 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		}
 
 		// Validate that we are not trying to write to an indirect-only relationship
-		if err := validateHasDirectRelationship(tupleUserset, tk); err != nil {
-			return err
+		if !typesystem.IsAssignable(tupleUserset) {
+			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
 		}
 
 		if err := c.validateTypesForTuple(authModel, schemaVersion, tk, dbCallsCounter); err != nil {
@@ -206,80 +210,4 @@ func handleError(err error) error {
 	}
 
 	return serverErrors.HandleError("", err)
-}
-
-func validateHasDirectRelationship(tupleUserset *openfgapb.Userset, tk *openfgapb.TupleKey) error {
-	indirectWriteErrorReason := "Attempting to write directly to an indirect only relationship"
-	switch usType := tupleUserset.Userset.(type) {
-	case *openfgapb.Userset_Intersection:
-		if !isDirectIntersection(usType) {
-			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
-		}
-
-	case *openfgapb.Userset_Union:
-		if !isDirectUnion(usType) {
-			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
-		}
-
-	case *openfgapb.Userset_Difference:
-		if !isDirectDifference(usType) {
-			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
-		}
-
-	case *openfgapb.Userset_ComputedUserset:
-		// if Userset.type is a ComputedUserset then we know it can't be direct
-		return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
-
-	case *openfgapb.Userset_TupleToUserset:
-		// if Userset.type is a TupleToUserset then we know it can't be direct
-		return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: indirectWriteErrorReason, TupleKey: tk})
-
-	default:
-		return nil
-	}
-
-	return nil
-}
-
-func isDirectIntersection(nodes *openfgapb.Userset_Intersection) bool {
-	for _, userset := range nodes.Intersection.Child {
-		switch userset.Userset.(type) {
-		case *openfgapb.Userset_This:
-			return true
-
-		default:
-			continue
-		}
-	}
-
-	return false
-}
-
-func isDirectUnion(nodes *openfgapb.Userset_Union) bool {
-	for _, userset := range nodes.Union.Child {
-		switch userset.Userset.(type) {
-		case *openfgapb.Userset_This:
-			return true
-
-		default:
-			continue
-		}
-	}
-
-	return false
-}
-
-func isDirectDifference(node *openfgapb.Userset_Difference) bool {
-	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
-	for _, userset := range sets {
-		switch userset.Userset.(type) {
-		case *openfgapb.Userset_This:
-			return true
-
-		default:
-			continue
-		}
-	}
-
-	return false
 }

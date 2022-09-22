@@ -45,7 +45,7 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
-					"administrator": {},
+					"administrator": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 		},
@@ -319,7 +319,7 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Type: "repository",
 				Relations: map[string]*openfgapb.Userset{
-					"administrator": {},
+					"administrator": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 		},
@@ -564,20 +564,20 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin":  {},
-					"writer": {},
+					"admin":  {Userset: &openfgapb.Userset_This{}},
+					"writer": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 			{
 				Type: "org",
 				Relations: map[string]*openfgapb.Userset{
-					"owner": {},
+					"owner": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 			{
 				Type: "team",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {},
+					"member": {Userset: &openfgapb.Userset_This{}},
 				},
 			}},
 		// input
@@ -686,20 +686,20 @@ var writeCommandTests = []writeCommandTest{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"admin":  {},
-					"writer": {},
+					"admin":  {Userset: &openfgapb.Userset_This{}},
+					"writer": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 			{
 				Type: "org",
 				Relations: map[string]*openfgapb.Userset{
-					"owner": {},
+					"owner": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 			{
 				Type: "team",
 				Relations: map[string]*openfgapb.Userset{
-					"member": {},
+					"member": {Userset: &openfgapb.Userset_This{}},
 				},
 			}},
 		tuples: []*openfgapb.TupleKey{
