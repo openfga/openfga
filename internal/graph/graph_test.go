@@ -23,6 +23,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"editor": typesystem.This(),
@@ -81,6 +84,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"editor": typesystem.This(),
@@ -116,6 +122,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			name: "Direct ingress through TupleToUserset with multiple type restrictions",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
 					{
 						Type: "folder",
 						Relations: map[string]*openfgapb.Userset{
@@ -180,6 +189,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"editor": typesystem.This(),
@@ -243,6 +255,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "team",
 						Relations: map[string]*openfgapb.Userset{
 							"member": typesystem.This(),
@@ -290,6 +305,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "team",
 						Relations: map[string]*openfgapb.Userset{
 							"member": typesystem.This(),
@@ -303,12 +321,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 								},
 							},
 						},
-					},
-
-					{
-						Type:      "user",
-						Relations: map[string]*openfgapb.Userset{},
-						Metadata:  &openfgapb.Metadata{},
 					},
 				},
 			},
