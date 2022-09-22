@@ -15,6 +15,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+// TODO: update these to SchemaVersion1_1 models
 func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID, err := id.NewString()
 	require.NoError(t, err)
