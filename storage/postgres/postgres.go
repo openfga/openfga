@@ -329,8 +329,11 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	// Update the schema version lazily
 	if version == typesystem.SchemaVersionUnspecified {
 		version = typesystem.SchemaVersion1_0
-		// Don't worry if we error, we'll update it lazily next time
-		_, _ = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
+		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
+		if err != nil {
+			// Don't worry if we error, we'll update it lazily next time, but let's log:
+			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
+		}
 	}
 
 	return &openfgapb.AuthorizationModel{

@@ -42,7 +42,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			},
 		},
 		{
-			name:          "write and read an empty 1.1 model",
+			name:          "write and read an 1.1 model",
 			storeID:       id.Must(id.New()).String(),
 			modelID:       id.Must(id.New()).String(),
 			schemaVersion: typesystem.SchemaVersion1_1,
