@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -18,47 +18,27 @@ import (
 )
 
 func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
-	store := testutils.CreateRandomString(20)
-
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
+	store := id.Must(id.New()).String()
 
 	tests := []struct {
 		name                      string
-		backendState              map[string][]*openfgapb.TypeDefinition
-		request                   *openfgapb.ReadAuthorizationModelsRequest
+		typeDefinitions           []*openfgapb.TypeDefinition
 		expectedNumModelsReturned int
 	}{
 		{
-			name: "empty",
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
-			},
+			name:                      "empty",
 			expectedNumModelsReturned: 0,
 		},
 		{
-			name: "empty for requested store",
-			backendState: map[string][]*openfgapb.TypeDefinition{
-				"another-store": {},
-			},
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
-			},
-			expectedNumModelsReturned: 0,
-		},
-		{
-			name: "multiple type definitions",
-			backendState: map[string][]*openfgapb.TypeDefinition{
-				store: {
-					{
-						Type: "ns1",
-					},
+			name: "non-empty type definitions",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
 				},
-			},
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
 			},
 			expectedNumModelsReturned: 1,
 		},
@@ -66,17 +46,15 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.backendState != nil {
-				for store, state := range test.backendState {
-					err := datastore.WriteAuthorizationModel(ctx, store, id.Must(id.New()).String(), state)
-					require.NoError(err)
-				}
+			if test.typeDefinitions != nil {
+				err := datastore.WriteAuthorizationModel(ctx, store, id.Must(id.New()).String(), typesystem.SchemaVersion1_0, test.typeDefinitions)
+				require.NoError(err)
 			}
 
 			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
-			resp, err := query.Execute(ctx, test.request)
-
+			resp, err := query.Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{StoreId: store})
 			require.NoError(err)
+
 			require.Equal(test.expectedNumModelsReturned, len(resp.GetAuthorizationModels()))
 			require.Empty(resp.ContinuationToken, "expected an empty continuation token")
 		})
@@ -92,11 +70,11 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	tds := []*openfgapb.TypeDefinition{{Type: "repo"}}
 
 	modelID1 := id.Must(id.New()).String()
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID1, tds)
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID1, typesystem.SchemaVersion1_0, tds)
 	require.NoError(err)
 
 	modelID2 := id.Must(id.New()).String()
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds)
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, typesystem.SchemaVersion1_0, tds)
 	require.NoError(err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -151,7 +129,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 
 	store := id.Must(id.New()).String()
 	modelID := id.Must(id.New()).String()
-	err := datastore.WriteAuthorizationModel(ctx, store, modelID, []*openfgapb.TypeDefinition{{Type: "repo"}})
+	err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, []*openfgapb.TypeDefinition{{Type: "repo"}})
 	require.NoError(err)
 
 	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{

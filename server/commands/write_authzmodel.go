@@ -55,7 +55,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, typeSystem.GetTypeDefinitions()); err != nil {
+	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, schemaVersion, typeSystem.GetTypeDefinitions()); err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}
 

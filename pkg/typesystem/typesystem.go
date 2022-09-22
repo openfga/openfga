@@ -7,7 +7,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-type SchemaVersion int
+type SchemaVersion int32
 
 const (
 	SchemaVersionUnspecified SchemaVersion = 0
