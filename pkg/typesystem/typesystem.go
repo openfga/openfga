@@ -41,6 +41,75 @@ func (v SchemaVersion) String() string {
 	}
 }
 
+func RelationReference(objectType, relation string) *openfgapb.RelationReference {
+	return &openfgapb.RelationReference{
+		Type:     objectType,
+		Relation: relation,
+	}
+}
+
+func This() *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_This{},
+	}
+}
+
+func ComputedUserset(relation string) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_ComputedUserset{
+			ComputedUserset: &openfgapb.ObjectRelation{
+				Relation: relation,
+			},
+		},
+	}
+}
+
+func TupleToUserset(tuplesetRelation, targetRelation string) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_TupleToUserset{
+			TupleToUserset: &openfgapb.TupleToUserset{
+				Tupleset: &openfgapb.ObjectRelation{
+					Relation: tuplesetRelation,
+				},
+				ComputedUserset: &openfgapb.ObjectRelation{
+					Relation: targetRelation,
+				},
+			},
+		},
+	}
+}
+
+func Union(children ...*openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Union{
+			Union: &openfgapb.Usersets{
+				Child: children,
+			},
+		},
+	}
+}
+
+func Intersection(children ...*openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Intersection{
+			Intersection: &openfgapb.Usersets{
+				Child: children,
+			},
+		},
+	}
+}
+
+func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Difference{
+			Difference: &openfgapb.Difference{
+				Base:     base,
+				Subtract: sub,
+			},
+		},
+	}
+}
+
 type TypeSystem struct {
 	Version         SchemaVersion
 	TypeDefinitions map[string]*openfgapb.TypeDefinition
