@@ -13,7 +13,6 @@ import (
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -567,7 +566,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, version typesystem.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -582,12 +581,8 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 		entry.latest = false
 	}
 
-	s.authorizationModels[store][id] = &AuthorizationModelEntry{
-		model: &openfgapb.AuthorizationModel{
-			SchemaVersion:   version.String(),
-			Id:              id,
-			TypeDefinitions: tds,
-		},
+	s.authorizationModels[store][model.Id] = &AuthorizationModelEntry{
+		model:  model,
 		latest: true,
 	}
 
