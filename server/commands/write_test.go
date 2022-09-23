@@ -134,6 +134,7 @@ func TestValidateWriteTuples(t *testing.T) {
 			dbCounter := utils.NewDBCallCounter()
 
 			mockController := gomock.NewController(t)
+			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
@@ -154,8 +155,6 @@ func TestValidateWriteTuples(t *testing.T) {
 			if !reflect.DeepEqual(err, test.expectedError) {
 				t.Errorf("Expected error %v, got %v", test.expectedError, err)
 			}
-
-			mockController.Finish()
 		})
 	}
 }

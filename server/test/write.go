@@ -752,6 +752,7 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 	},
+	// Begin section with tests for schema version 1.1
 	{
 		_name: "Delete succeeds even if user field contains a type that is not allowed by the current authorization model",
 		// state
@@ -765,8 +766,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "org",
@@ -798,6 +798,9 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "org",
 				Relations: map[string]*openfgapb.Userset{
 					"owner": {Userset: &openfgapb.Userset_This{}},
@@ -828,8 +831,7 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "group",
@@ -860,8 +862,49 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Object of type user is not allowed to have relation reader with document:budget",
+		err: serverErrors.InvalidTuple("User 'user:abc' is not allowed to have relation reader with document:budget",
 			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+		),
+	},
+	{
+		_name: "Write fails if user field is a userset that is not allowed by the authorization model (which only allows group:...)",
+		// state
+		schemaVersion: typesystem.SchemaVersion1_1,
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": {Userset: &openfgapb.Userset_This{}},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "group",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
+			}},
+		},
+		err: serverErrors.InvalidTuple("User 'group:abc#member' is not allowed to have relation reader with document:budget",
+			tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 		),
 	},
 	{
@@ -870,8 +913,7 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "document",
@@ -903,8 +945,7 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "group",
@@ -936,7 +977,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Object of type user is not allowed to have relation reader with document:budget",
+		err: serverErrors.InvalidTuple("User 'user:abc' is not allowed to have relation reader with document:budget",
 			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 		),
 	},
@@ -946,8 +987,7 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "group",
@@ -981,19 +1021,58 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write succeeds if user is * and type references a specific type",
+		_name: "Multiple writes succeed if user fields contain a type that is allowed by the authorization model",
 		// state
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "group",
 				Relations: map[string]*openfgapb.Userset{
 					"member": {Userset: &openfgapb.Userset_This{}},
 				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {Userset: &openfgapb.Userset_This{}},
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								{
+									Type: "user",
+								},
+								{
+									Type:     "group",
+									Relation: "member",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
+				tuple.NewTupleKey("document:budget", "reader", "user:def"),
+			}},
+		},
+	},
+	{
+		_name: "Write succeeds if user is * and type references a specific type",
+		// state
+		schemaVersion: typesystem.SchemaVersion1_1,
+		typeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "group",
 			},
 			{
 				Type: "document",
@@ -1025,8 +1104,7 @@ var writeCommandTests = []writeCommandTest{
 		schemaVersion: typesystem.SchemaVersion1_1,
 		typeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type:      "user",
-				Relations: map[string]*openfgapb.Userset{},
+				Type: "user",
 			},
 			{
 				Type: "group",
@@ -1058,7 +1136,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "*"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User=* is not allowed to have relation reader with document:budget",
+		err: serverErrors.InvalidTuple("User '*' is not allowed to have relation reader with document:budget",
 			tuple.NewTupleKey("document:budget", "reader", "*"),
 		),
 	},
@@ -1079,7 +1157,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "*"),
 			}},
 		},
-		err: serverErrors.NewInternalError("", errors.New("invalid authorization model")),
+		err: serverErrors.NewInternalError("invalid authorization model", errors.New("invalid authorization model")),
 	},
 }
 
