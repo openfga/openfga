@@ -371,10 +371,10 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	return &staticIterator{tuples: matches}, nil
 }
 
-func (s *MemoryBackend) ReverseReadTuples(
+func (s *MemoryBackend) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
-	filter storage.ReverseReadTuplesFilter,
+	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
 	return nil, errors.New("not implemented")
 }

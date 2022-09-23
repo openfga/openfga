@@ -274,7 +274,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return &tupleIterator{rows: rows}, nil
 }
 
-func (p *Postgres) ReverseReadTuples(ctx context.Context, store string, opts storage.ReverseReadTuplesFilter) (storage.TupleIterator, error) {
+func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	return nil, errors.New("not implemented")
 }
 

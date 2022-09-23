@@ -459,7 +459,7 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 }
 
-func ReverseReadTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
@@ -480,10 +480,10 @@ func ReverseReadTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	)
 	require.NoError(err)
 
-	iter, err := datastore.ReverseReadTuples(
+	iter, err := datastore.ReadStartingWithUser(
 		ctx,
 		storeID,
-		storage.ReverseReadTuplesFilter{
+		storage.ReadStartingWithUserFilter{
 			ObjectType: "document",
 			Relation:   "viewer",
 			UserFilter: []*openfgapb.ObjectRelation{

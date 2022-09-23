@@ -34,7 +34,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
 	t.Run("TestStore", func(t *testing.T) { TestStore(t, ds) })
 	t.Run("TestListObjectsByType", func(t *testing.T) { TestListObjects(t, ds) })
-	t.Run("TestReverseReadTuples", func(t *testing.T) { ReverseReadTuplesTest(t, ds) })
+	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 }
 
 func TestListObjects(t *testing.T, ds storage.OpenFGADatastore) {

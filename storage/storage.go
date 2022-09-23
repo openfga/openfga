@@ -264,7 +264,7 @@ type TupleBackend interface {
 		tk *openfgapb.TupleKey,
 	) (TupleIterator, error)
 
-	// ReverseReadTuples performs a reverse read of relationship tuples starting at one or
+	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
 	// more user(s) or userset(s) and filtered by object type and relation.
 	//
 	// For example, given the following relationship tuples:
@@ -274,10 +274,10 @@ type TupleBackend interface {
 	//
 	// ReverseReadTuples for ['user:jon', 'group:eng#member'] filtered by 'document#viewer' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
-	ReverseReadTuples(
+	ReadStartingWithUser(
 		ctx context.Context,
 		store string,
-		filter ReverseReadTuplesFilter,
+		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
 
 	// ReadByStore reads the tuples associated with `store`.
@@ -291,9 +291,9 @@ type TupleBackend interface {
 	MaxTuplesInWriteOperation() int
 }
 
-// ReverseReadTuplesFilter specifies the filter options that will be used to constrain the ReverseReadTuples
+// ReadStartingWithUserFilter specifies the filter options that will be used to constrain the ReadStartingWithUser
 // query.
-type ReverseReadTuplesFilter struct {
+type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
 	UserFilter []*openfgapb.ObjectRelation
