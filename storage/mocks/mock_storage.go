@@ -163,6 +163,21 @@ func (mr *MockTupleBackendMockRecorder) ReadPage(ctx, store, tk, opts interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockTupleBackend)(nil).ReadPage), ctx, store, tk, opts)
 }
 
+// ReadStartingWithUser mocks base method.
+func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadStartingWithUser indicates an expected call of ReadStartingWithUser.
+func (mr *MockTupleBackendMockRecorder) ReadStartingWithUser(ctx, store, filter interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockTupleBackend)(nil).ReadStartingWithUser), ctx, store, filter)
+}
+
 // ReadUserTuple mocks base method.
 func (m *MockTupleBackend) ReadUserTuple(ctx context.Context, store string, tk *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	m.ctrl.T.Helper()
@@ -191,21 +206,6 @@ func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, 
 func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadUsersetTuples), ctx, store, tk)
-}
-
-// ReverseReadTuples mocks base method.
-func (m *MockTupleBackend) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter)
-	ret0, _ := ret[0].(storage.TupleIterator)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReverseReadTuples indicates an expected call of ReverseReadTuples.
-func (mr *MockTupleBackendMockRecorder) ReverseReadTuples(ctx, store, filter interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockTupleBackend)(nil).ReadStartingWithUser), ctx, store, filter)
 }
 
 // Write mocks base method.
@@ -945,6 +945,21 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadPage(ctx, store, tk, opts interf
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadPage), ctx, store, tk, opts)
 }
 
+// ReadStartingWithUser mocks base method.
+func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadStartingWithUser indicates an expected call of ReadStartingWithUser.
+func (mr *MockOpenFGADatastoreMockRecorder) ReadStartingWithUser(ctx, store, filter interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadStartingWithUser), ctx, store, filter)
+}
+
 // ReadTypeDefinition mocks base method.
 func (m *MockOpenFGADatastore) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgav1.TypeDefinition, error) {
 	m.ctrl.T.Helper()
@@ -988,21 +1003,6 @@ func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store stri
 func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, tk)
-}
-
-// ReverseReadTuples mocks base method.
-func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter)
-	ret0, _ := ret[0].(storage.TupleIterator)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReverseReadTuples indicates an expected call of ReverseReadTuples.
-func (mr *MockOpenFGADatastoreMockRecorder) ReverseReadTuples(ctx, store, filter interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadStartingWithUser), ctx, store, filter)
 }
 
 // Write mocks base method.
