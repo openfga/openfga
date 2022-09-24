@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -275,7 +276,25 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	return nil, errors.New("not implemented")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	defer span.End()
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user IN ($4)"
+	targetUsersArg := ""
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		targetUsersArg += targetUser + ","
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tupleIterator{rows: rows}, nil
 }
 
 func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
