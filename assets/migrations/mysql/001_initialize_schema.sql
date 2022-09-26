@@ -11,6 +11,8 @@ CREATE TABLE tuple (
     PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
 
+CREATE UNIQUE INDEX idx_tuple_ulid ON tuple (ulid);
+
 CREATE TABLE authorization_model (
     store CHAR(26) NOT NULL,
 	authorization_model_id CHAR(26) NOT NULL,
