@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -213,13 +214,13 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	if err != nil {
 		return nil, nil, "", err
 	}
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	if err := protojson.Unmarshal(data, &gitHubTypeDefinitions); err != nil {
 		return nil, nil, "", err
 	}
 
 	modelID := id.Must(id.New()).String()
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, gitHubTypeDefinitions.GetTypeDefinitions())
 	if err != nil {
 		return nil, nil, "", err
 	}

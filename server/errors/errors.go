@@ -25,6 +25,7 @@ var (
 	InvalidCheckInput                          = status.Error(codes.Code(openfgapb.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
 	InvalidExpandInput                         = status.Error(codes.Code(openfgapb.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
 	UnsupportedUserSet                         = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
+	UnsupportedSchemaVersion                   = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_schema_version), "Unsupported schema version")
 	StoreIDNotFound                            = status.Error(codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), "Store ID not found")
 	MismatchObjectType                         = status.Error(codes.Code(openfgapb.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
 	RequestCancelled                           = status.Error(codes.Code(openfgapb.InternalErrorCode_cancelled), "Request Cancelled")
@@ -37,6 +38,10 @@ type InternalError struct {
 
 func (e InternalError) Error() string {
 	return e.public.Error()
+}
+
+func (e InternalError) Is(target error) bool {
+	return target.Error() == e.Error()
 }
 
 func (e InternalError) InternalError() string {
@@ -70,16 +75,16 @@ func LatestAuthorizationModelNotFound(store string) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_latest_authorization_model_not_found), fmt.Sprintf("No authorization models found for store '%s'", store))
 }
 
-func TypeNotFound(t string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", t))
+func TypeNotFound(objectType string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", objectType))
 }
 
-func RelationNotFound(relation string, typeName string, tuple *openfgapb.TupleKey) error {
+func RelationNotFound(relation string, objectType string, tuple *openfgapb.TupleKey) error {
 	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
 	if tuple != nil {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, typeName, tuple.String())
-	} else if typeName != "" {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, typeName)
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, objectType, tuple.String())
+	} else if objectType != "" {
+		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, objectType)
 	}
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
@@ -127,6 +132,10 @@ func WriteFailedDueToInvalidInput(err error) error {
 		return status.Error(codes.Code(openfgapb.ErrorCode_write_failed_due_to_invalid_input), err.Error())
 	}
 	return status.Error(codes.Code(openfgapb.ErrorCode_write_failed_due_to_invalid_input), "Write failed due to invalid input")
+}
+
+func InvalidAuthorizationModelInput(err error) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), err.Error())
 }
 
 // HandleError is used to hide internal errors from users. Use `public` to return an error message to the user.
