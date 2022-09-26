@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -278,7 +279,7 @@ type TypeDefinitionWriteBackend interface {
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
 	// It is expected that the number of type definitions is less than or equal to 24
-	WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgapb.TypeDefinition) error
+	WriteAuthorizationModel(ctx context.Context, store, id string, schemaVersion typesystem.SchemaVersion, tds []*openfgapb.TypeDefinition) error
 }
 
 // AuthorizationModelBackend provides an R/W interface for managing type definition.

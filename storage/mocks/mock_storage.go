@@ -10,6 +10,7 @@ import (
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
+	typesystem "github.com/openfga/openfga/pkg/typesystem"
 	storage "github.com/openfga/openfga/storage"
 	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -352,17 +353,17 @@ func (mr *MockTypeDefinitionWriteBackendMockRecorder) MaxTypesInTypeDefinition()
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockTypeDefinitionWriteBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
+func (m *MockTypeDefinitionWriteBackend) WriteAuthorizationModel(ctx context.Context, store, id string, schemaVersion typesystem.SchemaVersion, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
+	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, schemaVersion, tds)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WriteAuthorizationModel indicates an expected call of WriteAuthorizationModel.
-func (mr *MockTypeDefinitionWriteBackendMockRecorder) WriteAuthorizationModel(ctx, store, id, tds interface{}) *gomock.Call {
+func (mr *MockTypeDefinitionWriteBackendMockRecorder) WriteAuthorizationModel(ctx, store, id, schemaVersion, tds interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockTypeDefinitionWriteBackend)(nil).WriteAuthorizationModel), ctx, store, id, tds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockTypeDefinitionWriteBackend)(nil).WriteAuthorizationModel), ctx, store, id, schemaVersion, tds)
 }
 
 // MockAuthorizationModelBackend is a mock of AuthorizationModelBackend interface.
@@ -464,17 +465,17 @@ func (mr *MockAuthorizationModelBackendMockRecorder) ReadTypeDefinition(ctx, sto
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockAuthorizationModelBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
+func (m *MockAuthorizationModelBackend) WriteAuthorizationModel(ctx context.Context, store, id string, schemaVersion typesystem.SchemaVersion, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
+	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, schemaVersion, tds)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WriteAuthorizationModel indicates an expected call of WriteAuthorizationModel.
-func (mr *MockAuthorizationModelBackendMockRecorder) WriteAuthorizationModel(ctx, store, id, tds interface{}) *gomock.Call {
+func (mr *MockAuthorizationModelBackendMockRecorder) WriteAuthorizationModel(ctx, store, id, schemaVersion, tds interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).WriteAuthorizationModel), ctx, store, id, tds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).WriteAuthorizationModel), ctx, store, id, schemaVersion, tds)
 }
 
 // MockStoresBackend is a mock of StoresBackend interface.
@@ -1004,15 +1005,15 @@ func (mr *MockOpenFGADatastoreMockRecorder) WriteAssertions(ctx, store, modelID,
 }
 
 // WriteAuthorizationModel mocks base method.
-func (m *MockOpenFGADatastore) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgav1.TypeDefinition) error {
+func (m *MockOpenFGADatastore) WriteAuthorizationModel(ctx context.Context, store, id string, schemaVersion typesystem.SchemaVersion, tds []*openfgav1.TypeDefinition) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, tds)
+	ret := m.ctrl.Call(m, "WriteAuthorizationModel", ctx, store, id, schemaVersion, tds)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // WriteAuthorizationModel indicates an expected call of WriteAuthorizationModel.
-func (mr *MockOpenFGADatastoreMockRecorder) WriteAuthorizationModel(ctx, store, id, tds interface{}) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) WriteAuthorizationModel(ctx, store, id, schemaVersion, tds interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).WriteAuthorizationModel), ctx, store, id, tds)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).WriteAuthorizationModel), ctx, store, id, schemaVersion, tds)
 }

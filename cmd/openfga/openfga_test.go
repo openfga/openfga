@@ -475,7 +475,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		storeID         string
 		modelID         string
 		tuples          *openfgapb.TupleKeys
-		typeDefinitions *openfgapb.TypeDefinitions
+		typeDefinitions []*openfgapb.TypeDefinition
 	}
 
 	type output struct {
@@ -576,21 +576,19 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				},
 			},
 			testData: &testData{
-				typeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"admin": {
-									Userset: &openfgapb.Userset_Union{
-										Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-											{
-												Userset: &openfgapb.Userset_This{
-													This: &openfgapb.DirectUserset{},
-												},
+				typeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {
+								Userset: &openfgapb.Userset_Union{
+									Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
+										{
+											Userset: &openfgapb.Userset_This{
+												This: &openfgapb.DirectUserset{},
 											},
-										}},
-									},
+										},
+									}},
 								},
 							},
 						},
@@ -658,7 +656,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 	}
 
 	type testData struct {
-		typeDefinitions *openfgapb.TypeDefinitions
+		typeDefinitions []*openfgapb.TypeDefinition
 	}
 
 	tests := []struct {
@@ -739,13 +737,11 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 
 	_, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"viewer": {Userset: &openfgapb.Userset_This{}},
-					},
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 		},
@@ -754,13 +750,11 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 
 	_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"editor": {Userset: &openfgapb.Userset_This{}},
-					},
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"editor": {Userset: &openfgapb.Userset_This{}},
 				},
 			},
 		},
@@ -836,13 +830,11 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid type definition (empty type name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: id.Must(id.New()).String(),
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": {Userset: &openfgapb.Userset_This{}},
-							},
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {Userset: &openfgapb.Userset_This{}},
 						},
 					},
 				},
@@ -855,13 +847,11 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid type definition (too many chars in name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: id.Must(id.New()).String(),
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: testutils.CreateRandomString(255),
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": {Userset: &openfgapb.Userset_This{}},
-							},
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: testutils.CreateRandomString(255),
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {Userset: &openfgapb.Userset_This{}},
 						},
 					},
 				},
@@ -874,13 +864,11 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			name: "invalid type definition (invalid chars in name)",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: id.Must(id.New()).String(),
-				TypeDefinitions: &openfgapb.TypeDefinitions{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "some type",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": {Userset: &openfgapb.Userset_This{}},
-							},
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "some type",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {Userset: &openfgapb.Userset_This{}},
 						},
 					},
 				},
