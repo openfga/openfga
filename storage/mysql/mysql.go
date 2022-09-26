@@ -8,7 +8,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
-	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -84,22 +83,18 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
+    db, err := sql.Open("mysql", uri)
+    if err != nil {
+        return nil, errors.Errorf("failed to open MySQL connection: %v", err)
+    }
+
     policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
-	var db *sql.DB
 	attempt := 1
-	err := backoff.Retry(func() error {
-		var err error
-		db, err = sql.Open("mysql", uri)
-		if err != nil {
-			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt), zap.String("action", "open database"))
-			attempt++
-			return err
-		}
-
-        err = db.Ping()
+	err = backoff.Retry(func() error {
+        err := db.Ping()
         if err != nil {
-			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt), zap.String("action", "ping database"))
+			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt))
 			attempt++
 			return err
         }
@@ -221,35 +216,15 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
         user := tk.GetUser()
         userType := tupleUtils.GetUserTypeFromUser(user)
 
-        // Since the unique constraint/primary key present in e.g. the postgres storage backend, 
-        // would be too large for innodb (it exceeds 3072 bytes), we have to resort to manually
-        // enforcing a unique constraint.
-        result, err := tx.ExecContext(
+        _, err = tx.ExecContext(
             ctx,
-            `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at)
-            SELECT ?, ?, ?, ?, ?, ?, ?, NOW()
-            WHERE NOT EXISTS (
-                SELECT * FROM tuple
-                WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?
-                LIMIT 1
-                FOR UPDATE
-            )`,
+            `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
             store, objectType, objectID, relation, user, userType, ulid,
-            store, objectType, objectID, relation, user, userType,
         )
+
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
-
-        rowsAffected, err := result.RowsAffected();
-		if err != nil {
-			return handleMySQLError(err, tk)
-		}
-
-        if rowsAffected == 0 {
-            // We didn't insert anything, meaning that there was already one present.
-		 	return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
-        }
 
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)

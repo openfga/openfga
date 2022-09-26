@@ -1,13 +1,14 @@
 -- +goose Up
 CREATE TABLE tuple (
     store CHAR(26) NOT NULL,
-    object_type VARCHAR(256) NOT NULL,
-    object_id VARCHAR(256) NOT NULL,
+    object_type VARCHAR(128) NOT NULL,
+    object_id VARCHAR(128) NOT NULL,
     relation VARCHAR(50) NOT NULL,
-    _user VARCHAR(512) NOT NULL,
+    _user VARCHAR(256) NOT NULL,
     user_type VARCHAR(7) NOT NULL,
-    ulid CHAR(26) PRIMARY KEY,
-    inserted_at TIMESTAMP NOT NULL
+    ulid CHAR(26) NOT NULL,
+    inserted_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (store, object_type, object_id, relation, _user)
 );
 
 CREATE TABLE authorization_model (
