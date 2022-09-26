@@ -21,7 +21,7 @@ func TestHandleMySQLError(t *testing.T) {
 			Relation: "relation",
 			User:     "user",
 		})
-        require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
 	t.Run("duplicate entry value error without tuple key returns collision", func(t *testing.T) {
@@ -31,12 +31,12 @@ func TestHandleMySQLError(t *testing.T) {
 		}
 		err := handleMySQLError(duplicateKeyError)
 
-        require.ErrorIs(t, err, storage.ErrCollision)
+		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
 	t.Run("sql.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
 		err := handleMySQLError(sql.ErrNoRows)
 
-        require.ErrorIs(t, err, storage.ErrNotFound)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

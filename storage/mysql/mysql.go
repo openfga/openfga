@@ -83,21 +83,21 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
-    db, err := sql.Open("mysql", uri)
-    if err != nil {
-        return nil, errors.Errorf("failed to open MySQL connection: %v", err)
-    }
+	db, err := sql.Open("mysql", uri)
+	if err != nil {
+		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
+	}
 
-    policy := backoff.NewExponentialBackOff()
+	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
 	attempt := 1
 	err = backoff.Retry(func() error {
-        err := db.Ping()
-        if err != nil {
+		err := db.Ping()
+		if err != nil {
 			m.logger.Info("waiting for MySQL", zap.Int("attempt", attempt))
 			attempt++
 			return err
-        }
+		}
 		return nil
 	}, policy)
 	if err != nil {
@@ -111,7 +111,7 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close(ctx context.Context) error {
-	return m.db.Close();
+	return m.db.Close()
 }
 
 func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
@@ -212,20 +212,19 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-        relation := tk.GetRelation()
-        user := tk.GetUser()
-        userType := tupleUtils.GetUserTypeFromUser(user)
+		relation := tk.GetRelation()
+		user := tk.GetUser()
+		userType := tupleUtils.GetUserTypeFromUser(user)
 
-        _, err = tx.ExecContext(
-            ctx,
-            `INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-            store, objectType, objectID, relation, user, userType, ulid,
-        )
+		_, err = tx.ExecContext(
+			ctx,
+			`INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+			store, objectType, objectID, relation, user, userType, ulid,
+		)
 
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
-
 
 		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)
 		if err != nil {
@@ -471,12 +470,11 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 	ctx, span := m.tracer.Start(ctx, "mysql.CreateStore")
 	defer span.End()
 
-    tx, err := m.db.BeginTx(ctx, &sql.TxOptions {})
+	tx, err := m.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
-    defer tx.Rollback()
-
+	defer tx.Rollback()
 
 	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES (?, ?, NOW(), NOW())"
 	_, err = tx.ExecContext(ctx, stmt, store.Id, store.Name)
@@ -492,11 +490,10 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 		return nil, handleMySQLError(err)
 	}
 
-    err = tx.Commit()
+	err = tx.Commit()
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
-
 
 	return &openfgapb.Store{
 		Id:        id,
