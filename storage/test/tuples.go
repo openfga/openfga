@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -456,4 +457,34 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 			t.Fatalf("got empty, want non-empty")
 		}
 	})
+}
+
+func ListObjectsByTypeTest(t *testing.T, ds storage.OpenFGADatastore) {
+
+	expected := []string{"document:doc1", "document:doc2"}
+	store := id.Must(id.New()).String()
+
+	err := ds.Write(context.Background(), store, nil, []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
+		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
+		tuple.NewTupleKey("document:doc2", "editor", "maria"),
+	})
+	require.NoError(t, err)
+
+	iter, err := ds.ListObjectsByType(context.Background(), store, "document")
+	require.NoError(t, err)
+
+	var actual []string
+	for {
+		obj, err := iter.Next()
+		if err != nil {
+			if err == storage.ErrIteratorDone {
+				break
+			}
+		}
+
+		actual = append(actual, tuple.ObjectKey(obj))
+	}
+
+	require.Equal(t, expected, actual)
 }
