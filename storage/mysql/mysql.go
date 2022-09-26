@@ -474,7 +474,10 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
-	defer tx.Rollback()
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES (?, ?, NOW(), NOW())"
 	_, err = tx.ExecContext(ctx, stmt, store.Id, store.Name)
