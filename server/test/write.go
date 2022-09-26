@@ -1030,9 +1030,6 @@ var writeCommandTests = []writeCommandTest{
 			},
 			{
 				Type: "group",
-				Relations: map[string]*openfgapb.Userset{
-					"member": {Userset: &openfgapb.Userset_This{}},
-				},
 			},
 			{
 				Type: "document",
