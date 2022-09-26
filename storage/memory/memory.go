@@ -13,6 +13,7 @@ import (
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -460,11 +461,11 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
 	}
 
-	if nsc, ok := findAuthorizationModelByID(id, tm); ok {
-		if nsc.GetTypeDefinitions() == nil || len(nsc.GetTypeDefinitions()) == 0 {
+	if model, ok := findAuthorizationModelByID(id, tm); ok {
+		if model.GetTypeDefinitions() == nil || len(model.GetTypeDefinitions()) == 0 {
 			return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
 		}
-		return nsc, nil
+		return model, nil
 	}
 
 	telemetry.TraceError(span, storage.ErrNotFound)
@@ -566,7 +567,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, tds []*openfgapb.TypeDefinition) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, version typesystem.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -583,6 +584,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 
 	s.authorizationModels[store][id] = &AuthorizationModelEntry{
 		model: &openfgapb.AuthorizationModel{
+			SchemaVersion:   version.String(),
 			Id:              id,
 			TypeDefinitions: tds,
 		},

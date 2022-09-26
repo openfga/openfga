@@ -40,6 +40,10 @@ func (e InternalError) Error() string {
 	return e.public.Error()
 }
 
+func (e InternalError) Is(target error) bool {
+	return target.Error() == e.Error()
+}
+
 func (e InternalError) InternalError() string {
 	return e.internal.Error()
 }

@@ -7,7 +7,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-type SchemaVersion int
+type SchemaVersion int32
 
 const (
 	SchemaVersionUnspecified SchemaVersion = 0
@@ -292,7 +292,7 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 
-			assignable := isAssignable(relation.GetRewrite())
+			assignable := t.IsDirectlyAssignable(relation)
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
 			}
@@ -321,25 +321,31 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 	return nil
 }
 
-func isAssignable(rewrite *openfgapb.Userset) bool {
+func (t *TypeSystem) IsDirectlyAssignable(relation *openfgapb.Relation) bool {
+	rewrite := relation.GetRewrite()
+
+	return ContainsSelf(rewrite)
+}
+
+func ContainsSelf(rewrite *openfgapb.Userset) bool {
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
 		return true
 	case *openfgapb.Userset_Union:
 		for _, child := range rw.Union.GetChild() {
-			if isAssignable(child) {
+			if ContainsSelf(child) {
 				return true
 			}
 		}
 	case *openfgapb.Userset_Intersection:
 		for _, child := range rw.Intersection.GetChild() {
-			if isAssignable(child) {
+			if ContainsSelf(child) {
 				return true
 			}
 		}
 	case *openfgapb.Userset_Difference:
 		difference := rw.Difference
-		if isAssignable(difference.GetBase()) || isAssignable(difference.GetSubtract()) {
+		if ContainsSelf(difference.GetBase()) || ContainsSelf(difference.GetSubtract()) {
 			return true
 		}
 	}
