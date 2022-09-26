@@ -8,8 +8,8 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -1400,24 +1400,24 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(t, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(t, err)
 
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
 	for _, test := range checkQueryTests {
 		t.Run(test.name, func(t *testing.T) {
-			store := testutils.CreateRandomString(20)
-			modelID, err := id.NewString()
-			require.NoError(t, err)
+			store := id.Must(id.New()).String()
+			modelID := id.Must(id.New()).String()
 
 			if test.useGitHubTypeDefinition {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, gitHubTypeDefinitions.GetTypeDefinitions())
 			} else {
-				err = datastore.WriteAuthorizationModel(ctx, store, modelID, test.typeDefinitions)
+				err = datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, test.typeDefinitions)
 			}
 			require.NoError(t, err)
 
@@ -1426,7 +1426,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(t, err)
 			}
 
-			cmd := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, test.resolveNodeLimit)
+			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = modelID
 			resp, gotErr := cmd.Execute(ctx, test.request)
@@ -1455,6 +1455,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
 	originalTD := []*openfgapb.TypeDefinition{{
@@ -1480,23 +1481,20 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 		},
 	}}
 
-	store := testutils.CreateRandomString(10)
-	originalModelID, err := id.NewString()
+	store := id.Must(id.New()).String()
+
+	originalModelID := id.Must(id.New()).String()
+	err := datastore.WriteAuthorizationModel(ctx, store, originalModelID, typesystem.SchemaVersion1_0, originalTD)
 	require.NoError(t, err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, originalModelID, originalTD)
-	require.NoError(t, err)
-
-	updatedModelID, err := id.NewString()
-	require.NoError(t, err)
-
-	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, updatedTD)
+	updatedModelID := id.Must(id.New()).String()
+	err = datastore.WriteAuthorizationModel(ctx, store, updatedModelID, typesystem.SchemaVersion1_0, updatedTD)
 	require.NoError(t, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{Object: "repo:openfgapb", Relation: "owner", User: "yenkel"}})
 	require.NoError(t, err)
 
-	originalCheckQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	originalCheckQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
 	originalNSResponse, err := originalCheckQuery.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: originalModelID,
@@ -1510,7 +1508,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 
 	require.True(t, originalNSResponse.Allowed)
 
-	updatedCheckQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	updatedCheckQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
 	updatedNSResponse, err := updatedCheckQuery.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: updatedModelID,
@@ -1538,26 +1536,25 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(b, err)
 
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
+	modelID := id.Must(id.New()).String()
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
@@ -1581,26 +1578,25 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
 
-	var gitHubTypeDefinitions openfgapb.TypeDefinitions
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
 	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
 	require.NoError(b, err)
 
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
-	store := testutils.CreateRandomString(10)
+	store := id.Must(id.New()).String()
 
-	modelID, err := id.NewString()
-	require.NoError(b, err)
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, gitHubTypeDefinitions.GetTypeDefinitions())
+	modelID := id.Must(id.New()).String()
+	err = datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, gitHubTypeDefinitions.GetTypeDefinitions())
 	require.NoError(b, err)
 
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, telemetry.NewNoopMeter(), logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 

@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -19,16 +20,16 @@ import (
 )
 
 func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
-	modelID, err := id.NewString()
-	if err != nil {
+	modelID := id.Must(id.New()).String()
+
+	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, typeDefinitions); err != nil {
 		return "", err
 	}
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, typeDefinitions); err != nil {
-		return "", err
-	}
+
 	if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples); err != nil {
 		return "", err
 	}
+
 	return modelID, nil
 }
 

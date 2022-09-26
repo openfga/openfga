@@ -1,27 +1,23 @@
 package id
 
 import (
-	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/oklog/ulid/v2"
-)
-
-var (
-	mutex   sync.Mutex
-	entropy = ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
 )
 
 type ID struct {
 	value ulid.ULID
 }
 
-func NewFromTime(time time.Time) (*ID, error) {
-	mutex.Lock()
-	defer mutex.Unlock()
+func New() (*ID, error) {
+	return NewFromTime(time.Now())
+}
 
-	id, err := ulid.New(uint64(time.UnixMilli()), entropy)
+// NewFromTime returns a new *ID based on the given time.Time.
+// TODO: since ulid.DefaultEntropy() can't fail it may be worth refactoring this to remove the error.
+func NewFromTime(time time.Time) (*ID, error) {
+	id, err := ulid.New(uint64(time.UnixMilli()), ulid.DefaultEntropy())
 	if err != nil {
 		return nil, err
 	}
@@ -60,4 +56,16 @@ func IsValid(s string) bool {
 
 func (id *ID) Time() time.Time {
 	return ulid.Time(id.value.Time())
+}
+
+func (id *ID) String() string {
+	return id.value.String()
+}
+
+// Must is a convenience function that is useful for tests and when starting up.
+func Must(id *ID, err error) *ID {
+	if err != nil {
+		panic(err)
+	}
+	return id
 }
