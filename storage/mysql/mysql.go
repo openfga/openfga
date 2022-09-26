@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -428,7 +429,9 @@ func (m *MySQL) MaxTypesInTypeDefinition() int {
 
 func (m *MySQL) WriteAuthorizationModel(
 	ctx context.Context,
-	store, modelID string,
+	store,
+	modelId string,
+	schemaVersion typesystem.SchemaVersion,
 	tds []*openfgapb.TypeDefinition,
 ) error {
 	ctx, span := m.tracer.Start(ctx, "mysql.WriteAuthorizationModel")
@@ -438,7 +441,7 @@ func (m *MySQL) WriteAuthorizationModel(
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesInTypeDefinition)
 	}
 
-	stmt := "INSERT INTO authorization_model (store, authorization_model_id, type, type_definition) VALUES (?, ?, ?, ?)"
+	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES (?, ?, ?, ?, ?)"
 
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -452,7 +455,7 @@ func (m *MySQL) WriteAuthorizationModel(
 			return err
 		}
 
-		_, err = tx.ExecContext(ctx, stmt, store, modelID, typeDef.GetType(), marshalledTypeDef)
+		_, err = tx.ExecContext(ctx, stmt, store, modelId, schemaVersion, typeDef.GetType(), marshalledTypeDef)
 		if err != nil {
 			return handleMySQLError(err)
 		}
