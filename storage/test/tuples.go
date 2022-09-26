@@ -464,54 +464,193 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	require := require.New(t)
 	ctx := context.Background()
 
-	storeID, err := id.NewString()
-	require.NoError(err)
-
-	err = datastore.Write(
-		ctx,
-		storeID,
-		nil,
-		[]*openfgapb.TupleKey{
-			tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
-			tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
-			tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
-			tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
-		},
-	)
-	require.NoError(err)
-
-	iter, err := datastore.ReadStartingWithUser(
-		ctx,
-		storeID,
-		storage.ReadStartingWithUserFilter{
-			ObjectType: "document",
-			Relation:   "viewer",
-			UserFilter: []*openfgapb.ObjectRelation{
-				{
-					Object: "user:jon",
-				},
-				{
-					Object:   "group:eng",
-					Relation: "member",
-				},
-			},
-		},
-	)
-	require.NoError(err)
-
-	var objects []string
-	for {
-		tp, err := iter.Next()
-		if err != nil {
-			if err == storage.ErrIteratorDone {
-				break
-			}
-
-			require.Fail(err.Error())
-		}
-
-		objects = append(objects, tp.GetKey().GetObject())
+	tuples := []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
+		tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 	}
 
-	require.Equal([]string{"document:doc1", "document:doc2"}, objects)
+	t.Run("returns results with two user filters", func(t *testing.T) {
+		storeID, err := id.NewString()
+		require.NoError(err)
+
+		err = datastore.Write(
+			ctx,
+			storeID,
+			nil,
+			tuples,
+		)
+		require.NoError(err)
+
+		iter, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgapb.ObjectRelation{
+					{
+						Object: "user:jon",
+					},
+					{
+						Object:   "group:eng",
+						Relation: "member",
+					},
+				},
+			},
+		)
+		require.NoError(err)
+
+		var objects []string
+		for {
+			tp, err := iter.Next()
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				require.Fail(err.Error())
+			}
+
+			objects = append(objects, tp.GetKey().GetObject())
+		}
+
+		require.Equal([]string{"document:doc1", "document:doc2"}, objects)
+	})
+
+	t.Run("returns no results if the input users do not match the tuples", func(t *testing.T) {
+		storeID, err := id.NewString()
+		require.NoError(err)
+
+		err = datastore.Write(
+			ctx,
+			storeID,
+			nil,
+			tuples,
+		)
+		require.NoError(err)
+
+		iter, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "viewer",
+				UserFilter: []*openfgapb.ObjectRelation{
+					{
+						Object: "user:maria",
+					},
+				},
+			},
+		)
+		require.NoError(err)
+
+		var objects []string
+		for {
+			tp, err := iter.Next()
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				require.Fail(err.Error())
+			}
+
+			objects = append(objects, tp.GetKey().GetObject())
+		}
+
+		require.Empty(objects)
+	})
+
+	t.Run("returns no results if the input relation does not match any tuples", func(t *testing.T) {
+		storeID, err := id.NewString()
+		require.NoError(err)
+
+		err = datastore.Write(
+			ctx,
+			storeID,
+			nil,
+			tuples,
+		)
+
+		require.NoError(err)
+
+		iter, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "document",
+				Relation:   "non-existing",
+				UserFilter: []*openfgapb.ObjectRelation{
+					{
+						Object: "user:jon",
+					},
+				},
+			},
+		)
+		require.NoError(err)
+
+		var objects []string
+		for {
+			tp, err := iter.Next()
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				require.Fail(err.Error())
+			}
+
+			objects = append(objects, tp.GetKey().GetObject())
+		}
+
+		require.Empty(objects)
+	})
+
+	t.Run("returns no results if the input object type does not match any tuples", func(t *testing.T) {
+		storeID, err := id.NewString()
+		require.NoError(err)
+
+		err = datastore.Write(
+			ctx,
+			storeID,
+			nil,
+			tuples,
+		)
+
+		require.NoError(err)
+
+		iter, err := datastore.ReadStartingWithUser(
+			ctx,
+			storeID,
+			storage.ReadStartingWithUserFilter{
+				ObjectType: "nonexisting",
+				Relation:   "viewer",
+				UserFilter: []*openfgapb.ObjectRelation{
+					{
+						Object: "user:jon",
+					},
+				},
+			},
+		)
+		require.NoError(err)
+
+		var objects []string
+		for {
+			tp, err := iter.Next()
+			if err != nil {
+				if err == storage.ErrIteratorDone {
+					break
+				}
+
+				require.Fail(err.Error())
+			}
+
+			objects = append(objects, tp.GetKey().GetObject())
+		}
+
+		require.Empty(objects)
+	})
+
 }
