@@ -39,12 +39,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 										typesystem.RelationReference("group", "member"),
 									},
 								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.RelationReference("user", ""),
-										typesystem.RelationReference("group", "member"),
-									},
-								},
 							},
 						},
 					},
@@ -99,11 +93,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 										typesystem.RelationReference("user", ""),
 									},
 								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.RelationReference("user", ""),
-									},
-								},
 							},
 						},
 					},
@@ -124,6 +113,21 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
+					},
+					{
+						Type: "group",
+						Relations: map[string]*openfgapb.Userset{
+							"member": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("user", ""),
+									},
+								},
+							},
+						},
 					},
 					{
 						Type: "folder",
@@ -175,9 +179,8 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					Ingress: typesystem.RelationReference("document", "viewer"),
 				},
 				{
-					Type:             TupleToUsersetIngress,
-					Ingress:          typesystem.RelationReference("folder", "viewer"),
-					TuplesetRelation: typesystem.RelationReference("document", "parent"),
+					Type:    DirectIngress,
+					Ingress: typesystem.RelationReference("folder", "viewer"),
 				},
 				{
 					Type:    DirectIngress,
