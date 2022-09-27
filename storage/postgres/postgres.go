@@ -8,8 +8,8 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -93,7 +93,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	attempt := 1
 	err := backoff.Retry(func() error {
 		var err error
-		pool, err = pgxpool.Connect(context.Background(), uri)
+		pool, err = pgxpool.New(context.Background(), uri)
 		if err != nil {
 			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
 			attempt++
@@ -306,6 +306,7 @@ func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.P
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return iter.toArray(opts)
 }
 
@@ -486,7 +487,7 @@ func (p *Postgres) WriteAuthorizationModel(
 		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {
