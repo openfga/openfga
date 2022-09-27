@@ -483,7 +483,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		iter, err := datastore.ReadStartingWithUser(
+		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
 			storeID,
 			storage.ReadStartingWithUserFilter{
@@ -502,21 +502,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		var objects []string
-		for {
-			tp, err := iter.Next()
-			if err != nil {
-				if err == storage.ErrIteratorDone {
-					break
-				}
+		objects := getObjects(tupleIterator, require)
 
-				require.Fail(err.Error())
-			}
-
-			objects = append(objects, tp.GetKey().GetObject())
-		}
-
-		require.Equal([]string{"document:doc1", "document:doc2"}, objects)
+		require.ElementsMatch([]string{"document:doc1", "document:doc2"}, objects)
 	})
 
 	t.Run("returns no results if the input users do not match the tuples", func(t *testing.T) {
@@ -531,7 +519,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		iter, err := datastore.ReadStartingWithUser(
+		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
 			storeID,
 			storage.ReadStartingWithUserFilter{
@@ -546,19 +534,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		var objects []string
-		for {
-			tp, err := iter.Next()
-			if err != nil {
-				if err == storage.ErrIteratorDone {
-					break
-				}
-
-				require.Fail(err.Error())
-			}
-
-			objects = append(objects, tp.GetKey().GetObject())
-		}
+		objects := getObjects(tupleIterator, require)
 
 		require.Empty(objects)
 	})
@@ -576,7 +552,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 
 		require.NoError(err)
 
-		iter, err := datastore.ReadStartingWithUser(
+		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
 			storeID,
 			storage.ReadStartingWithUserFilter{
@@ -591,19 +567,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		var objects []string
-		for {
-			tp, err := iter.Next()
-			if err != nil {
-				if err == storage.ErrIteratorDone {
-					break
-				}
-
-				require.Fail(err.Error())
-			}
-
-			objects = append(objects, tp.GetKey().GetObject())
-		}
+		objects := getObjects(tupleIterator, require)
 
 		require.Empty(objects)
 	})
@@ -621,7 +585,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 
 		require.NoError(err)
 
-		iter, err := datastore.ReadStartingWithUser(
+		tupleIterator, err := datastore.ReadStartingWithUser(
 			ctx,
 			storeID,
 			storage.ReadStartingWithUserFilter{
@@ -636,21 +600,25 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		)
 		require.NoError(err)
 
-		var objects []string
-		for {
-			tp, err := iter.Next()
-			if err != nil {
-				if err == storage.ErrIteratorDone {
-					break
-				}
-
-				require.Fail(err.Error())
-			}
-
-			objects = append(objects, tp.GetKey().GetObject())
-		}
+		objects := getObjects(tupleIterator, require)
 
 		require.Empty(objects)
 	})
+}
 
+func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions) []string {
+	var objects []string
+	for {
+		tp, err := tupleIterator.Next()
+		if err != nil {
+			if err == storage.ErrIteratorDone {
+				break
+			}
+
+			require.Fail(err.Error())
+		}
+
+		objects = append(objects, tp.GetKey().GetObject())
+	}
+	return objects
 }
