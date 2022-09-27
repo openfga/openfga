@@ -36,5 +36,5 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAndReadAssertions", func(t *testing.T) { AssertionsTest(t, ds) })
 
 	// stores
-	t.Run("TestStore", func(t *testing.T) { TestStore(t, ds) })
+	t.Run("TestStore", func(t *testing.T) { StoreTest(t, ds) })
 }
