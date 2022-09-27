@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-errors/errors"
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/pressly/goose/v3"
