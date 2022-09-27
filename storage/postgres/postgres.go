@@ -3,12 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -92,7 +93,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	attempt := 1
 	err := backoff.Retry(func() error {
 		var err error
-		pool, err = pgxpool.Connect(context.Background(), uri)
+		pool, err = pgxpool.New(context.Background(), uri)
 		if err != nil {
 			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
 			attempt++
@@ -275,6 +276,28 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return &tupleIterator{rows: rows}, nil
 }
 
+func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	defer span.End()
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
+	var targetUsersArg []string
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		targetUsersArg = append(targetUsersArg, targetUser)
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	if err != nil {
+		return nil, handlePostgresError(err)
+	}
+
+	return &tupleIterator{rows: rows}, nil
+}
+
 func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
 	defer span.End()
@@ -283,6 +306,7 @@ func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.P
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return iter.toArray(opts)
 }
 
@@ -463,7 +487,7 @@ func (p *Postgres) WriteAuthorizationModel(
 		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	err := p.pool.BeginFunc(ctx, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {

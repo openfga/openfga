@@ -372,6 +372,42 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	return &staticIterator{tuples: matches}, nil
 }
 
+func (s *MemoryBackend) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+) (storage.TupleIterator, error) {
+	_, span := s.tracer.Start(ctx, "memory.ReadStartingWithUser")
+	defer span.End()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var matches []*openfgapb.Tuple
+	for _, t := range s.tuples[store] {
+		if tupleUtils.GetType(t.Key.GetObject()) != filter.ObjectType {
+			continue
+		}
+
+		if t.Key.GetRelation() != filter.Relation {
+			continue
+		}
+
+		for _, userFilter := range filter.UserFilter {
+			targetUser := userFilter.GetObject()
+			if userFilter.GetRelation() != "" {
+				targetUser = fmt.Sprintf("%s#%s", userFilter.GetObject(), userFilter.GetRelation())
+			}
+
+			if targetUser == t.Key.GetUser() {
+				matches = append(matches, t)
+			}
+		}
+
+	}
+	return &staticIterator{tuples: matches}, nil
+}
+
 // ReadByStore See storage.TupleBackend.ReadByStore
 func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadByStore")

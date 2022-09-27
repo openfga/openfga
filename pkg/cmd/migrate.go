@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/go-errors/errors"
-	_ "github.com/jackc/pgx/v4/stdlib"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
 	cmdutil "github.com/openfga/openfga/pkg/cmd/util"
 	"github.com/pressly/goose/v3"
@@ -50,6 +50,12 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			log.Fatal("failed to parse the config from the connection uri", err)
 		}
+
+		defer func() {
+			if err := db.Close(); err != nil {
+				log.Fatal("failed to close the db", err)
+			}
+		}()
 
 		if err := goose.SetDialect("postgres"); err != nil {
 			log.Fatal("failed to initialize the migrate command", err)
