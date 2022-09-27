@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -268,6 +269,28 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	}
 
 	rows, err := p.pool.Query(ctx, stmt, args...)
+	if err != nil {
+		return nil, handlePostgresError(err)
+	}
+
+	return &tupleIterator{rows: rows}, nil
+}
+
+func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	defer span.End()
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
+	var targetUsersArg []string
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		targetUsersArg = append(targetUsersArg, targetUser)
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
