@@ -430,7 +430,7 @@ func (m *MySQL) MaxTypesInTypeDefinition() int {
 func (m *MySQL) WriteAuthorizationModel(
 	ctx context.Context,
 	store,
-	modelId string,
+	modelID string,
 	schemaVersion typesystem.SchemaVersion,
 	tds []*openfgapb.TypeDefinition,
 ) error {
@@ -455,7 +455,7 @@ func (m *MySQL) WriteAuthorizationModel(
 			return err
 		}
 
-		_, err = tx.ExecContext(ctx, stmt, store, modelId, schemaVersion, typeDef.GetType(), marshalledTypeDef)
+		_, err = tx.ExecContext(ctx, stmt, store, modelID, schemaVersion, typeDef.GetType(), marshalledTypeDef)
 		if err != nil {
 			return handleMySQLError(err)
 		}
