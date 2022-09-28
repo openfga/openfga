@@ -2,7 +2,7 @@ package caching
 
 import (
 	"context"
-	"strings"
+	"fmt"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/id"
@@ -20,7 +20,6 @@ type readTypeDefinitionTest struct {
 	name                   string
 	model                  *openfgapb.AuthorizationModel
 	expectedTypeDefinition *openfgapb.TypeDefinition
-	expectedError          error
 }
 
 var readTypeDefinitionTests = []readTypeDefinitionTest{
@@ -52,38 +51,12 @@ func TestReadTypeDefinition(t *testing.T) {
 		err := memoryBackend.WriteAuthorizationModel(ctx, store, test.model)
 		require.NoError(t, err)
 
-		td, actualError := cachingBackend.ReadTypeDefinition(ctx, test.store, test.model.Id, test.name)
+		td, err := cachingBackend.ReadTypeDefinition(ctx, test.store, test.model.Id, test.name)
+		require.NoError(t, err)
+		require.Equal(t, test.expectedTypeDefinition, td)
 
-		if test.expectedError != nil && test.expectedError != actualError {
-			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, actualError)
-			continue
-		}
-
-		if test.expectedTypeDefinition != nil {
-			if td == nil {
-				t.Errorf("[%s] Expected authorizationmodel to not be nil, actual nil", test._name)
-				continue
-			}
-
-			if test.expectedTypeDefinition.GetType() != td.GetType() {
-				t.Errorf("[%s] Expected name to be '%s', actual '%s'", test._name, test.expectedTypeDefinition.GetType(), td.GetType())
-				continue
-			}
-
-			cacheKey := strings.Join([]string{test.store, test.model.Id, test.name}, Separator)
-			cachedEntry := cachingBackend.cache.Get(cacheKey)
-
-			if cachedEntry == nil {
-				t.Errorf("[%s] Expected entry '%s' to be in cache but it wasn't", test._name, cacheKey)
-				continue
-			}
-
-			cachedNS := cachedEntry.Value().(*openfgapb.TypeDefinition)
-
-			if test.expectedTypeDefinition.GetType() != cachedNS.GetType() {
-				t.Errorf("[%s] Expected cached name to be '%s', actual '%s'", test._name, test.expectedTypeDefinition.GetType(), cachedNS.GetType())
-				continue
-			}
-		}
+		cacheKey := fmt.Sprintf("%s:%s:%s", test.store, test.model.Id, test.name)
+		cachedTD := cachingBackend.cache.Get(cacheKey).Value().(*openfgapb.TypeDefinition)
+		require.Equal(t, test.expectedTypeDefinition.GetType(), cachedTD.GetType())
 	}
 }
