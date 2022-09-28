@@ -13,7 +13,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
+func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	store := id.Must(id.New()).String()
 

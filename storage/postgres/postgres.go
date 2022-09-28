@@ -489,7 +489,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {
