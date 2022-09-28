@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,7 +31,6 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
-	mutex                 sync.Mutex
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs
@@ -235,13 +233,8 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, obj *openfgapb.Obj
 		q.Logger.ErrorWithContext(ctx, "check_error", logger.Error(err))
 		return nil
 	}
-	if resp.Allowed {
-		q.mutex.Lock()
-		defer q.mutex.Unlock()
-		if atomic.LoadUint32(objectsFound) < q.ListObjectsMaxResults {
-			resultsChan <- obj.Id
-			atomic.AddUint32(objectsFound, 1)
-		}
+	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
+		resultsChan <- obj.Id
 	}
 
 	return nil
