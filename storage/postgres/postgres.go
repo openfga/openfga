@@ -462,32 +462,34 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 	return p.maxTypesInTypeDefinition
 }
 
-func (p *Postgres) WriteAuthorizationModel(
-	ctx context.Context,
-	store, modelID string,
-	schemaVersion typesystem.SchemaVersion,
-	tds []*openfgapb.TypeDefinition,
-) error {
+func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds) > p.MaxTypesInTypeDefinition() {
+	schemaVersion, err := typesystem.NewSchemaVersion(model.SchemaVersion)
+	if err != nil {
+		return err
+	}
+
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
 
 	inserts := &pgx.Batch{}
-	for _, td := range tds {
+	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
 		if err != nil {
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {

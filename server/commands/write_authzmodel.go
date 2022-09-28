@@ -30,8 +30,10 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
+	typeDefinitions := req.GetTypeDefinitions()
+
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
-	if len(req.GetTypeDefinitions()) > w.backend.MaxTypesInTypeDefinition() {
+	if len(typeDefinitions) > w.backend.MaxTypesInTypeDefinition() {
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
@@ -40,12 +42,14 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.UnsupportedSchemaVersion
 	}
 
-	typeSystem := typesystem.NewTypeSystem(schemaVersion, req.GetTypeDefinitions())
+	typeSystem := typesystem.NewTypeSystem(schemaVersion, typeDefinitions)
+
 	if len(typeSystem.TypeDefinitions) != len(req.GetTypeDefinitions()) {
 		return nil, serverErrors.CannotAllowDuplicateTypesInOneRequest
 	}
 
-	if err := typeSystem.Validate(); err != nil {
+	err = typeSystem.Validate()
+	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
@@ -55,7 +59,12 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, schemaVersion, typeSystem.GetTypeDefinitions()); err != nil {
+	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), &openfgapb.AuthorizationModel{
+		Id:              id,
+		SchemaVersion:   schemaVersion.String(),
+		TypeDefinitions: typeDefinitions,
+	})
+	if err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}
 
