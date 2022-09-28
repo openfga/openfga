@@ -42,6 +42,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
+			openfgapb.AuthorizationModel{},
 			openfgapb.TypeDefinition{},
 			openfgapb.Userset{},
 			openfgapb.Userset_This{},
@@ -104,6 +105,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	cmpOpts := []cmp.Option{
 		cmpopts.IgnoreUnexported(
+			openfgapb.AuthorizationModel{},
 			openfgapb.TypeDefinition{},
 			openfgapb.Userset{},
 			openfgapb.Userset_This{},
@@ -116,10 +118,9 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	})
 	require.NoError(t, err)
 	require.Len(t, models, 1)
-	require.Equal(t, model2.Id, models[0].Id)
 	require.NotEmpty(t, continuationToken)
 
-	if diff := cmp.Diff(model2.TypeDefinitions, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+	if diff := cmp.Diff(model2, models[0], cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)
 	}
 
@@ -129,10 +130,9 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	})
 	require.NoError(t, err)
 	require.Len(t, models, 1)
-	require.Equal(t, model1.Id, models[0].Id)
 	require.Empty(t, continuationToken)
 
-	if diff := cmp.Diff(model1.TypeDefinitions, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+	if diff := cmp.Diff(model1, models[0], cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)
 	}
 }
@@ -227,6 +227,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		cmpOpts := []cmp.Option{
 			cmpopts.IgnoreUnexported(
+				openfgapb.AuthorizationModel{},
 				openfgapb.TypeDefinition{},
 				openfgapb.Userset{},
 				openfgapb.Userset_This{},
