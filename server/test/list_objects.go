@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -156,11 +154,21 @@ func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error 
 }
 
 func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
-	sortFn := func(a, b string) bool { return a < b }
 
 	for _, test := range testCases {
 		t.Run(test.name+"/streaming", func(t *testing.T) {
 			server := NewMockStreamServer(len(test.expectedResult))
+
+			done := make(chan struct{})
+			var streamedObjectIds []string
+			go func() {
+				for x := range server.channel {
+					streamedObjectIds = append(streamedObjectIds, x)
+				}
+
+				done <- struct{}{}
+			}()
+
 			err := listObjectsQuery.ExecuteStreamed(ctx, &openfgapb.StreamedListObjectsRequest{
 				StoreId:              test.request.StoreId,
 				AuthorizationModelId: test.request.AuthorizationModelId,
@@ -169,21 +177,15 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				User:                 test.request.User,
 				ContextualTuples:     test.request.ContextualTuples,
 			}, server)
+
 			close(server.channel)
+			<-done
+
 			require.ErrorIs(t, err, test.expectedError)
-			streamedObjectIds := make([]string, 0, len(test.expectedResult))
-			for x := range server.channel {
-				streamedObjectIds = append(streamedObjectIds, x)
-			}
-			if len(streamedObjectIds) > defaultListObjectsMaxResults {
-				t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(streamedObjectIds))
-			}
-			if !subset(streamedObjectIds, test.expectedResult) {
-				if diff := cmp.Diff(streamedObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
-					t.Errorf("object ID mismatch (-got +want):\n%s", diff)
-				}
-			}
+			require.LessOrEqual(t, len(streamedObjectIds), defaultListObjectsMaxResults)
+			require.Subset(t, test.expectedResult, streamedObjectIds)
 		})
+
 		t.Run(test.name, func(t *testing.T) {
 			res, err := listObjectsQuery.Execute(ctx, test.request)
 
@@ -194,15 +196,8 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			require.ErrorIs(t, err, test.expectedError)
 
 			if res != nil {
-				if len(res.ObjectIds) > defaultListObjectsMaxResults {
-					t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(res.ObjectIds))
-				}
-				if !subset(res.ObjectIds, test.expectedResult) {
-					if diff := cmp.Diff(res.ObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
-						t.Errorf("object ID mismatch (-got +want):\n%s", diff)
-					}
-				}
-
+				require.LessOrEqual(t, len(res.ObjectIds), defaultListObjectsMaxResults)
+				require.Subset(t, test.expectedResult, res.ObjectIds)
 			}
 		})
 	}
@@ -232,20 +227,4 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	}
 
 	return ctx, datastore, modelID, nil
-}
-
-// subset returns true if the first slice is a subset of second
-func subset(first, second []string) bool {
-	set := make(map[string]bool)
-	for _, value := range second {
-		set[value] = true
-	}
-
-	for _, value := range first {
-		if _, found := set[value]; !found {
-			return false
-		}
-	}
-
-	return true
 }
