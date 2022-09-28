@@ -52,6 +52,12 @@ func runMigration(_ *cobra.Command, _ []string) error {
 			log.Fatal("failed to parse the config from the connection uri", err)
 		}
 
+		defer func() {
+			if err := db.Close(); err != nil {
+				log.Fatal("failed to close the db", err)
+			}
+		}()
+
 		if err := goose.SetDialect("mysql"); err != nil {
 			log.Fatal("failed to initialize the migrate command", err)
 		}
