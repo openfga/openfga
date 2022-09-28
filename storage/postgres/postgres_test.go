@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -32,7 +31,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	ctx := context.Background()
 	store := "store"
 	modelID := "foo"
-	schemaVersion := 4 // which is not an enum value... yet.
+	schemaVersion := "7.8"
 
 	bytes, err := proto.Marshal(&openfgapb.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
@@ -42,5 +41,5 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 
 	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
 	require.NoError(t, err)
-	require.Equal(t, typesystem.SchemaVersion1_0.String(), model.SchemaVersion)
+	require.Equal(t, "1.0", model.SchemaVersion)
 }

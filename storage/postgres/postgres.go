@@ -14,7 +14,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -324,7 +323,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, handlePostgresError(err)
 	}
 
-	var version typesystem.SchemaVersion
+	var version string
 	var typeDefs []*openfgapb.TypeDefinition
 	for rows.Next() {
 		var typeName string
@@ -351,8 +350,8 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
-		version = typesystem.SchemaVersion1_0
+	if version != "1.0" && version != "1.1" {
+		version = "1.0"
 		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
@@ -361,7 +360,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	return &openfgapb.AuthorizationModel{
-		SchemaVersion:   version.String(),
+		SchemaVersion:   version,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -466,11 +465,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	schemaVersion, err := typesystem.NewSchemaVersion(model.SchemaVersion)
-	if err != nil {
-		return err
-	}
-
+	version := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
@@ -486,10 +481,10 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 			return err
 		}
 
-		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, model.Id, version, td.GetType(), marshalledTypeDef)
 	}
 
-	err = pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {

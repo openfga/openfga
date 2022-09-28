@@ -16,19 +16,16 @@ const InternalServerErrorMsg = "Internal Server Error"
 
 var (
 	// AuthorizationModelResolutionTooComplex is used to avoid stack overflows
-	AuthorizationModelResolutionTooComplex     = status.Error(codes.Code(openfgapb.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
-	InvalidWriteInput                          = status.Error(codes.Code(openfgapb.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
-	CannotAllowDuplicateTypesInOneRequest      = status.Error(codes.Code(openfgapb.ErrorCode_cannot_allow_duplicate_types_in_one_request), "Cannot allow duplicate types in one request")
-	CannotAllowMultipleReferencesToOneRelation = status.Error(codes.Code(openfgapb.ErrorCode_cannot_allow_multiple_references_to_one_relation), "Invalid input. Please don't use the relation to define itself")
-	InvalidContinuationToken                   = status.Error(codes.Code(openfgapb.ErrorCode_invalid_continuation_token), "Invalid continuation token")
-	InvalidTupleSet                            = status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple_set), "Invalid TupleSet. Make sure you provide a type, and either an objectId or a userSet")
-	InvalidCheckInput                          = status.Error(codes.Code(openfgapb.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
-	InvalidExpandInput                         = status.Error(codes.Code(openfgapb.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
-	UnsupportedUserSet                         = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
-	UnsupportedSchemaVersion                   = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_schema_version), "Unsupported schema version")
-	StoreIDNotFound                            = status.Error(codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), "Store ID not found")
-	MismatchObjectType                         = status.Error(codes.Code(openfgapb.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
-	RequestCancelled                           = status.Error(codes.Code(openfgapb.InternalErrorCode_cancelled), "Request Cancelled")
+	AuthorizationModelResolutionTooComplex = status.Error(codes.Code(openfgapb.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
+	InvalidWriteInput                      = status.Error(codes.Code(openfgapb.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
+	InvalidContinuationToken               = status.Error(codes.Code(openfgapb.ErrorCode_invalid_continuation_token), "Invalid continuation token")
+	InvalidTupleSet                        = status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple_set), "Invalid TupleSet. Make sure you provide a type, and either an objectId or a userSet")
+	InvalidCheckInput                      = status.Error(codes.Code(openfgapb.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
+	InvalidExpandInput                     = status.Error(codes.Code(openfgapb.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
+	UnsupportedUserSet                     = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
+	StoreIDNotFound                        = status.Error(codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), "Store ID not found")
+	MismatchObjectType                     = status.Error(codes.Code(openfgapb.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
+	RequestCancelled                       = status.Error(codes.Code(openfgapb.InternalErrorCode_cancelled), "Request Cancelled")
 )
 
 type InternalError struct {

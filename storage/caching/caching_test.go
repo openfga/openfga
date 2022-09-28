@@ -12,51 +12,38 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-const store = "openfga"
+func TestCache(t *testing.T) {
+	ctx := context.Background()
+	memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
+	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 
-type readTypeDefinitionTest struct {
-	_name                  string
-	store                  string
-	name                   string
-	model                  *openfgapb.AuthorizationModel
-	expectedTypeDefinition *openfgapb.TypeDefinition
-}
+	storeID := id.Must(id.New()).String()
+	objectType := "documents"
+	typeDefinition := &openfgapb.TypeDefinition{Type: objectType}
 
-var readTypeDefinitionTests = []readTypeDefinitionTest{
-	{
-		_name: "ShouldReturnTypeDefinitionFromInnerBackendAndSetItInCache",
-		store: store,
-		name:  "clients",
-		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "clients",
-				},
-			},
-		},
-		expectedTypeDefinition: &openfgapb.TypeDefinition{
-			Type: "clients",
-		},
-	},
-}
-
-func TestReadTypeDefinition(t *testing.T) {
-	for _, test := range readTypeDefinitionTests {
-		ctx := context.Background()
-		memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
-		cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
-
-		err := memoryBackend.WriteAuthorizationModel(ctx, store, test.model)
-		require.NoError(t, err)
-
-		td, err := cachingBackend.ReadTypeDefinition(ctx, test.store, test.model.Id, test.name)
-		require.NoError(t, err)
-		require.Equal(t, test.expectedTypeDefinition, td)
-
-		cacheKey := fmt.Sprintf("%s:%s:%s", test.store, test.model.Id, test.name)
-		cachedTD := cachingBackend.cache.Get(cacheKey).Value().(*openfgapb.TypeDefinition)
-		require.Equal(t, test.expectedTypeDefinition.GetType(), cachedTD.GetType())
+	model := &openfgapb.AuthorizationModel{
+		Id:              id.Must(id.New()).String(),
+		SchemaVersion:   "1.0",
+		TypeDefinitions: []*openfgapb.TypeDefinition{typeDefinition},
 	}
+
+	err := memoryBackend.WriteAuthorizationModel(ctx, storeID, model)
+	require.NoError(t, err)
+
+	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
+	require.NoError(t, err)
+	require.Equal(t, model, gotModel)
+
+	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
+	cachedModel := cachingBackend.cache.Get(modelKey).Value().(*openfgapb.AuthorizationModel)
+	require.Equal(t, model, cachedModel)
+
+	gotTypeDef, err := cachingBackend.ReadTypeDefinition(ctx, storeID, model.Id, objectType)
+	require.NoError(t, err)
+	require.Equal(t, typeDefinition, gotTypeDef)
+
+	typeDefKey := fmt.Sprintf("%s:%s:%s", storeID, model.Id, objectType)
+	cachedTypeDef := cachingBackend.cache.Get(typeDefKey).Value().(*openfgapb.TypeDefinition)
+	require.Equal(t, typeDefinition, cachedTypeDef)
+
 }

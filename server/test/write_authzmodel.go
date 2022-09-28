@@ -151,7 +151,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.CannotAllowDuplicateTypesInOneRequest,
+			err: errors.InvalidAuthorizationModelInput(typesystem.ErrDuplicateTypes),
 		},
 		{
 			name: "ExecuteWriteFailsIfEmptyRewrites",
