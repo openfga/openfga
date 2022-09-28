@@ -233,10 +233,8 @@ func (q *ListObjectsQuery) internalCheck(ctx context.Context, obj *openfgapb.Obj
 		q.Logger.ErrorWithContext(ctx, "check_error", logger.Error(err))
 		return nil
 	}
-
-	if resp.Allowed && atomic.LoadUint32(objectsFound) < q.ListObjectsMaxResults {
+	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
 		resultsChan <- obj.Id
-		atomic.AddUint32(objectsFound, 1)
 	}
 
 	return nil
