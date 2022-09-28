@@ -187,7 +187,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			require.ErrorIs(t, err, test.expectedError)
 
 			if len(streamedObjectIds) > defaultListObjectsMaxResults {
-				t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(streamedObjectIds))
+				t.Errorf("expected a maximum of %d results but got %d", defaultListObjectsMaxResults, len(streamedObjectIds))
 			}
 			if !subset(streamedObjectIds, test.expectedResult) {
 				if diff := cmp.Diff(streamedObjectIds, test.expectedResult, cmpopts.EquateEmpty(), cmpopts.SortSlices(sortFn)); diff != "" {
