@@ -160,6 +160,17 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	for _, test := range testCases {
 		t.Run(test.name+"/streaming", func(t *testing.T) {
 			server := NewMockStreamServer(len(test.expectedResult))
+
+			done := make(chan struct{})
+			var streamedObjectIds []string
+			go func() {
+				for x := range server.channel {
+					streamedObjectIds = append(streamedObjectIds, x)
+				}
+
+				done <- struct{}{}
+			}()
+
 			err := listObjectsQuery.ExecuteStreamed(ctx, &openfgapb.StreamedListObjectsRequest{
 				StoreId:              test.request.StoreId,
 				AuthorizationModelId: test.request.AuthorizationModelId,
@@ -168,12 +179,12 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				User:                 test.request.User,
 				ContextualTuples:     test.request.ContextualTuples,
 			}, server)
+
 			close(server.channel)
+			<-done
+
 			require.ErrorIs(t, err, test.expectedError)
-			streamedObjectIds := make([]string, 0, len(test.expectedResult))
-			for x := range server.channel {
-				streamedObjectIds = append(streamedObjectIds, x)
-			}
+
 			if len(streamedObjectIds) > defaultListObjectsMaxResults {
 				t.Errorf("expected a maximum of %d results but got %d:", defaultListObjectsMaxResults, len(streamedObjectIds))
 			}
@@ -183,6 +194,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 				}
 			}
 		})
+
 		t.Run(test.name, func(t *testing.T) {
 			res, err := listObjectsQuery.Execute(ctx, test.request)
 
