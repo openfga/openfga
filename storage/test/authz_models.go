@@ -50,7 +50,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 		),
 	}
 
-	if diff := cmp.Diff(got.TypeDefinitions, model.TypeDefinitions, cmpOpts...); diff != "" {
+	if diff := cmp.Diff(got, model, cmpOpts...); diff != "" {
 		t.Errorf("mismatch (-got +want):\n%s", diff)
 	}
 
@@ -146,7 +146,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("find latests authorization model should succeed", func(t *testing.T) {
+	t.Run("find latest authorization model should succeed", func(t *testing.T) {
 		store := id.Must(id.New()).String()
 
 		oldModel := &openfgapb.AuthorizationModel{
