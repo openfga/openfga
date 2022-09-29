@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	SchemaVersion10 = "1.0"
-	SchemaVersion11 = "1.1"
+	SchemaVersion1_0 = "1.0"
+	SchemaVersion1_1 = "1.1"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 )
 
 type TypeSystem struct {
-	version         string
+	schemaVersion   string
 	TypeDefinitions map[string]*openfgapb.TypeDefinition
 }
 
@@ -31,13 +31,13 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	}
 
 	return &TypeSystem{
-		version:         model.GetSchemaVersion(),
+		schemaVersion:   model.GetSchemaVersion(),
 		TypeDefinitions: tds,
 	}
 }
 
-func (t *TypeSystem) GetVersion() string {
-	return t.version
+func (t *TypeSystem) GetSchemaVersion() string {
+	return t.schemaVersion
 }
 
 func (t *TypeSystem) GetTypeDefinitions() map[string]*openfgapb.TypeDefinition {
@@ -107,7 +107,7 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 func Validate(model *openfgapb.AuthorizationModel) error {
 	schemaVersion := model.GetSchemaVersion()
 
-	if schemaVersion != SchemaVersion10 && schemaVersion != SchemaVersion11 {
+	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
 		return ErrInvalidSchemaVersion
 	}
 
@@ -119,7 +119,7 @@ func Validate(model *openfgapb.AuthorizationModel) error {
 		return err
 	}
 
-	if schemaVersion == SchemaVersion11 {
+	if schemaVersion == SchemaVersion1_1 {
 		if err := validateRelationTypeRestrictions(model); err != nil {
 			return err
 		}

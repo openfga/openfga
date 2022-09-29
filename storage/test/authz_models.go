@@ -20,7 +20,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 	t.Run("write, then read, succeeds", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              id.Must(id.New()).String(),
-			SchemaVersion:   typesystem.SchemaVersion10,
+			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "folder"}},
 		}
 
@@ -47,7 +47,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	model1 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: typesystem.SchemaVersion10,
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -67,7 +67,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	model2 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: typesystem.SchemaVersion10,
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -123,7 +123,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 
 		oldModel := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: typesystem.SchemaVersion10,
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -140,7 +140,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 
 		newModel := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: typesystem.SchemaVersion10,
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -176,7 +176,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		store := id.Must(id.New()).String()
 		model := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: typesystem.SchemaVersion10,
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",

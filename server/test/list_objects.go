@@ -217,7 +217,7 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion10,
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
 	err = datastore.WriteAuthorizationModel(ctx, store, model)

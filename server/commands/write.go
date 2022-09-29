@@ -127,7 +127,7 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 	if relationsForObject == nil {
-		if ts.GetVersion() == typesystem.SchemaVersion11 {
+		if ts.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
 			msg := "invalid authorization model"
 			return serverErrors.NewInternalError(msg, errors.New(msg))

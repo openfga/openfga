@@ -25,7 +25,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			storeID: id.Must(id.New()).String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion10,
+				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -46,7 +46,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			storeID: id.Must(id.New()).String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion10,
+				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -132,7 +132,7 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("writing without any type definitions doesn't write anything", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              id.Must(id.New()).String(),
-			SchemaVersion:   typesystem.SchemaVersion10,
+			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{},
 		}
 

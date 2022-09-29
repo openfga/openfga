@@ -28,7 +28,7 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion10,
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 
@@ -111,7 +111,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion10,
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 

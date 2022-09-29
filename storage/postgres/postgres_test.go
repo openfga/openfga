@@ -42,5 +42,5 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 
 	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
 	require.NoError(t, err)
-	require.Equal(t, typesystem.SchemaVersion10, model.SchemaVersion)
+	require.Equal(t, typesystem.SchemaVersion1_0, model.SchemaVersion)
 }

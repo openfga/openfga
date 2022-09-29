@@ -37,7 +37,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			name: "non-empty type definitions",
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion10,
+				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -73,7 +73,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 
 	model1 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: typesystem.SchemaVersion10,
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -85,7 +85,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 
 	model2 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: typesystem.SchemaVersion10,
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -148,7 +148,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion10,
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 	err := datastore.WriteAuthorizationModel(ctx, store, model)

@@ -22,7 +22,7 @@ import (
 func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion10,
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: typeDefinitions,
 	}
 
