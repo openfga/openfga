@@ -19,7 +19,7 @@ var (
 
 type TypeSystem struct {
 	schemaVersion   string
-	TypeDefinitions map[string]*openfgapb.TypeDefinition
+	typeDefinitions map[string]*openfgapb.TypeDefinition
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel. New assumes that the model
@@ -32,7 +32,7 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 
 	return &TypeSystem{
 		schemaVersion:   model.GetSchemaVersion(),
-		TypeDefinitions: tds,
+		typeDefinitions: tds,
 	}
 }
 
@@ -41,18 +41,18 @@ func (t *TypeSystem) GetSchemaVersion() string {
 }
 
 func (t *TypeSystem) GetTypeDefinitions() map[string]*openfgapb.TypeDefinition {
-	return t.TypeDefinitions
+	return t.typeDefinitions
 }
 
 func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefinition, bool) {
-	if typeDefinition, ok := t.TypeDefinitions[objectType]; ok {
+	if typeDefinition, ok := t.typeDefinitions[objectType]; ok {
 		return typeDefinition, true
 	}
 	return nil, false
 }
 
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, bool) {
-	td, ok := t.TypeDefinitions[objectType]
+	td, ok := t.typeDefinitions[objectType]
 	if !ok {
 		return nil, false
 	}
@@ -225,7 +225,7 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
 	t := New(model)
 
-	for objectType := range t.TypeDefinitions {
+	for objectType := range t.typeDefinitions {
 		relations, ok := t.GetRelations(objectType)
 		if !ok {
 			return InvalidRelationError(objectType, "")
