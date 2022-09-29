@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
@@ -30,7 +28,6 @@ var (
 )
 
 type postgresTestContainer struct {
-	conn  *pgx.Conn
 	addr  string
 	creds string
 }
@@ -68,15 +65,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		PortBindings: nat.PortMap{
-			"5432/tcp": []nat.PortBinding{},
-		},
 	}
 
-	ulid, err := id.NewString()
-	require.NoError(t, err)
-
-	name := fmt.Sprintf("postgres-%s", ulid)
+	name := fmt.Sprintf("postgres-%s", id.Must(id.New()).String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
@@ -126,22 +117,16 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", pgTestContainer.creds, pgTestContainer.addr)
 
+	goose.SetLogger(goose.NopLogger())
+
+	db, err := goose.OpenDBWithDriver("pgx", uri)
+	require.NoError(t, err)
+
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
-
 	err = backoff.Retry(
 		func() error {
-			var err error
-
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-
-			pgTestContainer.conn, err = pgx.Connect(timeoutCtx, uri)
-			if err != nil {
-				return err
-			}
-
-			return nil
+			return db.Ping()
 		},
 		backoffPolicy,
 	)
@@ -149,14 +134,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		stopContainer()
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}
-
-	db, err := sql.Open("pgx", uri)
-	require.NoError(t, err)
-
-	goose.SetLogger(goose.NopLogger())
-
-	err = goose.SetDialect("postgres")
-	require.NoError(t, err)
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 

@@ -117,20 +117,17 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 	userType, userID := tupleUtils.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
 	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
 
-	sv, err := typesystem.NewSchemaVersion(authModel.SchemaVersion)
-	if err != nil {
-		c.logger.Warn("Missing schema version for the authorization model. Assuming 1.0")
-		sv = typesystem.SchemaVersion1_0
+	ts := typesystem.New(authModel)
+
+	typeDefinitionForObject, ok := ts.GetTypeDefinition(objectType)
+	if !ok {
+		msg := fmt.Sprintf("type '%s' does not exist in the authorization model", objectType)
+		return serverErrors.NewInternalError(msg, errors.New(msg))
 	}
-
-	ts := typesystem.NewTypeSystem(sv, authModel.TypeDefinitions)
-
-	typeDefinitionForObject := ts.TypeDefinitions[objectType]
-	typeDefinitionForUser := ts.TypeDefinitions[userType]
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 	if relationsForObject == nil {
-		if authModel.SchemaVersion == "1.1" {
+		if ts.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
 			msg := "invalid authorization model"
 			return serverErrors.NewInternalError(msg, errors.New(msg))
@@ -141,9 +138,10 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 	}
 
 	// at this point we know the auth model has type information
-
-	if userType != "" && typeDefinitionForUser == nil {
-		return serverErrors.InvalidWriteInput
+	if userType != "" {
+		if _, ok := ts.GetTypeDefinition(userType); !ok {
+			return serverErrors.InvalidWriteInput
+		}
 	}
 
 	relationInformation := relationsForObject[tk.Relation]

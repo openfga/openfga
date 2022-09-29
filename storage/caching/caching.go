@@ -44,3 +44,21 @@ func (c *cachedOpenFGADatastore) ReadTypeDefinition(ctx context.Context, storeID
 
 	return td, nil
 }
+
+func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgapb.AuthorizationModel, error) {
+	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
+	cachedEntry := c.cache.Get(cacheKey)
+
+	if cachedEntry != nil {
+		return cachedEntry.Value().(*openfgapb.AuthorizationModel), nil
+	}
+
+	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	if err != nil {
+		return nil, errors.ErrorWithStack(err)
+	}
+
+	c.cache.Set(cacheKey, model, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl
+
+	return model, nil
+}

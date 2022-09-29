@@ -8,6 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -36,7 +37,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			name: "non-empty type definitions",
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -72,7 +73,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 
 	model1 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -84,7 +85,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 
 	model2 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -147,7 +148,7 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 	err := datastore.WriteAuthorizationModel(ctx, store, model)

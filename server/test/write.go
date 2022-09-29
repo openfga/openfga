@@ -9,6 +9,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -33,7 +34,7 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -49,7 +50,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -71,7 +72,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -122,7 +123,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -173,7 +174,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -238,7 +239,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -277,7 +278,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -322,7 +323,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -344,7 +345,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -367,7 +368,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repository",
@@ -389,7 +390,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type:      "repo",
@@ -409,7 +410,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -434,7 +435,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -462,7 +463,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -487,7 +488,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -514,7 +515,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type:      "repo",
@@ -533,7 +534,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type:      "repo",
@@ -562,7 +563,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -601,7 +602,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -640,7 +641,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -694,7 +695,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -770,7 +771,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "repo",
@@ -849,7 +850,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -892,7 +893,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -929,7 +930,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -970,7 +971,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1011,7 +1012,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1046,7 +1047,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1088,7 +1089,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1127,7 +1128,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1170,7 +1171,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1208,7 +1209,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -1250,7 +1251,7 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.1",
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",

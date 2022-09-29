@@ -30,27 +30,15 @@ func NewWriteAuthorizationModelCommand(
 
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	typeDefinitions := req.GetTypeDefinitions()
-
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
-	if len(typeDefinitions) > w.backend.MaxTypesInTypeDefinition() {
+	if len(req.GetTypeDefinitions()) > w.backend.MaxTypesInTypeDefinition() {
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	schemaVersion, err := typesystem.NewSchemaVersion(req.GetSchemaVersion())
-	if err != nil {
-		return nil, serverErrors.UnsupportedSchemaVersion
-	}
-
-	typeSystem := typesystem.NewTypeSystem(schemaVersion, typeDefinitions)
-
-	if len(typeSystem.TypeDefinitions) != len(req.GetTypeDefinitions()) {
-		return nil, serverErrors.CannotAllowDuplicateTypesInOneRequest
-	}
-
-	err = typeSystem.Validate()
-	if err != nil {
-		return nil, serverErrors.InvalidAuthorizationModelInput(err)
+	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
+	// In the future mark this field as required in the protobufs.
+	if req.SchemaVersion == "" {
+		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
 	id, err := id.NewString()
@@ -58,12 +46,19 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, err
 	}
 
-	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), &openfgapb.AuthorizationModel{
+	model := &openfgapb.AuthorizationModel{
 		Id:              id,
-		SchemaVersion:   schemaVersion.String(),
-		TypeDefinitions: typeDefinitions,
-	})
+		SchemaVersion:   req.GetSchemaVersion(),
+		TypeDefinitions: req.GetTypeDefinitions(),
+	}
+
+	err = typesystem.Validate(model)
+	if err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
+	}
+
+	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
+	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}

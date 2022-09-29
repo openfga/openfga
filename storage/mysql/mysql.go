@@ -301,12 +301,12 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 		return nil, handleMySQLError(err)
 	}
 
-	var version typesystem.SchemaVersion
+	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&version, &typeName, &marshalledTypeDef)
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handleMySQLError(err)
 		}
@@ -328,9 +328,9 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	}
 
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
-		version = typesystem.SchemaVersion1_0
-		_, err = m.db.ExecContext(ctx, "UPDATE authorization_model SET schema_version = ? WHERE store = ? AND authorization_model_id = ?", version, store, modelID)
+	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
+		schemaVersion = typesystem.SchemaVersion1_0
+		_, err = m.db.ExecContext(ctx, "UPDATE authorization_model SET schema_version = ? WHERE store = ? AND authorization_model_id = ?", schemaVersion, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
 			m.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
@@ -338,7 +338,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	}
 
 	return &openfgapb.AuthorizationModel{
-		SchemaVersion:   version.String(),
+		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -443,11 +443,7 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 	ctx, span := m.tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
-	schemaVersion, err := typesystem.NewSchemaVersion(model.SchemaVersion)
-	if err != nil {
-		return err
-	}
-
+	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > m.MaxTypesInTypeDefinition() {

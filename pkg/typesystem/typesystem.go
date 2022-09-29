@@ -7,72 +7,54 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-type SchemaVersion int32
-
 const (
-	SchemaVersionUnspecified SchemaVersion = 0
-	SchemaVersion1_0         SchemaVersion = 1
-	SchemaVersion1_1         SchemaVersion = 2
+	SchemaVersion1_0 = "1.0"
+	SchemaVersion1_1 = "1.1"
 )
 
 var (
+	ErrDuplicateTypes       = errors.New("an authorization model cannot contain duplicate types")
 	ErrInvalidSchemaVersion = errors.New("invalid schema version")
 )
 
-func NewSchemaVersion(s string) (SchemaVersion, error) {
-	switch s {
-	case "", "1.0":
-		return SchemaVersion1_0, nil
-	case "1.1":
-		return SchemaVersion1_1, nil
-	default:
-		return SchemaVersionUnspecified, ErrInvalidSchemaVersion
-	}
-}
-
-func (v SchemaVersion) String() string {
-	switch v {
-	case SchemaVersion1_0:
-		return "1.0"
-	case SchemaVersion1_1:
-		return "1.1"
-	default:
-		return "unspecified"
-	}
-}
-
 type TypeSystem struct {
-	Version         SchemaVersion
-	TypeDefinitions map[string]*openfgapb.TypeDefinition
+	schemaVersion   string
+	typeDefinitions map[string]*openfgapb.TypeDefinition
 }
 
-func NewTypeSystem(version SchemaVersion, typeDefinitions []*openfgapb.TypeDefinition) *TypeSystem {
+// New creates a *TypeSystem from an *openfgapb.AuthorizationModel. New assumes that the model
+// has already been validated.
+func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	tds := map[string]*openfgapb.TypeDefinition{}
-	for _, td := range typeDefinitions {
+	for _, td := range model.GetTypeDefinitions() {
 		tds[td.GetType()] = td
 	}
 
 	return &TypeSystem{
-		Version:         version,
-		TypeDefinitions: tds,
+		schemaVersion:   model.GetSchemaVersion(),
+		typeDefinitions: tds,
 	}
 }
 
-// TODO: In a future PR refactor WriteAuthorizationModel to take a map[string]*openfgapb.TypeDefinition
-// and get rid of this method
-func (t *TypeSystem) GetTypeDefinitions() []*openfgapb.TypeDefinition {
-	tds := make([]*openfgapb.TypeDefinition, 0, len(t.TypeDefinitions))
-	for _, td := range t.TypeDefinitions {
-		tds = append(tds, td)
-	}
-
-	return tds
+func (t *TypeSystem) GetSchemaVersion() string {
+	return t.schemaVersion
 }
 
-func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
-	td, ok := t.TypeDefinitions[objectType]
+func (t *TypeSystem) GetTypeDefinitions() map[string]*openfgapb.TypeDefinition {
+	return t.typeDefinitions
+}
+
+func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefinition, bool) {
+	if typeDefinition, ok := t.typeDefinitions[objectType]; ok {
+		return typeDefinition, true
+	}
+	return nil, false
+}
+
+func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, bool) {
+	td, ok := t.typeDefinitions[objectType]
 	if !ok {
-		return nil, ObjectTypeDoesNotExistError(objectType)
+		return nil, false
 	}
 
 	relations := map[string]*openfgapb.Relation{}
@@ -91,43 +73,54 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Rela
 		relations[relation] = r
 	}
 
-	return relations, nil
+	return relations, true
 }
 
-func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relation, error) {
-	relations, err := t.GetRelations(objectType)
-	if err != nil {
-		return nil, err
+func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relation, bool) {
+	relations, ok := t.GetRelations(objectType)
+	if !ok {
+		return nil, false
 	}
 
 	r, ok := relations[relation]
 	if !ok {
-		return nil, RelationDoesNotExistError(objectType, relation)
+		return nil, false
 	}
 
-	return r, nil
+	return r, true
 }
 
-// Validate validates the type system according to the following rules:
-//  1. For every rewrite the relations in the rewrite must:
-//     a. Be valid relations on the same type in the authorization typeSystem (in cases of computedUserset)
+// Validate validates an *openfgapb.AuthorizationModel according to the following rules:
+//  1. Checks that the model have a valid schema version.
+//  2. For every rewrite the relations in the rewrite must:
+//     a. Be valid relations on the same type in the authorization model (in cases of computedUserset)
 //     b. Be valid relations on another existing type (in cases of tupleToUserset)
-//  2. Do not allow duplicate types or duplicate relations (but that is inherent in the map structure so nothing to
-//     actually check)
+//  3. Do not allow duplicate types or duplicate relations (only need to check types as relations are
+//     in a map so cannot contain duplicates)
 //
-// If it is a SchemaVersion1_1 type system (with types on relations), then additionally validate the type system
-// according to the following rules:
-//  3. Every type on a relation must be a valid type:
+// If the authorization model has a v1.1 schema version  (with types on relations), then additionally
+// validate the type system according to the following rules:
+//  3. Every type restriction on a relation must be a valid type:
 //     a. For a type (e.g. user) this means checking that this type is in the TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func (t *TypeSystem) Validate() error {
-	if err := t.validateRelationRewrites(); err != nil {
+func Validate(model *openfgapb.AuthorizationModel) error {
+	schemaVersion := model.GetSchemaVersion()
+
+	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
+		return ErrInvalidSchemaVersion
+	}
+
+	if containsDuplicateType(model) {
+		return ErrDuplicateTypes
+	}
+
+	if err := validateRelationRewrites(model); err != nil {
 		return err
 	}
 
-	if t.Version == SchemaVersion1_1 {
-		if err := t.validateRelationTypeRestrictions(); err != nil {
+	if schemaVersion == SchemaVersion1_1 {
+		if err := validateRelationTypeRestrictions(model); err != nil {
 			return err
 		}
 	}
@@ -135,10 +128,25 @@ func (t *TypeSystem) Validate() error {
 	return nil
 }
 
-func (t *TypeSystem) validateRelationRewrites() error {
+func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
+	seen := map[string]struct{}{}
+	for _, td := range model.TypeDefinitions {
+		objectType := td.GetType()
+		if _, ok := seen[objectType]; ok {
+			return true
+		}
+		seen[objectType] = struct{}{}
+	}
+	return false
+}
+
+func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
+	typeDefinitions := model.GetTypeDefinitions()
+
 	allRelations := map[string]struct{}{}
 	typeToRelations := map[string]map[string]struct{}{}
-	for objectType, td := range t.TypeDefinitions {
+	for _, td := range typeDefinitions {
+		objectType := td.GetType()
 		typeToRelations[objectType] = map[string]struct{}{}
 		for relation := range td.GetRelations() {
 			typeToRelations[objectType][relation] = struct{}{}
@@ -146,7 +154,8 @@ func (t *TypeSystem) validateRelationRewrites() error {
 		}
 	}
 
-	for objectType, td := range t.TypeDefinitions {
+	for _, td := range typeDefinitions {
+		objectType := td.GetType()
 		for relation, rewrite := range td.GetRelations() {
 			err := isUsersetRewriteValid(allRelations, typeToRelations[objectType], objectType, relation, rewrite)
 			if err != nil {
@@ -213,11 +222,13 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 	return nil
 }
 
-func (t *TypeSystem) validateRelationTypeRestrictions() error {
-	for objectType := range t.TypeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err != nil {
-			return err
+func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
+	t := New(model)
+
+	for objectType := range t.typeDefinitions {
+		relations, ok := t.GetRelations(objectType)
+		if !ok {
+			return InvalidRelationError(objectType, "")
 		}
 
 		for name, relation := range relations {
@@ -236,12 +247,12 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 				relatedObjectType := related.GetType()
 				relatedRelation := related.GetRelation()
 
-				if _, err := t.GetRelations(relatedObjectType); err != nil {
+				if _, ok := t.GetRelations(relatedObjectType); !ok {
 					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 				}
 
 				if relatedRelation != "" {
-					if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
+					if _, ok := t.GetRelation(relatedObjectType, relatedRelation); !ok {
 						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 					}
 				}
