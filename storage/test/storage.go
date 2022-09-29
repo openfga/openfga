@@ -16,7 +16,17 @@ import (
 
 var (
 	cmpOpts = []cmp.Option{
-		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}, openfgapb.Tuple{}, openfgapb.TupleChange{}, openfgapb.Assertion{}),
+		cmpopts.IgnoreUnexported(
+			openfgapb.AuthorizationModel{},
+			openfgapb.TypeDefinition{},
+			openfgapb.Userset{},
+			openfgapb.Userset_This{},
+			openfgapb.DirectUserset{},
+			openfgapb.TupleKey{},
+			openfgapb.Tuple{},
+			openfgapb.TupleChange{},
+			openfgapb.Assertion{},
+		),
 		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
 		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
 		testutils.TupleKeyCmpTransformer,

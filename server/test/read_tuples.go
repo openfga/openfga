@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -27,7 +28,7 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 
@@ -110,7 +111,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 

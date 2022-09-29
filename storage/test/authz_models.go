@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -20,7 +20,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 	t.Run("write, then read, succeeds", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              id.Must(id.New()).String(),
-			SchemaVersion:   "1.0",
+			SchemaVersion:   typesystem.SchemaVersion10,
 			TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "folder"}},
 		}
 
@@ -29,16 +29,6 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 
 		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.Id)
 		require.NoError(t, err)
-
-		cmpOpts := []cmp.Option{
-			cmpopts.IgnoreUnexported(
-				openfgapb.AuthorizationModel{},
-				openfgapb.TypeDefinition{},
-				openfgapb.Userset{},
-				openfgapb.Userset_This{},
-				openfgapb.DirectUserset{},
-			),
-		}
 
 		if diff := cmp.Diff(got, model, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
@@ -57,7 +47,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	model1 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -77,7 +67,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	model2 := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -94,16 +84,6 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	err = datastore.WriteAuthorizationModel(ctx, store, model2)
 	require.NoError(t, err)
-
-	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgapb.AuthorizationModel{},
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
-		),
-	}
 
 	models, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 1,
@@ -143,7 +123,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 
 		oldModel := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion10,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -160,7 +140,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 
 		newModel := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion10,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -196,7 +176,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		store := id.Must(id.New()).String()
 		model := &openfgapb.AuthorizationModel{
 			Id:            id.Must(id.New()).String(),
-			SchemaVersion: "1.0",
+			SchemaVersion: typesystem.SchemaVersion10,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -216,16 +196,6 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		typeDef, err := datastore.ReadTypeDefinition(ctx, store, model.Id, "folder")
 		require.NoError(t, err)
-
-		cmpOpts := []cmp.Option{
-			cmpopts.IgnoreUnexported(
-				openfgapb.AuthorizationModel{},
-				openfgapb.TypeDefinition{},
-				openfgapb.Userset{},
-				openfgapb.Userset_This{},
-				openfgapb.DirectUserset{},
-			),
-		}
 
 		if diff := cmp.Diff(model.TypeDefinitions[0], typeDef, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)

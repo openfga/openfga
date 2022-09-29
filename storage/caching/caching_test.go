@@ -7,6 +7,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -23,7 +24,7 @@ func TestCache(t *testing.T) {
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{typeDefinition},
 	}
 

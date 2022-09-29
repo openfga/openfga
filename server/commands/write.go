@@ -119,12 +119,15 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 
 	ts := typesystem.New(authModel)
 
-	typeDefinitionForObject := ts.TypeDefinitions[objectType]
-	typeDefinitionForUser := ts.TypeDefinitions[userType]
+	typeDefinitionForObject, ok := ts.GetTypeDefinition(objectType)
+	if !ok {
+		msg := fmt.Sprintf("type '%s' does not exist in the authorization model", objectType)
+		return serverErrors.NewInternalError(msg, errors.New(msg))
+	}
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 	if relationsForObject == nil {
-		if ts.Version == "1.1" {
+		if ts.GetVersion() == typesystem.SchemaVersion11 {
 			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
 			msg := "invalid authorization model"
 			return serverErrors.NewInternalError(msg, errors.New(msg))
@@ -135,9 +138,10 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 	}
 
 	// at this point we know the auth model has type information
-
-	if userType != "" && typeDefinitionForUser == nil {
-		return serverErrors.InvalidWriteInput
+	if userType != "" {
+		if _, ok := ts.GetTypeDefinition(userType); !ok {
+			return serverErrors.InvalidWriteInput
+		}
 	}
 
 	relationInformation := relationsForObject[tk.Relation]

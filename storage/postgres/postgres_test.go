@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -41,5 +42,5 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 
 	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
 	require.NoError(t, err)
-	require.Equal(t, "1.0", model.SchemaVersion)
+	require.Equal(t, typesystem.SchemaVersion10, model.SchemaVersion)
 }

@@ -35,12 +35,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	switch req.SchemaVersion {
-	case "", "1.0":
-		req.SchemaVersion = "1.0"
-	case "1.1":
-	default:
-		return nil, serverErrors.UnsupportedSchemaVersion
+	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
+	// In the future mark this field as required in the protobufs.
+	if req.SchemaVersion == "" {
+		req.SchemaVersion = typesystem.SchemaVersion10
 	}
 
 	id, err := id.NewString()

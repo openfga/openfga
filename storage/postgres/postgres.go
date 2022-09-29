@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -350,8 +351,8 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if version != "1.0" && version != "1.1" {
-		version = "1.0"
+	if version != typesystem.SchemaVersion10 && version != typesystem.SchemaVersion11 {
+		version = typesystem.SchemaVersion10
 		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:

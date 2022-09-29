@@ -9,6 +9,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -1178,7 +1179,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			store := id.Must(id.New()).String()
 			model := &openfgapb.AuthorizationModel{
 				Id:              id.Must(id.New()).String(),
-				SchemaVersion:   "1.0",
+				SchemaVersion:   typesystem.SchemaVersion10,
 				TypeDefinitions: test.typeDefinitions,
 			}
 
@@ -1311,7 +1312,7 @@ func TestCheckQueryAgainstGitHubModel(t *testing.T, datastore storage.OpenFGADat
 	store := id.Must(id.New()).String()
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
 	}
 
@@ -1507,7 +1508,7 @@ func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastor
 	storeID := id.Must(id.New()).String()
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
 	}
 
@@ -1551,7 +1552,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 
 	oldModel := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -1575,7 +1576,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 
 	updatedModel := &openfgapb.AuthorizationModel{
 		Id:            id.Must(id.New()).String(),
-		SchemaVersion: "1.0",
+		SchemaVersion: typesystem.SchemaVersion10,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -1642,7 +1643,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
 
@@ -1688,7 +1689,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
 

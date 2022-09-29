@@ -15,7 +15,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 		{
 			name: "empty relations",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -26,7 +26,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 		{
 			name: "zero length relations is valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type:      "repo",
@@ -55,7 +55,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "empty rewrites",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -70,7 +70,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in computedUserset",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -89,7 +89,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in union",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -119,7 +119,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in intersection",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -149,7 +149,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference base",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -177,7 +177,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: self reference in difference subtract",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -205,7 +205,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset to relation which does not exist",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -224,7 +224,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a union",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -254,7 +254,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a intersection",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -284,7 +284,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference base",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -312,7 +312,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: computedUserset in a difference subtract",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -340,7 +340,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where tupleset is not valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "group",
@@ -388,7 +388,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid relation: tupleToUserset where computed userset is not valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.0",
+				SchemaVersion: SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "group",
@@ -450,7 +450,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "succeeds on a valid typeSystem with an objectType type",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -478,7 +478,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "succeeds on a valid typeSystem with a type and type#relation type",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -563,7 +563,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "relational type which does not exist",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -589,7 +589,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "relation type of form type#relation where relation doesn't exist",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "group",
@@ -619,7 +619,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: this",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -636,7 +636,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: union",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -685,7 +685,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: intersection",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -734,7 +734,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference base",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -781,7 +781,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "assignable relation with no type: difference subtract",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -828,7 +828,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		{
 			name: "non-assignable relation with a type",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: "1.1",
+				SchemaVersion: SchemaVersion11,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",

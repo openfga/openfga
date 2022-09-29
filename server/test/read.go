@@ -8,6 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -32,7 +33,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -54,7 +55,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -78,7 +79,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -102,7 +103,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -127,7 +128,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -155,7 +156,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -179,7 +180,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -211,7 +212,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -247,7 +248,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -293,7 +294,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -349,7 +350,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -405,7 +406,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -467,7 +468,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -528,7 +529,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -588,7 +589,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",

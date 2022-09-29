@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -216,7 +217,7 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 
 	model := &openfgapb.AuthorizationModel{
 		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
+		SchemaVersion:   typesystem.SchemaVersion10,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
 	err = datastore.WriteAuthorizationModel(ctx, store, model)

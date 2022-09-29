@@ -6,6 +6,7 @@ import (
 
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -24,7 +25,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			storeID: id.Must(id.New()).String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -45,7 +46,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			storeID: id.Must(id.New()).String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            id.Must(id.New()).String(),
-				SchemaVersion: "1.0",
+				SchemaVersion: typesystem.SchemaVersion10,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -131,7 +132,7 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("writing without any type definitions doesn't write anything", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              id.Must(id.New()).String(),
-			SchemaVersion:   "1.0",
+			SchemaVersion:   typesystem.SchemaVersion10,
 			TypeDefinitions: []*openfgapb.TypeDefinition{},
 		}
 
