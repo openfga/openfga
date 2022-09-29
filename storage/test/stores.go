@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStore(t *testing.T, datastore storage.OpenFGADatastore) {
+func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
 
