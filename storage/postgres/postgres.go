@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -275,6 +276,28 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return &tupleIterator{rows: rows}, nil
 }
 
+func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	defer span.End()
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
+	var targetUsersArg []string
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		targetUsersArg = append(targetUsersArg, targetUser)
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	if err != nil {
+		return nil, handlePostgresError(err)
+	}
+
+	return &tupleIterator{rows: rows}, nil
+}
+
 func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
 	defer span.End()
@@ -439,32 +462,34 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 	return p.maxTypesInTypeDefinition
 }
 
-func (p *Postgres) WriteAuthorizationModel(
-	ctx context.Context,
-	store, modelID string,
-	schemaVersion typesystem.SchemaVersion,
-	tds []*openfgapb.TypeDefinition,
-) error {
+func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds) > p.MaxTypesInTypeDefinition() {
+	schemaVersion, err := typesystem.NewSchemaVersion(model.SchemaVersion)
+	if err != nil {
+		return err
+	}
+
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
 
 	inserts := &pgx.Batch{}
-	for _, td := range tds {
+	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
 		if err != nil {
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {
 		return tx.SendBatch(ctx, inserts).Close()
 	})
 	if err != nil {

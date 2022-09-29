@@ -13,7 +13,6 @@ import (
 	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
@@ -372,6 +371,42 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	return &staticIterator{tuples: matches}, nil
 }
 
+func (s *MemoryBackend) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+) (storage.TupleIterator, error) {
+	_, span := s.tracer.Start(ctx, "memory.ReadStartingWithUser")
+	defer span.End()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var matches []*openfgapb.Tuple
+	for _, t := range s.tuples[store] {
+		if tupleUtils.GetType(t.Key.GetObject()) != filter.ObjectType {
+			continue
+		}
+
+		if t.Key.GetRelation() != filter.Relation {
+			continue
+		}
+
+		for _, userFilter := range filter.UserFilter {
+			targetUser := userFilter.GetObject()
+			if userFilter.GetRelation() != "" {
+				targetUser = fmt.Sprintf("%s#%s", userFilter.GetObject(), userFilter.GetRelation())
+			}
+
+			if targetUser == t.Key.GetUser() {
+				matches = append(matches, t)
+			}
+		}
+
+	}
+	return &staticIterator{tuples: matches}, nil
+}
+
 // ReadByStore See storage.TupleBackend.ReadByStore
 func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadByStore")
@@ -567,7 +602,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
-func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id string, version typesystem.SchemaVersion, tds []*openfgapb.TypeDefinition) error {
+func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
@@ -582,12 +617,8 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store, id s
 		entry.latest = false
 	}
 
-	s.authorizationModels[store][id] = &AuthorizationModelEntry{
-		model: &openfgapb.AuthorizationModel{
-			SchemaVersion:   version.String(),
-			Id:              id,
-			TypeDefinitions: tds,
-		},
+	s.authorizationModels[store][model.Id] = &AuthorizationModelEntry{
+		model:  model,
 		latest: true,
 	}
 
