@@ -131,7 +131,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	)
 	if err != nil {
 		stopContainer()
-		t.Fatalf("failed to connect to postgres container: %v", err)
+		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)
