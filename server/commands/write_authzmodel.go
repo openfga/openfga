@@ -35,16 +35,26 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
+	switch req.SchemaVersion {
+	case "", "1.0":
+		req.SchemaVersion = "1.0"
+	case "1.1":
+	default:
+		return nil, serverErrors.UnsupportedSchemaVersion
+	}
+
 	id, err := id.NewString()
 	if err != nil {
 		return nil, err
 	}
 
-	model, err := typesystem.Validate(&openfgapb.AuthorizationModel{
+	model := &openfgapb.AuthorizationModel{
 		Id:              id,
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
-	})
+	}
+
+	err = typesystem.Validate(model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}

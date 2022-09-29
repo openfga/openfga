@@ -7,10 +7,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-var (
-	ErrInvalidSchemaVersion = errors.New("invalid schema version")
-	ErrDuplicateTypes       = errors.New("an authorization model cannot contain duplicate types")
-)
+var ErrDuplicateTypes = errors.New("an authorization model cannot contain duplicate types")
 
 type TypeSystem struct {
 	Version         string
@@ -81,9 +78,7 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	return r, nil
 }
 
-// Validate validates an *openfgapb.AuthorizationModel and returns it, populating SchemaVersion if empty.
-//
-// The following rules are validated:
+// Validate validates an *openfgapb.AuthorizationModel according to the following rules:
 //  1. For every rewrite the relations in the rewrite must:
 //     a. Be valid relations on the same type in the authorization model (in cases of computedUserset)
 //     b. Be valid relations on another existing type (in cases of tupleToUserset)
@@ -96,30 +91,22 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 //     a. For a type (e.g. user) this means checking that this type is in the TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func Validate(model *openfgapb.AuthorizationModel) (*openfgapb.AuthorizationModel, error) {
-	switch model.SchemaVersion {
-	case "", "1.0":
-		model.SchemaVersion = "1.0"
-	case "1.1":
-	default:
-		return nil, ErrInvalidSchemaVersion
-	}
-
+func Validate(model *openfgapb.AuthorizationModel) error {
 	if containsDuplicateType(model) {
-		return nil, ErrDuplicateTypes
+		return ErrDuplicateTypes
 	}
 
 	if err := validateRelationRewrites(model); err != nil {
-		return nil, err
+		return err
 	}
 
 	if model.GetSchemaVersion() == "1.1" {
 		if err := validateRelationTypeRestrictions(model); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return model, nil
+	return nil
 }
 
 func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {

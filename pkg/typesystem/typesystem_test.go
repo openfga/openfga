@@ -7,18 +7,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestValidateFillsInEmptySchemaVersion(t *testing.T) {
-	model, err := Validate(&openfgapb.AuthorizationModel{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, "1.0", model.SchemaVersion)
-}
-
 func TestSuccessfulRewriteValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
@@ -51,7 +39,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Validate(test.model)
+			err := Validate(test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -449,7 +437,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Validate(test.model)
+			err := Validate(test.model)
 			require.EqualError(t, err, test.err.Error())
 		})
 	}
@@ -560,7 +548,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Validate(test.model)
+			err := Validate(test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -884,7 +872,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := Validate(test.model)
+			err := Validate(test.model)
 			require.EqualError(t, err, test.err.Error())
 		})
 	}

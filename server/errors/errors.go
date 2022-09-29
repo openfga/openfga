@@ -23,6 +23,7 @@ var (
 	InvalidCheckInput                      = status.Error(codes.Code(openfgapb.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
 	InvalidExpandInput                     = status.Error(codes.Code(openfgapb.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
 	UnsupportedUserSet                     = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")
+	UnsupportedSchemaVersion               = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_schema_version), "Unsupported schema version")
 	StoreIDNotFound                        = status.Error(codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), "Store ID not found")
 	MismatchObjectType                     = status.Error(codes.Code(openfgapb.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
 	RequestCancelled                       = status.Error(codes.Code(openfgapb.InternalErrorCode_cancelled), "Request Cancelled")

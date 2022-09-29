@@ -122,24 +122,26 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 	}
 }
 
-func TestReadAuthorizationModelByIDAndTypeDefinitionsReturnsError(t *testing.T, datastore storage.OpenFGADatastore) {
+func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
+	storeID := id.Must(id.New()).String()
 
-	store := id.Must(id.New()).String()
-	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   "1.0",
-		TypeDefinitions: []*openfgapb.TypeDefinition{},
-	}
+	t.Run("writing without any type definitions doesn't write anything", func(t *testing.T) {
+		model := &openfgapb.AuthorizationModel{
+			Id:              id.Must(id.New()).String(),
+			SchemaVersion:   "1.0",
+			TypeDefinitions: []*openfgapb.TypeDefinition{},
+		}
 
-	err := datastore.WriteAuthorizationModel(ctx, store, model)
-	require.NoError(err)
+		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+		require.NoError(err)
 
-	_, err = commands.NewReadAuthorizationModelQuery(datastore, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
-		StoreId: store,
-		Id:      model.Id,
+		_, err = commands.NewReadAuthorizationModelQuery(datastore, logger).Execute(ctx, &openfgapb.ReadAuthorizationModelRequest{
+			StoreId: storeID,
+			Id:      model.Id,
+		})
+		require.ErrorContains(err, serverErrors.AuthorizationModelNotFound(model.Id).Error())
 	})
-	require.ErrorContains(err, serverErrors.AuthorizationModelNotFound(model.Id).Error())
 }
