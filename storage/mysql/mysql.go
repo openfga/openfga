@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -294,18 +295,18 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	ctx, span := m.tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	stmt := "SELECT type, type_definition FROM authorization_model WHERE store = ? AND authorization_model_id = ?"
+	stmt := "SELECT schema_version, type, type_definition FROM authorization_model WHERE store = ? AND authorization_model_id = ?"
 	rows, err := m.db.QueryContext(ctx, stmt, store, modelID)
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
 
+	var version typesystem.SchemaVersion
 	var typeDefs []*openfgapb.TypeDefinition
-
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&typeName, &marshalledTypeDef)
+		err = rows.Scan(&version, &typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handleMySQLError(err)
 		}
@@ -326,7 +327,18 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 		return nil, storage.ErrNotFound
 	}
 
+	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
+	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
+		version = typesystem.SchemaVersion1_0
+		_, err = m.db.ExecContext(ctx, "UPDATE authorization_model SET schema_version = ? WHERE store = ? AND authorization_model_id = ?", version, store, modelID)
+		if err != nil {
+			// Don't worry if we error, we'll update it lazily next time, but let's log:
+			m.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
+		}
+	}
+
 	return &openfgapb.AuthorizationModel{
+		SchemaVersion:   version.String(),
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -427,17 +439,18 @@ func (m *MySQL) MaxTypesInTypeDefinition() int {
 	return m.maxTypesInTypeDefinition
 }
 
-func (m *MySQL) WriteAuthorizationModel(
-	ctx context.Context,
-	store,
-	modelID string,
-	schemaVersion typesystem.SchemaVersion,
-	tds []*openfgapb.TypeDefinition,
-) error {
+func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	ctx, span := m.tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds) > m.MaxTypesInTypeDefinition() {
+	schemaVersion, err := typesystem.NewSchemaVersion(model.SchemaVersion)
+	if err != nil {
+		return err
+	}
+
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) > m.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesInTypeDefinition)
 	}
 
@@ -449,13 +462,13 @@ func (m *MySQL) WriteAuthorizationModel(
 	}
 	defer rollbackTx(ctx, tx, m.logger)
 
-	for _, typeDef := range tds {
+	for _, typeDef := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(typeDef)
 		if err != nil {
 			return err
 		}
 
-		_, err = tx.ExecContext(ctx, stmt, store, modelID, schemaVersion, typeDef.GetType(), marshalledTypeDef)
+		_, err = tx.ExecContext(ctx, stmt, store, model.Id, schemaVersion, typeDef.GetType(), marshalledTypeDef)
 		if err != nil {
 			return handleMySQLError(err)
 		}
@@ -684,6 +697,39 @@ func (m *MySQL) ReadChanges(
 	}
 
 	return changes, contToken, nil
+}
+
+func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadStartingWithUser")
+	defer span.End()
+
+	questionMarksArray := make([]string, 0)
+	for range opts.UserFilter {
+		questionMarksArray = append(questionMarksArray, "?")
+	}
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = ? AND object_type = ? AND relation = ? AND _user IN (" + strings.Join(questionMarksArray, ", ") + ")"
+
+	queryArgs := []any{
+		store,
+		opts.ObjectType,
+		opts.Relation,
+	}
+
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		queryArgs = append(queryArgs, targetUser)
+	}
+
+	rows, err := m.db.QueryContext(ctx, stmt, queryArgs...)
+	if err != nil {
+		return nil, handleMySQLError(err)
+	}
+
+	return &tupleIterator{rows: rows}, nil
 }
 
 // IsReady reports whether this MySQL datastore instance is ready
