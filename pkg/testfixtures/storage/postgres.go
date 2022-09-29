@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"testing"
@@ -68,13 +67,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
-		PortBindings: nat.PortMap{
-			"5432/tcp": []nat.PortBinding{},
-		},
 	}
 
-	ulid := id.Must(id.New()).String()
-	name := fmt.Sprintf("postgres-%s", ulid)
+	name := fmt.Sprintf("postgres-%s", id.Must(id.New()).String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")
@@ -148,12 +143,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}
 
-	db, err := sql.Open("pgx", uri)
-	require.NoError(t, err)
-
 	goose.SetLogger(goose.NopLogger())
 
-	err = goose.SetDialect("postgres")
+	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
 
 	goose.SetBaseFS(assets.EmbedMigrations)
