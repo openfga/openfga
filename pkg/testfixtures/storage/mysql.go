@@ -13,7 +13,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
@@ -58,10 +58,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 			nat.Port("3306/tcp"): {},
 		},
 		Image: mySQLImage,
-		Healthcheck: &container.HealthConfig{
-			Test:    []string{"CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=secret"},
-			Retries: 10,
-		},
 	}
 
 	hostCfg := container.HostConfig{
@@ -119,27 +115,26 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	uri := fmt.Sprintf("%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.creds, mySQLTestContainer.addr)
 
-	mySQLTestContainer.conn, err = sql.Open("mysql", uri)
+	err = mysql.SetLogger(goose.NopLogger())
 	require.NoError(t, err)
-
-	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 60 * time.Second
-
-	err = backoff.Retry(
-		func() error {
-			return mySQLTestContainer.conn.Ping()
-		},
-		backoffPolicy,
-	)
-	if err != nil {
-		stopContainer()
-		t.Fatalf("failed to connect to mysql container: %v", err)
-	}
 
 	goose.SetLogger(goose.NopLogger())
 
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
+
+	backoffPolicy := backoff.NewExponentialBackOff()
+	backoffPolicy.MaxElapsedTime = 30 * time.Second
+	err = backoff.Retry(
+		func() error {
+			return db.Ping()
+		},
+		backoffPolicy,
+	)
+	if err != nil {
+		stopContainer()
+		t.Fatalf("failed to connect to postgres container: %v", err)
+	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
