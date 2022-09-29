@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"testing"
@@ -25,7 +24,6 @@ const (
 )
 
 type mySQLTestContainer struct {
-	conn  *sql.DB
 	addr  string
 	creds string
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
@@ -29,7 +28,6 @@ var (
 )
 
 type postgresTestContainer struct {
-	conn  *pgx.Conn
 	addr  string
 	creds string
 }
