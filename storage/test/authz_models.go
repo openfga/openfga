@@ -14,6 +14,7 @@ import (
 )
 
 func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
+
 	ctx := context.Background()
 	storeID := id.Must(id.New()).String()
 

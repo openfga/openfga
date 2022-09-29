@@ -459,6 +459,36 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 }
 
+func ListObjectsByTypeTest(t *testing.T, ds storage.OpenFGADatastore) {
+
+	expected := []string{"document:doc1", "document:doc2"}
+	store := id.Must(id.New()).String()
+
+	err := ds.Write(context.Background(), store, nil, []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
+		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
+		tuple.NewTupleKey("document:doc2", "editor", "maria"),
+	})
+	require.NoError(t, err)
+
+	iter, err := ds.ListObjectsByType(context.Background(), store, "document")
+	require.NoError(t, err)
+
+	var actual []string
+	for {
+		obj, err := iter.Next()
+		if err != nil {
+			if err == storage.ErrIteratorDone {
+				break
+			}
+		}
+
+		actual = append(actual, tuple.ObjectKey(obj))
+	}
+
+	require.Equal(t, expected, actual)
+}
+
 func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
