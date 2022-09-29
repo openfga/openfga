@@ -17,6 +17,8 @@ type DatastoreTestContainer interface {
 // has finished.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
+	case "mysql":
+		return NewMySQLTestContainer().RunMySQLTestContainer(t)
 	case "postgres":
 		return NewPostgresTestContainer().RunPostgresTestContainer(t)
 	default:

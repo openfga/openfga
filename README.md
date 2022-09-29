@@ -173,11 +173,18 @@ Take a look at examples of how to:
 
 Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 
+## Limitations
+### MySQL Storage engine
+The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga#mysql-limitations)
+
+
 ## Production Readiness
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
+
+OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by @twintag. Auth0 is not using it in a production environment.
 
 The OpenFGA team will do its best to address all production issues with high priority.
 
