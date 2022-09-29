@@ -73,9 +73,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		},
 	}
 
-	ulid, err := id.NewString()
-	require.NoError(t, err)
-
+	ulid := id.Must(id.New()).String()
 	name := fmt.Sprintf("postgres-%s", ulid)
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)

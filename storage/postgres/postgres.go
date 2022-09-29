@@ -324,12 +324,12 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, handlePostgresError(err)
 	}
 
-	var version string
+	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&version, &typeName, &marshalledTypeDef)
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handlePostgresError(err)
 		}
@@ -351,9 +351,9 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
-		version = typesystem.SchemaVersion1_0
-		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
+	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
+		schemaVersion = typesystem.SchemaVersion1_0
+		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", schemaVersion, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
 			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
@@ -361,7 +361,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	return &openfgapb.AuthorizationModel{
-		SchemaVersion:   version,
+		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -466,7 +466,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	version := model.GetSchemaVersion()
+	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
@@ -482,7 +482,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 			return err
 		}
 
-		inserts.Queue(stmt, store, model.Id, version, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {

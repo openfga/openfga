@@ -70,9 +70,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		},
 	}
 
-	ulid, err := id.NewString()
-	require.NoError(t, err)
-
+	ulid := id.Must(id.New()).String()
 	name := fmt.Sprintf("mysql-%s", ulid)
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
