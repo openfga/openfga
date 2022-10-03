@@ -44,13 +44,27 @@ migrate-postgres: build
 run-postgres: build
 	./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
+.PHONY: start-mysql-container
+start-mysql-container: build
+	docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8
+	
+
+.PHONY: migrate-mysql
+migrate-mysql: build
+	# nosemgrep: detected-username-and-password-in-uri
+	./openfga migrate --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'
+
+.PHONY: run-mysql
+run-mysql: build
+	./openfga run --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'
+
 .PHONY: go-generate
 go-generate: install-tools
 	go generate ./...
 
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
-	go test $(gotest_extra_flags) -v \
+	go test $(gotest_extra_flags) -race -v \
 			-coverprofile=coverageunit.out \
 			-coverpkg=$(COVERPKG) \
 			-covermode=atomic -race \

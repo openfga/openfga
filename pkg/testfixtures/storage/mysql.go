@@ -12,7 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
@@ -20,32 +20,28 @@ import (
 )
 
 const (
-	postgresImage = "postgres:14"
+	mySQLImage = "mysql:latest"
 )
 
-var (
-	expireTimeout = 60 * time.Second
-)
-
-type postgresTestContainer struct {
+type mySQLTestContainer struct {
 	addr  string
 	creds string
 }
 
-// NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
-// for Postgres.
-func NewPostgresTestContainer() *postgresTestContainer {
-	return &postgresTestContainer{}
+// NewMySQLTestContainer returns an implementation of the DatastoreTestContainer interface
+// for MySQL.
+func NewMySQLTestContainer() *mySQLTestContainer {
+	return &mySQLTestContainer{}
 }
 
-// RunPostgresTestContainer runs a Postgres container, connects to it, and returns a
+// RunMySQLTestContainer runs a MySQL container, connects to it, and returns a
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
-// Postgres datastore engine.
-func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
+// MySQL datastore engine.
+func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
 
-	reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+	reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
 	require.NoError(t, err)
 
 	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
@@ -53,13 +49,13 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	containerCfg := container.Config{
 		Env: []string{
-			"POSTGRES_DB=defaultdb",
-			"POSTGRES_PASSWORD=secret",
+			"MYSQL_DATABASE=defaultdb",
+			"MYSQL_ROOT_PASSWORD=secret",
 		},
 		ExposedPorts: nat.PortSet{
-			nat.Port("5432/tcp"): {},
+			nat.Port("3306/tcp"): {},
 		},
-		Image: postgresImage,
+		Image: mySQLImage,
 	}
 
 	hostCfg := container.HostConfig{
@@ -67,10 +63,10 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		PublishAllPorts: true,
 	}
 
-	name := fmt.Sprintf("postgres-%s", id.Must(id.New()).String())
+	name := fmt.Sprintf("mysql-%s", id.Must(id.New()).String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
-	require.NoError(t, err, "failed to create postgres docker container")
+	require.NoError(t, err, "failed to create mysql docker container")
 
 	stopContainer := func() {
 
@@ -78,22 +74,22 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, &timeout)
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to stop postgres container: %v", err)
+			t.Fatalf("failed to stop mysql container: %v", err)
 		}
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
 	if err != nil {
 		stopContainer()
-		t.Fatalf("failed to start postgres container: %v", err)
+		t.Fatalf("failed to start mysql container: %v", err)
 	}
 
 	containerJSON, err := dockerClient.ContainerInspect(context.Background(), cont.ID)
 	require.NoError(t, err)
 
-	m, ok := containerJSON.NetworkSettings.Ports["5432/tcp"]
-	if !ok || len(m) == 0 {
-		t.Fatalf("failed to get host port mapping from postgres container")
+	p, ok := containerJSON.NetworkSettings.Ports["3306/tcp"]
+	if !ok || len(p) == 0 {
+		t.Fatalf("failed to get host port mapping from mysql container")
 	}
 
 	// spin up a goroutine to survive any test panics to expire/stop the running container
@@ -102,7 +98,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, nil)
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to expire postgres container: %v", err)
+			t.Fatalf("failed to expire mysql container: %v", err)
 		}
 	}()
 
@@ -110,16 +106,19 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		stopContainer()
 	})
 
-	pgTestContainer := &postgresTestContainer{
-		addr:  fmt.Sprintf("localhost:%s", m[0].HostPort),
-		creds: "postgres:secret",
+	mySQLTestContainer := &mySQLTestContainer{
+		addr:  fmt.Sprintf("localhost:%s", p[0].HostPort),
+		creds: "root:secret",
 	}
 
-	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", pgTestContainer.creds, pgTestContainer.addr)
+	uri := fmt.Sprintf("%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.creds, mySQLTestContainer.addr)
+
+	err = mysql.SetLogger(goose.NopLogger())
+	require.NoError(t, err)
 
 	goose.SetLogger(goose.NopLogger())
 
-	db, err := goose.OpenDBWithDriver("pgx", uri)
+	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
@@ -132,23 +131,23 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	)
 	if err != nil {
 		stopContainer()
-		t.Fatalf("failed to connect to postgres container: %v", err)
+		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
-	err = goose.Up(db, assets.PostgresMigrationDir)
+	err = goose.Up(db, assets.MySQLMigrationDir)
 	require.NoError(t, err)
 
-	return pgTestContainer
+	return mySQLTestContainer
 }
 
-// GetConnectionURI returns the postgres connection uri for the running postgres test container.
-func (p *postgresTestContainer) GetConnectionURI() string {
+// GetConnectionURI returns the mysql connection uri for the running mysql test container.
+func (m *mySQLTestContainer) GetConnectionURI() string {
 	return fmt.Sprintf(
-		"postgres://%s@%s/%s?sslmode=disable",
-		p.creds,
-		p.addr,
+		"%s@tcp(%s)/%s?parseTime=true",
+		m.creds,
+		m.addr,
 		"defaultdb",
 	)
 }

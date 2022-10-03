@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -275,6 +276,28 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return &tupleIterator{rows: rows}, nil
 }
 
+func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	defer span.End()
+
+	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
+	var targetUsersArg []string
+	for _, u := range opts.UserFilter {
+		targetUser := u.GetObject()
+		if u.GetRelation() != "" {
+			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		}
+		targetUsersArg = append(targetUsersArg, targetUser)
+	}
+
+	rows, err := p.pool.Query(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	if err != nil {
+		return nil, handlePostgresError(err)
+	}
+
+	return &tupleIterator{rows: rows}, nil
+}
+
 func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
 	defer span.End()
@@ -301,12 +324,12 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, handlePostgresError(err)
 	}
 
-	var version typesystem.SchemaVersion
+	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&version, &typeName, &marshalledTypeDef)
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
 		if err != nil {
 			return nil, handlePostgresError(err)
 		}
@@ -328,9 +351,9 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if version != typesystem.SchemaVersion1_0 && version != typesystem.SchemaVersion1_1 {
-		version = typesystem.SchemaVersion1_0
-		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", version, store, modelID)
+	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
+		schemaVersion = typesystem.SchemaVersion1_0
+		_, err = p.pool.Exec(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", schemaVersion, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
 			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
@@ -338,7 +361,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	return &openfgapb.AuthorizationModel{
-		SchemaVersion:   version.String(),
+		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
@@ -439,29 +462,27 @@ func (p *Postgres) MaxTypesInTypeDefinition() int {
 	return p.maxTypesInTypeDefinition
 }
 
-func (p *Postgres) WriteAuthorizationModel(
-	ctx context.Context,
-	store, modelID string,
-	schemaVersion typesystem.SchemaVersion,
-	tds []*openfgapb.TypeDefinition,
-) error {
+func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	if len(tds) > p.MaxTypesInTypeDefinition() {
+	schemaVersion := model.GetSchemaVersion()
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)"
 
 	inserts := &pgx.Batch{}
-	for _, td := range tds {
+	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
 		if err != nil {
 			return err
 		}
 
-		inserts.Queue(stmt, store, modelID, schemaVersion, td.GetType(), marshalledTypeDef)
+		inserts.Queue(stmt, store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
 	err := pgx.BeginFunc(ctx, p.pool, func(tx pgx.Tx) error {

@@ -35,18 +35,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
 	}
 
-	schemaVersion, err := typesystem.NewSchemaVersion(req.GetSchemaVersion())
-	if err != nil {
-		return nil, serverErrors.UnsupportedSchemaVersion
-	}
-
-	typeSystem := typesystem.NewTypeSystem(schemaVersion, req.GetTypeDefinitions())
-	if len(typeSystem.TypeDefinitions) != len(req.GetTypeDefinitions()) {
-		return nil, serverErrors.CannotAllowDuplicateTypesInOneRequest
-	}
-
-	if err := typeSystem.Validate(); err != nil {
-		return nil, serverErrors.InvalidAuthorizationModelInput(err)
+	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
+	// In the future mark this field as required in the protobufs.
+	if req.SchemaVersion == "" {
+		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
 	id, err := id.NewString()
@@ -54,8 +46,20 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, err
 	}
 
+	model := &openfgapb.AuthorizationModel{
+		Id:              id,
+		SchemaVersion:   req.GetSchemaVersion(),
+		TypeDefinitions: req.GetTypeDefinitions(),
+	}
+
+	err = typesystem.Validate(model)
+	if err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
+	}
+
 	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
-	if err := w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), id, schemaVersion, typeSystem.GetTypeDefinitions()); err != nil {
+	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
+	if err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}
 

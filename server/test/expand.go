@@ -20,9 +20,13 @@ import (
 )
 
 func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
-	modelID := id.Must(id.New()).String()
+	model := &openfgapb.AuthorizationModel{
+		Id:              id.Must(id.New()).String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: typeDefinitions,
+	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, typesystem.SchemaVersion1_0, typeDefinitions); err != nil {
+	if err := datastore.WriteAuthorizationModel(ctx, store, model); err != nil {
 		return "", err
 	}
 
@@ -30,7 +34,7 @@ func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore
 		return "", err
 	}
 
-	return modelID, nil
+	return model.Id, nil
 }
 
 func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {

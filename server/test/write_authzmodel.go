@@ -15,7 +15,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
+func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID, err := id.NewString()
 	require.NoError(t, err)
 
@@ -151,7 +151,7 @@ func TestWriteAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.CannotAllowDuplicateTypesInOneRequest,
+			err: errors.InvalidAuthorizationModelInput(typesystem.ErrDuplicateTypes),
 		},
 		{
 			name: "ExecuteWriteFailsIfEmptyRewrites",

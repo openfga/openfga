@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -114,6 +115,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
 func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset) error {
 	if rc.metadata.AddResolve() >= query.resolveNodeLimit {
+		query.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
 	ctx, span := query.tracer.Start(ctx, "resolveNode")

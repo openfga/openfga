@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
+	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc"
@@ -35,7 +36,7 @@ var (
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 
-	// Engine is the datastore engine to use (e.g. 'memory', 'postgres')
+	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
 	Engine string
 	URI    string
 
@@ -290,6 +291,16 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+	case "mysql":
+		opts := []mysql.MySQLOption{
+			mysql.WithLogger(logger),
+			mysql.WithTracer(tracer),
+		}
+
+		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
+		if err != nil {
+			return nil, errors.Errorf("failed to initialize mysql datastore: %v", err)
+		}
 	case "postgres":
 		opts := []postgres.PostgresOption{
 			postgres.WithLogger(logger),
