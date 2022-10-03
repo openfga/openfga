@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/Masterminds/squirrel v1.5.3
-	github.com/MicahParks/keyfunc v1.2.2
+	github.com/MicahParks/keyfunc v1.4.0
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/docker/docker v20.10.18+incompatible
 	github.com/docker/go-connections v0.4.0
