@@ -532,6 +532,117 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
+		{
+			name: "Execute_Write_Fails_If_Recursive_Definition_For_A_Relation",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {
+								Userset: &openfgapb.Userset_TupleToUserset{
+									TupleToUserset: &openfgapb.TupleToUserset{
+										Tupleset:        &openfgapb.ObjectRelation{Relation: "viewer"},
+										ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Recursive_Definitions_For_A_Type",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": {
+								Userset: &openfgapb.Userset_ComputedUserset{
+									ComputedUserset: &openfgapb.ObjectRelation{
+										Relation: "writer",
+									},
+								},
+							},
+							"writer": {
+								Userset: &openfgapb.Userset_ComputedUserset{
+									ComputedUserset: &openfgapb.ObjectRelation{
+										Relation: "reader",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			//TODO
+			//err: errors.InvalidAuthorizationModelInput(typesystem.InvalidTypeError("repo")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Using_This_As_Relation_Name",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"this": {Userset: &openfgapb.Userset_This{}},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "this")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Using_Self_As_Relation_Name",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"self": {Userset: &openfgapb.Userset_This{}},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "self")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Using_This_As_Type_Name",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "this",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {Userset: &openfgapb.Userset_This{}},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidTypeError("this")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Using_Self_As_Type_Name",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "self",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": {Userset: &openfgapb.Userset_This{}},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidTypeError("self")),
+		},
 	}
 
 	ctx := context.Background()

@@ -115,6 +115,10 @@ func Validate(model *openfgapb.AuthorizationModel) error {
 		return ErrDuplicateTypes
 	}
 
+	if err := validateNames(model); err != nil {
+		return err
+	}
+
 	if err := validateRelationRewrites(model); err != nil {
 		return err
 	}
@@ -138,6 +142,21 @@ func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
 		seen[objectType] = struct{}{}
 	}
 	return false
+}
+
+func validateNames(model *openfgapb.AuthorizationModel) error {
+	for _, td := range model.TypeDefinitions {
+		objectType := td.GetType()
+		if objectType == "self" || objectType == "this" {
+			return InvalidTypeError(objectType)
+		}
+		for relation := range td.GetRelations() {
+			if relation == "self" || relation == "this" {
+				return InvalidRelationError(objectType, relation)
+			}
+		}
+	}
+	return nil
 }
 
 func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
@@ -192,6 +211,10 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
 		if _, ok := allRelations[computedUserset]; !ok {
 			return RelationDoesNotExistError("", computedUserset)
+		}
+
+		if relation == tupleset && relation == computedUserset {
+			return InvalidRelationError(objectType, relation)
 		}
 	case *openfgapb.Userset_Union:
 		for _, child := range t.Union.GetChild() {
@@ -299,8 +322,8 @@ func InvalidRelationError(objectType, relation string) error {
 	return errors.Errorf("the definition of relation '%s' in object type '%s' is invalid", relation, objectType)
 }
 
-func ObjectTypeDoesNotExistError(objectType string) error {
-	return errors.Errorf("object type '%s' does not exist", objectType)
+func InvalidTypeError(objectType string) error {
+	return errors.Errorf("object type '%s' is invalid", objectType)
 }
 
 // RelationDoesNotExistError may have an empty objectType, but must have a relation
