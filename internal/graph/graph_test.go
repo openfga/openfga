@@ -11,12 +11,11 @@ import (
 func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 
 	tests := []struct {
-		name              string
-		model             *openfgapb.AuthorizationModel
-		targetUserRef     *openfgapb.RelationReference
-		targetObjectRef   *openfgapb.RelationReference
-		expectedIngresses []*RelationshipIngress
-		expectedError     error
+		name     string
+		model    *openfgapb.AuthorizationModel
+		target   *openfgapb.RelationReference
+		source   *openfgapb.RelationReference
+		expected []*RelationshipIngress
 	}{
 		{
 			name: "Direct ingress through ComputedUserset with multiple type restrictions",
@@ -60,9 +59,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("document", "editor"),
@@ -98,9 +97,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("document", "editor"),
@@ -171,9 +170,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("document", "viewer"),
@@ -237,9 +236,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("document", "viewer"),
@@ -295,9 +294,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("team", "member"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("team", "member"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("group", "member"),
@@ -328,9 +327,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:     typesystem.RelationReference("user", ""),
-			targetObjectRef:   typesystem.RelationReference("team", "member"),
-			expectedIngresses: []*RelationshipIngress{},
+			target:   typesystem.RelationReference("team", "member"),
+			source:   typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{},
 		},
 		{
 			name: "",
@@ -388,9 +387,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("user", ""),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("folder", "viewer"),
@@ -457,9 +456,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("group", "member"),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("group", "member"),
+			expected: []*RelationshipIngress{
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.RelationReference("folder", "viewer"),
@@ -522,13 +521,13 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			targetUserRef:   typesystem.RelationReference("folder", "viewer"),
-			targetObjectRef: typesystem.RelationReference("document", "viewer"),
-			expectedIngresses: []*RelationshipIngress{
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("folder", "viewer"),
+			expected: []*RelationshipIngress{
 				{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.RelationReference("document", "viewer"),
-					TuplesetRelation: &openfgapb.RelationReference{Type: "document", Relation: "parent"},
+					TuplesetRelation: typesystem.RelationReference("document", "parent"),
 				},
 			},
 		},
@@ -536,14 +535,18 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := typesystem.NewTypeSystem(typesystem.SchemaVersion1_1, test.model.TypeDefinitions)
+			typesys := typesystem.New(test.model)
 
-			objGraph := BuildConnectedObjectGraph(typesys)
+			g := BuildConnectedObjectGraph(typesys)
 
-			ingresses, err := objGraph.RelationshipIngresses(test.targetUserRef, test.targetObjectRef)
-			require.ErrorIs(t, err, test.expectedError)
+			ingresses, err := g.RelationshipIngresses(test.target, test.source)
+			require.NoError(t, err)
 
-			require.Equal(t, test.expectedIngresses, ingresses)
+			//for _, i := range ingresses {
+			//	fmt.Println(">>>", i)
+			//}
+
+			require.ElementsMatch(t, test.expected, ingresses)
 		})
 	}
 }
