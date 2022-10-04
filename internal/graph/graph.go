@@ -1,8 +1,6 @@
 package graph
 
 import (
-	"fmt"
-
 	"github.com/openfga/openfga/pkg/typesystem"
 
 	"github.com/go-errors/errors"
@@ -125,13 +123,8 @@ func (g *ConnectedObjectGraph) relationshipIngressesHelper(target *openfgapb.Rel
 		relatedUserTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 		var res []*RelationshipIngress
 
-		fmt.Println("tupleset", tupleset, computedUserset)
-		fmt.Println("tupleset types", tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes())
-		fmt.Println("source", source.GetType())
-		fmt.Println("contains", contains(tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes(), &openfgapb.RelationReference{Type: source.GetType()}))
-
 		// We need to check if this is a tuple-to-userset rewrite
-		// parent: [folder#viewer] or parent: [folder]
+		// parent: [folder#viewer] or parent: [folder]... I need to make better comments
 		if contains(tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes(), source) || contains(tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes(), &openfgapb.RelationReference{Type: source.GetType()}) {
 			res = append(res, &RelationshipIngress{
 				Type: TupleToUsersetIngress,
