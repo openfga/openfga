@@ -280,6 +280,28 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 					}
 				}
 			}
+			// forbid the following model because `viewer` is a cycle
+			// type folder
+			//	 relations
+			//		define parent: [folder] as self
+			//		define viewer as viewer from parent
+
+			switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
+			case *openfgapb.Userset_TupleToUserset:
+				// define viewer as viewer from parent
+				if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == name {
+					tupleSetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
+					tupleSetRelation, ok := t.GetRelation(objectType, tupleSetRelationName)
+					// define parent: [folder] as self
+					if ok && len(tupleSetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tupleSetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
+						switch tupleSetRelation.GetRewrite().Userset.(type) {
+						case *openfgapb.Userset_This:
+							return InvalidRelationError(objectType, name)
+						}
+
+					}
+				}
+			}
 		}
 	}
 

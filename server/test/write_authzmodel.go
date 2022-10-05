@@ -643,6 +643,39 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidTypeError("self")),
 		},
+		{
+			name: "Execute_Write_Fails_If_Auth_Model_1.1_Has_A_Cycle",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId:       storeID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": {Userset: &openfgapb.Userset_This{}},
+							"viewer": {Userset: &openfgapb.Userset_TupleToUserset{
+								TupleToUserset: &openfgapb.TupleToUserset{
+									Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+									ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+								},
+							}},
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "folder",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("folder", "viewer")),
+		},
 	}
 
 	ctx := context.Background()
