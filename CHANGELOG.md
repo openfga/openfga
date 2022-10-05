@@ -14,6 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Support for MySQL storage backend (#210) (by @MidasLamb)
 * Support for type restrictions in authorization models (#223)
 * Tuple validation against type restrictions in Write API (#232)
+* Upgraded the Postgres storage backend to use pgx v5 (#225)
 
 ### Fixed
 * Close database connections after migration (#252)
