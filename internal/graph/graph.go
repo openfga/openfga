@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrToFix          = errors.New("TODO: this should never actually fail so what to say")
-	ErrNotImplemented = errors.New("intersection and exclusion are not yet implemented")
+	ErrTargetError    = errors.New("graph: target incorrectly specified")
+	ErrNotImplemented = errors.New("graph: intersection and exclusion are not yet implemented")
 )
 
 // RelationshipIngressType is used to define an enum of the type of ingresses between
@@ -61,7 +61,7 @@ func BuildConnectedObjectGraph(typesystem *typesystem.TypeSystem) *ConnectedObje
 func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
 	relation, ok := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
 	if !ok {
-		return nil, ErrToFix
+		return nil, ErrTargetError
 	}
 	relatedUserTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 
@@ -117,7 +117,7 @@ func (g *ConnectedObjectGraph) relationshipIngressesHelper(target *openfgapb.Rel
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
 		tuplesetRelation, ok := g.typesystem.GetRelation(target.GetType(), tupleset)
 		if !ok {
-			return nil, ErrToFix
+			return nil, ErrTargetError
 		}
 
 		relatedUserTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
