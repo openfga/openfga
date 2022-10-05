@@ -304,6 +304,48 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
+			name: "Cyclical parent/child definition",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.Union(
+								typesystem.This(),
+								typesystem.TupleToUserset("parent", "viewer"),
+							),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("folder", ""),
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.RelationReference("folder", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.RelationReference("folder", "viewer"),
+				},
+			},
+		},
+		{
 			name: "No graph relationship connectivity",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -528,6 +570,59 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.RelationReference("document", "viewer"),
 					TuplesetRelation: typesystem.RelationReference("document", "parent"),
+				},
+			},
+		},
+		{
+			name: "Undefined relation on one type involved in a tuple to userset",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "organization",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.TupleToUserset("parent", "viewer"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("folder", ""),
+										typesystem.RelationReference("organization", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.RelationReference("document", "viewer"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.RelationReference("folder", "viewer"),
 				},
 			},
 		},
