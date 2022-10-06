@@ -8,7 +8,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 ### Added
-* Support for MySQL storage backend (#210) (by @MidasLamb)
+
+## [0.2.3] - 2022-10-05
+### Added
+* Support for MySQL storage backend (#210). Thank you @MidasLamb!
+* Allow specification of type restrictions in authorization models (#223). Note: Type restriction is not enforced yet, this just allows storing them.
+* Tuple validation against type restrictions in Write API (#232)
+* Upgraded the Postgres storage backend to use pgx v5 (#225)
+
+### Fixed
+* Close database connections after migration (#252)
+* Race condition in streaming ListObjects (#255, #256)
+
 
 ## [0.2.2] - 2022-09-15
 ### Fixed
@@ -138,7 +149,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
 [0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
 [0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1
 [0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
