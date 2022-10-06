@@ -11,14 +11,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [0.2.3] - 2022-10-05
 ### Added
-* Support for MySQL storage backend (#210) (by @MidasLamb)
-* Support for type restrictions in authorization models (#223)
+* Support for MySQL storage backend (#210) Thank you @MidasLamb!
+* Allow indicating user type to restrict in authorization models (#223) - Note: Type restriction is not enforced yet, this just allows storing them.
 * Tuple validation against type restrictions in Write API (#232)
 * Upgraded the Postgres storage backend to use pgx v5 (#225)
 
 ### Fixed
 * Close database connections after migration (#252)
-* Race condition in streaming ListObjects tests (#255)
+* Race condition in streaming ListObjects (#255, #256)
 
 
 ## [0.2.2] - 2022-09-15
