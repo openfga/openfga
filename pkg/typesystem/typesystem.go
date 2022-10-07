@@ -129,6 +129,10 @@ func Validate(model *openfgapb.AuthorizationModel) error {
 		}
 	}
 
+	if err := ensureNoCycles(model); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -280,25 +284,47 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 					}
 				}
 			}
-			// forbid the following model because `viewer` is a cycle
-			// type folder
-			//	 relations
-			//		define parent: [folder] as self
-			//		define viewer as viewer from parent
 
+		}
+	}
+
+	return nil
+}
+
+// ensureNoCycles throws an error on the following model because `viewer` is a cycle.
+// type folder
+//
+//	 relations
+//		define parent: [folder] as self
+//		define viewer as viewer from parent
+//
+// and
+//
+// type folder
+//
+//	 relations
+//		define parent as self
+//		define viewer as viewer from parent
+func ensureNoCycles(model *openfgapb.AuthorizationModel) error {
+	ts := New(model)
+	for objectType := range ts.typeDefinitions {
+		relations, ok := ts.GetRelations(objectType)
+		if !ok {
+			return InvalidRelationError(objectType, "")
+		}
+		for relationName, relation := range relations {
 			switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
 			case *openfgapb.Userset_TupleToUserset:
 				// define viewer as viewer from parent
-				if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == name {
-					tupleSetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
-					tupleSetRelation, ok := t.GetRelation(objectType, tupleSetRelationName)
+				if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
+					tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
+					tuplesetRelation, ok := ts.GetRelation(objectType, tuplesetRelationName)
 					// define parent: [folder] as self
-					if ok && len(tupleSetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tupleSetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
-						switch tupleSetRelation.GetRewrite().Userset.(type) {
+					if ok {
+						switch tuplesetRelation.GetRewrite().Userset.(type) {
 						case *openfgapb.Userset_This:
-							return InvalidRelationError(objectType, name)
+							return InvalidRelationError(objectType, relationName)
 						}
-
 					}
 				}
 			}

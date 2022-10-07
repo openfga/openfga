@@ -555,35 +555,6 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 		{
-			name: "Execute_Write_Fails_If_Recursive_Definitions_For_A_Type",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {
-								Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "writer",
-									},
-								},
-							},
-							"writer": {
-								Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "reader",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			//TODO
-			//err: errors.InvalidAuthorizationModelInput(typesystem.InvalidTypeError("repo")),
-		},
-		{
 			name: "Execute_Write_Fails_If_Using_This_As_Relation_Name",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -670,6 +641,28 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 									},
 								},
 							},
+						},
+					},
+				},
+			},
+			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("folder", "viewer")),
+		},
+		{
+			name: "Execute_Write_Fails_If_Auth_Model_1.0_Has_A_Cycle",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId:       storeID,
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": {Userset: &openfgapb.Userset_This{}},
+							"viewer": {Userset: &openfgapb.Userset_TupleToUserset{
+								TupleToUserset: &openfgapb.TupleToUserset{
+									Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
+									ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+								},
+							}},
 						},
 					},
 				},
