@@ -269,14 +269,12 @@ func (s *service) Run(ctx context.Context) error {
 	return s.server.Run(ctx)
 }
 
-// GetHTTPPort returns the configured or auto-assigned port that the underlying HTTP service is running
-// on.
+// GetHTTPAddrPort returns the configured or auto-assigned port that the underlying HTTP service is running on.
 func (s *service) GetHTTPAddrPort() netip.AddrPort {
 	return s.httpAddr
 }
 
-// GetGRPCPort returns the configured or auto-assigned port that the underlying grpc service is running
-// on.
+// GetGRPCAddrPort returns the configured or auto-assigned port that the underlying grpc service is running on.
 func (s *service) GetGRPCAddrPort() netip.AddrPort {
 	return s.grpcAddr
 }
