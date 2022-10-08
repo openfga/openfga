@@ -89,7 +89,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 
 	pool, err := pgxpool.New(context.Background(), uri)
 	if err != nil {
-		return nil, err
+		return nil, errors.Errorf("failed to connect to Postgres: %v", err)
 	}
 
 	policy := backoff.NewExponentialBackOff()
