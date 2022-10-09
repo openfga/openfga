@@ -87,13 +87,16 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
 	}
 
+	pool, err := pgxpool.New(context.Background(), uri)
+	if err != nil {
+		return nil, errors.Errorf("failed to connect to Postgres: %v", err)
+	}
+
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
-	var pool *pgxpool.Pool
 	attempt := 1
-	err := backoff.Retry(func() error {
-		var err error
-		pool, err = pgxpool.New(context.Background(), uri)
+	err = backoff.Retry(func() error {
+		err = pool.Ping(context.Background())
 		if err != nil {
 			p.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
 			attempt++
