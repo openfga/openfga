@@ -164,7 +164,7 @@ func run(_ *cobra.Command, _ []string) {
 
 		g.Go(func() error {
 
-			var errCh chan (error)
+			var errCh chan error
 
 			go func() {
 				err = playground.ListenAndServe()
@@ -228,9 +228,6 @@ func buildLogger(logFormat string) (logger.Logger, error) {
 func bindRunFlags(cmd *cobra.Command) {
 
 	defaultConfig := service.DefaultConfig()
-
-	cmd.Flags().Bool("grpc-enabled", defaultConfig.GRPC.Enabled, "enable/disable the OpenFGA grpc server")
-	cmdutil.MustBindPFlag("grpc.enabled", cmd.Flags().Lookup("grpc-enabled"))
 
 	cmd.Flags().String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 	cmdutil.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))

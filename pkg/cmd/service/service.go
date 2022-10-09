@@ -48,9 +48,8 @@ type DatastoreConfig struct {
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
 type GRPCConfig struct {
-	Enabled bool
-	Addr    string
-	TLS     TLSConfig
+	Addr string
+	TLS  TLSConfig
 }
 
 // HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
@@ -187,9 +186,8 @@ func DefaultConfig() *Config {
 			MaxCacheSize: 100000,
 		},
 		GRPC: GRPCConfig{
-			Enabled: true,
-			Addr:    "0.0.0.0:8081",
-			TLS:     TLSConfig{Enabled: false},
+			Addr: "0.0.0.0:8081",
+			TLS:  TLSConfig{Enabled: false},
 		},
 		HTTP: HTTPConfig{
 			Enabled:            true,
@@ -269,14 +267,12 @@ func (s *service) Run(ctx context.Context) error {
 	return s.server.Run(ctx)
 }
 
-// GetHTTPPort returns the configured or auto-assigned port that the underlying HTTP service is running
-// on.
+// GetHTTPAddrPort returns the configured or auto-assigned port that the underlying HTTP service is running on.
 func (s *service) GetHTTPAddrPort() netip.AddrPort {
 	return s.httpAddr
 }
 
-// GetGRPCPort returns the configured or auto-assigned port that the underlying grpc service is running
-// on.
+// GetGRPCAddrPort returns the configured or auto-assigned port that the underlying grpc service is running on.
 func (s *service) GetGRPCAddrPort() netip.AddrPort {
 	return s.grpcAddr
 }
