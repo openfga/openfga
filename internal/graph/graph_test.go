@@ -626,6 +626,40 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Nested group membership returns only top-level ingress",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "group",
+						Relations: map[string]*openfgapb.Userset{
+							"member": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("user", ""),
+										typesystem.RelationReference("group", "member"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.RelationReference("group", "member"),
+			source: typesystem.RelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.RelationReference("group", "member"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
