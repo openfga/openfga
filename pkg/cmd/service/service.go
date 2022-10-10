@@ -364,12 +364,30 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		middleware.NewErrorLoggingInterceptor(logger),
 	}
 
-	grpcAddr, err := netip.ParseAddrPort(config.GRPC.Addr)
+	grpcHostAddr, grpcHostPort, err := net.SplitHostPort(config.GRPC.Addr)
+	if err != nil {
+		return nil, errors.Errorf("`grpc.addr` config must be in the form [host]:port")
+	}
+
+	if grpcHostAddr == "" {
+		grpcHostAddr = "0.0.0.0"
+	}
+
+	grpcAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%s", grpcHostAddr, grpcHostPort))
 	if err != nil {
 		return nil, errors.Errorf("failed to parse the 'grpc.addr' config: %v", err)
 	}
 
-	httpAddr, err := netip.ParseAddrPort(config.HTTP.Addr)
+	httpHostAddr, httpHostPort, err := net.SplitHostPort(config.HTTP.Addr)
+	if err != nil {
+		return nil, errors.Errorf("`http.addr` config must be in the form [host]:port")
+	}
+
+	if httpHostAddr == "" {
+		httpHostAddr = "0.0.0.0"
+	}
+
+	httpAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%s", httpHostAddr, httpHostPort))
 	if err != nil {
 		return nil, errors.Errorf("failed to parse the 'http.addr' config: %v", err)
 	}
