@@ -159,6 +159,14 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	return r, true
 }
 
+func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) []*openfgapb.RelationReference {
+	if r, ok := t.GetRelation(objectType, relation); ok {
+		return r.GetTypeInfo().GetDirectlyRelatedUserTypes()
+	}
+
+	return nil
+}
+
 // IsDirectlyRelated determines whether the source RelationReference is a type of the target RelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) bool {
 	if relation, ok := t.GetRelation(target.GetType(), target.GetRelation()); ok {

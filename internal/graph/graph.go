@@ -73,10 +73,10 @@ func BuildConnectedObjectGraph(typesystem *typesystem.TypeSystem) *ConnectedObje
 //  1. If parent's types includes `folder` type, and `folder` contains `viewer` relation then this is exactly a ttu rewrite.
 //  2. Otherwise, suppose the types contains `objectType` which has a relation `viewer`, then recurse on `objectType#viewer, folder#viewer`
 func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
-	return g.relationshipIngressesHelper(target, source, map[string]struct{}{})
+	return g.findIngresses(target, source, map[string]struct{}{})
 }
 
-func (g *ConnectedObjectGraph) relationshipIngressesHelper(target *openfgapb.RelationReference, source *openfgapb.RelationReference, visited map[string]struct{}) ([]*RelationshipIngress, error) {
+func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference, visited map[string]struct{}) ([]*RelationshipIngress, error) {
 	key := fmt.Sprintf("%s#%s", target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
@@ -84,58 +84,54 @@ func (g *ConnectedObjectGraph) relationshipIngressesHelper(target *openfgapb.Rel
 	}
 	visited[key] = struct{}{}
 
-	var res []*RelationshipIngress
-
-	if ok := g.typesystem.IsDirectlyRelated(target, source); ok {
-		res = append(res, &RelationshipIngress{
-			Type: DirectIngress,
-			Ingress: &openfgapb.RelationReference{
-				Type:     target.GetType(),
-				Relation: target.GetRelation(),
-			},
-		})
-	}
-
 	relation, ok := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
 	if !ok {
 		return nil, ErrTargetError
 	}
 
-	for _, relatedUserType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if relatedUserType.GetRelation() != "" {
-			if ok := g.typesystem.IsDirectlyRelated(relatedUserType, source); ok {
-				key := fmt.Sprintf("%s#%s", relatedUserType.GetType(), relatedUserType.GetRelation())
-				if _, ok := visited[key]; ok {
-					continue
-				}
-				visited[key] = struct{}{}
-
-				res = append(res, &RelationshipIngress{
-					Type: DirectIngress,
-					Ingress: &openfgapb.RelationReference{
-						Type:     relatedUserType.GetType(),
-						Relation: relatedUserType.GetRelation(),
-					},
-				})
-			}
-		}
-	}
-
-	ingresses, err := g.relationshipIngressesResolveRewrite(target, source, relation.GetRewrite(), visited)
-	if err != nil {
-		return nil, err
-	}
-
-	return append(res, ingresses...), nil
+	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
 }
 
-// relationshipIngressesResolveRewrite is what we use for recursive calls on the rewrites
-func (g *ConnectedObjectGraph) relationshipIngressesResolveRewrite(target *openfgapb.RelationReference, source *openfgapb.RelationReference, rewrite *openfgapb.Userset, visited map[string]struct{}) ([]*RelationshipIngress, error) {
+// findIngressesWithRewrite is what we use for recursive calls on the rewrites, particularly union where we don't
+// update the target and source, and only the rewrite.
+func (g *ConnectedObjectGraph) findIngressesWithRewrite(target *openfgapb.RelationReference, source *openfgapb.RelationReference, rewrite *openfgapb.Userset, visited map[string]struct{}) ([]*RelationshipIngress, error) {
 	switch t := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
-		return []*RelationshipIngress{}, nil
+		var res []*RelationshipIngress
+
+		if ok := g.typesystem.IsDirectlyRelated(target, source); ok {
+			res = append(res, &RelationshipIngress{
+				Type: DirectIngress,
+				Ingress: &openfgapb.RelationReference{
+					Type:     target.GetType(),
+					Relation: target.GetRelation(),
+				},
+			})
+		}
+
+		for _, relatedUserType := range g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), target.GetRelation()) {
+			if relatedUserType.GetRelation() != "" {
+				if ok := g.typesystem.IsDirectlyRelated(relatedUserType, source); ok {
+					key := fmt.Sprintf("%s#%s", relatedUserType.GetType(), relatedUserType.GetRelation())
+					if _, ok := visited[key]; ok {
+						continue
+					}
+					visited[key] = struct{}{}
+
+					res = append(res, &RelationshipIngress{
+						Type: DirectIngress,
+						Ingress: &openfgapb.RelationReference{
+							Type:     relatedUserType.GetType(),
+							Relation: relatedUserType.GetRelation(),
+						},
+					})
+				}
+			}
+		}
+
+		return res, nil
 	case *openfgapb.Userset_ComputedUserset:
-		return g.relationshipIngressesHelper(&openfgapb.RelationReference{
+		return g.findIngresses(&openfgapb.RelationReference{
 			Type:     target.GetType(),
 			Relation: t.ComputedUserset.GetRelation(),
 		},
@@ -143,10 +139,6 @@ func (g *ConnectedObjectGraph) relationshipIngressesResolveRewrite(target *openf
 	case *openfgapb.Userset_TupleToUserset:
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
-		tuplesetRelation, ok := g.typesystem.GetRelation(target.GetType(), tupleset)
-		if !ok {
-			return nil, ErrTargetError
-		}
 
 		var res []*RelationshipIngress
 
@@ -170,9 +162,9 @@ func (g *ConnectedObjectGraph) relationshipIngressesResolveRewrite(target *openf
 			})
 		}
 
-		for _, relatedUserType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		for _, relatedUserType := range g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset) {
 			if _, ok := g.typesystem.GetRelation(relatedUserType.GetType(), computedUserset); ok {
-				subResults, err := g.relationshipIngressesHelper(&openfgapb.RelationReference{
+				subResults, err := g.findIngresses(&openfgapb.RelationReference{
 					Type:     relatedUserType.GetType(),
 					Relation: computedUserset,
 				}, source, visited)
@@ -187,7 +179,7 @@ func (g *ConnectedObjectGraph) relationshipIngressesResolveRewrite(target *openf
 	case *openfgapb.Userset_Union:
 		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
-			childResults, err := g.relationshipIngressesResolveRewrite(target, source, child, visited)
+			childResults, err := g.findIngressesWithRewrite(target, source, child, visited)
 			if err != nil {
 				return nil, err
 			}
