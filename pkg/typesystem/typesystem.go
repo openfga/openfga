@@ -159,6 +159,19 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	return r, true
 }
 
+// IsDirectlyRelated determines whether the source RelationReference is a type of the target RelationReference.
+func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) bool {
+	if relation, ok := t.GetRelation(target.GetType(), target.GetRelation()); ok {
+		for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if source.GetType() == relationReference.GetType() && source.GetRelation() == relationReference.GetRelation() {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // Validate validates an *openfgapb.AuthorizationModel according to the following rules:
 //  1. Checks that the model have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
