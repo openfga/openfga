@@ -167,7 +167,7 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) []
 	return nil
 }
 
-// IsDirectlyRelated determines whether the source RelationReference is a type of the target RelationReference.
+// IsDirectlyRelated determines whether the type of the target RelationReference contains the source RelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) bool {
 	if relation, ok := t.GetRelation(target.GetType(), target.GetRelation()); ok {
 		for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
