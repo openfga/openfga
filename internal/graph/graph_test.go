@@ -671,10 +671,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			ingresses, err := g.RelationshipIngresses(test.target, test.source)
 			require.NoError(t, err)
 
-			//for _, i := range ingresses {
-			//	fmt.Println(">>>", i)
-			//}
-
 			require.ElementsMatch(t, test.expected, ingresses)
 		})
 	}
