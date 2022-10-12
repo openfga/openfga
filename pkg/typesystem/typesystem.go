@@ -17,6 +17,75 @@ var (
 	ErrInvalidSchemaVersion = errors.New("invalid schema version")
 )
 
+func RelationReference(objectType, relation string) *openfgapb.RelationReference {
+	return &openfgapb.RelationReference{
+		Type:     objectType,
+		Relation: relation,
+	}
+}
+
+func This() *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_This{},
+	}
+}
+
+func ComputedUserset(relation string) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_ComputedUserset{
+			ComputedUserset: &openfgapb.ObjectRelation{
+				Relation: relation,
+			},
+		},
+	}
+}
+
+func TupleToUserset(tuplesetRelation, targetRelation string) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_TupleToUserset{
+			TupleToUserset: &openfgapb.TupleToUserset{
+				Tupleset: &openfgapb.ObjectRelation{
+					Relation: tuplesetRelation,
+				},
+				ComputedUserset: &openfgapb.ObjectRelation{
+					Relation: targetRelation,
+				},
+			},
+		},
+	}
+}
+
+func Union(children ...*openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Union{
+			Union: &openfgapb.Usersets{
+				Child: children,
+			},
+		},
+	}
+}
+
+func Intersection(children ...*openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Intersection{
+			Intersection: &openfgapb.Usersets{
+				Child: children,
+			},
+		},
+	}
+}
+
+func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.Userset {
+	return &openfgapb.Userset{
+		Userset: &openfgapb.Userset_Difference{
+			Difference: &openfgapb.Difference{
+				Base:     base,
+				Subtract: sub,
+			},
+		},
+	}
+}
+
 type TypeSystem struct {
 	schemaVersion   string
 	typeDefinitions map[string]*openfgapb.TypeDefinition
@@ -88,6 +157,27 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	}
 
 	return r, true
+}
+
+func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) []*openfgapb.RelationReference {
+	if r, ok := t.GetRelation(objectType, relation); ok {
+		return r.GetTypeInfo().GetDirectlyRelatedUserTypes()
+	}
+
+	return nil
+}
+
+// IsDirectlyRelated determines whether the type of the target RelationReference contains the source RelationReference.
+func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) bool {
+	if relation, ok := t.GetRelation(target.GetType(), target.GetRelation()); ok {
+		for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if source.GetType() == relationReference.GetType() && source.GetRelation() == relationReference.GetRelation() {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // Validate validates an *openfgapb.AuthorizationModel according to the following rules:
