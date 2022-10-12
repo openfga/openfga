@@ -374,7 +374,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			expected: []*RelationshipIngress{},
 		},
 		{
-			name: "",
+			name: "Test1",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -443,7 +443,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "",
+			name: "Test2",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -508,7 +508,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "",
+			name: "Test3",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
