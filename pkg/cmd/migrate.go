@@ -46,6 +46,8 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetLogger(goose.NopLogger())
 
 	switch engine {
+	case "memory":
+		return nil
 	case "mysql":
 		db, err := sql.Open("mysql", uri)
 		if err != nil {

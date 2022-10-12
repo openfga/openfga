@@ -109,11 +109,6 @@
         "grpc": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "Enables or disables the OpenFGA grpc server. If 'http.enabled' is set to true, then this must be set to true.",
-                    "type": "boolean",
-                    "default": true
-                },
                 "addr": {
                     "description": "The host:port address to serve the grpc server on.",
                     "type": "string",

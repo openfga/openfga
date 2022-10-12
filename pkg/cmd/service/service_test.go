@@ -739,10 +739,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), config.Datastore.MaxCacheSize)
 
-	val = res.Get("properties.grpc.properties.enabled.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.GRPC.Enabled)
-
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), config.GRPC.Addr)
