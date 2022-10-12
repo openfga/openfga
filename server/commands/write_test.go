@@ -117,13 +117,13 @@ func TestValidateWriteTuples(t *testing.T) {
 			name:          "write failure with invalid user",
 			deletes:       []*openfgapb.TupleKey{},
 			writes:        []*openfgapb.TupleKey{badItem},
-			expectedError: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", badItem),
+			expectedError: serverErrors.InvalidTuple("the 'user' field is invalid", badItem),
 		},
 		{
 			name:          "delete failure with invalid user",
 			deletes:       []*openfgapb.TupleKey{badItem},
 			writes:        []*openfgapb.TupleKey{},
-			expectedError: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", badItem),
+			expectedError: serverErrors.InvalidTuple("the 'user' field is invalid", badItem),
 		},
 	}
 

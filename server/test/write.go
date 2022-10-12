@@ -428,7 +428,7 @@ var writeCommandTests = []writeCommandTest{
 			}}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
+		err: serverErrors.InvalidTuple("the 'user' field is invalid", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",

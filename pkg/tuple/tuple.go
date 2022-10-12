@@ -121,7 +121,7 @@ func IsValidRelation(s string) bool {
 	return relationRegex.MatchString(s)
 }
 
-// IsValidUser determines if a string s is a valid user. A valid user contains at most one `:` and no `#` or spaces.
+// IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
