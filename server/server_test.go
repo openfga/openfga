@@ -19,6 +19,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
+	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/stretchr/testify/require"
 )
@@ -46,6 +47,16 @@ func TestOpenFGAServer(t *testing.T) {
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		test.RunAllTests(t, ds)
+	})
+
+	t.Run("TestMySQLDatastore", func(t *testing.T) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(t, err)
+
 		test.RunAllTests(t, ds)
 	})
 }
