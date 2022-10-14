@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -404,8 +403,8 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		relation = rc.tk.GetRelation()
 	}
 
-	findTK := tuple.NewTupleKey(rc.tk.GetObject(), relation, "")
-	objectType, _ := tuple.SplitObject(rc.tk.GetObject())
+	findTK := tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, "")
+	objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
 
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
 	iter, err := rc.read(ctx, query.datastore, findTK)
@@ -420,7 +419,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	c := make(chan *chanResolveResult)
 
 	for {
-		t, err := iter.Next()
+		tuple, err := iter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -432,7 +431,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			break // the user was resolved already, avoid launching extra lookups
 		}
 
-		userObj, userRel := tupleUtils.SplitObjectRelation(t.GetUser())
+		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
 
 		if userObj == Wildcard {
 			query.logger.WarnWithContext(
@@ -445,7 +444,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 
 			return serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
-				tuple.NewTupleKey(rc.tk.GetObject(), relation, Wildcard),
+				tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, Wildcard),
 			)
 		}
 
