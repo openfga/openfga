@@ -2,10 +2,12 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -21,7 +23,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const AllUsers = "*"
+const Wildcard = "*"
 
 // A CheckQuery can be used to Check if a User has a Relation to an Object
 // CheckQuery instances may be safely shared by multiple go-routines
@@ -401,7 +403,10 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	if relation == "" {
 		relation = rc.tk.GetRelation()
 	}
-	findTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}
+
+	findTK := tuple.NewTupleKey(rc.tk.GetObject(), relation, "")
+	objectType, _ := tuple.SplitObject(rc.tk.GetObject())
+
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
 	iter, err := rc.read(ctx, query.datastore, findTK)
 	if err != nil {
@@ -415,7 +420,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.Next()
+		t, err := iter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -427,7 +432,22 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			break // the user was resolved already, avoid launching extra lookups
 		}
 
-		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
+		userObj, userRel := tupleUtils.SplitObjectRelation(t.GetUser())
+
+		if userObj == Wildcard {
+			query.logger.WarnWithContext(
+				ctx,
+				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s'", relation),
+				zap.String("store_id", rc.store),
+				zap.String("authorization_model_id", rc.modelID),
+				zap.String("object_type", objectType),
+			)
+
+			return serverErrors.InvalidTuple(
+				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
+				tuple.NewTupleKey(rc.tk.GetObject(), relation, Wildcard),
+			)
+		}
 
 		if !tupleUtils.IsValidObject(userObj) {
 			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
