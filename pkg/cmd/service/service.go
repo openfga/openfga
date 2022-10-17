@@ -69,8 +69,8 @@ type HTTPConfig struct {
 // TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
 type TLSConfig struct {
 	Enabled  bool
-	CertPath string
-	KeyPath  string
+	CertPath string `mapstructure:"cert"`
+	KeyPath  string `mapstructure:"key"`
 }
 
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
