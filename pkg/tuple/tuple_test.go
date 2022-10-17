@@ -280,7 +280,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 		},
 		{
 			name: "document:10",
-			want: User,
+			want: UserSet,
 		},
 		{
 			name: "*",

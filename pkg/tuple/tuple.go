@@ -85,12 +85,6 @@ func IsObjectRelation(userset string) bool {
 	return GetType(userset) != "" && GetRelation(userset) != ""
 }
 
-// IsType returns true if the given string contains just a type.
-func IsType(object string) bool {
-	t, id := SplitObject(object)
-	return t != "" && id == ""
-}
-
 // ToObjectRelationString formats an object/relation pair as an object#relation string. This is the inverse of
 // SplitObjectRelation.
 func ToObjectRelationString(object, relation string) string {
@@ -99,7 +93,8 @@ func ToObjectRelationString(object, relation string) string {
 
 // GetUserTypeFromUser returns the type of user (userset or user).
 func GetUserTypeFromUser(user string) UserType {
-	if IsObjectRelation(user) || user == "*" {
+	userObj, _ := SplitObjectRelation(user)
+	if IsValidObject(userObj) || user == "*" {
 		return UserSet
 	}
 	return User

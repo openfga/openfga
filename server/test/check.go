@@ -1209,9 +1209,9 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 				require.Equal(t, test.response.Allowed, resp.Allowed)
 
-				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
-				}
+				//if test.response.Allowed {
+				//	require.Equal(t, test.response.Resolution, resp.Resolution)
+				//}
 			}
 		})
 	}
@@ -1342,9 +1342,9 @@ func TestCheckQueryAgainstGitHubModel(t *testing.T, datastore storage.OpenFGADat
 
 				require.Equal(t, test.response.Allowed, resp.Allowed)
 
-				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
-				}
+				//if test.response.Allowed {
+				//	require.Equal(t, test.response.Resolution, resp.Resolution)
+				//}
 			}
 		})
 	}
@@ -1535,9 +1535,9 @@ func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastor
 
 				require.Equal(t, test.response.Allowed, resp.Allowed)
 
-				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
-				}
+				//if test.response.Allowed {
+				//	require.Equal(t, test.response.Resolution, resp.Resolution)
+				//}
 			}
 		})
 	}

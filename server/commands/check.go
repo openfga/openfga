@@ -401,9 +401,9 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 	if relation == "" {
 		relation = rc.tk.GetRelation()
 	}
-	findTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}
-	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
-	iter, err := rc.read(ctx, query.datastore, findTK)
+	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(rc.tk.GetObject(), relation))
+	nestedRC := rc.fork(&openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}, rc.tracer, false)
+	iter, err := nestedRC.readUsersetTuples(ctx, query.datastore)
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
@@ -428,11 +428,6 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		}
 
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
-
-		if !tupleUtils.IsValidObject(userObj) {
-			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
-		}
-
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation()
 
 		// userRel may be empty, and in this case we set it to usersetRel.
