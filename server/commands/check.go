@@ -402,7 +402,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		relation = rc.tk.GetRelation()
 	}
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(rc.tk.GetObject(), relation))
-	nestedRC := rc.fork(&openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}, rc.tracer, false)
+	nestedRC := rc.fork(&openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: relation}, tracer, false)
 	iter, err := nestedRC.readUsersetTuples(ctx, query.datastore)
 	if err != nil {
 		return serverErrors.HandleError("", err)

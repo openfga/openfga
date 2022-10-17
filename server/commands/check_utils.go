@@ -362,26 +362,8 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (storage.TupleKeyIterator, error) {
-	cTuples := rc.contextualTuples.read(tk)
-	rc.metadata.AddReadCall()
-	tuples, err := backend.Read(ctx, rc.store, tk)
-	if err != nil {
-		return nil, err
-	}
-
-	iter1 := storage.NewStaticTupleKeyIterator(cTuples)
-	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(tuples)
-
-	return storage.NewCombinedIterator(iter1, iter2), nil
-}
-
 type contextualTuples struct {
 	usersets map[string][]*openfgapb.TupleKey
-}
-
-func (c *contextualTuples) read(tk *openfgapb.TupleKey) []*openfgapb.TupleKey {
-	return c.usersets[tupleUtils.ToObjectRelationString(tk.GetObject(), tk.GetRelation())]
 }
 
 func (c *contextualTuples) readUserTuple(tk *openfgapb.TupleKey) (*openfgapb.TupleKey, bool) {
