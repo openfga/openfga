@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -24,10 +24,10 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
@@ -110,7 +110,7 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage
 	store := testutils.CreateRandomString(10)
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}

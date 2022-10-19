@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
@@ -22,7 +22,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	tests := []struct {
 		name                      string
@@ -36,7 +36,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 		{
 			name: "non-empty type definitions",
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -69,10 +69,10 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	model1 := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -84,7 +84,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	require.NoError(err)
 
 	model2 := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -144,10 +144,10 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
