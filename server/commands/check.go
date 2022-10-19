@@ -428,6 +428,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 		}
 
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
+		userObjType, _ := tupleUtils.SplitObject(userObj)
 
 		if !tupleUtils.IsValidObject(userObj) {
 			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
@@ -444,6 +445,18 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			continue
 		}
 
+		// Verify that userRel is actually a relation on userObjType
+		td, err := query.datastore.ReadTypeDefinition(ctx, rc.store, rc.modelID, userObjType)
+		if err != nil {
+			if err == storage.ErrNotFound {
+				continue
+			}
+			return err
+		}
+		if _, ok := td.GetRelations()[userRel]; !ok {
+			continue
+		}
+
 		tupleKey := &openfgapb.TupleKey{
 			// user from previous lookup
 			Object:   userObj,
@@ -451,6 +464,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 			// original tk user
 			User: rc.tk.GetUser(),
 		}
+
 		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(userObj, userRel))
 		nestedRC := rc.fork(tupleKey, tracer, false)
 
