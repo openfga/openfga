@@ -15,7 +15,6 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
@@ -356,7 +355,8 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 
 			if test.output.errorCode == codes.OK {
 				require.True(t, response.Name == test.input.Name)
-				require.True(t, id.IsValid(response.Id))
+				_, err = ulid.Parse(response.Id)
+				require.NoError(t, err)
 			}
 		})
 	}
