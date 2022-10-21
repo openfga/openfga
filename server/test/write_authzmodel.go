@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
-	"github.com/openfga/openfga/server/errors"
+	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -109,7 +110,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				StoreId:         storeID,
 				TypeDefinitions: items,
 			},
-			err: errors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
+			err: serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
 		},
 		{
 			name: "empty relations is valid",
@@ -151,7 +152,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.ErrDuplicateTypes),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.ErrDuplicateTypes),
 		},
 		{
 			name: "ExecuteWriteFailsIfEmptyRewrites",
@@ -166,7 +167,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
@@ -188,7 +189,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
@@ -215,7 +216,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInUnion",
@@ -250,7 +251,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
@@ -285,7 +286,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
@@ -320,7 +321,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
@@ -349,7 +350,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
@@ -378,7 +379,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
@@ -414,7 +415,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("bar", "writer")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("bar", "writer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
@@ -447,7 +448,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
 		},
 		{
 			name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",
@@ -477,7 +478,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
@@ -504,7 +505,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
 		},
 		{
 			name: "ExecuteWriteFailsIfIntersectionIncludesSameRelationTwice",
@@ -530,7 +531,171 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: errors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+		},
+		{
+			name: "Union Rewrite Contains Repeated Definitions",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.Union(
+								typesystem.ComputedUserset("editor"),
+								typesystem.ComputedUserset("editor"),
+							),
+							"editor": typesystem.Union(typesystem.This(), typesystem.This()),
+							"manage": typesystem.Union(
+								typesystem.TupleToUserset("parent", "manage"),
+								typesystem.TupleToUserset("parent", "manage"),
+							),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Intersection Rewrite Contains Repeated Definitions",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.Intersection(
+								typesystem.ComputedUserset("editor"),
+								typesystem.ComputedUserset("editor"),
+							),
+							"editor": typesystem.Intersection(typesystem.This(), typesystem.This()),
+							"manage": typesystem.Intersection(
+								typesystem.TupleToUserset("parent", "manage"),
+								typesystem.TupleToUserset("parent", "manage"),
+							),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Exclusion Rewrite Contains Repeated Definitions",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.Difference(
+								typesystem.ComputedUserset("editor"),
+								typesystem.ComputedUserset("editor"),
+							),
+							"editor": typesystem.Difference(typesystem.This(), typesystem.This()),
+							"manage": typesystem.Difference(
+								typesystem.TupleToUserset("parent", "manage"),
+								typesystem.TupleToUserset("parent", "manage"),
+							),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Tupleset relation involves ComputedUserset rewrite",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"ancestor": typesystem.This(),
+							"parent":   typesystem.ComputedUserset("ancestor"),
+							"viewer":   typesystem.TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
+			),
+		},
+		{
+			name: "Tupleset relation involves Union rewrite",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"ancestor": typesystem.This(),
+							"parent":   typesystem.Union(typesystem.This(), typesystem.ComputedUserset("ancestor")),
+							"viewer":   typesystem.TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
+			),
+		},
+		{
+			name: "Tupleset relation involves Intersection rewrite",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"ancestor": typesystem.This(),
+							"parent":   typesystem.Intersection(typesystem.This(), typesystem.ComputedUserset("ancestor")),
+							"viewer":   typesystem.TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
+			),
+		},
+		{
+			name: "Tupleset relation involves Exclusion rewrite",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"restricted": typesystem.This(),
+							"parent":     typesystem.Difference(typesystem.This(), typesystem.ComputedUserset("restricted")),
+							"viewer":     typesystem.TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
+			),
+		},
+		{
+			name: "Tupleset relation involves TupleToUserset rewrite",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"ancestor": typesystem.This(),
+							"parent":   typesystem.TupleToUserset("ancestor", "viewer"),
+							"viewer":   typesystem.TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
+			),
 		},
 	}
 
