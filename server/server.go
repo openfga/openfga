@@ -81,6 +81,7 @@ type Config struct {
 	ListObjectsDeadline    time.Duration
 	ListObjectsMaxResults  uint32
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
+	StreamingInterceptors  []grpc.StreamServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 }
 
@@ -486,13 +487,19 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
 
-	interceptors := []grpc.UnaryServerInterceptor{
+	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 	}
-	interceptors = append(interceptors, s.config.UnaryInterceptors...)
+	unaryServerInterceptors = append(unaryServerInterceptors, s.config.UnaryInterceptors...)
+
+	streamingInterceptors := []grpc.StreamServerInterceptor{
+		grpc_validator.StreamServerInterceptor(),
+	}
+	streamingInterceptors = append(streamingInterceptors, s.config.StreamingInterceptors...)
 
 	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(interceptors...),
+		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	}
 
 	if s.config.GRPCServer.TLSConfig != nil {
