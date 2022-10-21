@@ -2,6 +2,7 @@ package typesystem
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/go-errors/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -233,21 +234,41 @@ func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
 func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 	typeDefinitions := model.GetTypeDefinitions()
 
-	allRelations := map[string]struct{}{}
-	typeToRelations := map[string]map[string]struct{}{}
+	relations := map[string]*openfgapb.Relation{}
+	typerels := map[string]map[string]*openfgapb.Relation{}
+
 	for _, td := range typeDefinitions {
 		objectType := td.GetType()
-		typeToRelations[objectType] = map[string]struct{}{}
-		for relation := range td.GetRelations() {
-			typeToRelations[objectType][relation] = struct{}{}
-			allRelations[relation] = struct{}{}
+
+		typerels[objectType] = map[string]*openfgapb.Relation{}
+
+		for relation, rewrite := range td.GetRelations() {
+			relationMetadata := td.GetMetadata().GetRelations()
+			md, ok := relationMetadata[relation]
+
+			var typeinfo *openfgapb.RelationTypeInfo
+			if ok {
+				typeinfo = &openfgapb.RelationTypeInfo{
+					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
+				}
+			}
+
+			r := &openfgapb.Relation{
+				Name:     relation,
+				Rewrite:  rewrite,
+				TypeInfo: typeinfo,
+			}
+
+			typerels[objectType][relation] = r
+			relations[relation] = r
 		}
 	}
 
 	for _, td := range typeDefinitions {
 		objectType := td.GetType()
+
 		for relation, rewrite := range td.GetRelations() {
-			err := isUsersetRewriteValid(allRelations, typeToRelations[objectType], objectType, relation, rewrite)
+			err := isUsersetRewriteValid(relations, typerels[objectType], objectType, relation, rewrite)
 			if err != nil {
 				return err
 			}
@@ -259,7 +280,12 @@ func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 
 // isUsersetRewriteValid checks if a particular userset rewrite is valid. The first argument is all the relations in
 // the typeSystem, the second argument is the subset of relations on the type where the rewrite occurs.
-func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map[string]struct{}, objectType, relation string, rewrite *openfgapb.Userset) error {
+func isUsersetRewriteValid(
+	allRelations map[string]*openfgapb.Relation,
+	relationsOnType map[string]*openfgapb.Relation,
+	objectType, relation string,
+	rewrite *openfgapb.Userset,
+) error {
 	if rewrite.GetUserset() == nil {
 		return InvalidRelationError(objectType, relation)
 	}
@@ -275,8 +301,17 @@ func isUsersetRewriteValid(allRelations map[string]struct{}, relationsOnType map
 		}
 	case *openfgapb.Userset_TupleToUserset:
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
-		if _, ok := relationsOnType[tupleset]; !ok {
+
+		tuplesetRelation, ok := relationsOnType[tupleset]
+		if !ok {
 			return RelationDoesNotExistError(objectType, tupleset)
+		}
+
+		// tupleset relations must only be direct relationships, no rewrites
+		// are allowed on them
+		tuplesetRewrite := tuplesetRelation.GetRewrite()
+		if reflect.TypeOf(tuplesetRewrite.GetUserset()) != reflect.TypeOf(&openfgapb.Userset_This{}) {
+			return errors.Errorf("the '%s#%s' relation is referenced in at least one tupleset and thus must be a direct relation", objectType, tupleset)
 		}
 
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()

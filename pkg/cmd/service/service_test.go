@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/authn/mocks"
+	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -33,6 +35,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func TestMain(m *testing.M) {
@@ -205,9 +208,10 @@ func createCertsAndKeys(t *testing.T) certHandle {
 }
 
 type authTest struct {
-	_name         string
-	authHeader    string
-	expectedError string
+	_name                 string
+	authHeader            string
+	expectedErrorResponse *serverErrors.ErrorResponse
+	expectedStatusCode    int
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
@@ -251,54 +255,114 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	ensureServiceUp(t, service, nil, true)
 
 	tests := []authTest{{
-		_name:         "Header with incorrect key fails",
-		authHeader:    "Bearer incorrectkey",
-		expectedError: "unauthenticated",
+		_name:      "Header with incorrect key fails",
+		authHeader: "Bearer incorrectkey",
+		expectedErrorResponse: &serverErrors.ErrorResponse{
+			Code:    "unauthenticated",
+			Message: "unauthenticated",
+		},
+		expectedStatusCode: 401,
 	}, {
-		_name:         "Missing header fails",
-		authHeader:    "",
-		expectedError: "missing bearer token",
+		_name:      "Missing header fails",
+		authHeader: "",
+		expectedErrorResponse: &serverErrors.ErrorResponse{
+			Code:    "bearer_token_missing",
+			Message: "missing bearer token",
+		},
+		expectedStatusCode: 401,
 	}, {
-		_name:         "Correct key one succeeds",
-		authHeader:    "Bearer KEYONE",
-		expectedError: "",
+		_name:              "Correct key one succeeds",
+		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[0]),
+		expectedStatusCode: 200,
 	}, {
-		_name:         "Correct key two succeeds",
-		authHeader:    "Bearer KEYTWO",
-		expectedError: "",
+		_name:              "Correct key two succeeds",
+		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[1]),
+		expectedStatusCode: 200,
 	}}
 
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
-			require.NoError(t, err, "Failed to construct request")
-			req.Header.Set("content-type", "application/json")
-			req.Header.Set("authorization", test.authHeader)
+			tryGetStores(t, test, service, retryClient)
+		})
 
-			res, err := retryClient.Do(req)
-			require.NoError(t, err, "Failed to execute request")
-
-			defer res.Body.Close()
-			body, err := io.ReadAll(res.Body)
-			require.NoError(t, err, "Failed to read response")
-
-			stringBody := string(body)
-
-			if test.expectedError == "" && strings.Contains(stringBody, "code") {
-				t.Fatalf("Expected no error but got '%v'", stringBody)
-			}
-
-			if !strings.Contains(stringBody, test.expectedError) && test.expectedError != "" {
-				t.Fatalf("Expected '%v' to contain '%v'", stringBody, test.expectedError)
-			}
+		t.Run(test._name+"/streaming", func(t *testing.T) {
+			tryStreamingListObjects(t, test, service, retryClient, config.Authn.AuthnPresharedKeyConfig.Keys[0])
 		})
 	}
 
 	cancel()
 	require.NoError(t, service.Close(ctx))
 	require.NoError(t, g.Wait())
+}
+
+func tryStreamingListObjects(t *testing.T, test authTest, service *service, retryClient *retryablehttp.Client, validToken string) {
+	// create a store
+	createStorePayload := strings.NewReader(`{"name": "some-store-name"}`)
+	req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), createStorePayload)
+	require.NoError(t, err, "Failed to construct create store request")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
+	res, err := retryClient.Do(req)
+	require.NoError(t, err, "Failed to execute create store request")
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err, "Failed to read create store response")
+	var createStoreResponse openfgapb.CreateStoreResponse
+	err = protojson.Unmarshal(body, &createStoreResponse)
+	require.NoError(t, err, "Failed to unmarshal create store response")
+
+	// create an authorization model
+	authModelPayload := strings.NewReader(`{"type_definitions":[{"type":"document","relations":{"owner":{"this":{}}}}]}`)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores/%s/authorization-models", service.GetHTTPAddrPort().Port(), createStoreResponse.Id), authModelPayload)
+	require.NoError(t, err, "Failed to construct create authorization model request")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
+	_, err = retryClient.Do(req)
+	require.NoError(t, err, "Failed to execute create authorization model request")
+
+	// call one streaming endpoint
+	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "anne", "relation": "owner"}`)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores/%s/streamed-list-objects", service.GetHTTPAddrPort().Port(), createStoreResponse.Id), listObjectsPayload)
+	require.NoError(t, err, "Failed to construct request")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", test.authHeader)
+
+	res, err = retryClient.Do(req)
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
+	require.NoError(t, err, "Failed to execute streaming request")
+
+	defer res.Body.Close()
+	body, err = io.ReadAll(res.Body)
+	require.NoError(t, err, "Failed to read response")
+
+	if test.expectedErrorResponse != nil {
+		require.Contains(t, string(body), fmt.Sprintf(",\"message\":\"%s\"", test.expectedErrorResponse.Message))
+	}
+}
+
+func tryGetStores(t *testing.T, test authTest, service *service, retryClient *retryablehttp.Client) {
+	req, err := retryablehttp.NewRequest("GET", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), nil)
+	require.NoError(t, err, "Failed to construct request")
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", test.authHeader)
+
+	res, err := retryClient.Do(req)
+	require.NoError(t, err, "Failed to execute request")
+	require.Equal(t, test.expectedStatusCode, res.StatusCode)
+
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	require.NoError(t, err, "Failed to read response")
+
+	if test.expectedErrorResponse != nil {
+		var actualErrorResponse serverErrors.ErrorResponse
+		err = json.Unmarshal(body, &actualErrorResponse)
+
+		require.NoError(t, err, "Failed to unmarshal response")
+
+		require.Equal(t, test.expectedErrorResponse, &actualErrorResponse)
+	}
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
@@ -436,43 +500,35 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	require.NoError(t, err)
 
 	tests := []authTest{{
-		_name:         "Header with invalid token fails",
-		authHeader:    "Bearer incorrecttoken",
-		expectedError: "invalid bearer token",
+		_name:      "Header with invalid token fails",
+		authHeader: "Bearer incorrecttoken",
+		expectedErrorResponse: &serverErrors.ErrorResponse{
+			Code:    "auth_failed_invalid_bearer_token",
+			Message: "invalid bearer token",
+		},
+		expectedStatusCode: 401,
 	}, {
-		_name:         "Missing header fails",
-		authHeader:    "",
-		expectedError: "missing bearer token",
+		_name:      "Missing header fails",
+		authHeader: "",
+		expectedErrorResponse: &serverErrors.ErrorResponse{
+			Code:    "bearer_token_missing",
+			Message: "missing bearer token",
+		},
+		expectedStatusCode: 401,
 	}, {
-		_name:         "Correct token succeeds",
-		authHeader:    "Bearer " + trustedToken,
-		expectedError: "",
+		_name:              "Correct token succeeds",
+		authHeader:         "Bearer " + trustedToken,
+		expectedStatusCode: 200,
 	}}
 
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
-			require.NoError(t, err, "Failed to construct request")
-			req.Header.Set("content-type", "application/json")
-			req.Header.Set("authorization", test.authHeader)
+			tryGetStores(t, test, service, retryClient)
+		})
 
-			res, err := retryClient.Do(req)
-			require.NoError(t, err, "Failed to execute request")
-
-			defer res.Body.Close()
-			body, err := io.ReadAll(res.Body)
-			require.NoError(t, err, "Failed to read response")
-
-			stringBody := string(body)
-			if test.expectedError == "" && strings.Contains(stringBody, "code") {
-				t.Fatalf("Expected no error but got %v", stringBody)
-			}
-
-			if !strings.Contains(stringBody, test.expectedError) && test.expectedError != "" {
-				t.Fatalf("Expected %v to contain %v", stringBody, test.expectedError)
-			}
+		t.Run(test._name+"/streaming", func(t *testing.T) {
+			tryStreamingListObjects(t, test, service, retryClient, trustedToken)
 		})
 	}
 

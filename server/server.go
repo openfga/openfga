@@ -81,6 +81,7 @@ type Config struct {
 	ListObjectsDeadline    time.Duration
 	ListObjectsMaxResults  uint32
 	UnaryInterceptors      []grpc.UnaryServerInterceptor
+	StreamingInterceptors  []grpc.StreamServerInterceptor
 	MuxOptions             []runtime.ServeMuxOption
 }
 
@@ -137,8 +138,13 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		defaultServeMuxOpts: []runtime.ServeMuxOption{
 			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
 			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
-				actualCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(actualCode, e.Error()))
+				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
+				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
+			}),
+			runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
+				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
+				encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
+				return status.Convert(&encodedErr)
 			}),
 		},
 	}
@@ -481,13 +487,19 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // server cancel the provided ctx.
 func (s *Server) Run(ctx context.Context) error {
 
-	interceptors := []grpc.UnaryServerInterceptor{
+	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 	}
-	interceptors = append(interceptors, s.config.UnaryInterceptors...)
+	unaryServerInterceptors = append(unaryServerInterceptors, s.config.UnaryInterceptors...)
+
+	streamingInterceptors := []grpc.StreamServerInterceptor{
+		grpc_validator.StreamServerInterceptor(),
+	}
+	streamingInterceptors = append(streamingInterceptors, s.config.StreamingInterceptors...)
 
 	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(interceptors...),
+		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	}
 
 	if s.config.GRPCServer.TLSConfig != nil {

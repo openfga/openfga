@@ -25,3 +25,18 @@ func NewErrorLoggingInterceptor(logger logger.Logger) grpc.UnaryServerIntercepto
 		return resp, nil
 	}
 }
+
+func NewStreamingErrorLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
+	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := handler(srv, stream)
+		if err != nil {
+			var e error
+			if internalError, ok := err.(serverErrors.InternalError); ok {
+				e = internalError.Internal()
+			}
+			logger.Error("grpc_error", zap.Error(e), zap.String("public_error", err.Error()))
+		}
+
+		return err
+	}
+}

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -11,6 +12,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -58,7 +60,13 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 	}, nil
 }
 
-func (query *ExpandQuery) resolveUserset(ctx context.Context, store, modelID string, userset *openfgapb.Userset, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveUserset(
+	ctx context.Context,
+	store, modelID string,
+	userset *openfgapb.Userset,
+	tk *openfgapb.TupleKey,
+	metadata *utils.ResolutionMetadata,
+) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveUserset")
 	defer span.End()
 
@@ -68,7 +76,7 @@ func (query *ExpandQuery) resolveUserset(ctx context.Context, store, modelID str
 	case *openfgapb.Userset_ComputedUserset:
 		return query.resolveComputedUserset(ctx, us.ComputedUserset, tk, metadata)
 	case *openfgapb.Userset_TupleToUserset:
-		return query.resolveTupleToUserset(ctx, store, us.TupleToUserset, tk, metadata)
+		return query.resolveTupleToUserset(ctx, store, modelID, us.TupleToUserset, tk, metadata)
 	case *openfgapb.Userset_Union:
 		return query.resolveUnionUserset(ctx, store, modelID, us.Union, tk, metadata)
 	case *openfgapb.Userset_Difference:
@@ -152,14 +160,24 @@ func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *o
 }
 
 // resolveTupleToUserset creates a new leaf node containing the result of expanding a TupleToUserset rewrite.
-func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store string, userset *openfgapb.TupleToUserset, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveTupleToUserset(
+	ctx context.Context,
+	store, modelID string,
+	userset *openfgapb.TupleToUserset,
+	tk *openfgapb.TupleKey,
+	metadata *utils.ResolutionMetadata,
+) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveTupleToUserset")
 	defer span.End()
 
+	targetObject := tk.GetObject()
+
+	tupleset := userset.GetTupleset().GetRelation()
 	tsKey := &openfgapb.TupleKey{
-		Object:   tk.GetObject(),
-		Relation: userset.GetTupleset().GetRelation(),
+		Object:   targetObject,
+		Relation: tupleset,
 	}
+
 	if tsKey.GetRelation() == "" {
 		tsKey.Relation = tk.GetRelation()
 	}
@@ -170,6 +188,7 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 		return nil, serverErrors.HandleError("", err)
 	}
 	defer iter.Stop()
+
 	var computed []*openfgapb.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
@@ -181,29 +200,52 @@ func (query *ExpandQuery) resolveTupleToUserset(ctx context.Context, store strin
 			return nil, serverErrors.HandleError("", err)
 		}
 		user := tuple.GetKey().GetUser()
+
+		if user == Wildcard {
+			objectType, _ := tupleUtils.SplitObject(targetObject)
+
+			query.logger.WarnWithContext(
+				ctx,
+				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s'", tupleset),
+				zap.String("store_id", store),
+				zap.String("authorization_model_id", modelID),
+				zap.String("object_type", objectType),
+			)
+
+			return nil, serverErrors.InvalidTuple(
+				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", objectType, tupleset),
+				tupleUtils.NewTupleKey(targetObject, tupleset, Wildcard),
+			)
+		}
+
 		// user must contain a type (i.e., be an object or userset)
 		if tupleUtils.GetType(user) == "" {
 			continue
 		}
+
 		tObject, tRelation := tupleUtils.SplitObjectRelation(user)
 		// We only proceed in the case that tRelation == userset.GetComputedUserset().GetRelation().
 		// tRelation may be empty, and in this case, we set it to userset.GetComputedUserset().GetRelation().
 		if tRelation == "" {
 			tRelation = userset.GetComputedUserset().GetRelation()
 		}
+
 		if tRelation != userset.GetComputedUserset().GetRelation() {
 			continue
 		}
+
 		cs := &openfgapb.TupleKey{
 			Object:   tObject,
 			Relation: tRelation,
 		}
+
 		computedRelation := toObjectRelation(cs)
 		if !seen[computedRelation] {
 			computed = append(computed, &openfgapb.UsersetTree_Computed{Userset: computedRelation})
 			seen[computedRelation] = true
 		}
 	}
+
 	return &openfgapb.UsersetTree_Node{
 		Name: toObjectRelation(tk),
 		Value: &openfgapb.UsersetTree_Node_Leaf{

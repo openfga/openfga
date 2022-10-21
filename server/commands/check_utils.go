@@ -195,7 +195,7 @@ func (u *userSet) Get(value string) (resolutionTracer, bool) {
 	var found bool
 	var rt resolutionTracer
 	if rt, found = u.u[value]; !found {
-		if rt, found = u.u[AllUsers]; !found {
+		if rt, found = u.u[Wildcard]; !found {
 			return nil, false
 		}
 	}

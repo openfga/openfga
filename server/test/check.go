@@ -1167,6 +1167,104 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				Allowed: true,
 			},
 		},
+		{
+			name:             "Error if * encountered in TupleToUserset evaluation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"parent": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.RelationReference("folder", ""),
+								},
+							},
+						},
+					},
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.RelationReference("user", ""),
+								},
+							},
+						},
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:doc1", "parent", "*"), // wildcard not allowed on tupleset relations
+				tuple.NewTupleKey("folder:folder1", "viewer", "user:anne"),
+			},
+			err: serverErrors.InvalidTuple(
+				"unexpected wildcard evaluated on relation 'document#parent'",
+				tuple.NewTupleKey("document:doc1", "parent", commands.Wildcard),
+			),
+		},
+		{
+			name:             "Error if * encountered in TTU evaluation including ContextualTuples",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("document:doc1", "parent", "*"), // wildcard not allowed on tupleset relations
+						tuple.NewTupleKey("folder:folder1", "viewer", "user:anne"),
+					},
+				},
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"parent": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.RelationReference("folder", ""),
+								},
+							},
+						},
+					},
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.RelationReference("user", ""),
+								},
+							},
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidTuple(
+				"unexpected wildcard evaluated on relation 'document#parent'",
+				tuple.NewTupleKey("document:doc1", "parent", commands.Wildcard),
+			),
+		},
 	}
 
 	ctx := context.Background()
@@ -1196,13 +1294,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
-			if test.err == nil {
-				require.NoError(t, gotErr)
-			}
-
-			if test.err != nil {
-				require.EqualError(t, test.err, gotErr.Error())
-			}
+			require.ErrorIs(t, gotErr, test.err)
 
 			if test.response != nil {
 				require.NoError(t, gotErr)

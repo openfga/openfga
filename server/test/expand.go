@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -811,6 +811,31 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				Relation: "baz",
 			}),
 		},
+		{
+			name: "TupleToUserset involving wildcard returns error",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "*"),
+				tuple.NewTupleKey("document:X", "viewer", "jon"),
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: serverErrors.InvalidTuple(
+				"unexpected wildcard evaluated on relation 'document#parent'",
+				tuple.NewTupleKey("document:1", "parent", "*"),
+			),
+		},
 	}
 
 	require := require.New(t)
@@ -830,9 +855,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = modelID
 
 			_, err = query.Execute(ctx, test.request)
-			if !errors.Is(err, test.expected) {
-				t.Fatalf("'%s': Execute(), err = %v, want %v", test.name, err, test.expected)
-			}
+			require.ErrorIs(err, test.expected)
 		})
 	}
 }

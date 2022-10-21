@@ -359,9 +359,14 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		return nil, errors.Errorf("failed to initialize authenticator: %v", err)
 	}
 
-	interceptors := []grpc.UnaryServerInterceptor{
+	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewErrorLoggingInterceptor(logger),
+	}
+
+	streamingServerInterceptors := []grpc.StreamServerInterceptor{
+		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewStreamingErrorLoggingInterceptor(logger),
 	}
 
 	grpcHostAddr, grpcHostPort, err := net.SplitHostPort(config.GRPC.Addr)
@@ -415,7 +420,8 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		ListObjectsDeadline:    config.ListObjectsDeadline,
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
-		UnaryInterceptors:      interceptors,
+		UnaryInterceptors:      unaryServerInterceptors,
+		StreamingInterceptors:  streamingServerInterceptors,
 		MuxOptions:             nil,
 	})
 	if err != nil {
