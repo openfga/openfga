@@ -22,7 +22,7 @@ clean: ## Clean files
 	rm ./openfga
 
 .PHONY: build
-build: ## Build/compile the OpenFGA service
+build: ## Build the OpenFGA service
 	go build -o ./openfga ./cmd/openfga
 
 .PHONY: run
@@ -31,31 +31,30 @@ run: build ## Run the OpenFGA server with in-memory storage
 
 
 .PHONY: start-postgres-container
-start-postgres-container:
+start-postgres-container: ## Start a Postgres Docker container
 	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
 	@echo \> use \'postgres://postgres:password@localhost:5432/postgres\' to connect to postgres
 
 .PHONY: migrate-postgres
-migrate-postgres: build
+migrate-postgres: build ## Run Postgres migrations
 	# nosemgrep: detected-username-and-password-in-uri
 	./openfga migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
 .PHONY: run-postgres
-run-postgres: build
+run-postgres: build ## Run the OpenFGA server with Postgres storage
 	./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
 .PHONY: start-mysql-container
-start-mysql-container: build
+start-mysql-container: build ## Start a MySQL Docker container
 	docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8
 	
-
 .PHONY: migrate-mysql
-migrate-mysql: build
+migrate-mysql: build ## Run MySQL migrations
 	# nosemgrep: detected-username-and-password-in-uri
 	./openfga migrate --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'
 
 .PHONY: run-mysql
-run-mysql: build
+run-mysql: build ## Run the OpenFGA server with MySQL storage
 	./openfga run --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'
 
 .PHONY: go-generate
@@ -71,9 +70,11 @@ unit-test: go-generate ## Run unit tests
 			-count=1 \
 			./...
 
+build-functional-test-image: ## Build Docker image needed to run functional tests
+	docker build -t="openfga/openfga:functionaltest" .
 
 .PHONY: functional-test
-functional-test: 
+functional-test: ## Run functional tests (needs build-functional-test-image)
 	go test $(gotest_extra_flags) -v \
 			-coverprofile=coveragefunctional.out \
 			-coverpkg=$(COVERPKG) \
