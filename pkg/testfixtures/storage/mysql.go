@@ -13,8 +13,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +63,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		PublishAllPorts: true,
 	}
 
-	name := fmt.Sprintf("mysql-%s", id.Must(id.New()).String())
+	name := fmt.Sprintf("mysql-%s", ulid.Make().String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")

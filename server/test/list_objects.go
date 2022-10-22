@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -216,7 +216,7 @@ func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (con
 	}
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}

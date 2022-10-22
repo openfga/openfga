@@ -3,7 +3,7 @@ package commands
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/pkg/utils"
@@ -41,18 +41,13 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
-	id, err := id.NewString()
-	if err != nil {
-		return nil, err
-	}
-
 	model := &openfgapb.AuthorizationModel{
-		Id:              id,
+		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}
 
-	err = typesystem.Validate(model)
+	err := typesystem.Validate(model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
@@ -64,6 +59,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	return &openfgapb.WriteAuthorizationModelResponse{
-		AuthorizationModelId: id,
+		AuthorizationModelId: model.Id,
 	}, nil
 }

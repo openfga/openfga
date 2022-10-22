@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
@@ -39,7 +39,7 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			require.Equal(t, test.request.Name, resp.Name)
 
-			_, err = id.Parse(resp.Id)
+			_, err = ulid.Parse(resp.Id)
 			require.NoError(t, err)
 
 			require.NotEmpty(t, resp.CreatedAt)

@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -1274,9 +1274,9 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := id.Must(id.New()).String()
+			store := ulid.Make().String()
 			model := &openfgapb.AuthorizationModel{
-				Id:              id.Must(id.New()).String(),
+				Id:              ulid.Make().String(),
 				SchemaVersion:   typesystem.SchemaVersion1_0,
 				TypeDefinitions: test.typeDefinitions,
 			}
@@ -1401,9 +1401,9 @@ func TestCheckQueryAgainstGitHubModel(t *testing.T, datastore storage.OpenFGADat
 	err = protojson.Unmarshal(data, &gitHubDefinition)
 	require.NoError(t, err)
 
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
 	}
@@ -1597,9 +1597,9 @@ func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastor
 	err = protojson.Unmarshal(data, &gitHubDefinition)
 	require.NoError(t, err)
 
-	storeID := id.Must(id.New()).String()
+	storeID := ulid.Make().String()
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
 	}
@@ -1640,10 +1640,10 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	oldModel := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -1667,7 +1667,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	require.NoError(t, err)
 
 	updatedModel := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -1724,7 +1724,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
@@ -1734,7 +1734,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	require.NoError(b, err)
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
@@ -1770,7 +1770,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
@@ -1780,7 +1780,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	require.NoError(b, err)
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}

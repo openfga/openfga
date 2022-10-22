@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -22,7 +22,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	var stores []*openfgapb.Store
 	for i := 0; i < numStores; i++ {
 		store := &openfgapb.Store{
-			Id:        id.Must(id.New()).String(),
+			Id:        ulid.Make().String(),
 			Name:      testutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),
 		}

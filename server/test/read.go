@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -32,7 +32,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -54,7 +54,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleKeyHasObjectWithoutType",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -78,7 +78,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleKeyObjectIs':'",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -102,7 +102,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleSetHasNoObjectAndThusNoType",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -127,7 +127,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleKeyHasNoObjectIdAndNoUserSetButHasAType",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -155,7 +155,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleKeyInTupleSetOnlyHasRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -179,7 +179,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfTypeDoesNotExist",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -211,7 +211,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleHasRelationThatDoesNotExistInAuthorizationModel",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -247,7 +247,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsExactMatchingTupleKey",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -293,7 +293,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndObjectIdInAuthorizationModelRegardlessOfRelationIfNoRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -349,7 +349,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserInAuthorizationModelRegardlessOfRelationAndObjectIdIfNoRelationAndNoObjectId",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -405,7 +405,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -467,7 +467,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -528,7 +528,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdInAuthorizationModelRegardlessOfUserAndRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -588,7 +588,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteErrorsIfOneTupleIsUnauthorized",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -620,7 +620,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			store := id.Must(id.New()).String()
+			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 

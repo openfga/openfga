@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-errors/errors"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
@@ -17,8 +17,7 @@ import (
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
-	storeID, err := id.NewString()
-	require.NoError(t, err)
+	storeID := ulid.Make().String()
 
 	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)
 	for i := 0; i < datastore.MaxTypesInTypeDefinition(); i++ {
@@ -709,7 +708,8 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			require.ErrorIs(t, err, test.err)
 
 			if err == nil {
-				require.True(t, id.IsValid(resp.AuthorizationModelId))
+				_, err = ulid.Parse(resp.AuthorizationModelId)
+				require.NoError(t, err)
 			}
 		})
 	}
