@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -87,7 +87,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 	t.Run("no latest authorization model id found", func(t *testing.T) {
 
-		store := id.Must(id.New()).String()
+		store := ulid.Make().String()
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -110,8 +110,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("read existing authorization model", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		modelID := id.Must(id.New()).String()
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -136,7 +136,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("non-valid modelID returns error", func(t *testing.T) {
-		store := id.Must(id.New()).String()
+		store := ulid.Make().String()
 		modelID := "foo"
 		want := serverErrors.AuthorizationModelNotFound(modelID)
 

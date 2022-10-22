@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -261,16 +261,16 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 
 	t.Run("reading a tuple that does not exist returns not found", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		if _, err := datastore.ReadUserTuple(ctx, store, tk); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := datastore.ReadUserTuple(ctx, storeID, tk); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("got '%v', want '%v'", err, storage.ErrNotFound)
 		}
 	})
 
 	t.Run("reading userset tuples that exists succeeds", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+		storeID := ulid.Make().String()
 		tks := []*openfgapb.TupleKey{
 			{
 				Object:   "doc:readme",
@@ -289,10 +289,10 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			},
 		}
 
-		if err := datastore.Write(ctx, store, nil, tks); err != nil {
+		if err := datastore.Write(ctx, storeID, nil, tks); err != nil {
 			t.Fatal(err)
 		}
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, store, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -462,7 +462,7 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 func ListObjectsByTypeTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 	expected := []string{"document:doc1", "document:doc2"}
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	err := ds.Write(context.Background(), store, nil, []*openfgapb.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "jon"),
@@ -502,15 +502,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	}
 
 	t.Run("returns results with two user filters", func(t *testing.T) {
-		storeID, err := id.NewString()
-		require.NoError(err)
+		storeID := ulid.Make().String()
 
-		err = datastore.Write(
-			ctx,
-			storeID,
-			nil,
-			tuples,
-		)
+		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
@@ -538,15 +532,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 
 	t.Run("returns no results if the input users do not match the tuples", func(t *testing.T) {
-		storeID, err := id.NewString()
-		require.NoError(err)
+		storeID := ulid.Make().String()
 
-		err = datastore.Write(
-			ctx,
-			storeID,
-			nil,
-			tuples,
-		)
+		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
@@ -570,16 +558,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 
 	t.Run("returns no results if the input relation does not match any tuples", func(t *testing.T) {
-		storeID, err := id.NewString()
-		require.NoError(err)
+		storeID := ulid.Make().String()
 
-		err = datastore.Write(
-			ctx,
-			storeID,
-			nil,
-			tuples,
-		)
-
+		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(
@@ -603,16 +584,9 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 
 	t.Run("returns no results if the input object type does not match any tuples", func(t *testing.T) {
-		storeID, err := id.NewString()
-		require.NoError(err)
+		storeID := ulid.Make().String()
 
-		err = datastore.Write(
-			ctx,
-			storeID,
-			nil,
-			tuples,
-		)
-
+		err := datastore.Write(ctx, storeID, nil, tuples)
 		require.NoError(err)
 
 		tupleIterator, err := datastore.ReadStartingWithUser(

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -33,7 +33,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -49,7 +49,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithSameTupleInWritesReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -71,7 +71,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectUnionRelationshipReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -122,7 +122,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectIntersectionRelationshipReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -173,7 +173,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectDifferenceRelationshipReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -238,7 +238,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectComputerUsersetRelationshipReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -277,7 +277,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteToIndirectTupleToUsersetRelationshipReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -322,7 +322,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -344,7 +344,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -367,7 +367,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteDeleteTupleWhichDoesNotExistReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -389,7 +389,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -409,7 +409,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithMissingUserError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -434,7 +434,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -462,7 +462,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -487,7 +487,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -514,7 +514,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -533,7 +533,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteWithInvalidObjectFormatReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -562,7 +562,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -601,7 +601,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -640,7 +640,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteSucceedsForWriteOnly",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -694,7 +694,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteSucceedsForDeleteOnly",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -770,7 +770,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "ExecuteSucceedsForWriteAndDelete",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -849,7 +849,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Delete succeeds even if user field contains a type that is not allowed by the current authorization model",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -892,7 +892,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if user field contains a type that does not exist",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -929,7 +929,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -970,7 +970,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if user field is a userset that is not allowed by the authorization model (which only allows group:...)",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1011,7 +1011,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows user:...)",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1046,7 +1046,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...#member)",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1088,7 +1088,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows group:...#member)",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1127,7 +1127,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Multiple writes succeed if user fields contain a type that is allowed by the authorization model",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1170,7 +1170,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write succeeds if user is * and type references a specific type",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1208,7 +1208,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if user is * and type does not reference a specific type",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1250,7 +1250,7 @@ var writeCommandTests = []writeCommandTest{
 		_name: "Write fails if schema version is 1.1 but type definitions are lacking metadata",
 		// state
 		model: &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -1278,7 +1278,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range writeCommandTests {
 		t.Run(test._name, func(t *testing.T) {
-			store := id.Must(id.New()).String()
+			store := ulid.Make().String()
 
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)

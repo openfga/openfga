@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -21,7 +21,7 @@ import (
 
 func setUp(ctx context.Context, store string, datastore storage.OpenFGADatastore, typeDefinitions []*openfgapb.TypeDefinition, tuples []*openfgapb.TupleKey) (string, error) {
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: typeDefinitions,
 	}

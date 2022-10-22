@@ -13,9 +13,9 @@ import (
 	"github.com/go-errors/errors"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/oklog/ulid/v2"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -626,7 +626,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 
 	var err error
 	if modelID != "" {
-		if !id.IsValid(modelID) {
+		if _, err := ulid.Parse(modelID); err != nil {
 			return "", serverErrors.AuthorizationModelNotFound(modelID)
 		}
 	} else {

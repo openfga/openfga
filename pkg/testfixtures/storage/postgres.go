@@ -13,8 +13,8 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +67,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		PublishAllPorts: true,
 	}
 
-	name := fmt.Sprintf("postgres-%s", id.Must(id.New()).String())
+	name := fmt.Sprintf("postgres-%s", ulid.Make().String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create postgres docker container")

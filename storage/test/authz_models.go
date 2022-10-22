@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
@@ -16,11 +16,11 @@ import (
 func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
-	storeID := id.Must(id.New()).String()
+	storeID := ulid.Make().String()
 
 	t.Run("write, then read, succeeds", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
-			Id:              id.Must(id.New()).String(),
+			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "folder"}},
 		}
@@ -37,17 +37,17 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 	})
 
 	t.Run("trying to get a model which doesn't exist returns not found", func(t *testing.T) {
-		_, err := datastore.ReadAuthorizationModel(ctx, storeID, id.Must(id.New()).String())
+		_, err := datastore.ReadAuthorizationModel(ctx, storeID, ulid.Make().String())
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }
 
 func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	model1 := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -67,7 +67,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	require.NoError(t, err)
 
 	model2 := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
@@ -120,10 +120,10 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 	})
 
 	t.Run("find latest authorization model should succeed", func(t *testing.T) {
-		store := id.Must(id.New()).String()
+		store := ulid.Make().String()
 
 		oldModel := &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -140,7 +140,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		require.NoError(t, err)
 
 		newModel := &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
@@ -166,17 +166,17 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		modelID := id.Must(id.New()).String()
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 
 		_, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("read type definition should succeed", func(t *testing.T) {
-		store := id.Must(id.New()).String()
+		store := ulid.Make().String()
 		model := &openfgapb.AuthorizationModel{
-			Id:            id.Must(id.New()).String(),
+			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
@@ -22,9 +22,9 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 	}{
 		{
 			name:    "write and read a 1.0 model",
-			storeID: id.Must(id.New()).String(),
+			storeID: ulid.Make().String(),
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -43,9 +43,9 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 		},
 		{
 			name:    "write and read an 1.1 model",
-			storeID: id.Must(id.New()).String(),
+			storeID: ulid.Make().String(),
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -105,7 +105,7 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
 			request: &openfgapb.ReadAuthorizationModelRequest{
-				StoreId: id.Must(id.New()).String(),
+				StoreId: ulid.Make().String(),
 				Id:      "123",
 			},
 			expectedError: serverErrors.AuthorizationModelNotFound("123"),
@@ -127,11 +127,11 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
-	storeID := id.Must(id.New()).String()
+	storeID := ulid.Make().String()
 
 	t.Run("writing without any type definitions doesn't write anything", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
-			Id:              id.Must(id.New()).String(),
+			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{},
 		}
