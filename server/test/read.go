@@ -427,7 +427,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}{
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -440,16 +439,13 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{},
 			},
-			// output
 			err: serverErrors.InvalidTupleSet,
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasObjectWithoutType",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -462,18 +458,15 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: "openfga/iam",
 				},
 			},
-			// output
 			err: serverErrors.InvalidTupleSet,
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyObjectIs':'",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -486,18 +479,15 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: ":",
 				},
 			},
-			// output
 			err: serverErrors.InvalidTupleSet,
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleSetHasNoObjectAndThusNoType",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -510,19 +500,16 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Relation: "admin",
 					User:     "github|jon.allie@openfga",
 				},
 			},
-			// output
 			err: serverErrors.InvalidTupleSet,
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyHasNoObjectIdAndNoUserSetButHasAType",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -535,14 +522,12 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 				},
 			},
-			// output
 			err: serverErrors.InvalidTuple("missing objectID and user", &openfgapb.TupleKey{
 				Object:   "repo:",
 				Relation: "writer",
@@ -550,7 +535,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleKeyInTupleSetOnlyHasRelation",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -563,18 +547,15 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Relation: "writer",
 				},
 			},
-			// output
 			err: serverErrors.InvalidTupleSet,
 		},
 		{
 			_name: "ExecuteErrorsIfTypeDoesNotExist",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -593,7 +574,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "team:openfga/iam",
@@ -601,12 +581,10 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					User:     "github|jose@openfga",
 				},
 			},
-			// output
 			err: serverErrors.TypeNotFound("team"),
 		},
 		{
 			_name: "ExecuteErrorsIfOneTupleHasRelationThatDoesNotExistInAuthorizationModel",
-			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -625,7 +603,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "org:",
@@ -633,7 +610,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					User:     "github|jose@openfga",
 				},
 			},
-			// output
 			err: serverErrors.RelationNotFound("owner", "org", &openfgapb.TupleKey{
 				Object:   "org:",
 				Relation: "owner",
