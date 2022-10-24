@@ -13,10 +13,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
 
 ### Fixed
-* [TLS certificate config path mappings](https://github.com/openfga/openfga/commit/e55602d949d2084c3f19f9042711f669b0438979)
-* [Error message when a `user` field is invalid](https://github.com/openfga/openfga/commit/bab4b875d6ee0af1b013ff4d72c40388f4dd8ea5)
-* [host:port mapping with unspecified host](https://github.com/openfga/openfga/commit/bfc75524ce0afc95b4eaa24ec99b76a84681d96b)
-* [Wait for connection to postgres before starting](https://github.com/openfga/openfga/commit/44249cca9a0e466c4a8e83c1d9c5baa0901c54c3)
+* TLS certificate config path mappings (#285)
+* Error message when a `user` field is invalid (#278)
+* host:port mapping with unspecified host (#275)
+* Wait for connection to postgres before starting (#270)
 
 
 ### Added
