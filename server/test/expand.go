@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -834,6 +835,27 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			expected: serverErrors.InvalidTuple(
 				"unexpected wildcard evaluated on relation 'document#parent'",
 				tuple.NewTupleKey("document:1", "parent", "*"),
+			),
+		},
+		{
+			name: "Tupleset relation involving rewrite returns error",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.ComputedUserset("editor"),
+						"editor": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: serverErrors.InvalidAuthorizationModelInput(
+				errors.Errorf("unexpected rewrite on relation '%s#%s'", "document", "parent"),
 			),
 		},
 	}
