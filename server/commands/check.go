@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/pkg/utils"
@@ -159,10 +158,10 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 	case *openfgapb.Userset_TupleToUserset:
 		tupleset := usType.TupleToUserset.GetTupleset().GetRelation()
 
-		objectType, _ := tuple.SplitObject(rc.tk.Object)
+		objectType, _ := tupleUtils.SplitObject(rc.tk.Object)
 		relation, ok := typesys.GetRelation(objectType, tupleset)
 		if !ok {
-			return serverErrors.RelationNotFound(tupleset, objectType, tuple.NewTupleKey(rc.tk.Object, tupleset, rc.tk.User))
+			return serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(rc.tk.Object, tupleset, rc.tk.User))
 		}
 
 		tuplesetRewrite := relation.GetRewrite().GetUserset()
