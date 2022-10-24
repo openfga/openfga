@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [0.2.4] - 2022-10-24
+### Security
+* Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
+
+### Fixed
+* TLS certificate config path mappings (#285)
+* Error message when a `user` field is invalid (#278)
+* host:port mapping with unspecified host (#275)
+* Wait for connection to postgres before starting (#270)
+
+
 ### Added
+* Update Go to 1.19
 
 ## [0.2.3] - 2022-10-05
 ### Added
@@ -149,7 +162,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
 [0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
 [0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
 [0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1

@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 
@@ -768,6 +769,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "repo",
 					Relations: map[string]*openfgapb.Userset{
+						"manager": typesystem.This(),
 						"admin": {
 							Userset: &openfgapb.Userset_Union{
 								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
@@ -1263,6 +1265,27 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.InvalidTuple(
 				"unexpected wildcard evaluated on relation 'document#parent'",
 				tuple.NewTupleKey("document:doc1", "parent", commands.Wildcard),
+			),
+		},
+		{
+			name:             "Error if rewrite encountered in tupleset relation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey:         tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{},
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.ComputedUserset("editor"),
+						"editor": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("unexpected rewrite on relation 'document#parent'"),
 			),
 		},
 	}
