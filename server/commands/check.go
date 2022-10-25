@@ -3,11 +3,13 @@ package commands
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
@@ -69,6 +71,17 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 		return nil, err
 	}
 
+	model, err := query.datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	typesys := typesystem.New(model)
+
 	rc := newResolutionContext(req.GetStoreId(), req.GetAuthorizationModelId(), tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
@@ -77,7 +90,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 		return nil, err
 	}
 
-	if err := query.resolveNode(ctx, rc, userset); err != nil {
+	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
 		utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
 		return nil, err
 	}
@@ -114,7 +127,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 }
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
-func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset) error {
+func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset, typesys *typesystem.TypeSystem) error {
 	if rc.metadata.AddResolve() >= query.resolveNodeLimit {
 		query.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
@@ -129,28 +142,56 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 	switch usType := nsUS.Userset.(type) {
 	case nil, *openfgapb.Userset_This:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("this")})
-		return query.resolveDirectUserSet(ctx, rc)
+		return query.resolveDirectUserSet(ctx, rc, typesys)
 	case *openfgapb.Userset_Union:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("union")})
-		return query.resolveUnion(ctx, rc, usType)
+		return query.resolveUnion(ctx, rc, usType, typesys)
 	case *openfgapb.Userset_Intersection:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("intersection")})
-		return query.resolveIntersection(ctx, rc, usType)
+		return query.resolveIntersection(ctx, rc, usType, typesys)
 	case *openfgapb.Userset_Difference:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("difference")})
-		return query.resolveDifference(ctx, rc, usType)
+		return query.resolveDifference(ctx, rc, usType, typesys)
 	case *openfgapb.Userset_ComputedUserset:
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("computed")})
-		return query.resolveComputed(ctx, rc, usType)
+		return query.resolveComputed(ctx, rc, usType, typesys)
 	case *openfgapb.Userset_TupleToUserset:
+		tupleset := usType.TupleToUserset.GetTupleset().GetRelation()
+
+		objectType, _ := tupleUtils.SplitObject(rc.tk.Object)
+		relation, ok := typesys.GetRelation(objectType, tupleset)
+		if !ok {
+			return serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(rc.tk.Object, tupleset, rc.tk.User))
+		}
+
+		tuplesetRewrite := relation.GetRewrite().GetUserset()
+		if reflect.TypeOf(tuplesetRewrite) != reflect.TypeOf(&openfgapb.Userset_This{}) {
+			query.logger.Warn(
+				fmt.Sprintf("unexpected rewrite on tupleset relation '%s#%s'", objectType, tupleset),
+				zap.String("store_id", rc.store),
+				zap.String("authorization_model_id", rc.modelID),
+				zap.String("object_type", objectType),
+				zap.String("relation", tupleset),
+			)
+
+			return serverErrors.InvalidAuthorizationModelInput(
+				errors.Errorf("unexpected rewrite on relation '%s#%s'", objectType, tupleset),
+			)
+		}
+
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("tuple-to-userset")})
-		return query.resolveTupleToUserset(ctx, rc, usType)
+		return query.resolveTupleToUserset(ctx, rc, usType, typesys)
 	default:
 		return serverErrors.UnsupportedUserSet
 	}
 }
 
-func (query *CheckQuery) resolveComputed(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_ComputedUserset) error {
+func (query *CheckQuery) resolveComputed(
+	ctx context.Context,
+	rc *resolutionContext,
+	nodes *openfgapb.Userset_ComputedUserset,
+	typesys *typesystem.TypeSystem,
+) error {
 	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
@@ -158,12 +199,16 @@ func (query *CheckQuery) resolveComputed(ctx context.Context, rc *resolutionCont
 	if err != nil {
 		return err
 	}
-	return query.resolveNode(ctx, nestedRC, userset)
+	return query.resolveNode(ctx, nestedRC, userset, typesys)
 }
 
 // resolveDirectUserSet attempts to find individual user concurrently by resolving the usersets. If the user is found
 // in the direct user search or in any of the usersets, the peer goroutines will be short-circuited.
-func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutionContext) error {
+func (query *CheckQuery) resolveDirectUserSet(
+	ctx context.Context,
+	rc *resolutionContext,
+	typesys *typesystem.TypeSystem,
+) error {
 	done := make(chan struct{})
 	defer close(done)
 
@@ -233,7 +278,7 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset)
+				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}
 
 			select {
@@ -263,7 +308,12 @@ func (query *CheckQuery) resolveDirectUserSet(ctx context.Context, rc *resolutio
 	return err
 }
 
-func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_Union) error {
+func (query *CheckQuery) resolveUnion(
+	ctx context.Context,
+	rc *resolutionContext,
+	nodes *openfgapb.Userset_Union,
+	typesys *typesystem.TypeSystem,
+) error {
 	var wg sync.WaitGroup
 	c := make(chan *chanResolveResult, len(nodes.Union.Child))
 
@@ -279,7 +329,7 @@ func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext
 		wg.Add(1)
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
-			err := query.resolveNode(ctx, nestedRC, us)
+			err := query.resolveNode(ctx, nestedRC, us, typesys)
 			c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
 		}(c)
 	}
@@ -302,7 +352,12 @@ func (query *CheckQuery) resolveUnion(ctx context.Context, rc *resolutionContext
 	return err
 }
 
-func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolutionContext, nodes *openfgapb.Userset_Intersection) error {
+func (query *CheckQuery) resolveIntersection(
+	ctx context.Context,
+	rc *resolutionContext,
+	nodes *openfgapb.Userset_Intersection,
+	typesys *typesystem.TypeSystem,
+) error {
 	userSetsPerChild := newUserSets()
 	grp, ctx := errgroup.WithContext(ctx)
 	breaker := &circuitBreaker{breakerState: false}
@@ -311,7 +366,7 @@ func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolution
 		tracer := rc.tracer.AppendIndex(idx)
 		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
-			err := query.resolveNode(ctx, nestedRC, userset)
+			err := query.resolveNode(ctx, nestedRC, userset, typesys)
 			if err != nil {
 				return err
 			}
@@ -365,7 +420,12 @@ func (query *CheckQuery) resolveIntersection(ctx context.Context, rc *resolution
 	return nil
 }
 
-func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionContext, node *openfgapb.Userset_Difference) error {
+func (query *CheckQuery) resolveDifference(
+	ctx context.Context,
+	rc *resolutionContext,
+	node *openfgapb.Userset_Difference,
+	typesys *typesystem.TypeSystem,
+) error {
 	sets := []*openfgapb.Userset{node.Difference.GetBase(), node.Difference.GetSubtract()}
 	usPerNode := newUserSets()
 	grp, ctx := errgroup.WithContext(ctx)
@@ -375,7 +435,7 @@ func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionCo
 		tracer := rc.tracer.AppendIndex(idx)
 		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
-			err := query.resolveNode(ctx, nestedRC, set)
+			err := query.resolveNode(ctx, nestedRC, set, typesys)
 			if err != nil {
 				return err
 			}
@@ -397,7 +457,12 @@ func (query *CheckQuery) resolveDifference(ctx context.Context, rc *resolutionCo
 	return nil
 }
 
-func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resolutionContext, node *openfgapb.Userset_TupleToUserset) error {
+func (query *CheckQuery) resolveTupleToUserset(
+	ctx context.Context,
+	rc *resolutionContext,
+	node *openfgapb.Userset_TupleToUserset,
+	typesys *typesystem.TypeSystem,
+) error {
 	relation := node.TupleToUserset.GetTupleset().GetRelation()
 	if relation == "" {
 		relation = rc.tk.GetRelation()
@@ -480,7 +545,7 @@ func (query *CheckQuery) resolveTupleToUserset(ctx context.Context, rc *resoluti
 
 			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset)
+				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}
 
 			select {
