@@ -48,6 +48,10 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	}
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
+	if _, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID); err != nil {
+		return nil, serverErrors.AuthorizationModelNotFound(modelID)
+	}
+
 	dbCallsCounter := utils.NewDBCallCounter()
 	if err := q.validateAndAuthenticateTupleset(ctx, store, modelID, tk, dbCallsCounter); err != nil {
 		utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
