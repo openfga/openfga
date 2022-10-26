@@ -179,7 +179,7 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
+		ListObjectsDeadline:           3 * time.Second, // cannot be higher than HTTP.UpstreamTimeout
 		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
@@ -193,7 +193,7 @@ func DefaultConfig() *Config {
 			Enabled:            true,
 			Addr:               "0.0.0.0:8080",
 			TLS:                TLSConfig{Enabled: false},
-			UpstreamTimeout:    5 * time.Second,
+			UpstreamTimeout:    5 * time.Second, // cannot be lower than ListObjectsDeadline
 			CORSAllowedOrigins: []string{"*"},
 			CORSAllowedHeaders: []string{"*"},
 		},
@@ -395,6 +395,10 @@ func BuildService(config *Config, logger logger.Logger) (*service, error) {
 	httpAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%s", httpHostAddr, httpHostPort))
 	if err != nil {
 		return nil, errors.Errorf("failed to parse the 'http.addr' config: %v", err)
+	}
+
+	if config.ListObjectsDeadline > config.HTTP.UpstreamTimeout {
+		return nil, errors.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", config.HTTP.UpstreamTimeout, config.ListObjectsDeadline)
 	}
 
 	openFgaServer, err := server.New(&server.Dependencies{
