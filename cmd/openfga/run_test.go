@@ -214,6 +214,16 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
+func TestBuildServiceWithIncompatibleTimeouts(t *testing.T) {
+	config, err := GetServiceConfig()
+	require.NoError(t, err)
+	config.ListObjectsDeadline = 5 * time.Minute
+	config.HTTP.UpstreamTimeout = 2 * time.Second
+
+	_, err = BuildService(config, logger.NewNoopLogger())
+	require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+}
+
 func TestBuildServiceWithNoAuth(t *testing.T) {
 	config := DefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
