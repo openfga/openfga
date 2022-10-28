@@ -2,17 +2,11 @@ package server
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"net/http"
-	"net/netip"
-	"reflect"
 	"strconv"
 	"time"
 
 	"github.com/go-errors/errors"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/oklog/ulid/v2"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -20,20 +14,11 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
-	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/storage"
-	"github.com/rs/cors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/reflection"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -55,101 +40,40 @@ type Server struct {
 	logger    logger.Logger
 	datastore storage.OpenFGADatastore
 	encoder   encoder.Encoder
-	config    *Config
 	transport gateway.Transport
-
-	defaultServeMuxOpts []runtime.ServeMuxOption
+	config    *Config
 }
 
 type Dependencies struct {
-	Datastore storage.OpenFGADatastore
-	Tracer    trace.Tracer
-	Meter     metric.Meter
-	Logger    logger.Logger
-	Transport gateway.Transport
-
-	// TokenEncoder is the encoder used to encode continuation tokens for paginated views.
-	// Defaults to a base64 encoder if none is provided.
+	Datastore    storage.OpenFGADatastore
+	Tracer       trace.Tracer
+	Meter        metric.Meter
+	Logger       logger.Logger
+	Transport    gateway.Transport
 	TokenEncoder encoder.Encoder
 }
 
 type Config struct {
-	GRPCServer             GRPCServerConfig
-	HTTPServer             HTTPServerConfig
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
 	ListObjectsMaxResults  uint32
-	UnaryInterceptors      []grpc.UnaryServerInterceptor
-	StreamingInterceptors  []grpc.StreamServerInterceptor
-	MuxOptions             []runtime.ServeMuxOption
-}
-
-type GRPCServerConfig struct {
-	Addr      netip.AddrPort
-	TLSConfig *TLSConfig
-}
-
-type HTTPServerConfig struct {
-	Enabled            bool
-	Addr               netip.AddrPort
-	UpstreamTimeout    time.Duration
-	TLSConfig          *TLSConfig
-	CORSAllowedOrigins []string
-	CORSAllowedHeaders []string
-}
-
-type TLSConfig struct {
-	CertPath string
-	KeyPath  string
 }
 
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) (*Server, error) {
-	tokenEncoder := dependencies.TokenEncoder
-	if tokenEncoder == nil {
-		tokenEncoder = encoder.NewBase64Encoder()
-	} else {
-		t := reflect.TypeOf(tokenEncoder)
-		if reflect.ValueOf(tokenEncoder) == reflect.Zero(t) {
-			return nil, ErrNilTokenEncoder
-		}
-	}
-
-	transport := dependencies.Transport
-	if transport == nil {
-		transport = gateway.NewRPCTransport(dependencies.Logger)
-	} else {
-		t := reflect.TypeOf(transport)
-		if reflect.ValueOf(transport) == reflect.Zero(t) {
-			return nil, ErrNilTransport
-		}
-	}
+	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
 	server := &Server{
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
 		datastore: dependencies.Datastore,
-		encoder:   tokenEncoder,
-		transport: transport,
+		encoder:   dependencies.TokenEncoder,
+		transport: dependencies.Transport,
 		config:    config,
-		defaultServeMuxOpts: []runtime.ServeMuxOption{
-			runtime.WithForwardResponseOption(httpmiddleware.HTTPResponseModifier),
-			runtime.WithErrorHandler(func(c context.Context, sr *runtime.ServeMux, mm runtime.Marshaler, w http.ResponseWriter, r *http.Request, e error) {
-				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				httpmiddleware.CustomHTTPErrorHandler(c, w, r, serverErrors.NewEncodedError(intCode, e.Error()))
-			}),
-			runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
-				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
-				encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
-				return status.Convert(&encodedErr)
-			}),
-		},
 	}
-
-	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
 	return server, nil
 }
@@ -481,139 +405,6 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
 	return s.datastore.IsReady(ctx)
-}
-
-// Run starts server execution, and blocks until complete, returning any server errors. To close the
-// server cancel the provided ctx.
-func (s *Server) Run(ctx context.Context) error {
-
-	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
-		grpc_validator.UnaryServerInterceptor(),
-	}
-	unaryServerInterceptors = append(unaryServerInterceptors, s.config.UnaryInterceptors...)
-
-	streamingInterceptors := []grpc.StreamServerInterceptor{
-		grpc_validator.StreamServerInterceptor(),
-	}
-	streamingInterceptors = append(streamingInterceptors, s.config.StreamingInterceptors...)
-
-	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
-		grpc.ChainStreamInterceptor(streamingInterceptors...),
-	}
-
-	if s.config.GRPCServer.TLSConfig != nil {
-		creds, err := credentials.NewServerTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, s.config.GRPCServer.TLSConfig.KeyPath)
-		if err != nil {
-			return err
-		}
-		opts = append(opts, grpc.Creds(creds))
-	}
-	// nosemgrep: grpc-server-insecure-connection
-	grpcServer := grpc.NewServer(opts...)
-	openfgapb.RegisterOpenFGAServiceServer(grpcServer, s)
-	healthServer := &health.Checker{TargetService: s, TargetServiceName: openfgapb.OpenFGAService_ServiceDesc.ServiceName}
-	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
-	reflection.Register(grpcServer)
-
-	rpcAddr := s.config.GRPCServer.Addr
-	lis, err := net.Listen("tcp", rpcAddr.String())
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			s.logger.Error("failed to start grpc server", logger.Error(err))
-		}
-	}()
-
-	s.logger.Info(fmt.Sprintf("grpc server listening on '%s'...", rpcAddr))
-
-	var httpServer *http.Server
-	if s.config.HTTPServer.Enabled {
-		// Set a request timeout.
-		runtime.DefaultContextTimeout = s.config.HTTPServer.UpstreamTimeout
-
-		dialOpts := []grpc.DialOption{
-			grpc.WithBlock(),
-			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-		}
-		if s.config.GRPCServer.TLSConfig != nil {
-			creds, err := credentials.NewClientTLSFromFile(s.config.GRPCServer.TLSConfig.CertPath, "")
-			if err != nil {
-				return err
-			}
-			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
-		} else {
-			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		}
-
-		timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-
-		conn, err := grpc.DialContext(timeoutCtx, rpcAddr.String(), dialOpts...)
-		if err != nil {
-			return err
-		}
-		defer conn.Close()
-
-		healthClient := healthv1pb.NewHealthClient(conn)
-
-		muxOpts := []runtime.ServeMuxOption{
-			runtime.WithHealthzEndpoint(healthClient),
-		}
-		muxOpts = append(muxOpts, s.defaultServeMuxOpts...) // register the defaults first
-		muxOpts = append(muxOpts, s.config.MuxOptions...)   // any provided options override defaults if they are duplicates
-
-		mux := runtime.NewServeMux(muxOpts...)
-
-		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
-			return err
-		}
-
-		httpServer = &http.Server{
-			Addr: s.config.HTTPServer.Addr.String(),
-			Handler: cors.New(cors.Options{
-				AllowedOrigins:   s.config.HTTPServer.CORSAllowedOrigins,
-				AllowCredentials: true,
-				AllowedHeaders:   s.config.HTTPServer.CORSAllowedHeaders,
-				AllowedMethods: []string{http.MethodGet, http.MethodPost,
-					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux),
-		}
-
-		go func() {
-			s.logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
-
-			var err error
-			if s.config.HTTPServer.TLSConfig != nil {
-				err = httpServer.ListenAndServeTLS(s.config.HTTPServer.TLSConfig.CertPath, s.config.HTTPServer.TLSConfig.KeyPath)
-			} else {
-				err = httpServer.ListenAndServe()
-			}
-			if err != http.ErrServerClosed {
-				s.logger.ErrorWithContext(ctx, "HTTP server closed with unexpected error", logger.Error(err))
-			}
-		}()
-	}
-
-	<-ctx.Done()
-	s.logger.InfoWithContext(ctx, "Termination signal received! Gracefully shutting down")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if httpServer != nil {
-		if err := httpServer.Shutdown(ctx); err != nil {
-			s.logger.ErrorWithContext(ctx, "HTTP server shutdown failed", logger.Error(err))
-			return err
-		}
-	}
-
-	grpcServer.GracefulStop()
-
-	return nil
 }
 
 // Util to find the latest authorization model ID to be used through all the request lifecycle.
