@@ -334,6 +334,7 @@ func runServer(ctx context.Context, config *Config) error {
 	tokenEncoder := encoder.NewBase64Encoder()
 
 	var datastore storage.OpenFGADatastore
+	var err error
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
