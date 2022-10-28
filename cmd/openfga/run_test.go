@@ -214,14 +214,59 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
-func TestBuildServiceWithIncompatibleTimeouts(t *testing.T) {
-	config, err := GetServiceConfig()
-	require.NoError(t, err)
-	config.ListObjectsDeadline = 5 * time.Minute
-	config.HTTP.UpstreamTimeout = 2 * time.Second
+func TestVerifyConfig(t *testing.T) {
+	t.Run("UpstreamTimeout cannot be less than ListObjectsDeadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDeadline = 5 * time.Minute
+		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
-	_, err = BuildService(config, logger.NewNoopLogger())
-	require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+	})
+
+	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.GRPC.TLS = &TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.GRPC.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+	})
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
@@ -528,52 +573,6 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			tryStreamingListObjects(t, test, config.HTTP.Addr, retryClient, trustedToken)
 		})
 	}
-}
-
-func TestTLSFailureSettings(t *testing.T) {
-	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
-		cfg.HTTP.TLS = &TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
-	})
-
-	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
-		cfg.GRPC.TLS = &TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-	})
-
-	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
-		cfg.HTTP.TLS = &TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
-	})
-
-	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
-		cfg.GRPC.TLS = &TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-	})
 }
 
 func TestHTTPServingTLS(t *testing.T) {
