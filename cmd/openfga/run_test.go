@@ -427,8 +427,10 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() error {
-		return runServer(ctx, config)
+	go func() {
+		if err := runServer(ctx, config); err != nil {
+			log.Fatal(err)
+		}
 	}()
 
 	ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
@@ -529,9 +531,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		err = runServer(ctx, config)
-		if err != nil {
-			fmt.Println(">>>>", err)
+		if err := runServer(ctx, config); err != nil {
+			log.Fatal(err)
 		}
 	}()
 
@@ -590,7 +591,9 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			_ = runServer(ctx, config)
+			if err := runServer(ctx, config); err != nil {
+				log.Fatal(err)
+			}
 		}()
 
 		ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
