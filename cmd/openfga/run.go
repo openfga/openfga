@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"net"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-errors/errors"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -31,6 +31,7 @@ import (
 	"github.com/openfga/openfga/server/authn/oidc"
 	"github.com/openfga/openfga/server/authn/presharedkey"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
@@ -226,19 +227,21 @@ func DefaultConfig() *Config {
 	}
 }
 
-func DefaultConfigWithRandomPorts() (*Config, error) {
+func DefaultConfigWithRandomPorts() *Config {
 	config := DefaultConfig()
+
+	config.Playground.Enabled = false
 
 	l, err := net.Listen("tcp", "")
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	defer l.Close()
 	httpPort := l.Addr().(*net.TCPAddr).Port
 
 	l, err = net.Listen("tcp", "")
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	defer l.Close()
 	grpcPort := l.Addr().(*net.TCPAddr).Port
@@ -246,7 +249,7 @@ func DefaultConfigWithRandomPorts() (*Config, error) {
 	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
 	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
 
-	return config, nil
+	return config
 }
 
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
@@ -269,19 +272,45 @@ func ReadConfig() (*Config, error) {
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, errors.Errorf("failed to load server config: %w", err)
+			return nil, fmt.Errorf("failed to load server config: %w", err)
 		}
 	}
 
 	if err := viper.Unmarshal(config); err != nil {
-		return nil, errors.Errorf("failed to unmarshal server config: %w", err)
-	}
-
-	if config.ListObjectsDeadline > config.HTTP.UpstreamTimeout {
-		return nil, errors.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", config.HTTP.UpstreamTimeout, config.ListObjectsDeadline)
+		return nil, fmt.Errorf("failed to unmarshal server config: %w", err)
 	}
 
 	return config, nil
+}
+
+func VerifyConfig(cfg *Config) error {
+	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
+		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
+	}
+
+	if cfg.Playground.Enabled {
+		if !cfg.HTTP.Enabled {
+			return errors.New("the HTTP server must be enabled to run the openfga playground")
+		}
+
+		if !(cfg.Authn.Method == "none" || cfg.Authn.Method == "preshared") {
+			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
+		}
+	}
+
+	if cfg.HTTP.TLS.Enabled {
+		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
+			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
+		}
+	}
+
+	if cfg.GRPC.TLS.Enabled {
+		if cfg.GRPC.TLS.CertPath == "" || cfg.GRPC.TLS.KeyPath == "" {
+			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+		}
+	}
+
+	return nil
 }
 
 func run(_ *cobra.Command, _ []string) {
@@ -290,10 +319,53 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	logger, err := buildLogger(config.Log.Format)
-	if err != nil {
+	if err := runServer(context.Background(), config); err != nil {
 		panic(err)
 	}
+}
+
+func runServer(ctx context.Context, config *Config) error {
+	if err := VerifyConfig(config); err != nil {
+		return err
+	}
+
+	logger, err := buildLogger(config.Log.Format)
+	if err != nil {
+		return err
+	}
+
+	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
+	tokenEncoder := encoder.NewBase64Encoder()
+
+	var datastore storage.OpenFGADatastore
+	switch config.Datastore.Engine {
+	case "memory":
+		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+	case "mysql":
+		opts := []mysql.MySQLOption{
+			mysql.WithLogger(logger),
+			mysql.WithTracer(tracer),
+		}
+
+		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
+		if err != nil {
+			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
+		}
+	case "postgres":
+		opts := []postgres.PostgresOption{
+			postgres.WithLogger(logger),
+			postgres.WithTracer(tracer),
+		}
+
+		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
+		if err != nil {
+			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
+		}
+	default:
+		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
+	}
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -307,10 +379,10 @@ func run(_ *cobra.Command, _ []string) {
 		logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
 	default:
-		logger.Fatal(fmt.Sprintf("unsupported authentication method '%v'", config.Authn.Method))
+		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
 	}
 	if err != nil {
-		logger.Fatal("failed to initialize authenticator", zap.Error(err))
+		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
@@ -330,38 +402,21 @@ func run(_ *cobra.Command, _ []string) {
 		grpc.ChainStreamInterceptor(streamingServerInterceptors...),
 	}
 
-	tracer := telemetry.NewNoopTracer()
-	meter := telemetry.NewNoopMeter()
-	tokenEncoder := encoder.NewBase64Encoder()
-
-	var datastore storage.OpenFGADatastore
-	switch config.Datastore.Engine {
-	case "memory":
-		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
-	case "mysql":
-		opts := []mysql.MySQLOption{
-			mysql.WithLogger(logger),
-			mysql.WithTracer(tracer),
+	if config.GRPC.TLS.Enabled {
+		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
+			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 		}
-
-		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
+		creds, err := credentials.NewServerTLSFromFile(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
 		if err != nil {
-			logger.Fatal("failed to initialize mysql datastore", zap.Error(err))
-		}
-	case "postgres":
-		opts := []postgres.PostgresOption{
-			postgres.WithLogger(logger),
-			postgres.WithTracer(tracer),
+			return err
 		}
 
-		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
-		if err != nil {
-			logger.Fatal("failed to initialize postgres datastore", zap.Error(err))
-		}
-	default:
-		logger.Fatal(fmt.Sprintf("storage engine '%s' is unsupported", config.Datastore.Engine))
+		opts = append(opts, grpc.Creds(creds))
+
+		logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
+	} else {
+		logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
 	}
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	if config.Profiler.Enabled {
 		mux := http.NewServeMux()
@@ -382,28 +437,13 @@ func run(_ *cobra.Command, _ []string) {
 		}()
 	}
 
-	if config.GRPC.TLS.Enabled {
-		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			logger.Fatal("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-		}
-		creds, err := credentials.NewServerTLSFromFile(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
-		if err != nil {
-			logger.Fatal("", zap.Error(err))
-		}
-
-		opts = append(opts, grpc.Creds(creds))
-
-		logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
-	} else {
-		logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
-	}
-
 	svr, err := server.New(&server.Dependencies{
 		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
+		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
@@ -411,7 +451,7 @@ func run(_ *cobra.Command, _ []string) {
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
 	})
 	if err != nil {
-		logger.Fatal("failed to initialize openfga server", zap.Error(err))
+		return fmt.Errorf("failed to initialize openfga server: %w", err)
 	}
 
 	// nosemgrep: grpc-server-insecure-connection
@@ -423,7 +463,7 @@ func run(_ *cobra.Command, _ []string) {
 
 	lis, err := net.Listen("tcp", config.GRPC.Addr)
 	if err != nil {
-		logger.Fatal("failed to listen", zap.Error(err))
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	go func() {
@@ -432,8 +472,6 @@ func run(_ *cobra.Command, _ []string) {
 		}
 	}()
 	logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
-
-	ctx := context.Background()
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
@@ -478,7 +516,7 @@ func run(_ *cobra.Command, _ []string) {
 		}
 		mux := runtime.NewServeMux(muxOpts...)
 		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
-			logger.Fatal("", zap.Error(err))
+			return err
 		}
 
 		httpServer = &http.Server{
@@ -512,12 +550,12 @@ func run(_ *cobra.Command, _ []string) {
 	var playground *http.Server
 	if config.Playground.Enabled {
 		if !config.HTTP.Enabled {
-			logger.Fatal("the HTTP server must be enabled to run the openfga playground")
+			return errors.New("the HTTP server must be enabled to run the openfga playground")
 		}
 
 		authMethod := config.Authn.Method
 		if !(authMethod == "none" || authMethod == "preshared") {
-			logger.Fatal("the playground only supports authn methods 'none' and 'preshared'")
+			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
 		}
 
 		playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
@@ -525,7 +563,7 @@ func run(_ *cobra.Command, _ []string) {
 
 		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 		if err != nil {
-			logger.Fatal("failed to parse playground index.html as Go template", zap.Error(err))
+			return fmt.Errorf("failed to parse playground index.html as Go template: %w", err)
 		}
 
 		fileServer := http.FileServer(http.FS(assets.EmbedPlayground))
@@ -542,7 +580,7 @@ func run(_ *cobra.Command, _ []string) {
 			policy,
 		)
 		if err != nil {
-			logger.Fatal("failed to establish playground connection to HTTP server", zap.Error(err))
+			return fmt.Errorf("failed to establish playground connection to HTTP server: %w", err)
 		}
 
 		playgroundAPIToken := ""
@@ -599,7 +637,10 @@ func run(_ *cobra.Command, _ []string) {
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
-	<-done
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 	logger.Info("attempting to shutdown gracefully")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -611,8 +652,10 @@ func run(_ *cobra.Command, _ []string) {
 		}
 	}
 
-	if err := httpServer.Shutdown(ctx); err != nil {
-		logger.Info("failed to shutdown the http server", zap.Error(err))
+	if httpServer != nil {
+		if err := httpServer.Shutdown(ctx); err != nil {
+			logger.Info("failed to shutdown the http server", zap.Error(err))
+		}
 	}
 
 	grpcServer.GracefulStop()
@@ -624,6 +667,8 @@ func run(_ *cobra.Command, _ []string) {
 	}
 
 	logger.Info("server exited. goodbye 👋")
+
+	return nil
 }
 
 func buildLogger(logFormat string) (logger.Logger, error) {
