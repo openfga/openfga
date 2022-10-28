@@ -124,7 +124,6 @@ type AuthnOIDCConfig struct {
 
 // AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
 type AuthnPresharedKeyConfig struct {
-
 	// Keys define the preshared keys to verify authn tokens against.
 	Keys []string
 }
@@ -132,7 +131,6 @@ type AuthnPresharedKeyConfig struct {
 // LogConfig defines OpenFGA server configurations for log specific settings. For production we
 // recommend using the 'json' log format.
 type LogConfig struct {
-
 	// Format is the log format to use in the log output (e.g. 'text' or 'json')
 	Format string
 }
@@ -230,6 +228,7 @@ func DefaultConfig() *Config {
 func DefaultConfigWithRandomPorts() *Config {
 	config := DefaultConfig()
 
+	// Since this is used for tests, turn the following off:
 	config.Playground.Enabled = false
 
 	l, err := net.Listen("tcp", "")
@@ -329,11 +328,7 @@ func runServer(ctx context.Context, config *Config) error {
 		return err
 	}
 
-	logger, err := buildLogger(config.Log.Format)
-	if err != nil {
-		return err
-	}
-
+	logger := buildLogger(config.Log.Format)
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
@@ -671,24 +666,17 @@ func runServer(ctx context.Context, config *Config) error {
 	return nil
 }
 
-func buildLogger(logFormat string) (logger.Logger, error) {
-	openfgaLogger, err := logger.NewTextLogger()
-	if err != nil {
-		return nil, err
-	}
-
+func buildLogger(logFormat string) logger.Logger {
+	openfgaLogger := logger.Must(logger.NewTextLogger())
 	if logFormat == "json" {
-		openfgaLogger, err = logger.NewJSONLogger()
-		if err != nil {
-			return nil, err
-		}
+		openfgaLogger = logger.Must(logger.NewJSONLogger())
 		openfgaLogger.With(
 			zap.String("build.version", build.Version),
 			zap.String("build.commit", build.Commit),
 		)
 	}
 
-	return openfgaLogger, err
+	return openfgaLogger
 }
 
 // bindRunFlags binds the cobra cmd flags to the equivalent config value being managed

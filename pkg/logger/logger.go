@@ -120,6 +120,13 @@ func NewJSONLogger() (*ZapLogger, error) {
 	}, nil
 }
 
+func Must(logger *ZapLogger, err error) *ZapLogger {
+	if err != nil {
+		panic(err)
+	}
+	return logger
+}
+
 func Error(err error) zap.Field {
 	return zap.Error(err)
 }
