@@ -29,6 +29,14 @@ func NewMigrateCommand() *cobra.Command {
 		RunE:  runMigration,
 	}
 
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+
+	configPaths := []string{"/etc/openfga", "$HOME/.openfga", "."}
+	for _, path := range configPaths {
+		viper.AddConfigPath(path)
+	}
+
 	viper.SetEnvPrefix("OPENFGA")
 	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
 	viper.AutomaticEnv()
