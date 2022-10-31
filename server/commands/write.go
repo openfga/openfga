@@ -54,7 +54,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 }
 
 func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.WriteRequest, dbCallsCounter utils.DBCallCounter) error {
-	ctx, span := c.tracer.Start(ctx, "validateAndAuthenticateTuplesets")
+	ctx, span := c.tracer.Start(ctx, "validateTuplesets")
 	defer span.End()
 
 	store := req.GetStoreId()
