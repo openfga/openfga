@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/MicahParks/keyfunc v1.5.1
 	github.com/cenkalti/backoff/v4 v4.1.3
-	github.com/docker/docker v20.10.20+incompatible
+	github.com/docker/docker v20.10.21+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-errors/errors v1.4.2
 	github.com/go-sql-driver/mysql v1.6.0
@@ -30,7 +30,7 @@ require (
 	go.buf.build/openfga/go/openfga/api v1.2.35
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.36.4
 	go.opentelemetry.io/otel v1.11.1
-	go.opentelemetry.io/otel/metric v0.32.3
+	go.opentelemetry.io/otel/metric v0.33.0
 	go.opentelemetry.io/otel/trace v1.11.1
 	go.uber.org/zap v1.23.0
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
