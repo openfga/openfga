@@ -225,7 +225,7 @@ func TestVerifyConfig(t *testing.T) {
 	})
 
 	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{
 			Enabled: true,
 			KeyPath: "some/path",
@@ -236,7 +236,7 @@ func TestVerifyConfig(t *testing.T) {
 	})
 
 	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := DefaultConfig()
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled: true,
 			KeyPath: "some/path",
@@ -247,7 +247,7 @@ func TestVerifyConfig(t *testing.T) {
 	})
 
 	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: "some/path",
@@ -258,7 +258,7 @@ func TestVerifyConfig(t *testing.T) {
 	})
 
 	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := DefaultConfig()
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: "some/path",
@@ -269,35 +269,41 @@ func TestVerifyConfig(t *testing.T) {
 	})
 }
 
+func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+
+	err := runServer(context.Background(), cfg)
+	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
+}
+
 func TestBuildServiceWithNoAuth(t *testing.T) {
-	config := DefaultConfigWithRandomPorts()
+	cfg := DefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		time.Sleep(time.Second)
-		cancel()
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
 	}()
 
-	err := runServer(ctx, config)
-	require.NoError(t, err, "Failed to build server and/or datastore")
-}
-
-func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	config, err := ReadConfig()
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
+	defer conn.Close()
 
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+	client := openfgapb.NewOpenFGAServiceClient(conn)
 
-	err = runServer(context.Background(), config)
-	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
+	// Just checking we can create a store with no authentication.
+	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{Name: "store"})
+	require.NoError(t, err)
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	config := DefaultConfigWithRandomPorts()
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
@@ -305,10 +311,12 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		_ = runServer(ctx, config)
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
 	}()
 
-	ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header with incorrect key fails",
@@ -328,22 +336,22 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		expectedStatusCode: 401,
 	}, {
 		_name:              "Correct key one succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[0]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[0]),
 		expectedStatusCode: 200,
 	}, {
 		_name:              "Correct key two succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[1]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[1]),
 		expectedStatusCode: 200,
 	}}
 
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			tryGetStores(t, test, config.HTTP.Addr, retryClient)
+			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
 		})
 
 		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, config.HTTP.Addr, retryClient, config.Authn.AuthnPresharedKeyConfig.Keys[0])
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, cfg.Authn.AuthnPresharedKeyConfig.Keys[0])
 		})
 	}
 }
@@ -415,25 +423,24 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	config := DefaultConfigWithRandomPorts()
-
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
-	config.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
-	config.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
+	cfg.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
+	cfg.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, config); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -488,7 +495,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://%s/stores", config.HTTP.Addr), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
@@ -514,9 +521,9 @@ func TestHTTPServerWithCORS(t *testing.T) {
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	const localOIDCServerURL = "http://localhost:8083"
 
-	config := DefaultConfigWithRandomPorts()
-	config.Authn.Method = "oidc"
-	config.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "oidc"
+	cfg.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
@@ -531,12 +538,12 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, config); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{
 		{
@@ -567,11 +574,11 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			tryGetStores(t, test, config.HTTP.Addr, retryClient)
+			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
 		})
 
 		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, config.HTTP.Addr, retryClient, trustedToken)
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedToken)
 		})
 	}
 }
@@ -581,8 +588,8 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config := DefaultConfigWithRandomPorts()
-		config.HTTP.TLS = &TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -591,31 +598,31 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, config); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
 
-		ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config := DefaultConfigWithRandomPorts()
-		config.HTTP.TLS = &TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		config.HTTP.Addr = "localhost:54672"
+		cfg.HTTP.Addr = "localhost:54672"
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, config); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -629,7 +636,7 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err := client.Get(fmt.Sprintf("https://%s/healthz", config.HTTP.Addr))
+		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
 	})
 }
@@ -639,9 +646,9 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config := DefaultConfigWithRandomPorts()
-		config.HTTP.Enabled = false
-		config.GRPC.TLS = &TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.Enabled = false
+		cfg.GRPC.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -650,22 +657,22 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, config); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
 
-		ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, false)
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config := DefaultConfigWithRandomPorts()
-		config.HTTP.Enabled = false
-		config.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
-		config.GRPC.TLS = &TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.Enabled = false
+		cfg.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
+		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -675,7 +682,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, config); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -684,19 +691,19 @@ func TestGRPCServingTLS(t *testing.T) {
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, creds, false)
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	config := DefaultConfigWithRandomPorts()
-	config.HTTP.Enabled = false
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, config); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -707,22 +714,22 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	config := DefaultConfigWithRandomPorts()
+	cfg := DefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, config); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	ensureServiceUp(t, config.GRPC.Addr, config.HTTP.Addr, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
-	config, err := ReadConfig()
+	cfg, err := ReadConfig()
 	require.NoError(t, err)
 
 	_, basepath, _, _ := runtime.Caller(0)
@@ -733,63 +740,63 @@ func TestDefaultConfig(t *testing.T) {
 
 	val := res.Get("properties.datastore.properties.engine.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Datastore.Engine)
+	require.Equal(t, val.String(), cfg.Datastore.Engine)
 
 	val = res.Get("properties.datastore.properties.maxCacheSize.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.Datastore.MaxCacheSize)
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
 
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.GRPC.Addr)
+	require.Equal(t, val.String(), cfg.GRPC.Addr)
 
 	val = res.Get("properties.http.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.HTTP.Enabled)
+	require.Equal(t, val.Bool(), cfg.HTTP.Enabled)
 
 	val = res.Get("properties.http.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.HTTP.Addr)
+	require.Equal(t, val.String(), cfg.HTTP.Addr)
 
 	val = res.Get("properties.playground.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.Playground.Enabled)
+	require.Equal(t, val.Bool(), cfg.Playground.Enabled)
 
 	val = res.Get("properties.playground.properties.port.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.Playground.Port)
+	require.EqualValues(t, val.Int(), cfg.Playground.Port)
 
 	val = res.Get("properties.profiler.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.Profiler.Enabled)
+	require.Equal(t, val.Bool(), cfg.Profiler.Enabled)
 
 	val = res.Get("properties.profiler.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Profiler.Addr)
+	require.Equal(t, val.String(), cfg.Profiler.Addr)
 
 	val = res.Get("properties.authn.properties.method.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Authn.Method)
+	require.Equal(t, val.String(), cfg.Authn.Method)
 
 	val = res.Get("properties.log.properties.format.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Log.Format)
+	require.Equal(t, val.String(), cfg.Log.Format)
 
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.MaxTuplesPerWrite)
+	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
 
 	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.MaxTypesPerAuthorizationModel)
+	require.EqualValues(t, val.Int(), cfg.MaxTypesPerAuthorizationModel)
 
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ChangelogHorizonOffset)
+	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ResolveNodeLimit)
+	require.EqualValues(t, val.Int(), cfg.ResolveNodeLimit)
 
 	val = res.Get("properties.grpc.properties.tls.$ref")
 	require.True(t, val.Exists())
@@ -801,14 +808,14 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("definitions.tls.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.GRPC.TLS.Enabled)
-	require.Equal(t, val.Bool(), config.HTTP.TLS.Enabled)
+	require.Equal(t, val.Bool(), cfg.GRPC.TLS.Enabled)
+	require.Equal(t, val.Bool(), cfg.HTTP.TLS.Enabled)
 
 	val = res.Get("properties.listObjectsDeadline.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.ListObjectsDeadline.String())
+	require.Equal(t, val.String(), cfg.ListObjectsDeadline.String())
 
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ListObjectsMaxResults)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
 }
