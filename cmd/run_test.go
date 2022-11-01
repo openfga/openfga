@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -726,7 +726,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 
 	_, basepath, _, _ := runtime.Caller(0)
-	jsonSchema, err := os.ReadFile(path.Join(filepath.Dir(basepath), "..", "..", ".config-schema.json"))
+	jsonSchema, err := os.ReadFile(path.Join(filepath.Dir(basepath), "..", ".config-schema.json"))
 	require.NoError(t, err)
 
 	res := gjson.ParseBytes(jsonSchema)

@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"database/sql"
@@ -9,7 +9,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
-	cmdutil "github.com/openfga/openfga/cmd/openfga/util"
+	"github.com/openfga/openfga/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -149,11 +149,11 @@ func bindMigrateFlags(cmd *cobra.Command) {
 	flags := cmd.Flags()
 
 	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
-	cmdutil.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
+	util.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
 
 	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
-	cmdutil.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
+	util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
 
 	flags.Uint(versionFlag, 0, "`the version to migrate to. If omitted, the latest version of the schema will be used`")
-	cmdutil.MustBindPFlag("version", flags.Lookup(versionFlag))
+	util.MustBindPFlag("version", flags.Lookup(versionFlag))
 }

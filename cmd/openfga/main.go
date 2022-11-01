@@ -2,15 +2,17 @@ package main
 
 import (
 	"os"
+
+	"github.com/openfga/openfga/cmd"
 )
 
 func main() {
-	rootCmd := NewRootCommand()
+	rootCmd := cmd.NewRootCommand()
 
-	runCmd := NewRunCommand()
+	runCmd := cmd.NewRunCommand()
 	rootCmd.AddCommand(runCmd)
 
-	migrateCmd := NewMigrateCommand()
+	migrateCmd := cmd.NewMigrateCommand()
 	rootCmd.AddCommand(migrateCmd)
 
 	if err := rootCmd.Execute(); err != nil {
