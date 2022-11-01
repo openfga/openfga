@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,7 +24,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-errors/errors"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/server/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"

@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 
-	"github.com/go-errors/errors"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
@@ -141,7 +141,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 		return nil
 	default:
-		return errors.Errorf("unknown datastore engine type: %s", engine)
+		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 }
 
