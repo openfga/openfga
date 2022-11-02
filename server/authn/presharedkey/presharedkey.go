@@ -2,8 +2,8 @@ package presharedkey
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-errors/errors"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/openfga/openfga/server/authn"
 )

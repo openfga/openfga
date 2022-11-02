@@ -2,8 +2,8 @@ package commands
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"

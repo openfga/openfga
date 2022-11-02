@@ -7,11 +7,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const (
-	// MaxDepthBacktraceStack defines the maximum back trace depth in logger
-	MaxDepthBacktraceStack = 8
-)
-
 type Logger interface {
 	// These are ops that call directly to the actual zap implementation
 	Debug(string, ...zap.Field)

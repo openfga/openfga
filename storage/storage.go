@@ -3,10 +3,10 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )

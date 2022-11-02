@@ -1,9 +1,9 @@
 package graph
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )

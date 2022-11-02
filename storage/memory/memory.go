@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -9,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-errors/errors"
-	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -151,7 +150,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 
 	it, err := s.read(ctx, store, key, paginationOptions)
 	if err != nil {
-		return nil, nil, openfgaerrors.ErrorWithStack(err)
+		return nil, nil, err
 	}
 
 	return it.tuples, it.continuationToken, nil
@@ -175,13 +174,13 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 			typeInToken = tokens[1]
 			from, err = strconv.ParseInt(concreteToken, 10, 32)
 			if err != nil {
-				return nil, nil, openfgaerrors.ErrorWithStack(err)
+				return nil, nil, err
 			}
 		}
 	}
 
 	if typeInToken != "" && typeInToken != objectType {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrMismatchObjectType)
+		return nil, nil, storage.ErrMismatchObjectType
 	}
 
 	var allChanges []*openfgapb.TupleChange
@@ -195,7 +194,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 		}
 	}
 	if len(allChanges) == 0 {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, nil, storage.ErrNotFound
 	}
 
 	pageSize := storage.DefaultPageSize
@@ -208,7 +207,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	}
 	res := allChanges[from:to]
 	if len(res) == 0 {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, nil, storage.ErrNotFound
 	}
 
 	continuationToken = strconv.Itoa(len(allChanges))
@@ -230,7 +229,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 	if key.Object == "" && key.User == "" {
 		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
+		return nil, err
 	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
@@ -245,7 +244,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 		from, err = strconv.Atoi(paginationOptions.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
-			return nil, openfgaerrors.ErrorWithStack(err)
+			return nil, err
 		}
 	}
 
@@ -272,7 +271,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	now := timestamppb.Now()
 
 	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
-		return openfgaerrors.ErrorWithStack(err)
+		return err
 	}
 
 	var tuples []*openfgapb.Tuple
@@ -304,12 +303,12 @@ Write:
 func validateTuples(tuples []*openfgapb.Tuple, deletes, writes []*openfgapb.TupleKey) error {
 	for _, tk := range deletes {
 		if !find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE))
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
 	for _, tk := range writes {
 		if find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 		}
 	}
 	return nil
@@ -335,7 +334,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	if key.Object == "" && key.User == "" {
 		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
+		return nil, err
 	}
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
@@ -343,7 +342,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 		}
 	}
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
@@ -357,7 +356,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key
 	if key.Object == "" && key.User == "" {
 		err := errObjectOrUserMustBeSpecified
 		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
+		return nil, err
 	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
@@ -429,7 +428,7 @@ func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options s
 	if options.From != "" {
 		from, err = strconv.ParseInt(options.From, 10, 32)
 		if err != nil {
-			return nil, make([]byte, 0), openfgaerrors.ErrorWithStack(err)
+			return nil, make([]byte, 0), err
 		}
 	}
 	to := int(from) + pageSize
@@ -493,18 +492,18 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	if model, ok := findAuthorizationModelByID(id, tm); ok {
 		if model.GetTypeDefinitions() == nil || len(model.GetTypeDefinitions()) == 0 {
-			return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+			return nil, storage.ErrNotFound
 		}
 		return model, nil
 	}
 
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // ReadAuthorizationModels See storage.AuthorizationModelBackend.ReadAuthorizationModels
@@ -538,7 +537,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 	if options.From != "" {
 		from, err = strconv.ParseInt(options.From, 10, 32)
 		if err != nil {
-			return nil, nil, openfgaerrors.ErrorWithStack(err)
+			return nil, nil, err
 		}
 	}
 
@@ -566,13 +565,13 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return "", storage.ErrNotFound
 	}
 	// find latest model
 	nsc, ok := findAuthorizationModelByID("", tm)
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return "", storage.ErrNotFound
 	}
 	return nsc.Id, nil
 }
@@ -588,7 +587,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	if nsc, ok := findAuthorizationModelByID(id, tm); ok {
@@ -598,7 +597,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 	}
 
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
@@ -704,7 +703,7 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgap
 	defer s.mu.Unlock()
 
 	if s.stores[storeID] == nil {
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	return s.stores[storeID], nil
@@ -732,7 +731,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 	if paginationOptions.From != "" {
 		from, err = strconv.ParseInt(paginationOptions.From, 10, 32)
 		if err != nil {
-			return nil, nil, openfgaerrors.ErrorWithStack(err)
+			return nil, nil, err
 		}
 	}
 	pageSize := storage.DefaultPageSize

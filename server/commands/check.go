@@ -2,11 +2,11 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -175,7 +175,7 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 			)
 
 			return serverErrors.InvalidAuthorizationModelInput(
-				errors.Errorf("unexpected rewrite on relation '%s#%s'", objectType, tupleset),
+				fmt.Errorf("unexpected rewrite on relation '%s#%s'", objectType, tupleset),
 			)
 		}
 

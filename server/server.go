@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/go-errors/errors"
 	"github.com/oklog/ulid/v2"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -23,11 +23,6 @@ import (
 
 const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-)
-
-var (
-	ErrNilTokenEncoder = errors.Errorf("tokenEncoder must be a non-nil interface value")
-	ErrNilTransport    = errors.Errorf("transport must be a non-nil interface value")
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -63,8 +58,6 @@ type Config struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
-	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
-
 	return &Server{
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
