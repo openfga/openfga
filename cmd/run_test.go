@@ -1,4 +1,4 @@
-package service
+package cmd
 
 import (
 	"context"
@@ -9,27 +9,27 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-errors/errors"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
@@ -49,7 +49,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
+func ensureServiceUp(t *testing.T, grpcAddr, httpAddr string, transportCredentials credentials.TransportCredentials, httpHealthCheck bool) {
 	t.Helper()
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -68,7 +68,7 @@ func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.
 
 	conn, err := grpc.DialContext(
 		timeoutCtx,
-		fmt.Sprintf("localhost:%d", s.GetGRPCAddrPort().Port()),
+		grpcAddr,
 		dialOpts...,
 	)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.
 		}
 
 		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return errors.Errorf("not serving")
+			return errors.New("not serving")
 		}
 
 		return nil
@@ -96,7 +96,7 @@ func ensureServiceUp(t *testing.T, s *service, transportCredentials credentials.
 	require.NoError(t, err)
 
 	if httpHealthCheck {
-		_, err = retryablehttp.NewClient().Get(fmt.Sprintf("http://localhost:%d/healthz", s.GetHTTPAddrPort().Port()))
+		_, err = retryablehttp.Get(fmt.Sprintf("http://%s/healthz", httpAddr))
 		require.NoError(t, err)
 	}
 }
@@ -214,55 +214,109 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
-func TestBuildServiceWithIncompatibleTimeouts(t *testing.T) {
-	config, err := GetServiceConfig()
-	require.NoError(t, err)
-	config.ListObjectsDeadline = 5 * time.Minute
-	config.HTTP.UpstreamTimeout = 2 * time.Second
+func TestVerifyConfig(t *testing.T) {
+	t.Run("UpstreamTimeout cannot be less than ListObjectsDeadline", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.ListObjectsDeadline = 5 * time.Minute
+		cfg.HTTP.UpstreamTimeout = 2 * time.Second
 
-	_, err = BuildService(config, logger.NewNoopLogger())
-	require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
-}
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
+	})
 
-func TestBuildServiceWithNoAuth(t *testing.T) {
-	config, err := GetServiceConfig()
-	require.NoError(t, err)
+	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.HTTP.TLS = &TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
 
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err, "Failed to build server and/or datastore")
-	service.Close(context.Background())
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.GRPC.TLS = &TLSConfig{
+			Enabled: true,
+			KeyPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.HTTP.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
+	})
+
+	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.GRPC.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "some/path",
+		}
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+	})
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	config, err := GetServiceConfig()
-	require.NoError(t, err)
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
-
-	_, err = BuildService(config, logger.NewNoopLogger())
+	err := runServer(context.Background(), cfg)
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
-func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	config, err := DefaultConfigWithRandomPorts()
-	require.NoError(t, err)
+func TestBuildServiceWithNoAuth(t *testing.T) {
+	cfg := DefaultConfigWithRandomPorts()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	// Just checking we can create a store with no authentication.
+	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{Name: "store"})
+	require.NoError(t, err)
+}
+
+func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err)
-
 	ctx, cancel := context.WithCancel(context.Background())
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		return service.Run(ctx)
-	})
+	defer cancel()
 
-	ensureServiceUp(t, service, nil, true)
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
 		_name:      "Header with incorrect key fails",
@@ -282,34 +336,30 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		expectedStatusCode: 401,
 	}, {
 		_name:              "Correct key one succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[0]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[0]),
 		expectedStatusCode: 200,
 	}, {
 		_name:              "Correct key two succeeds",
-		authHeader:         fmt.Sprintf("Bearer %s", config.Authn.AuthnPresharedKeyConfig.Keys[1]),
+		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[1]),
 		expectedStatusCode: 200,
 	}}
 
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			tryGetStores(t, test, service, retryClient)
+			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
 		})
 
 		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, service, retryClient, config.Authn.AuthnPresharedKeyConfig.Keys[0])
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, cfg.Authn.AuthnPresharedKeyConfig.Keys[0])
 		})
 	}
-
-	cancel()
-	require.NoError(t, service.Close(ctx))
-	require.NoError(t, g.Wait())
 }
 
-func tryStreamingListObjects(t *testing.T, test authTest, service *service, retryClient *retryablehttp.Client, validToken string) {
+func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client, validToken string) {
 	// create a store
 	createStorePayload := strings.NewReader(`{"name": "some-store-name"}`)
-	req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), createStorePayload)
+	req, err := retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores", httpAddr), createStorePayload)
 	require.NoError(t, err, "Failed to construct create store request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
@@ -324,7 +374,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, service *service, retr
 
 	// create an authorization model
 	authModelPayload := strings.NewReader(`{"type_definitions":[{"type":"document","relations":{"owner":{"this":{}}}}]}`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores/%s/authorization-models", service.GetHTTPAddrPort().Port(), createStoreResponse.Id), authModelPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.Id), authModelPayload)
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", fmt.Sprintf("Bearer %s", validToken))
@@ -333,15 +383,13 @@ func tryStreamingListObjects(t *testing.T, test authTest, service *service, retr
 
 	// call one streaming endpoint
 	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "anne", "relation": "owner"}`)
-	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://localhost:%d/stores/%s/streamed-list-objects", service.GetHTTPAddrPort().Port(), createStoreResponse.Id), listObjectsPayload)
+	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.Id), listObjectsPayload)
 	require.NoError(t, err, "Failed to construct request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", test.authHeader)
-
 	res, err = retryClient.Do(req)
 	require.Equal(t, test.expectedStatusCode, res.StatusCode)
 	require.NoError(t, err, "Failed to execute streaming request")
-
 	defer res.Body.Close()
 	body, err = io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
@@ -351,8 +399,8 @@ func tryStreamingListObjects(t *testing.T, test authTest, service *service, retr
 	}
 }
 
-func tryGetStores(t *testing.T, test authTest, service *service, retryClient *retryablehttp.Client) {
-	req, err := retryablehttp.NewRequest("GET", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), nil)
+func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client) {
+	req, err := retryablehttp.NewRequest("GET", fmt.Sprintf("http://%s/stores", httpAddr), nil)
 	require.NoError(t, err, "Failed to construct request")
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("authorization", test.authHeader)
@@ -360,7 +408,6 @@ func tryGetStores(t *testing.T, test authTest, service *service, retryClient *re
 	res, err := retryClient.Do(req)
 	require.NoError(t, err, "Failed to execute request")
 	require.Equal(t, test.expectedStatusCode, res.StatusCode)
-
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read response")
@@ -376,27 +423,24 @@ func tryGetStores(t *testing.T, test authTest, service *service, retryClient *re
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	config, err := DefaultConfigWithRandomPorts()
-	require.NoError(t, err)
-
-	config.Authn.Method = "preshared"
-	config.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "preshared"
+	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
-	config.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
-	config.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
+	cfg.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
+	cfg.HTTP.CORSAllowedHeaders = []string{"Origin", "Accept", "Content-Type", "X-Requested-With", "Authorization", "X-Custom-Header"}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err)
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		return service.Run(ctx)
-	})
-
-	ensureServiceUp(t, service, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	type args struct {
 		origin string
@@ -451,7 +495,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			payload := strings.NewReader(`{"name": "some-store-name"}`)
-			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://localhost:%d/stores", service.GetHTTPAddrPort().Port()), payload)
+			req, err := retryablehttp.NewRequest("OPTIONS", fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr), payload)
 			require.NoError(t, err, "Failed to construct request")
 			req.Header.Set("content-type", "application/json")
 			req.Header.Set("Origin", test.args.origin)
@@ -472,21 +516,14 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			require.NoError(t, err, "Failed to read response")
 		})
 	}
-
-	cancel()
-	require.NoError(t, g.Wait())
-	require.NoError(t, service.Close(ctx))
-
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	const localOIDCServerURL = "http://localhost:8083"
 
-	config, err := DefaultConfigWithRandomPorts()
-	require.NoError(t, err)
-
-	config.Authn.Method = "oidc"
-	config.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.Authn.Method = "oidc"
+	cfg.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
@@ -494,169 +531,101 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err)
-
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		return service.Run(ctx)
-	})
-
-	ensureServiceUp(t, service, nil, true)
-
 	trustedToken, err := trustedIssuerServer.GetToken("openfga.dev", "some-user")
 	require.NoError(t, err)
 
-	tests := []authTest{{
-		_name:      "Header with invalid token fails",
-		authHeader: "Bearer incorrecttoken",
-		expectedErrorResponse: &serverErrors.ErrorResponse{
-			Code:    "auth_failed_invalid_bearer_token",
-			Message: "invalid bearer token",
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	tests := []authTest{
+		{
+			_name:      "Header with invalid token fails",
+			authHeader: "Bearer incorrecttoken",
+			expectedErrorResponse: &serverErrors.ErrorResponse{
+				Code:    "auth_failed_invalid_bearer_token",
+				Message: "invalid bearer token",
+			},
+			expectedStatusCode: 401,
 		},
-		expectedStatusCode: 401,
-	}, {
-		_name:      "Missing header fails",
-		authHeader: "",
-		expectedErrorResponse: &serverErrors.ErrorResponse{
-			Code:    "bearer_token_missing",
-			Message: "missing bearer token",
+		{
+			_name:      "Missing header fails",
+			authHeader: "",
+			expectedErrorResponse: &serverErrors.ErrorResponse{
+				Code:    "bearer_token_missing",
+				Message: "missing bearer token",
+			},
+			expectedStatusCode: 401,
 		},
-		expectedStatusCode: 401,
-	}, {
-		_name:              "Correct token succeeds",
-		authHeader:         "Bearer " + trustedToken,
-		expectedStatusCode: 200,
-	}}
+		{
+			_name:              "Correct token succeeds",
+			authHeader:         "Bearer " + trustedToken,
+			expectedStatusCode: 200,
+		},
+	}
 
 	retryClient := retryablehttp.NewClient()
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			tryGetStores(t, test, service, retryClient)
+			tryGetStores(t, test, cfg.HTTP.Addr, retryClient)
 		})
 
 		t.Run(test._name+"/streaming", func(t *testing.T) {
-			tryStreamingListObjects(t, test, service, retryClient, trustedToken)
+			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, trustedToken)
 		})
 	}
-
-	cancel()
-	require.NoError(t, service.Close(ctx))
-	require.NoError(t, g.Wait())
-}
-
-func TestTLSFailureSettings(t *testing.T) {
-	logger := logger.NewNoopLogger()
-
-	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
-		config, err := DefaultConfigWithRandomPorts()
-		require.NoError(t, err)
-
-		config.HTTP.TLS = TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		_, err = BuildService(config, logger)
-		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
-	})
-
-	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
-		config, err := GetServiceConfig()
-		require.NoError(t, err)
-
-		config.GRPC.TLS = TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		_, err = BuildService(config, logger)
-		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
-	})
-
-	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
-		config, err := GetServiceConfig()
-		require.NoError(t, err)
-
-		config.HTTP.TLS = TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		_, err = BuildService(config, logger)
-		require.ErrorIs(t, err, ErrInvalidHTTPTLSConfig)
-	})
-
-	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
-		config, err := GetServiceConfig()
-		require.NoError(t, err)
-
-		config.GRPC.TLS = TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		_, err = BuildService(config, logger)
-		require.ErrorIs(t, err, ErrInvalidGRPCTLSConfig)
-	})
 }
 
 func TestHTTPServingTLS(t *testing.T) {
-	logger := logger.NewNoopLogger()
-
 	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := DefaultConfigWithRandomPorts()
-		require.NoError(t, err)
-
-		config.HTTP.TLS = TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
 
-		service, err := BuildService(config, logger)
-		require.NoError(t, err)
-
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
-		g.Go(func() error {
-			return service.Run(ctx)
-		})
+		defer cancel()
 
-		ensureServiceUp(t, service, nil, true)
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
 
-		cancel()
-		require.NoError(t, g.Wait())
-		require.NoError(t, service.Close(ctx))
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
 	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := DefaultConfigWithRandomPorts()
-		require.NoError(t, err)
-
-		config.HTTP.TLS = TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-
-		service, err := BuildService(config, logger)
-		require.NoError(t, err)
+		cfg.HTTP.Addr = "localhost:54672"
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
-		g.Go(func() error {
-			return service.Run(ctx)
-		})
+		defer cancel()
 
-		ensureServiceUp(t, service, nil, false)
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
@@ -667,195 +636,167 @@ func TestHTTPServingTLS(t *testing.T) {
 			},
 		}
 
-		_, err = client.Get(fmt.Sprintf("https://localhost:%d/healthz", service.GetHTTPAddrPort().Port()))
+		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
-
-		cancel()
-		require.NoError(t, g.Wait())
-		require.NoError(t, service.Close(ctx))
 	})
-
 }
 
 func TestGRPCServingTLS(t *testing.T) {
-	logger := logger.NewNoopLogger()
-
 	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := DefaultConfigWithRandomPorts()
-		require.NoError(t, err)
-
-		config.GRPC.TLS = TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.Enabled = false
+		cfg.GRPC.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		config.HTTP.Enabled = false
-
-		service, err := BuildService(config, logger)
-		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
-		g.Go(func() error {
-			return service.Run(ctx)
-		})
+		defer cancel()
 
-		ensureServiceUp(t, service, nil, false)
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
 
-		cancel()
-		require.NoError(t, service.Close(ctx))
-		require.NoError(t, g.Wait())
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
 	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		config, err := DefaultConfigWithRandomPorts()
-		require.NoError(t, err)
-
-		config.GRPC.TLS = TLSConfig{
+		cfg := DefaultConfigWithRandomPorts()
+		cfg.HTTP.Enabled = false
+		cfg.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
+		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		config.HTTP.Enabled = false
-
-		service, err := BuildService(config, logger)
-		require.NoError(t, err)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g := new(errgroup.Group)
-		g.Go(func() error {
-			return service.Run(ctx)
-		})
+		defer cancel()
+
+		go func() {
+			if err := runServer(ctx, cfg); err != nil {
+				log.Fatal(err)
+			}
+		}()
 
 		certPool := x509.NewCertPool()
 		certPool.AddCert(certsAndKeys.caCert)
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
-		ensureServiceUp(t, service, creds, false)
-
-		cancel()
-		require.NoError(t, service.Close(ctx))
-		require.NoError(t, g.Wait())
+		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	config, err := DefaultConfigWithRandomPorts()
-	require.NoError(t, err)
-
-	config.HTTP.Enabled = false
-
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err)
+	cfg := DefaultConfigWithRandomPorts()
+	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		return service.Run(ctx)
-	})
+	defer cancel()
 
-	ensureServiceUp(t, service, nil, false)
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-	_, err = http.Get("http://localhost:8080/healthz")
+	_, err := http.Get("http://localhost:8080/healthz")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
-
-	cancel()
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	config, err := DefaultConfigWithRandomPorts()
-	require.NoError(t, err)
-
-	config.HTTP.Enabled = true
-
-	service, err := BuildService(config, logger.NewNoopLogger())
-	require.NoError(t, err)
+	cfg := DefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	g := new(errgroup.Group)
-	g.Go(func() error {
-		return service.Run(ctx)
-	})
+	defer cancel()
 
-	ensureServiceUp(t, service, nil, true)
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-	cancel()
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
 func TestDefaultConfig(t *testing.T) {
-	config, err := GetServiceConfig()
+	cfg, err := ReadConfig()
 	require.NoError(t, err)
 
-	jsonSchema, err := os.ReadFile(".config-schema.json")
+	_, basepath, _, _ := runtime.Caller(0)
+	jsonSchema, err := os.ReadFile(path.Join(filepath.Dir(basepath), "..", ".config-schema.json"))
 	require.NoError(t, err)
 
 	res := gjson.ParseBytes(jsonSchema)
 
 	val := res.Get("properties.datastore.properties.engine.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Datastore.Engine)
+	require.Equal(t, val.String(), cfg.Datastore.Engine)
 
 	val = res.Get("properties.datastore.properties.maxCacheSize.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.Datastore.MaxCacheSize)
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
 
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.GRPC.Addr)
+	require.Equal(t, val.String(), cfg.GRPC.Addr)
 
 	val = res.Get("properties.http.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.HTTP.Enabled)
+	require.Equal(t, val.Bool(), cfg.HTTP.Enabled)
 
 	val = res.Get("properties.http.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.HTTP.Addr)
+	require.Equal(t, val.String(), cfg.HTTP.Addr)
 
 	val = res.Get("properties.playground.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.Playground.Enabled)
+	require.Equal(t, val.Bool(), cfg.Playground.Enabled)
 
 	val = res.Get("properties.playground.properties.port.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.Playground.Port)
+	require.EqualValues(t, val.Int(), cfg.Playground.Port)
 
 	val = res.Get("properties.profiler.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.Profiler.Enabled)
+	require.Equal(t, val.Bool(), cfg.Profiler.Enabled)
 
 	val = res.Get("properties.profiler.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Profiler.Addr)
+	require.Equal(t, val.String(), cfg.Profiler.Addr)
 
 	val = res.Get("properties.authn.properties.method.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Authn.Method)
+	require.Equal(t, val.String(), cfg.Authn.Method)
 
 	val = res.Get("properties.log.properties.format.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.Log.Format)
+	require.Equal(t, val.String(), cfg.Log.Format)
 
 	val = res.Get("properties.maxTuplesPerWrite.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.MaxTuplesPerWrite)
+	require.EqualValues(t, val.Int(), cfg.MaxTuplesPerWrite)
 
 	val = res.Get("properties.maxTypesPerAuthorizationModel.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.MaxTypesPerAuthorizationModel)
+	require.EqualValues(t, val.Int(), cfg.MaxTypesPerAuthorizationModel)
 
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ChangelogHorizonOffset)
+	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ResolveNodeLimit)
+	require.EqualValues(t, val.Int(), cfg.ResolveNodeLimit)
 
 	val = res.Get("properties.grpc.properties.tls.$ref")
 	require.True(t, val.Exists())
@@ -867,14 +808,14 @@ func TestDefaultConfig(t *testing.T) {
 
 	val = res.Get("definitions.tls.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), config.GRPC.TLS.Enabled)
-	require.Equal(t, val.Bool(), config.HTTP.TLS.Enabled)
+	require.Equal(t, val.Bool(), cfg.GRPC.TLS.Enabled)
+	require.Equal(t, val.Bool(), cfg.HTTP.TLS.Enabled)
 
 	val = res.Get("properties.listObjectsDeadline.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), config.ListObjectsDeadline.String())
+	require.Equal(t, val.String(), cfg.ListObjectsDeadline.String())
 
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), config.ListObjectsMaxResults)
+	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
 }

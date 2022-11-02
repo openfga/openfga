@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/openfga/openfga/pkg/cmd"
+	"github.com/openfga/openfga/cmd"
 )
 
 func main() {
