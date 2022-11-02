@@ -2,8 +2,8 @@ package postgres
 
 import (
 	"encoding/json"
+	"errors"
 
-	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

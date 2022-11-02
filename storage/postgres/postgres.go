@@ -3,11 +3,12 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/oklog/ulid/v2"
@@ -89,7 +90,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 
 	pool, err := pgxpool.New(context.Background(), uri)
 	if err != nil {
-		return nil, errors.Errorf("failed to connect to Postgres: %v", err)
+		return nil, fmt.Errorf("failed to connect to Postgres: %w", err)
 	}
 
 	policy := backoff.NewExponentialBackOff()
@@ -105,7 +106,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, errors.Errorf("failed to initialize Postgres connection: %v", err)
+		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
 	}
 
 	p.pool = pool

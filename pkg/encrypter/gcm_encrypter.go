@@ -5,9 +5,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"io"
-
-	"github.com/go-errors/errors"
 )
 
 type GCMEncrypter struct {

@@ -1,9 +1,9 @@
 package postgres
 
 import (
+	"errors"
 	"testing"
 
-	"github.com/go-errors/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"

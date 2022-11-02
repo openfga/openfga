@@ -2,10 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	serverErrors "github.com/openfga/openfga/server/errors"

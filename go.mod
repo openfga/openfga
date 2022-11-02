@@ -8,7 +8,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/docker/docker v20.10.21+incompatible
 	github.com/docker/go-connections v0.4.0
-	github.com/go-errors/errors v1.4.2
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang-jwt/jwt/v4 v4.4.2
 	github.com/golang/mock v1.6.0

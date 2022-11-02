@@ -1,10 +1,9 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/go-errors/errors"
-	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -56,7 +55,7 @@ func NewInternalError(public string, internal error) InternalError {
 
 	return InternalError{
 		public:   status.Error(codes.Code(openfgapb.InternalErrorCode_internal_error), public),
-		internal: openfgaerrors.ErrorWithStack(internal),
+		internal: internal,
 	}
 }
 

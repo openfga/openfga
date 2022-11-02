@@ -1,10 +1,10 @@
 package typesystem
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 
-	"github.com/go-errors/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -311,7 +311,7 @@ func isUsersetRewriteValid(
 		// are allowed on them
 		tuplesetRewrite := tuplesetRelation.GetRewrite()
 		if reflect.TypeOf(tuplesetRewrite.GetUserset()) != reflect.TypeOf(&openfgapb.Userset_This{}) {
-			return errors.Errorf("the '%s#%s' relation is referenced in at least one tupleset and thus must be a direct relation", objectType, tupleset)
+			return fmt.Errorf("the '%s#%s' relation is referenced in at least one tupleset and thus must be a direct relation", objectType, tupleset)
 		}
 
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
@@ -421,11 +421,11 @@ func ContainsSelf(rewrite *openfgapb.Userset) bool {
 }
 
 func InvalidRelationError(objectType, relation string) error {
-	return errors.Errorf("the definition of relation '%s' in object type '%s' is invalid", relation, objectType)
+	return fmt.Errorf("the definition of relation '%s' in object type '%s' is invalid", relation, objectType)
 }
 
 func ObjectTypeDoesNotExistError(objectType string) error {
-	return errors.Errorf("object type '%s' does not exist", objectType)
+	return fmt.Errorf("object type '%s' does not exist", objectType)
 }
 
 // RelationDoesNotExistError may have an empty objectType, but must have a relation
@@ -435,15 +435,15 @@ func RelationDoesNotExistError(objectType, relation string) error {
 	if objectType != "" {
 		msg = fmt.Sprintf("%s in object type '%s'", msg, objectType)
 	}
-	return errors.Errorf("%s does not exist", msg)
+	return fmt.Errorf("%s does not exist", msg)
 }
 
 func AssignableRelationError(objectType, relation string) error {
-	return errors.Errorf("the assignable relation '%s' in object type '%s' must contain at least one relation type", relation, objectType)
+	return fmt.Errorf("the assignable relation '%s' in object type '%s' must contain at least one relation type", relation, objectType)
 }
 
 func NonAssignableRelationError(objectType, relation string) error {
-	return errors.Errorf("the non-assignable relation '%s' in object type '%s' should not contain a relation type", objectType, relation)
+	return fmt.Errorf("the non-assignable relation '%s' in object type '%s' should not contain a relation type", objectType, relation)
 }
 
 func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRelation string) error {
@@ -452,5 +452,5 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 		relationType = fmt.Sprintf("%s#%s", relatedObjectType, relatedRelation)
 	}
 
-	return errors.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
+	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
 }
