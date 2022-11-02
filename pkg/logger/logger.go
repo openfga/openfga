@@ -110,6 +110,14 @@ func NewTextLogger() (*ZapLogger, error) {
 	}, nil
 }
 
+func MustNewTextLogger() *ZapLogger {
+	logger, err := NewTextLogger()
+	if err != nil {
+		panic(err)
+	}
+	return logger
+}
+
 func NewJSONLogger() (*ZapLogger, error) {
 	production, err := zap.NewProduction()
 	if err != nil {
@@ -120,7 +128,8 @@ func NewJSONLogger() (*ZapLogger, error) {
 	}, nil
 }
 
-func Must(logger *ZapLogger, err error) *ZapLogger {
+func MustNewJSONLogger() *ZapLogger {
+	logger, err := NewJSONLogger()
 	if err != nil {
 		panic(err)
 	}

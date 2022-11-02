@@ -665,9 +665,9 @@ func runServer(ctx context.Context, config *Config) error {
 }
 
 func buildLogger(logFormat string) logger.Logger {
-	openfgaLogger := logger.Must(logger.NewTextLogger())
+	openfgaLogger := logger.MustNewTextLogger()
 	if logFormat == "json" {
-		openfgaLogger = logger.Must(logger.NewJSONLogger())
+		openfgaLogger = logger.MustNewJSONLogger()
 		openfgaLogger.With(
 			zap.String("build.version", build.Version),
 			zap.String("build.commit", build.Commit),
