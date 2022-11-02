@@ -5,7 +5,6 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -34,8 +33,6 @@ func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgapb.CreateS
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	utils.LogDBStats(ctx, s.logger, "CreateStore", 0, 1)
 
 	return &openfgapb.CreateStoreResponse{
 		Id:        store.Id,

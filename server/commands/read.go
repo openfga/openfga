@@ -7,7 +7,6 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -52,14 +51,10 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		return nil, serverErrors.AuthorizationModelNotFound(modelID)
 	}
 
-	dbCallsCounter := utils.NewDBCallCounter()
-	if err := q.validateAndAuthenticateTupleset(ctx, store, modelID, tk, dbCallsCounter); err != nil {
-		utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
+	if err := q.validateAndAuthenticateTupleset(ctx, store, modelID, tk); err != nil {
 		return nil, err
 	}
 
-	dbCallsCounter.AddReadCall()
-	utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
 	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
@@ -76,7 +71,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	}, nil
 }
 
-func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, authorizationModelID string, tupleKey *openfgapb.TupleKey, rwCounter utils.DBCallCounter) error {
+func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, authorizationModelID string, tupleKey *openfgapb.TupleKey) error {
 	ctx, span := q.tracer.Start(ctx, "validateAndAuthenticateTupleset")
 	defer span.End()
 
@@ -89,8 +84,6 @@ func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, 
 	if objectID == "" && tupleKey.GetUser() == "" {
 		return serverErrors.InvalidTuple("missing objectID and user", tupleKey)
 	}
-
-	rwCounter.AddReadCall()
 
 	ns, err := q.datastore.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
 	if err != nil {

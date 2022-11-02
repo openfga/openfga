@@ -5,7 +5,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -35,7 +34,6 @@ func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuples
 	}
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-	utils.LogDBStats(ctx, q.logger, "ReadTuples", 1, 0)
 
 	tuples, continuationToken, err := q.backend.ReadByStore(ctx, req.GetStoreId(), paginationOptions)
 	if err != nil {

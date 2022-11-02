@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -35,8 +34,6 @@ func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteS
 
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	utils.LogDBStats(ctx, s.logger, "DeleteStore", 1, 1)
 
 	if err := s.storesBackend.DeleteStore(ctx, store.Id); err != nil {
 		return nil, serverErrors.HandleError("Error deleting store", err)

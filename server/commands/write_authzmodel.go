@@ -6,7 +6,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -52,7 +51,6 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
-	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
 	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
