@@ -62,10 +62,10 @@ type Config struct {
 
 // New creates a new Server which uses the supplied backends
 // for managing data.
-func New(dependencies *Dependencies, config *Config) (*Server, error) {
+func New(dependencies *Dependencies, config *Config) *Server {
 	errors.MaxStackDepth = logger.MaxDepthBacktraceStack
 
-	server := &Server{
+	return &Server{
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
@@ -74,8 +74,6 @@ func New(dependencies *Dependencies, config *Config) (*Server, error) {
 		transport: dependencies.Transport,
 		config:    config,
 	}
-
-	return server, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {

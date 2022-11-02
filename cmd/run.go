@@ -433,7 +433,7 @@ func runServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
-	svr, err := server.New(&server.Dependencies{
+	svr := server.New(&server.Dependencies{
 		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
 		Tracer:       tracer,
 		Logger:       logger,
@@ -446,9 +446,6 @@ func runServer(ctx context.Context, config *Config) error {
 		ListObjectsDeadline:    config.ListObjectsDeadline,
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to initialize openfga server: %w", err)
-	}
 
 	logger.Info(
 		"🚀 starting openfga service...",
