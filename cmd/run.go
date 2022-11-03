@@ -225,6 +225,8 @@ func DefaultConfig() *Config {
 	}
 }
 
+// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
+// This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *Config {
 	config := DefaultConfig()
 
