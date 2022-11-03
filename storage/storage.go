@@ -225,7 +225,7 @@ type TupleBackend interface {
 	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
 	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
 	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
-	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+	Read(ctx context.Context, store string, tuple *openfgapb.TupleKey) (TupleIterator, error)
 
 	// ListObjectsByType returns all the objects of a specific type.
 	// You can assume that the type has already been validated.
@@ -241,7 +241,7 @@ type TupleBackend interface {
 	ReadPage(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
+		tuple *openfgapb.TupleKey,
 		opts PaginationOptions,
 	) ([]*openfgapb.Tuple, []byte, error)
 
@@ -250,18 +250,18 @@ type TupleBackend interface {
 	// It is expected that
 	// - there is at most 10 deletes/writes
 	// - no duplicate item in delete/write list
-	Write(ctx context.Context, store string, d Deletes, w Writes) error
+	Write(ctx context.Context, store string, deletes Deletes, writes Writes) error
 
 	ReadUserTuple(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
+		tuple *openfgapb.TupleKey,
 	) (*openfgapb.Tuple, error)
 
 	ReadUsersetTuples(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
+		tuple *openfgapb.TupleKey,
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -302,7 +302,7 @@ type ReadStartingWithUserFilter struct {
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel Read the store type definition corresponding to `id`.
-	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgapb.AuthorizationModel, error)
+	ReadAuthorizationModel(ctx context.Context, store, id string) (*openfgapb.AuthorizationModel, error)
 
 	// ReadAuthorizationModels Read all type definitions ids for the supplied store.
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error)

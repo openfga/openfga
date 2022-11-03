@@ -362,6 +362,7 @@ func runServer(ctx context.Context, config *Config) error {
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	datastore = caching.NewCachedOpenFGADatastore(storage.NewStorageWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -384,7 +385,7 @@ func runServer(ctx context.Context, config *Config) error {
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
-		middleware.NewErrorLoggingInterceptor(logger),
+		middleware.NewLoggingInterceptor(logger),
 	}
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
@@ -434,7 +435,7 @@ func runServer(ctx context.Context, config *Config) error {
 	}
 
 	svr := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
+		Datastore:    datastore,
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
