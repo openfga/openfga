@@ -1,5 +1,4 @@
 .DEFAULT_GOAL := help
-COVERPKG := $(shell eval go list ./... | grep -v mocks |  paste -sd "," -)
 
 .PHONY: help
 help:
@@ -64,22 +63,23 @@ go-generate: install-tools
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
 	go test $(gotest_extra_flags) -race -v \
-			-coverprofile=coverageunit.out \
-			-coverpkg=$(COVERPKG) \
-			-covermode=atomic -race \
+			-coverpkg=./... \
+			-coverprofile=coverageunit.tmp.out \
+			-covermode=atomic \
 			-count=1 \
+			-timeout=5m \
 			./...
+	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
+	@rm coverageunit.tmp.out
 
 build-functional-test-image: ## Build Docker image needed to run functional tests
 	docker build -t="openfga/openfga:functionaltest" .
 
 .PHONY: functional-test
 functional-test: ## Run functional tests (needs build-functional-test-image)
-	go test $(gotest_extra_flags) -v \
-			-coverprofile=coveragefunctional.out \
-			-coverpkg=$(COVERPKG) \
-			-covermode=atomic -race \
+	go test $(gotest_extra_flags) -race -v \
 			-count=1 \
+			-timeout=5m \
 			-tags=functional \
 			./cmd/openfga/...
 
