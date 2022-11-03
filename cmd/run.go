@@ -225,7 +225,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-func DefaultConfigWithRandomPorts() *Config {
+func MustDefaultConfigWithRandomPorts() *Config {
 	config := DefaultConfig()
 
 	// Since this is used for tests, turn the following off:
