@@ -5,7 +5,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -32,7 +31,6 @@ func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfga
 	}
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-	utils.LogDBStats(ctx, q.logger, "ReadAuthzModels", 1, 0)
 
 	models, contToken, err := q.backend.ReadAuthorizationModels(ctx, req.GetStoreId(), paginationOptions)
 	if err != nil {

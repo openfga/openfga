@@ -10,7 +10,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -131,7 +130,6 @@ func TestValidateWriteTuples(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			tracer := telemetry.NewNoopTracer()
 			logger := logger.NewNoopLogger()
-			dbCounter := utils.NewDBCallCounter()
 
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
@@ -151,7 +149,7 @@ func TestValidateWriteTuples(t *testing.T) {
 				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
 			}
 
-			err := cmd.validateTuplesets(ctx, req, dbCounter)
+			err := cmd.validateTuplesets(ctx, req)
 			if !reflect.DeepEqual(err, test.expectedError) {
 				t.Errorf("Expected error %v, got %v", test.expectedError, err)
 			}

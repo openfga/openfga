@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/openfga/openfga/internal/utils"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -340,7 +340,6 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 		return tk, nil
 	}
 
-	rc.metadata.AddReadCall()
 	tuple, err := backend.ReadUserTuple(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
@@ -350,7 +349,6 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 
 func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (storage.TupleKeyIterator, error) {
 	cUsersetTuples := rc.contextualTuples.readUsersetTuples(rc.tk)
-	rc.metadata.AddReadCall()
 	usersetTuples, err := backend.ReadUsersetTuples(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
@@ -364,7 +362,6 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 
 func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (storage.TupleKeyIterator, error) {
 	cTuples := rc.contextualTuples.read(tk)
-	rc.metadata.AddReadCall()
 	tuples, err := backend.Read(ctx, rc.store, tk)
 	if err != nil {
 		return nil, err

@@ -7,10 +7,10 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
@@ -54,11 +54,6 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
-	statCheckDBCalls, _ := query.meter.AsyncInt64().Gauge(
-		"openfga.check.db.calls",
-		instrument.WithDescription("Number of db queries needed to execute check requests"),
-		instrument.WithUnit(unit.Dimensionless),
-	)
 
 	var resolutionTracer resolutionTracer = &noopResolutionTracer{}
 	if req.GetTrace() {
@@ -86,12 +81,10 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
 	if err != nil {
-		utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
 		return nil, err
 	}
 
 	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
-		utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
 		return nil, err
 	}
 
@@ -101,12 +94,8 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 		resolution = r.GetResolution()
 	}
 
-	utils.LogDBStats(ctx, query.logger, "Check", rc.metadata.GetReadCalls(), 0)
 	if statCheckResolutionDepth != nil {
 		statCheckResolutionDepth.Observe(ctx, int64(rc.metadata.GetResolve()))
-	}
-	if statCheckDBCalls != nil {
-		statCheckDBCalls.Observe(ctx, int64(rc.metadata.GetReadCalls()))
 	}
 
 	return &openfgapb.CheckResponse{
@@ -119,7 +108,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk, rc.metadata)
+	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}

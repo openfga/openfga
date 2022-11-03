@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
@@ -42,11 +41,9 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 	}
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
-	metadata := utils.NewResolutionMetadata()
 
-	userset, err := query.getUserset(ctx, store, modelID, tk, metadata)
+	userset, err := query.getUserset(ctx, store, modelID, tk)
 	if err != nil {
-		utils.LogDBStats(ctx, query.logger, "Expand", metadata.GetReadCalls(), 0)
 		return nil, err
 	}
 
@@ -59,14 +56,10 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	typesys := typesystem.New(model)
-
-	root, err := query.resolveUserset(ctx, store, modelID, userset, tk, metadata, typesys)
+	root, err := query.resolveUserset(ctx, store, modelID, userset, tk, typesystem.New(model))
 	if err != nil {
-		utils.LogDBStats(ctx, query.logger, "Expand", metadata.GetReadCalls(), 0)
 		return nil, err
 	}
-	utils.LogDBStats(ctx, query.logger, "Expand", metadata.GetReadCalls(), 0)
 
 	return &openfgapb.ExpandResponse{
 		Tree: &openfgapb.UsersetTree{
@@ -80,7 +73,6 @@ func (query *ExpandQuery) resolveUserset(
 	store, modelID string,
 	userset *openfgapb.Userset,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveUserset")
@@ -88,28 +80,27 @@ func (query *ExpandQuery) resolveUserset(
 
 	switch us := userset.Userset.(type) {
 	case nil, *openfgapb.Userset_This:
-		return query.resolveThis(ctx, store, tk, metadata)
+		return query.resolveThis(ctx, store, tk)
 	case *openfgapb.Userset_ComputedUserset:
-		return query.resolveComputedUserset(ctx, us.ComputedUserset, tk, metadata)
+		return query.resolveComputedUserset(ctx, us.ComputedUserset, tk)
 	case *openfgapb.Userset_TupleToUserset:
-		return query.resolveTupleToUserset(ctx, store, modelID, us.TupleToUserset, tk, metadata, typesys)
+		return query.resolveTupleToUserset(ctx, store, modelID, us.TupleToUserset, tk, typesys)
 	case *openfgapb.Userset_Union:
-		return query.resolveUnionUserset(ctx, store, modelID, us.Union, tk, metadata, typesys)
+		return query.resolveUnionUserset(ctx, store, modelID, us.Union, tk, typesys)
 	case *openfgapb.Userset_Difference:
-		return query.resolveDifferenceUserset(ctx, store, modelID, us.Difference, tk, metadata, typesys)
+		return query.resolveDifferenceUserset(ctx, store, modelID, us.Difference, tk, typesys)
 	case *openfgapb.Userset_Intersection:
-		return query.resolveIntersectionUserset(ctx, store, modelID, us.Intersection, tk, metadata, typesys)
+		return query.resolveIntersectionUserset(ctx, store, modelID, us.Intersection, tk, typesys)
 	default:
 		return nil, serverErrors.UnsupportedUserSet
 	}
 }
 
 // resolveThis resolves a DirectUserset into a leaf node containing a distinct set of users with that relation.
-func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
-	metadata.AddReadCall()
 	iter, err := query.datastore.Read(ctx, store, tk)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
@@ -145,7 +136,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 }
 
 // resolveComputedUserset builds a leaf node containing the result of resolving a ComputedUserset rewrite.
-func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
 
 	var span trace.Span
 	_, span = query.tracer.Start(ctx, "resolveComputedUserset")
@@ -181,7 +172,6 @@ func (query *ExpandQuery) resolveTupleToUserset(
 	store, modelID string,
 	userset *openfgapb.TupleToUserset,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveTupleToUserset")
@@ -221,7 +211,6 @@ func (query *ExpandQuery) resolveTupleToUserset(
 		tsKey.Relation = tk.GetRelation()
 	}
 
-	metadata.AddReadCall()
 	iter, err := query.datastore.Read(ctx, store, tsKey)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
@@ -306,13 +295,12 @@ func (query *ExpandQuery) resolveUnionUserset(
 	store, modelID string,
 	usersets *openfgapb.Usersets,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveUnionUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, modelID, usersets.Child, tk, metadata, typesys)
+	nodes, err := query.resolveUsersets(ctx, store, modelID, usersets.Child, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -332,13 +320,12 @@ func (query *ExpandQuery) resolveIntersectionUserset(
 	store, modelID string,
 	usersets *openfgapb.Usersets,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveIntersectionUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, modelID, usersets.Child, tk, metadata, typesys)
+	nodes, err := query.resolveUsersets(ctx, store, modelID, usersets.Child, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -358,13 +345,12 @@ func (query *ExpandQuery) resolveDifferenceUserset(
 	store, modelID string,
 	userset *openfgapb.Difference,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveDifferenceUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, modelID, []*openfgapb.Userset{userset.Base, userset.Subtract}, tk, metadata, typesys)
+	nodes, err := query.resolveUsersets(ctx, store, modelID, []*openfgapb.Userset{userset.Base, userset.Subtract}, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -387,7 +373,6 @@ func (query *ExpandQuery) resolveUsersets(
 	store, modelID string,
 	usersets []*openfgapb.Userset,
 	tk *openfgapb.TupleKey,
-	metadata *utils.ResolutionMetadata,
 	typesys *typesystem.TypeSystem,
 ) ([]*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveUsersets")
@@ -399,7 +384,7 @@ func (query *ExpandQuery) resolveUsersets(
 		// https://golang.org/doc/faq#closures_and_goroutines
 		i, us := i, us
 		grp.Go(func() error {
-			node, err := query.resolveUserset(ctx, store, modelID, us, tk, metadata, typesys)
+			node, err := query.resolveUserset(ctx, store, modelID, us, tk, typesys)
 			if err != nil {
 				return err
 			}
@@ -414,11 +399,11 @@ func (query *ExpandQuery) resolveUsersets(
 }
 
 // getUserset retrieves the authorizationModel configuration for a supplied TupleKey.
-func (query *ExpandQuery) getUserset(ctx context.Context, store, modelID string, tk *openfgapb.TupleKey, metadata *utils.ResolutionMetadata) (*openfgapb.Userset, error) {
+func (query *ExpandQuery) getUserset(ctx context.Context, store, modelID string, tk *openfgapb.TupleKey) (*openfgapb.Userset, error) {
 	ctx, span := query.tracer.Start(ctx, "getUserset")
 	defer span.End()
 
-	userset, err := validation.ValidateObjectsRelations(ctx, query.datastore, store, modelID, tk, metadata)
+	userset, err := validation.ValidateObjectsRelations(ctx, query.datastore, store, modelID, tk)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
