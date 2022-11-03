@@ -21,7 +21,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		dbCounter := ctx.Value(storage.DBCounterCtxKey).(*storage.DBCounter)
 		fields := []zap.Field{
-			zap.Duration("took", time.Now().Sub(start)),
+			zap.Duration("took", time.Since(start)),
 			zap.String("method", info.FullMethod),
 			zap.Int32("db_writes", dbCounter.Writes.Load()),
 			zap.Int32("db_reads", dbCounter.Reads.Load()),

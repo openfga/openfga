@@ -8,8 +8,10 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+type ctxKey string
+
 const (
-	DBCounterCtxKey string = "db_counter"
+	DBCounterCtxKey ctxKey = "db_counter"
 )
 
 type DBCounter struct {
