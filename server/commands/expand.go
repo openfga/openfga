@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -182,9 +183,15 @@ func (query *ExpandQuery) resolveTupleToUserset(
 	tupleset := userset.GetTupleset().GetRelation()
 
 	objectType, _ := tupleUtils.SplitObject(targetObject)
-	relation, ok := typesys.GetRelation(objectType, tupleset)
-	if !ok {
-		return nil, serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(targetObject, tupleset, ""))
+	relation, err := typesys.GetRelation(objectType, tupleset)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.TypeNotFound(objectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(tk.Object, tupleset, tk.User))
+		}
 	}
 
 	tuplesetRewrite := relation.GetRewrite().GetUserset()

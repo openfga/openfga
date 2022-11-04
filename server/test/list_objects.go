@@ -2,14 +2,16 @@ package test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
@@ -51,24 +53,44 @@ func newListObjectsRequest(store, objectType, relation, user, modelID string, co
 	}
 }
 
-func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
-	store := testutils.CreateRandomString(10)
-	tracer := telemetry.NewNoopTracer()
-	ctx, backend, modelID, err := setupTestListObjects(store, datastore)
-	require.NoError(t, err)
+func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
-	t.Run("list objects", func(t *testing.T) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+
+	t.Run("Github without TypeInfo", func(t *testing.T) {
+		store := ulid.Make().String()
+
+		data, err := os.ReadFile(gitHubTestDataFile)
+		require.NoError(t, err)
+
+		var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+		err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+		require.NoError(t, err)
+
+		model := &openfgapb.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		}
+		err = ds.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
+
+		writes := []*openfgapb.TupleKey{tKAllAdminsRepo6, tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo2}
+		err = ds.Write(ctx, store, nil, writes)
+		require.NoError(t, err)
+
 		testCases := []listObjectsTestCase{
 			{
 				name:           "does not return duplicates",
-				request:        newListObjectsRequest(store, "repo", "admin", "anna", modelID, nil),
+				request:        newListObjectsRequest(store, "repo", "admin", "anna", model.Id, nil),
 				expectedResult: []string{"1", "2", "3", "4", "6"},
 				expectedError:  nil,
 			},
 
 			{
 				name: "respects max results",
-				request: newListObjectsRequest(store, "repo", "admin", "anna", modelID, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "anna", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "anna",
 						Relation: "admin",
@@ -79,13 +101,13 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			{
 				name:           "performs correct checks",
-				request:        newListObjectsRequest(store, "repo", "admin", "bob", modelID, nil),
+				request:        newListObjectsRequest(store, "repo", "admin", "bob", model.Id, nil),
 				expectedResult: []string{"2", "6"},
 				expectedError:  nil,
 			},
 			{
 				name: "includes contextual tuples in the checks",
-				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "admin",
@@ -100,7 +122,7 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			{
 				name: "ignores irrelevant contextual tuples in the checks",
-				request: newListObjectsRequest(store, "repo", "admin", "bob", modelID, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "member",
@@ -111,26 +133,141 @@ func TestListObjects(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			{
 				name:           "returns error if unknown type",
-				request:        newListObjectsRequest(store, "unknown", "admin", "anna", modelID, nil),
+				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.TypeNotFound("unknown"),
 			},
 			{
 				name:           "returns error if unknown relation",
-				request:        newListObjectsRequest(store, "repo", "unknown", "anna", modelID, nil),
+				request:        newListObjectsRequest(store, "repo", "unknown", "anna", model.Id, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.RelationNotFound("unknown", "repo", nil),
 			},
 		}
 
 		listObjectsQuery := &commands.ListObjectsQuery{
-			Datastore:             backend,
+			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
 			Tracer:                tracer,
 			Meter:                 telemetry.NewNoopMeter(),
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
+		}
+
+		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
+	})
+
+	t.Run("Github with TypeInfo", func(t *testing.T) {
+		store := ulid.Make().String()
+
+		data, err := os.ReadFile("testdata/github/typedefs.json")
+		require.NoError(t, err)
+
+		var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+		err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+		require.NoError(t, err)
+
+		model := &openfgapb.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		}
+
+		err = ds.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
+
+		data, err = os.ReadFile("testdata/github/tuples.json")
+		require.NoError(t, err)
+
+		var writes []*openfgapb.TupleKey
+		err = json.Unmarshal(data, &writes)
+		require.NoError(t, err)
+
+		err = ds.Write(ctx, store, nil, writes)
+		require.NoError(t, err)
+
+		testCases := []listObjectsTestCase{
+			{
+				name:           "does not return duplicates",
+				request:        newListObjectsRequest(store, "repo", "admin", "anna", model.Id, nil),
+				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedError:  nil,
+			},
+
+			{
+				name: "respects max results",
+				request: newListObjectsRequest(store, "repo", "admin", "anna", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "anna",
+						Relation: "admin",
+						Object:   "repo:7",
+					}}}),
+				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
+				expectedError:  nil,
+			},
+			{
+				name:           "performs correct checks",
+				request:        newListObjectsRequest(store, "repo", "admin", "bob", model.Id, nil),
+				expectedResult: []string{"2", "6"},
+				expectedError:  nil,
+			},
+			{
+				name: "includes contextual tuples in the checks",
+				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}, {
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:7",
+					}}}),
+				expectedResult: []string{"2", "5", "6", "7"},
+				expectedError:  nil,
+			},
+			{
+				name: "ignores irrelevant contextual tuples in the checks",
+				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "member",
+						Object:   "team:abc",
+					}}}),
+				expectedResult: []string{"2", "6"},
+				expectedError:  nil,
+			},
+			{
+				name:           "returns error if unknown type",
+				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
+				expectedResult: nil,
+				expectedError:  serverErrors.TypeNotFound("unknown"),
+			},
+			{
+				name:           "returns error if unknown relation",
+				request:        newListObjectsRequest(store, "repo", "unknown", "anna", model.Id, nil),
+				expectedResult: nil,
+				expectedError:  serverErrors.RelationNotFound("unknown", "repo", nil),
+			},
+		}
+
+		connectedObjectsCmd := commands.ConnectedObjectsCommand{
+			Datastore:        ds,
+			Typesystem:       typesystem.New(model),
+			ResolveNodeLimit: defaultResolveNodeLimit,
+			Limit:            defaultListObjectsMaxResults,
+		}
+
+		listObjectsQuery := &commands.ListObjectsQuery{
+			Datastore:             ds,
+			Logger:                logger.NewNoopLogger(),
+			Tracer:                tracer,
+			Meter:                 telemetry.NewNoopMeter(),
+			ListObjectsDeadline:   defaultListObjectsDeadline,
+			ListObjectsMaxResults: defaultListObjectsMaxResults,
+			ResolveNodeLimit:      defaultResolveNodeLimit,
+			ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
 		}
 
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
@@ -203,33 +340,145 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 	}
 }
 
-func setupTestListObjects(store string, datastore storage.OpenFGADatastore) (context.Context, storage.OpenFGADatastore, string, error) {
-	ctx := context.Background()
-	data, err := os.ReadFile(gitHubTestDataFile)
-	if err != nil {
-		return nil, nil, "", err
-	}
+// Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
+var listObjectsResponse *openfgapb.ListObjectsResponse //nolint
 
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	if err := protojson.Unmarshal(data, &gitHubTypeDefinitions); err != nil {
-		return nil, nil, "", err
-	}
+func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatastore) {
+
+	ctx := context.Background()
+	store := ulid.Make().String()
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              ulid.Make().String(),
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.RelationReference("user", ""),
+							},
+						},
+					},
+				},
+			},
+		},
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, model)
-	if err != nil {
-		return nil, nil, "", err
+	err := ds.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(b, err)
+
+	n := 0
+	for i := 0; i < 100; i++ {
+		var tuples []*openfgapb.TupleKey
+
+		for j := 0; j < ds.MaxTuplesInWriteOperation(); j++ {
+			obj := fmt.Sprintf("document:%s", strconv.Itoa(n))
+			user := fmt.Sprintf("user:%s", strconv.Itoa(n))
+
+			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", user))
+
+			n += 1
+		}
+
+		err = ds.Write(ctx, store, nil, tuples)
+		require.NoError(b, err)
 	}
 
-	writes := []*openfgapb.TupleKey{tKAllAdminsRepo6, tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo2}
-	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
-	if err != nil {
-		return nil, nil, "", err
+	connectedObjCmd := commands.ConnectedObjectsCommand{
+		Datastore:        ds,
+		Typesystem:       typesystem.New(model),
+		ResolveNodeLimit: defaultResolveNodeLimit,
 	}
 
-	return ctx, datastore, model.Id, nil
+	listObjectsQuery := commands.ListObjectsQuery{
+		Datastore:        ds,
+		Logger:           logger.NewNoopLogger(),
+		Tracer:           telemetry.NewNoopTracer(),
+		Meter:            telemetry.NewNoopMeter(),
+		ResolveNodeLimit: defaultResolveNodeLimit,
+		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
+	}
+
+	var r *openfgapb.ListObjectsResponse
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, _ = listObjectsQuery.Execute(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: model.Id,
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:999",
+		})
+	}
+
+	listObjectsResponse = r
+}
+
+func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADatastore) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	model := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+			},
+		},
+	}
+	err := ds.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(b, err)
+
+	n := 0
+	for i := 0; i < 100; i++ {
+		var tuples []*openfgapb.TupleKey
+
+		for j := 0; j < ds.MaxTuplesInWriteOperation(); j++ {
+			obj := fmt.Sprintf("document:%s", strconv.Itoa(n))
+			user := fmt.Sprintf("user:%s", strconv.Itoa(n))
+
+			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", user))
+
+			n += 1
+		}
+
+		err = ds.Write(ctx, store, nil, tuples)
+		require.NoError(b, err)
+	}
+
+	listObjectsQuery := commands.ListObjectsQuery{
+		Datastore:        ds,
+		Logger:           logger.NewNoopLogger(),
+		Tracer:           telemetry.NewNoopTracer(),
+		Meter:            telemetry.NewNoopMeter(),
+		ResolveNodeLimit: defaultResolveNodeLimit,
+	}
+
+	var r *openfgapb.ListObjectsResponse
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, _ = listObjectsQuery.Execute(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: model.Id,
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:999",
+		})
+	}
+
+	listObjectsResponse = r
 }
