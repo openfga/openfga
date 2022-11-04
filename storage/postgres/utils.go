@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/jackc/pgx/v5"
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -185,14 +185,14 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 	return sb.ToSql()
 }
 
-func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {
-	if err := tx.Rollback(ctx); !errors.Is(err, pgx.ErrTxClosed) {
+func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
+	if err := tx.Rollback(); !errors.Is(err, sql.ErrTxDone) {
 		logger.ErrorWithContext(ctx, "failed to rollback transaction", log.Error(err))
 	}
 }
 
 func handlePostgresError(err error, args ...interface{}) error {
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
 	} else if strings.Contains(err.Error(), "duplicate key value") {
 		if len(args) > 0 {
