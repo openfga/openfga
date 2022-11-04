@@ -176,20 +176,17 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		expectedError := storage.InvalidWriteInputError(tks[2], openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// Write tks
-		if err := datastore.Write(ctx, store, nil, tks); err != nil {
-			t.Fatal(err)
-		}
+		err := datastore.Write(ctx, store, nil, tks)
+		require.NoError(t, err)
+
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]}); err.Error() != expectedError.Error() {
-			t.Fatalf("got '%v', want '%v'", err, expectedError)
-		}
+		err = datastore.Write(ctx, store, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]})
+		require.EqualError(t, err, expectedError.Error())
+
 		tuples, _, err := datastore.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(tuples) != len(tks) {
-			t.Fatalf("got '%d', want '%d'", len(tuples), len(tks))
-		}
+		require.NoError(t, err)
+
+		require.Equal(t, len(tks), len(tuples))
 	})
 
 	t.Run("delete fails if the tuple does not exist", func(t *testing.T) {
@@ -197,9 +194,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 
-		if err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tk}, nil); err.Error() != expectedError.Error() {
-			t.Fatalf("got '%v', want '%v'", err, expectedError)
-		}
+		err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tk}, nil)
+		require.EqualError(t, err, expectedError.Error())
 	})
 
 	t.Run("deleting a tuple which exists succeeds", func(t *testing.T) {

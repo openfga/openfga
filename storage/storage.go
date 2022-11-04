@@ -147,6 +147,14 @@ func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iter1, iter2}
 }
 
+func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
+	iter := &staticIterator[*openfgapb.Tuple]{
+		items: tuples,
+	}
+
+	return iter
+}
+
 // NewStaticTupleKeyIterator returns a TupleKeyIterator that iterates over the provided slice.
 func NewStaticTupleKeyIterator(tupleKeys []*openfgapb.TupleKey) TupleKeyIterator {
 	iter := &staticIterator[*openfgapb.TupleKey]{
@@ -335,11 +343,8 @@ type AuthorizationModelBackend interface {
 
 type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error)
-
 	DeleteStore(ctx context.Context, id string) error
-
 	GetStore(ctx context.Context, id string) (*openfgapb.Store, error)
-
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgapb.Store, []byte, error)
 }
 

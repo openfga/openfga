@@ -37,7 +37,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgapb.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.pool.Exec(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
 	require.NoError(t, err)
 
 	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)

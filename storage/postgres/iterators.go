@@ -1,16 +1,16 @@
 package postgres
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type tupleIterator struct {
-	rows pgx.Rows
+	rows *sql.Rows
 }
 
 var _ storage.TupleIterator = (*tupleIterator)(nil)
@@ -81,7 +81,7 @@ func (t *tupleIterator) Stop() {
 }
 
 type objectIterator struct {
-	rows pgx.Rows
+	rows *sql.Rows
 }
 
 var _ storage.ObjectIterator = (*objectIterator)(nil)
