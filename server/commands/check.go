@@ -148,9 +148,15 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 		tupleset := usType.TupleToUserset.GetTupleset().GetRelation()
 
 		objectType, _ := tupleUtils.SplitObject(rc.tk.Object)
-		relation, ok := typesys.GetRelation(objectType, tupleset)
-		if !ok {
-			return serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(rc.tk.Object, tupleset, rc.tk.User))
+		relation, err := typesys.GetRelation(objectType, tupleset)
+		if err != nil {
+			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+				return serverErrors.TypeNotFound(objectType)
+			}
+
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				return serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(rc.tk.Object, tupleset, rc.tk.User))
+			}
 		}
 
 		tuplesetRewrite := relation.GetRewrite().GetUserset()

@@ -54,7 +54,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
-	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
+
+	t.Run("TestListObjects", func(t *testing.T) { ListObjectsTest(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -63,13 +64,20 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAssertions", func(t *testing.T) { TestWriteAssertions(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
+	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 	RunCheckBenchmarks(b, ds)
+	RunListObjectsBenchmarks(b, ds)
 }
 
 func RunCheckBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { BenchmarkCheckWithoutTrace(b, ds) })
-	b.Run("BenchmarkWithTrace", func(b *testing.B) { BenchmarkWithTrace(b, ds) })
+	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { BenchmarkCheckWithTrace(b, ds) })
+}
+
+func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
+	b.Run("BenchmarkListObjectsWithReverseExpand", func(b *testing.B) { BenchmarkListObjectsWithReverseExpand(b, ds) })
+	b.Run("BenchmarkListObjectsWithConcurrentChecks", func(b *testing.B) { BenchmarkListObjectsWithConcurrentChecks(b, ds) })
 }

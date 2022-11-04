@@ -166,7 +166,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
@@ -188,7 +188,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
@@ -215,7 +215,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInUnion",
@@ -250,7 +250,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
@@ -285,7 +285,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
@@ -320,7 +320,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
@@ -349,7 +349,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
@@ -378,7 +378,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
@@ -414,7 +414,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("bar", "writer")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "bar", Relation: "writer"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
@@ -447,7 +447,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.RelationDoesNotExistError("repo", "owner")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",
@@ -477,7 +477,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
@@ -504,7 +504,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
 			name: "ExecuteWriteFailsIfIntersectionIncludesSameRelationTwice",
@@ -530,7 +530,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.InvalidRelationError("repo", "viewer")),
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
 			name: "Union Rewrite Contains Repeated Definitions",
