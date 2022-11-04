@@ -514,13 +514,13 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
 	}
 
-	sqlbuilder := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
-		Insert("authorization_model").Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
-
 	if len(typeDefinitions) < 1 {
 		return nil
 	}
+
+	sqlbuilder := squirrel.
+		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
+		Insert("authorization_model").Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
 
 	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
