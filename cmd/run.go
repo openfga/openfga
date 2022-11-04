@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -33,7 +34,6 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/health"
-	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
@@ -225,7 +225,9 @@ func DefaultConfig() *Config {
 	}
 }
 
-func DefaultConfigWithRandomPorts() *Config {
+// MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
+// This function may panic if somehow a random port cannot be chosen.
+func MustDefaultConfigWithRandomPorts() *Config {
 	config := DefaultConfig()
 
 	// Since this is used for tests, turn the following off:
@@ -391,7 +393,7 @@ func runServer(ctx context.Context, config *Config) error {
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
-		middleware.NewStreamingErrorLoggingInterceptor(logger),
+		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 
 	opts := []grpc.ServerOption{

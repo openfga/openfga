@@ -11,6 +11,7 @@ import (
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
@@ -84,6 +85,20 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
+	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	if err != nil {
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	typesys := typesystem.New(model)
+
+	connectObjCmd := &commands.ConnectedObjectsCommand{
+		Datastore:        s.datastore,
+		Typesystem:       typesys,
+		ResolveNodeLimit: s.config.ResolveNodeLimit,
+		Limit:            s.config.ListObjectsMaxResults,
+	}
+
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
@@ -92,6 +107,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
 	}
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
@@ -117,6 +133,21 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	if err != nil {
 		return err
 	}
+
+	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	if err != nil {
+		return serverErrors.HandleError("", err)
+	}
+
+	typesys := typesystem.New(model)
+
+	connectObjCmd := &commands.ConnectedObjectsCommand{
+		Datastore:        s.datastore,
+		Typesystem:       typesys,
+		ResolveNodeLimit: s.config.ResolveNodeLimit,
+		Limit:            s.config.ListObjectsMaxResults,
+	}
+
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
@@ -125,6 +156,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
 	}
 
 	req.AuthorizationModelId = modelID

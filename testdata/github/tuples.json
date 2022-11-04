@@ -1,0 +1,7 @@
+[
+    {"object":  "repo:1", "relation":  "admin", "user":  "user:anna"},
+    {"object":  "repo:2", "relation":  "admin", "user":  "user:anna"},
+    {"object":  "repo:3", "relation":  "admin", "user":  "user:anna"},
+    {"object":  "repo:4", "relation":  "admin", "user":  "user:anna"},
+    {"object":  "repo:6", "relation":  "admin", "user":  "*"}
+]

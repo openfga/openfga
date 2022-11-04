@@ -1740,7 +1740,7 @@ var tuples = []*openfgapb.TupleKey{
 }
 
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var result *openfgapb.CheckResponse //nolint
+var checkResponse *openfgapb.CheckResponse //nolint
 
 func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
@@ -1785,10 +1785,10 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 		})
 	}
 
-	result = r
+	checkResponse = r
 }
 
-func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
+func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
@@ -1832,5 +1832,5 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 		})
 	}
 
-	result = r
+	checkResponse = r
 }
