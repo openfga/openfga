@@ -22,6 +22,7 @@ import (
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -33,7 +34,6 @@ import (
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/health"
-	"github.com/openfga/openfga/server/middleware"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
 	"github.com/openfga/openfga/storage/memory"
@@ -386,13 +386,13 @@ func runServer(ctx context.Context, config *Config) error {
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
-		middleware.NewErrorLoggingInterceptor(logger),
+		middleware.NewLoggingInterceptor(logger),
 	}
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
-		middleware.NewStreamingErrorLoggingInterceptor(logger),
+		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 
 	opts := []grpc.ServerOption{
