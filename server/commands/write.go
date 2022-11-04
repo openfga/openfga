@@ -80,7 +80,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 		}
 
 		// Validate that we are not trying to write to an indirect-only relationship
-		if !typesystem.ContainsSelf(tupleUserset) {
+		if !typesystem.RewriteContainsSelf(tupleUserset) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
 		}
 

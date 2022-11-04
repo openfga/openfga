@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -660,6 +661,53 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "Ingresses for non-assignable relation",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "organization",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer":   typesystem.This(),
+							"can_view": typesystem.ComputedUserset("viewer"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("organization", ""),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"view":   typesystem.TupleToUserset("parent", "can_view"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.RelationReference("organization", "viewer"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.RelationReference("document", "view"),
+			source: typesystem.RelationReference("organization", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.RelationReference("organization", "viewer"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -674,4 +722,16 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			require.ElementsMatch(t, test.expected, ingresses)
 		})
 	}
+}
+
+func TestResolutionDepthContext(t *testing.T) {
+	ctx := ContextWithResolutionDepth(context.Background(), 2)
+
+	depth, ok := ResolutionDepthFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, uint32(2), depth)
+
+	depth, ok = ResolutionDepthFromContext(context.Background())
+	require.False(t, ok)
+	require.Equal(t, uint32(0), depth)
 }
