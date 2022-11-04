@@ -270,7 +270,7 @@ func TestVerifyConfig(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
@@ -279,7 +279,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 }
 
 func TestBuildServiceWithNoAuth(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -301,7 +301,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 }
 
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -423,7 +423,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 }
 
 func TestHTTPServerWithCORS(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
@@ -521,7 +521,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	const localOIDCServerURL = "http://localhost:8083"
 
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
 		Audience: "openfga.dev",
@@ -588,7 +588,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -610,7 +610,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
@@ -646,7 +646,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.TLS = &TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
@@ -669,7 +669,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
-		cfg := DefaultConfigWithRandomPorts()
+		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
 		cfg.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
 		cfg.GRPC.TLS = &TLSConfig{
@@ -696,7 +696,7 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -714,7 +714,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 }
 
 func TestHTTPServerEnabled(t *testing.T) {
-	cfg := DefaultConfigWithRandomPorts()
+	cfg := MustDefaultConfigWithRandomPorts()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
