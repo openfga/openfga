@@ -1268,6 +1268,170 @@ var writeCommandTests = []writeCommandTest{
 		},
 		err: serverErrors.NewInternalError("invalid authorization model", errors.New("invalid authorization model")),
 	},
+
+	{
+		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"admin": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent":   typesystem.This(),
+						"can_view": typesystem.TupleToUserset("parent", "owner"), //owner from parent
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			}},
+		},
+		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		),
+	},
+	{
+		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as union)",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"admin": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"can_view": typesystem.Union(
+							typesystem.TupleToUserset("parent", "owner"), //owner from parent
+							typesystem.TupleToUserset("parent", "admin"), //admin from parent
+						),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			}},
+		},
+		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		),
+	},
+	{
+		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as intersection)",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"admin": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"can_view": typesystem.Intersection(
+							typesystem.TupleToUserset("parent", "owner"), //owner from parent
+							typesystem.TupleToUserset("parent", "admin"), //admin from parent
+						),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			}},
+		},
+		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		),
+	},
+	{
+		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as difference)",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"admin": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"can_view": typesystem.Difference(
+							typesystem.TupleToUserset("parent", "owner"), //owner from parent
+							typesystem.TupleToUserset("parent", "admin"), //admin from parent
+						),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			}},
+		},
+		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		),
+	},
+	{
+		_name: "Write succeeds if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation of another type",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"parent": typesystem.Union( // let's confuse the code. if this were defined in 'document' type, it would fail
+							typesystem.TupleToUserset("parent", "owner"),
+						),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"owner":  typesystem.This(),
+						"parent": typesystem.This(),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			}},
+		},
+	},
 }
 
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
