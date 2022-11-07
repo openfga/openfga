@@ -868,6 +868,121 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			},
 			err: NonAssignableRelationError("document", "reader"),
 		},
+		{
+			name: "userset specified as allowed type, but the relation is used in a TTU rewrite",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"member": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent":   This(),
+							"can_view": TupleToUserset("parent", "member"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type:     "folder",
+											Relation: "member", //this isn't allowed
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+		},
+		{
+			name: "userset specified as allowed type, but the relation is used in a TTU rewrite included in a union",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "folder",
+										},
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(TupleToUserset("parent", "viewer"), This()),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type:     "folder",
+											Relation: "parent", // this isn't allowed
+										},
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type:     "folder",
+											Relation: "parent",
+										},
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+		},
 	}
 
 	for _, test := range tests {

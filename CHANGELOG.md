@@ -8,6 +8,17 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.2.5] - 2022-11-07
+### Security
+* Patches [CVE-2022-39352](https://github.com/openfga/openfga/security/advisories/GHSA-3gfj-fxx4-f22w)
+
+### Added
+* Multi-platform container build manifests to releases (#323)
+
+### Fixed
+* Read RPC returns correct error when authorization model id is not found (#312)
+* Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` (#315)
+
 ## [0.2.4] - 2022-10-24
 ### Security
 * Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
@@ -162,7 +173,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
 [0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
 [0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
 [0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
