@@ -16,7 +16,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Multi-platform container build manifests to releases (#323)
 
 ### Fixed
-* Read RPC returns error when authorization model id is not found (#312)
+* Read RPC returns correct error when authorization model id is not found (#312)
 * Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` (#315)
 
 ## [0.2.4] - 2022-10-24
