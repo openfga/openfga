@@ -35,7 +35,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		err     error
 	}{
 		{
-			name: "succeeds",
+			name: "succeeds with a simple model",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -49,7 +49,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "succeeds part II",
+			name: "succeeds with a complex model",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: "somestoreid",
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -112,7 +112,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
 		},
 		{
-			name: "empty relations is valid",
+			name: "succeeds with empty relations",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -122,7 +122,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "zero length relations is valid",
+			name: "succeeds with zero length relations",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -133,7 +133,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "ExecuteWriteFailsIfSameTypeTwice",
+			name: "fails if the same type appears twice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -154,7 +154,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(typesystem.ErrDuplicateTypes),
 		},
 		{
-			name: "ExecuteWriteFailsIfEmptyRewrites",
+			name: "fails if a relation is not defined",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -169,7 +169,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInComputedUserset",
+			name: "fails if unknown relation in computed userset definition",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -191,7 +191,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUserset",
+			name: "fails if unknown relation in tuple to userset definition (computed userset component)",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -218,7 +218,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInUnion",
+			name: "fails if unknown relation in union",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -253,7 +253,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceBaseArgument",
+			name: "fails if unknown relation in difference base argument",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -288,7 +288,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInDifferenceSubtractArgument",
+			name: "fails if unknown relation in difference subtract argument",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -323,7 +323,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetTupleset",
+			name: "fails if unknown relation in tuple to userset definition (tupleset component)",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -352,36 +352,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInTupleToUsersetComputedUserset",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"writer": {
-								Userset: &openfgapb.Userset_This{},
-							},
-							"viewer": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "writer",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Relation: "owner",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "", Relation: "owner"}),
-		},
-		{
-			name: "ExecuteWriteFailsIfTupleToUsersetReferencesUnknownRelation",
+			name: "fails if unknown relation in computed userset",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -417,7 +388,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "bar", Relation: "writer"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnknownRelationInIntersection",
+			name: "fails if unknown relation in intersection",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -450,7 +421,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.RelationUndefinedError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfDifferenceIncludesSameRelationTwice",
+			name: "fails if difference includes same relation twice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -480,7 +451,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfUnionIncludesSameRelationTwice",
+			name: "fails if union includes same relation twice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -507,7 +478,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
-			name: "ExecuteWriteFailsIfIntersectionIncludesSameRelationTwice",
+			name: "fails if intersection includes same relation twice",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -533,7 +504,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "viewer"}),
 		},
 		{
-			name: "Union Rewrite Contains Repeated Definitions",
+			name: "Success if Union Rewrite Contains Repeated Definitions",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -556,7 +527,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "Intersection Rewrite Contains Repeated Definitions",
+			name: "Success if Intersection Rewrite Contains Repeated Definitions",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -579,7 +550,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "Exclusion Rewrite Contains Repeated Definitions",
+			name: "Success if Exclusion Rewrite Contains Repeated Definitions",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -602,7 +573,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 		},
 		{
-			name: "Tupleset relation involves ComputedUserset rewrite",
+			name: "Fails if Tupleset relation involves ComputedUserset rewrite",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -621,7 +592,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "Tupleset relation involves Union rewrite",
+			name: "Fails if Tupleset relation involves Union rewrite",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -640,7 +611,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "Tupleset relation involves Intersection rewrite",
+			name: "Fails if Tupleset relation involves Intersection rewrite",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -659,7 +630,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "Tupleset relation involves Exclusion rewrite",
+			name: "Fails if Tupleset relation involves Exclusion rewrite",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -678,7 +649,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "Tupleset relation involves TupleToUserset rewrite",
+			name: "Fails if Tupleset relation involves TupleToUserset rewrite",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgapb.TypeDefinition{

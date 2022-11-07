@@ -9,7 +9,8 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// ValidateTuple returns whether a *openfgapb.TupleKey is valid
+// ValidateTuple checks whether a tuple is valid. If it is not, returns as error.
+// If it is, it grabs the type of the tuple's object, and the tuple's relation, and returns its corresponding userset.
 func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, authorizationModelID string, tk *openfgapb.TupleKey) (*openfgapb.Userset, error) {
 	if err := tuple.ValidateUser(tk); err != nil {
 		return nil, err
@@ -17,7 +18,8 @@ func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBacken
 	return ValidateObjectsRelations(ctx, backend, store, authorizationModelID, tk)
 }
 
-// ValidateObjectsRelations returns whether a tuple's object and relations are valid
+// ValidateObjectsRelations checks whether a tuple's object and relations are valid. If they are not, returns an error.
+// If they are, it grabs the type of the tuple's object, and the tuple's relation, and returns its corresponding userset.
 func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID string, t *openfgapb.TupleKey) (*openfgapb.Userset, error) {
 	if !tuple.IsValidRelation(t.GetRelation()) {
 		return nil, &tuple.InvalidTupleError{Reason: "invalid relation", TupleKey: t}
