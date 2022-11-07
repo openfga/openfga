@@ -16,6 +16,9 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
+      - name: govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: govulncheck ./...
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -29,8 +32,8 @@ jobs:
 
       - id: go-cache-paths
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - uses: actions/cache@v3
@@ -66,8 +69,8 @@ jobs:
 
         - id: go-cache-paths
           run: |
-            echo "::set-output name=go-build::$(go env GOCACHE)"
-            echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+            echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+            echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
         # Cache go build and go mod cache, used to speedup go test
         - uses: actions/cache@v3
