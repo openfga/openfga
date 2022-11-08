@@ -104,6 +104,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}, nil
 }
 
+// getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
 func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgapb.Userset, error) {
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
@@ -452,6 +453,27 @@ func (query *CheckQuery) resolveDifference(
 	return nil
 }
 
+// Given this auth model:
+//
+//	type document
+//	  relations
+//	    define parent as self
+//	    define viewer as reader from parent
+//	type folder
+//	  relations
+//	    define reader as self
+//
+// and this rc.tk:
+//
+//	document:budget#viewer@anne
+//
+// and these tuples:
+//
+//	folder:budgets#reader@anne
+//	document:budget#parent@folder:budget
+//
+// resolveTupleToUserset first finds all the entities that are related to "document:budget" via the "parent" relation
+// and then, for each of those (in this case "folder:budgets"), checks the rc.tk.User (anne) against the "reader" relation of that entity
 func (query *CheckQuery) resolveTupleToUserset(
 	ctx context.Context,
 	rc *resolutionContext,
@@ -463,7 +485,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 		relation = rc.tk.GetRelation()
 	}
 
-	findTK := tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, "")
+	findTK := tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, "") //findTk=document:budget#parent@
 
 	tracer := rc.tracer.AppendTupleToUserset().AppendString(tupleUtils.ToObjectRelationString(findTK.GetObject(), relation))
 	iter, err := rc.read(ctx, query.datastore, findTK)
@@ -490,14 +512,15 @@ func (query *CheckQuery) resolveTupleToUserset(
 			break // the user was resolved already, avoid launching extra lookups
 		}
 
-		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser())
+		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser()) // userObj=folder:budgets, userRel=""
+
+		objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
 
 		if userObj == Wildcard {
-			objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
 
 			query.logger.WarnWithContext(
 				ctx,
-				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s'", relation),
+				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
 				zap.String("store_id", rc.store),
 				zap.String("authorization_model_id", rc.modelID),
 				zap.String("object_type", objectType),
@@ -509,27 +532,35 @@ func (query *CheckQuery) resolveTupleToUserset(
 			)
 		}
 
+		if tupleUtils.UserSet == tupleUtils.GetUserTypeFromUser(tuple.GetUser()) {
+			query.logger.WarnWithContext(
+				ctx,
+				fmt.Sprintf("unexpected userset evaluated on tupleset relation '%s#%s'", objectType, relation),
+				zap.String("store_id", rc.store),
+				zap.String("authorization_model_id", rc.modelID),
+				zap.String("object_type", objectType),
+			)
+
+			return serverErrors.InvalidTuple(
+				fmt.Sprintf("unexpected userset evaluated on relation '%s#%s'", tupleUtils.GetType(rc.tk.GetObject()), relation),
+				tupleUtils.NewTupleKey(tuple.GetObject(), relation, tuple.GetUser()),
+			)
+		}
+
 		if !tupleUtils.IsValidObject(userObj) {
 			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
 		}
 
-		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation()
+		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
 
-		// userRel may be empty, and in this case we set it to usersetRel.
 		if userRel == "" {
-			userRel = usersetRel
-		}
-		// We only proceed in the case that userRel == usersetRel (=node.TupleToUserset.GetComputedUserset().GetRelation()).
-		if userRel != usersetRel {
-			continue
+			userRel = usersetRel // userRel=reader
 		}
 
 		tupleKey := &openfgapb.TupleKey{
-			// user from previous lookup
-			Object:   userObj,
-			Relation: userRel,
-			// original tk user
-			User: rc.tk.GetUser(),
+			Object:   userObj,         //folder:budgets
+			Relation: userRel,         //reader
+			User:     rc.tk.GetUser(), //anne
 		}
 		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(userObj, userRel))
 		nestedRC := rc.fork(tupleKey, tracer, false)
@@ -538,7 +569,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
+			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC) // folder:budgets#reader
 			if err == nil {
 				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}

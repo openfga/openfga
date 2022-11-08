@@ -258,15 +258,19 @@ func (query *ExpandQuery) resolveTupleToUserset(
 			continue
 		}
 
+		userType := tupleUtils.GetUserTypeFromUser(user)
+		if userType == tupleUtils.UserSet {
+			return nil, serverErrors.InvalidTuple(
+				fmt.Sprintf("unexpected userset evaluated on relation '%s#%s'", objectType, tupleset),
+				tupleUtils.NewTupleKey(targetObject, tupleset, user),
+			)
+		}
+
 		tObject, tRelation := tupleUtils.SplitObjectRelation(user)
 		// We only proceed in the case that tRelation == userset.GetComputedUserset().GetRelation().
 		// tRelation may be empty, and in this case, we set it to userset.GetComputedUserset().GetRelation().
 		if tRelation == "" {
 			tRelation = userset.GetComputedUserset().GetRelation()
-		}
-
-		if tRelation != userset.GetComputedUserset().GetRelation() {
-			continue
 		}
 
 		cs := &openfgapb.TupleKey{

@@ -84,6 +84,10 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
 		}
 
+		if err := c.validateNoUsersetForRelationReferencedInTupleset(authModel, tk); err != nil {
+			return err
+		}
+
 		if err := c.validateTypesForTuple(authModel, tk); err != nil {
 			return err
 		}
@@ -98,6 +102,27 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 
 	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (c *WriteCommand) validateNoUsersetForRelationReferencedInTupleset(authModel *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+	if !tupleUtils.IsObjectRelation(tk.GetUser()) {
+		return nil
+	}
+
+	objType := tupleUtils.GetType(tk.GetObject())
+
+	// at this point we know tk.User is a userset
+	// if tk.Relation is used in a `x from y` definition (in the `y` part), throw an error
+	ts := typesystem.New(authModel)
+	for _, arrayOfTtus := range ts.GetAllTupleToUsersetsDefinitions()[objType] {
+		for _, tupleToUserSetDef := range arrayOfTtus {
+			if tupleToUserSetDef.Tupleset.Relation == tk.Relation {
+				return serverErrors.InvalidTuple(fmt.Sprintf("Userset '%s' is not allowed to have relation '%s' with '%s'", tk.User, tk.Relation, tk.Object), tk)
+			}
+		}
 	}
 
 	return nil

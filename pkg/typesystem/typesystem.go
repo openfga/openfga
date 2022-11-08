@@ -545,6 +545,7 @@ func isUsersetRewriteValid(
 
 func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
 	t := New(model)
+	allTupleToUsersetDefinitions := t.GetAllTupleToUsersetsDefinitions()
 
 	for objectType := range t.typeDefinitions {
 		relations, err := t.GetRelations(objectType)
@@ -575,6 +576,15 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				if relatedRelation != "" {
 					if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
 						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
+					}
+
+					// you cannot specify a userset if the relation is being used in a `x from y` definition (in the `y` part)
+					for _, arrayOfTtus := range allTupleToUsersetDefinitions[objectType] {
+						for _, tupleToUserSetDef := range arrayOfTtus {
+							if tupleToUserSetDef.Tupleset.Relation == name {
+								return &InvalidRelationError{ObjectType: objectType, Relation: name}
+							}
+						}
 					}
 				}
 			}
@@ -724,4 +734,39 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 	}
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
+}
+
+// GetAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
+// is another map where key=relationName, value=list of tuple to usersets declared in that relation
+func (t *TypeSystem) GetAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgapb.TupleToUserset {
+	response := make(map[string]map[string][]*openfgapb.TupleToUserset, 0)
+	for typeName, typeDef := range t.GetTypeDefinitions() {
+		response[typeName] = make(map[string][]*openfgapb.TupleToUserset, 0)
+		for relationName, relationDef := range typeDef.GetRelations() {
+			ttus := make([]*openfgapb.TupleToUserset, 0)
+			response[typeName][relationName] = t.getAllTupleToUsersetsDefinitions(relationDef, &ttus)
+		}
+	}
+	return response
+}
+
+func (t *TypeSystem) getAllTupleToUsersetsDefinitions(relationDef *openfgapb.Userset, resp *[]*openfgapb.TupleToUserset) []*openfgapb.TupleToUserset {
+	if relationDef.GetTupleToUserset() != nil {
+		*resp = append(*resp, relationDef.GetTupleToUserset())
+	}
+	if relationDef.GetUnion() != nil {
+		for _, child := range relationDef.GetUnion().GetChild() {
+			t.getAllTupleToUsersetsDefinitions(child, resp)
+		}
+	}
+	if relationDef.GetIntersection() != nil {
+		for _, child := range relationDef.GetIntersection().GetChild() {
+			t.getAllTupleToUsersetsDefinitions(child, resp)
+		}
+	}
+	if relationDef.GetDifference() != nil {
+		t.getAllTupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
+		t.getAllTupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
+	}
+	return *resp
 }
