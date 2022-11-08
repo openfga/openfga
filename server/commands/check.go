@@ -68,7 +68,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	model, err := query.datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
 		}
 
@@ -77,7 +77,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), req.GetAuthorizationModelId(), tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
 	if err != nil {
@@ -109,7 +109,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
+	userset, err := validation.ValidateTuple(ctx, rc.model, rc.tk)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
@@ -165,7 +165,7 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 			query.logger.Warn(
 				fmt.Sprintf("unexpected rewrite on tupleset relation '%s#%s'", objectType, tupleset),
 				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
+				zap.String("authorization_model_id", rc.model.Id),
 				zap.String("object_type", objectType),
 				zap.String("relation", tupleset),
 			)
@@ -360,7 +360,7 @@ func (query *CheckQuery) resolveIntersection(
 	for idx, userset := range nodes.Intersection.Child {
 		idx, userset := idx, userset
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, userset, typesys)
 			if err != nil {
@@ -429,7 +429,7 @@ func (query *CheckQuery) resolveDifference(
 	for idx, set := range sets {
 		idx, set := idx, set
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, set, typesys)
 			if err != nil {
@@ -522,7 +522,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 				ctx,
 				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
 				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
+				zap.String("authorization_model_id", rc.model.Id),
 				zap.String("object_type", objectType),
 			)
 
@@ -537,7 +537,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 				ctx,
 				fmt.Sprintf("unexpected userset evaluated on tupleset relation '%s#%s'", objectType, relation),
 				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
+				zap.String("authorization_model_id", rc.model.Id),
 				zap.String("object_type", objectType),
 			)
 

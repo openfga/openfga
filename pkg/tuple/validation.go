@@ -56,10 +56,3 @@ type IndirectWriteError struct {
 func (i *IndirectWriteError) Error() string {
 	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
 }
-
-func ValidateUser(tk *openfgapb.TupleKey) error {
-	if !IsValidUser(tk.GetUser()) {
-		return &InvalidTupleError{Reason: "the 'user' field is invalid", TupleKey: tk}
-	}
-	return nil
-}

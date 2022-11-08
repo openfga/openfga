@@ -37,7 +37,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, tracer trace.Tracer, lo
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
-	if err := c.validateTuplesets(ctx, req); err != nil {
+	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
 
@@ -49,7 +49,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 	return &openfgapb.WriteResponse{}, nil
 }
 
-func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.WriteRequest) error {
+func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.WriteRequest) error {
 	ctx, span := c.tracer.Start(ctx, "validateTuplesets")
 	defer span.End()
 
@@ -74,7 +74,7 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		tupleUserset, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk)
+		tupleUserset, err := validation.ValidateTuple(ctx, authModel, tk)
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}

@@ -190,3 +190,36 @@ func ExampleNewUniqueObjectIterator() {
 	fmt.Println(objects)
 	// Output: [document:doc1 document:doc2]
 }
+
+func ExampleNewFilteredTupleKeyIterator() {
+
+	tuples := []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
+	}
+
+	iter := NewFilteredTupleKeyIterator(
+		NewStaticTupleKeyIterator(tuples),
+		func(tk *openfgapb.TupleKey) bool {
+			return tk.GetRelation() == "editor"
+		},
+	)
+
+	var filtered []string
+	for {
+		tuple, err := iter.Next()
+		if err != nil {
+			if err == ErrIteratorDone {
+				break
+			}
+
+			// handle the error in some way
+			panic(err)
+		}
+
+		filtered = append(filtered, fmt.Sprintf("%s#%s@%s", tuple.GetObject(), tuple.GetRelation(), tuple.GetUser()))
+	}
+
+	fmt.Println(filtered)
+	// Output: [document:doc1#editor@user:elbuo]
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -269,7 +270,7 @@ func (sc *circuitBreaker) IsOpen() bool {
 
 type resolutionContext struct {
 	store            string
-	modelID          string
+	model            *openfgapb.AuthorizationModel
 	users            *userSet
 	targetUser       string
 	tk               *openfgapb.TupleKey
@@ -280,10 +281,10 @@ type resolutionContext struct {
 	externalCB       *circuitBreaker // Open is controlled from caller, Used for Difference and Intersection.
 }
 
-func newResolutionContext(store, modelID string, tk *openfgapb.TupleKey, contextualTuples *contextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
+func newResolutionContext(store string, model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey, contextualTuples *contextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
 	return &resolutionContext{
 		store:            store,
-		modelID:          modelID,
+		model:            model,
 		users:            newUserSet(),
 		targetUser:       tk.GetUser(),
 		tk:               tk,
@@ -321,8 +322,9 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 	}
 
 	return &resolutionContext{
-		store:            rc.store,
-		modelID:          rc.modelID,
+		store: rc.store,
+		model: rc.model,
+		///modelID:          rc.modelID,
 		users:            rc.users,
 		targetUser:       rc.targetUser,
 		tk:               tk,
@@ -357,7 +359,10 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 	iter1 := storage.NewStaticTupleKeyIterator(cUsersetTuples)
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(usersetTuples)
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewFilteredTupleKeyIterator(
+		storage.NewCombinedIterator(iter1, iter2),
+		validation.FilterInvalidTuples(rc.model),
+	), nil
 }
 
 func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (storage.TupleKeyIterator, error) {
@@ -370,7 +375,10 @@ func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBack
 	iter1 := storage.NewStaticTupleKeyIterator(cTuples)
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(tuples)
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewFilteredTupleKeyIterator(
+		storage.NewCombinedIterator(iter1, iter2),
+		validation.FilterInvalidTuples(rc.model),
+	), nil
 }
 
 type contextualTuples struct {

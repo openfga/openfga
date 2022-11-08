@@ -92,6 +92,7 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
+	model           *openfgapb.AuthorizationModel
 	schemaVersion   string
 	typeDefinitions map[string]*openfgapb.TypeDefinition
 }
@@ -105,9 +106,16 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	}
 
 	return &TypeSystem{
+		model:           model,
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 	}
+}
+
+// GetAuthorizationModelID returns the id for the authorization model this
+// TypeSystem was constructed for.
+func (t *TypeSystem) GetAuthorizationModelID() string {
+	return t.model.GetId()
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
