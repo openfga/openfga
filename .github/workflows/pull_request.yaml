@@ -16,8 +16,6 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-      - name: Run govulncheck
-        run: govulncheck ./...
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -55,6 +53,9 @@ jobs:
           files: ./coverageunit.out
           verbose: true
           fail_ci_if_error: false
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   functional-tests:
       runs-on: ubuntu-latest

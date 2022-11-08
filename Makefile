@@ -62,7 +62,7 @@ go-generate: install-tools
 
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
-	go test $(gotest_extra_flags) -race -v \
+	go test -race -v \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
@@ -77,7 +77,7 @@ build-functional-test-image: ## Build Docker image needed to run functional test
 
 .PHONY: functional-test
 functional-test: ## Run functional tests (needs build-functional-test-image)
-	go test $(gotest_extra_flags) -race -v \
+	go test -race -v \
 			-count=1 \
 			-timeout=5m \
 			-tags=functional \
