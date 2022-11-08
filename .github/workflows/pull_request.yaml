@@ -16,8 +16,8 @@ jobs:
         uses: golangci/golangci-lint-action@v3
         with:
           version: latest
-      - name: govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest; govulncheck ./...
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   unit-tests:
     runs-on: ubuntu-latest
