@@ -34,50 +34,42 @@ func NewStorageWrapper(storage OpenFGADatastore) *StorageWrapper {
 }
 
 func (w *StorageWrapper) Read(ctx context.Context, store string, tuple *openfgapb.TupleKey) (TupleIterator, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.Read(ctx, store, tuple)
 }
 
 func (w *StorageWrapper) ListObjectsByType(ctx context.Context, store, objectType string) (ObjectIterator, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ListObjectsByType(ctx, store, objectType)
 }
 
 func (w *StorageWrapper) ReadPage(ctx context.Context, store string, tuple *openfgapb.TupleKey, opts PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadPage(ctx, store, tuple, opts)
 }
 
 func (w *StorageWrapper) Write(ctx context.Context, store string, deletes Deletes, writes Writes) error {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Writes.Add(1)
-
+	incrementWriteCounter(ctx)
 	return w.storage.Write(ctx, store, deletes, writes)
 }
 
 func (w *StorageWrapper) ReadUserTuple(ctx context.Context, store string, tuple *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadUserTuple(ctx, store, tuple)
 }
 
 func (w *StorageWrapper) ReadUsersetTuples(ctx context.Context, store string, tuple *openfgapb.TupleKey) (TupleIterator, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadUsersetTuples(ctx, store, tuple)
 }
 
 func (w *StorageWrapper) ReadStartingWithUser(ctx context.Context, store string, filter ReadStartingWithUserFilter) (TupleIterator, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadStartingWithUser(ctx, store, filter)
 }
 
 func (w *StorageWrapper) ReadByStore(ctx context.Context, store string, opts PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadByStore(ctx, store, opts)
 }
 
@@ -86,26 +78,22 @@ func (w *StorageWrapper) MaxTuplesInWriteOperation() int {
 }
 
 func (w *StorageWrapper) ReadAuthorizationModel(ctx context.Context, store, id string) (*openfgapb.AuthorizationModel, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadAuthorizationModel(ctx, store, id)
 }
 
 func (w *StorageWrapper) ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadAuthorizationModels(ctx, store, options)
 }
 
 func (w *StorageWrapper) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.FindLatestAuthorizationModelID(ctx, store)
 }
 
 func (w *StorageWrapper) ReadTypeDefinition(ctx context.Context, store, id string, objectType string) (*openfgapb.TypeDefinition, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadTypeDefinition(ctx, store, id, objectType)
 }
 
@@ -114,14 +102,12 @@ func (w *StorageWrapper) MaxTypesInTypeDefinition() int {
 }
 
 func (w *StorageWrapper) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Writes.Add(1)
-
+	incrementWriteCounter(ctx)
 	return w.storage.WriteAuthorizationModel(ctx, store, model)
 }
 
 func (w *StorageWrapper) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Writes.Add(1)
-
+	incrementWriteCounter(ctx)
 	return w.storage.CreateStore(ctx, store)
 }
 
@@ -130,32 +116,27 @@ func (w *StorageWrapper) DeleteStore(ctx context.Context, id string) error {
 }
 
 func (w *StorageWrapper) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.GetStore(ctx, id)
 }
 
 func (w *StorageWrapper) ListStores(ctx context.Context, opts PaginationOptions) ([]*openfgapb.Store, []byte, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ListStores(ctx, opts)
 }
 
 func (w *StorageWrapper) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Writes.Add(1)
-
+	incrementWriteCounter(ctx)
 	return w.storage.WriteAssertions(ctx, store, modelID, assertions)
 }
 
 func (w *StorageWrapper) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadAssertions(ctx, store, modelID)
 }
 
 func (w *StorageWrapper) ReadChanges(ctx context.Context, store, objectType string, opts PaginationOptions, horizonOffset time.Duration) ([]*openfgapb.TupleChange, []byte, error) {
-	ctx.Value(DBCounterCtxKey).(*DBCounter).Reads.Add(1)
-
+	incrementReadCounter(ctx)
 	return w.storage.ReadChanges(ctx, store, objectType, opts, horizonOffset)
 }
 
@@ -165,4 +146,16 @@ func (w *StorageWrapper) IsReady(ctx context.Context) (bool, error) {
 
 func (w *StorageWrapper) Close(ctx context.Context) error {
 	return w.storage.Close(ctx)
+}
+
+func incrementReadCounter(ctx context.Context) {
+	if counter, ok := ctx.Value(DBCounterCtxKey).(*DBCounter); ok {
+		counter.Reads.Add(1)
+	}
+}
+
+func incrementWriteCounter(ctx context.Context) {
+	if counter, ok := ctx.Value(DBCounterCtxKey).(*DBCounter); ok {
+		counter.Writes.Add(1)
+	}
 }
