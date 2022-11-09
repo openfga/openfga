@@ -83,6 +83,11 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	if err != nil {
 		return nil, err
 	}
+	if userset == nil {
+		// the tuple in the Check request is invalid according to the model, so throw an error
+		_, actualErr := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
+		return nil, serverErrors.HandleTupleValidateError(actualErr)
+	}
 
 	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
 		return nil, err
@@ -111,7 +116,8 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 
 	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
 	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+		// the tuple in the request context is invalid according to the current model, so ignore it and swallow the error
+		return nil, nil
 	}
 	return userset, nil
 }
@@ -127,6 +133,10 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 	if rc.shouldShortCircuit() {
 		span.SetAttributes(attribute.KeyValue{Key: "operation", Value: attribute.StringValue("short-circuit")})
 		return nil // short circuit subsequent operations
+	}
+
+	if nsUS == nil {
+		return nil
 	}
 
 	switch usType := nsUS.Userset.(type) {

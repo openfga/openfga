@@ -1734,6 +1734,7 @@ func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastor
 	}
 }
 
+// TestCheckQueryAuthorizationModelsVersioning ensures that Check is using the "auth model id" passed in as parameter to expand the usersets
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
@@ -1748,15 +1749,11 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner": {Userset: &openfgapb.Userset_This{}},
-					"editor": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "owner"}}},
-							}},
-						},
-					},
+					"owner": typesystem.This(),
+					"editor": typesystem.Union(
+						typesystem.This(),
+						typesystem.ComputedUserset("owner"),
+					),
 				},
 			},
 		},
@@ -1772,8 +1769,8 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner":  {Userset: &openfgapb.Userset_This{}},
-					"editor": {Userset: &openfgapb.Userset_This{}},
+					"owner":  typesystem.This(),
+					"editor": typesystem.This(),
 				},
 			},
 		},
@@ -1808,6 +1805,87 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	})
 	require.NoError(t, err)
 	require.False(t, updatedResp.Allowed)
+}
+
+// TestCheckQueryIgnoresTuplesCurrentlyInvalid ensures that Check is ignoring tuples that were valid for some auth model but not
+// for the one passed in the request
+func TestCheckQueryIgnoresTuplesCurrentlyInvalid(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
+	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
+
+	// write one model with some tuples
+	oldModel := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "group",
+				Relations: map[string]*openfgapb.Userset{
+					"member": typesystem.This(),
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+			},
+		},
+	}
+
+	err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{
+		{Object: "document:doc1", Relation: "viewer", User: "group:eng#member"},
+		{Object: "group:eng", Relation: "member", User: "jon"},
+	})
+	require.NoError(t, err)
+
+	err = datastore.WriteAuthorizationModel(ctx, store, oldModel)
+	require.NoError(t, err)
+
+	// write a new model that is not backwards compatible and some tuples
+	updatedModel := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": typesystem.This(),
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+			},
+		},
+	}
+
+	err = datastore.WriteAuthorizationModel(ctx, store, updatedModel)
+	require.NoError(t, err)
+
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{
+		{Object: "document:doc1", Relation: "viewer", User: "team:buzz#member"},
+		{Object: "team:buzz", Relation: "member", User: "anne"},
+	})
+	require.NoError(t, err)
+
+	// a check against the old model should skip over the tuple team:buzz#member@anne
+	checkResponse, err := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
+		StoreId:              store,
+		AuthorizationModelId: oldModel.Id,
+		TupleKey: &openfgapb.TupleKey{
+			Object:   "document:doc1",
+			Relation: "viewer",
+			User:     "someuser",
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, checkResponse.Allowed)
 }
 
 var tuples = []*openfgapb.TupleKey{
