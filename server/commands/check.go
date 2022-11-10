@@ -109,11 +109,16 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	userset, err := validation.ValidateTuple(ctx, rc.model, rc.tk)
+	var relation *openfgapb.Relation
+	// todo(jon-whit): get the relation and make sure we return the same errors we were before if
+	// it doesn't exist
+
+	err := validation.ValidateTuple(rc.model, rc.tk)
 	if err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
-	return userset, nil
+
+	return relation.GetRewrite(), nil
 }
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
@@ -122,6 +127,7 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 		query.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
+
 	ctx, span := query.tracer.Start(ctx, "resolveNode")
 	defer span.End()
 	if rc.shouldShortCircuit() {
