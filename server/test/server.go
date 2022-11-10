@@ -16,7 +16,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestCheckQueryAgainstGitHubModel", func(t *testing.T) { TestCheckQueryAgainstGitHubModel(t, ds) })
 	t.Run("TestCheckQueryWithContextualTuplesAgainstGitHubModel", func(t *testing.T) { TestCheckQueryWithContextualTuplesAgainstGitHubModel(t, ds) })
 	t.Run("TestCheckQueryAuthorizationModelsVersioning", func(t *testing.T) { TestCheckQueryAuthorizationModelsVersioning(t, ds) })
-	t.Run("TestCheckQueryIgnoresTuplesCurrentlyInvalid", func(t *testing.T) { TestCheckQueryIgnoresTuplesCurrentlyInvalid(t, ds) })
 
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
 	t.Run("TestSuccessfulReadAuthorizationModelQuery", func(t *testing.T) { TestSuccessfulReadAuthorizationModelQuery(t, ds) })
