@@ -41,6 +41,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -92,6 +94,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -139,6 +143,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			limit: 2,
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -180,6 +186,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -215,6 +223,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -269,6 +279,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -322,8 +334,14 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
+				ContextualTuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("folder:folder5", "parent", "folder:folder4"),
+					tuple.NewTupleKey("folder:folder6", "viewer", "user:bob"),
+				},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -392,8 +410,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
 				tuple.NewTupleKey("folder:folder4", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("folder:folder5", "parent", "folder:folder4"),
-				tuple.NewTupleKey("folder:folder6", "viewer", "user:bob"),
 
 				tuple.NewTupleKey("document:doc1", "parent", "folder:folder3"),
 				tuple.NewTupleKey("document:doc2", "parent", "folder:folder5"),
@@ -413,6 +429,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -460,6 +478,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			resolveNodeLimit: 2,
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
@@ -506,6 +526,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User:       &openfgapb.ObjectRelation{Object: "group:iam", Relation: "member"},
 			},
 			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "user",
