@@ -151,11 +151,10 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 }
 
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 
-	t.Run("deletes would succeed and write would fail, fails and introduces no changes", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+	t.Run("delete with a duplicate write succeeds", func(t *testing.T) {
+		storeID := ulid.Make().String()
 		tks := []*openfgapb.TupleKey{
 			{
 				Object:   "doc:readme",
@@ -173,20 +172,19 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				User:     "org:openfgapb#viewer",
 			},
 		}
-		expectedError := storage.InvalidWriteInputError(tks[2], openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// Write tks
-		err := datastore.Write(ctx, store, nil, tks)
+		err := datastore.Write(ctx, storeID, nil, tks)
 		require.NoError(t, err)
 
-		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		err = datastore.Write(ctx, store, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]})
-		require.EqualError(t, err, expectedError.Error())
-
-		tuples, _, err := datastore.ReadByStore(ctx, store, storage.PaginationOptions{PageSize: 50})
+		// Try to delete tks[0,1], and at the same time write tks[2]. It should delete, but not write.
+		err = datastore.Write(ctx, storeID, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]})
 		require.NoError(t, err)
 
-		require.Equal(t, len(tks), len(tuples))
+		tuples, _, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 50})
+		require.NoError(t, err)
+
+		require.Equal(t, 1, len(tuples))
 	})
 
 	t.Run("delete fails if the tuple does not exist", func(t *testing.T) {
@@ -216,19 +214,21 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("inserting a tuple twice fails", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+	t.Run("inserting a tuple twice won't fail", func(t *testing.T) {
+		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// First write should succeed.
-		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk}); err != nil {
-			t.Fatal(err)
-		}
-		// Second write of the same tuple should fail.
-		if err := datastore.Write(ctx, store, nil, []*openfgapb.TupleKey{tk}); err.Error() != expectedError.Error() {
-			t.Fatalf("got '%v', want '%v'", err, expectedError)
-		}
+		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
+		require.NoError(t, err)
+
+		// Second write of the same tuple should not fail, but won't update the changelog.
+		err = datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
+		require.NoError(t, err)
+
+		// Check that the changelog only contains one tuple.
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: 10}, 0)
+		require.Len(t, changes, 1)
 	})
 
 	t.Run("reading a tuple that exists succeeds", func(t *testing.T) {
