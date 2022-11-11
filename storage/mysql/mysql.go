@@ -218,6 +218,10 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		}
 
 		stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, squirrel.Expr("NOW()")).ToSql()
+		if err != nil {
+			return handleMySQLError(err, tk)
+		}
+
 		_, err = tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handleMySQLError(err)

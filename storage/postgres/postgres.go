@@ -239,6 +239,10 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		}
 
 		stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()").ToSql()
+		if err != nil {
+			return handlePostgresError(err, tk)
+		}
+
 		_, err = tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handlePostgresError(err, tk)

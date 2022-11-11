@@ -228,6 +228,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		// Check that the changelog only contains one tuple.
 		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: 10}, 0)
+		require.NoError(t, err)
 		require.Len(t, changes, 1)
 	})
 
