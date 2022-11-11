@@ -193,11 +193,11 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	txn, err := p.db.BeginTx(ctx, nil)
+	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return handlePostgresError(err)
 	}
-	defer rollbackTx(ctx, txn, p.logger)
+	defer rollbackTx(ctx, tx, p.logger)
 
 	changelogBuilder := squirrel.
 		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
@@ -224,7 +224,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 			return handlePostgresError(err)
 		}
 
-		res, err := txn.ExecContext(ctx, stmt, args...)
+		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handlePostgresError(err, tk)
 		}
@@ -238,13 +238,18 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()")
+		stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()").ToSql()
+		_, err = tx.ExecContext(ctx, stmt, args...)
+		if err != nil {
+			return handlePostgresError(err, tk)
+		}
 	}
 
 	tupleInsertBuilder := squirrel.
 		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at").
+		Suffix("on conflict do nothing")
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -255,27 +260,30 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 			return handlePostgresError(err)
 		}
 
-		_, err = txn.ExecContext(ctx, stmt, args...)
+		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handlePostgresError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, "NOW()")
-	}
-
-	if len(writes) > 0 || len(deletes) > 0 {
-		stmt, args, err := changelogBuilder.ToSql()
+		rowsAffected, err := res.RowsAffected()
 		if err != nil {
 			return handlePostgresError(err)
 		}
 
-		_, err = txn.ExecContext(ctx, stmt, args...)
-		if err != nil {
-			return handlePostgresError(err)
+		if rowsAffected == 1 {
+			stmt, args, err := changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, "NOW()").ToSql()
+			if err != nil {
+				return handlePostgresError(err)
+			}
+
+			_, err = tx.ExecContext(ctx, stmt, args...)
+			if err != nil {
+				return handlePostgresError(err, tk)
+			}
 		}
 	}
 
-	if err := txn.Commit(); err != nil {
+	if err := tx.Commit(); err != nil {
 		return handlePostgresError(err)
 	}
 

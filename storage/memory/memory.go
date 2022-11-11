@@ -27,9 +27,9 @@ type staticIterator struct {
 
 func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	if key.Object != "" {
-		td, objectid := tupleUtils.SplitObject(key.Object)
-		if objectid == "" {
-			if td != tupleUtils.GetType(target.Object) {
+		objectType, objectID := tupleUtils.SplitObject(key.Object)
+		if objectID == "" {
+			if objectType != tupleUtils.GetType(target.Object) {
 				return false
 			}
 		} else {
@@ -275,6 +275,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	}
 
 	var tuples []*openfgapb.Tuple
+
 Delete:
 	for _, t := range s.tuples[store] {
 		for _, k := range deletes {
@@ -296,7 +297,9 @@ Write:
 		tuples = append(tuples, &openfgapb.Tuple{Key: t, Timestamp: now})
 		s.changes[store] = append(s.changes[store], &openfgapb.TupleChange{TupleKey: t, Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: now})
 	}
+
 	s.tuples[store] = tuples
+
 	return nil
 }
 
@@ -304,11 +307,6 @@ func validateTuples(tuples []*openfgapb.Tuple, deletes, writes []*openfgapb.Tupl
 	for _, tk := range deletes {
 		if !find(tuples, tk) {
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-		}
-	}
-	for _, tk := range writes {
-		if find(tuples, tk) {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 		}
 	}
 	return nil

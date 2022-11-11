@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
@@ -180,49 +181,83 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	}
 	defer rollbackTx(ctx, tx, m.logger)
 
+	changelogBuilder := squirrel.
+		Insert("changelog").
+		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+
+	deletebuilder := squirrel.Delete("tuple")
+
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		r, err := tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
+
+		stmt, args, err := deletebuilder.Where(squirrel.Eq{
+			"store":       store,
+			"object_type": objectType,
+			"object_id":   objectID,
+			"relation":    tk.GetRelation(),
+			"_user":       tk.GetUser(),
+			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+		}).ToSql()
 		if err != nil {
 			return handleMySQLError(err)
 		}
 
-		affectedRows, err := r.RowsAffected()
+		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handleMySQLError(err)
 		}
 
-		if affectedRows != 1 {
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return handleMySQLError(err)
+		}
+
+		if rowsAffected != 1 {
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id)
+		stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, squirrel.Expr("NOW()")).ToSql()
+		_, err = tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handleMySQLError(err)
 		}
 	}
 
+	tupleInsertBuilder := squirrel.
+		Insert("tuple").
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at").
+		Suffix("on duplicate key update store=store")
+
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		relation := tk.GetRelation()
-		user := tk.GetUser()
-		userType := tupleUtils.GetUserTypeFromUser(user)
 
-		_, err = tx.ExecContext(
-			ctx,
-			`INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-			store, objectType, objectID, relation, user, userType, id,
-		)
+		stmt, args, err := tupleInsertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, squirrel.Expr("NOW()")).ToSql()
+		if err != nil {
+			return handleMySQLError(err)
+		}
 
+		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
 
-		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id)
+		rowsAffected, err := res.RowsAffected()
 		if err != nil {
-			return handleMySQLError(err, tk)
+			return handleMySQLError(err)
+		}
+
+		if rowsAffected == 1 {
+			stmt, args, err := changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, squirrel.Expr("NOW()")).ToSql()
+			if err != nil {
+				return handleMySQLError(err)
+			}
+
+			_, err = tx.ExecContext(ctx, stmt, args...)
+			if err != nil {
+				return handleMySQLError(err, tk)
+			}
 		}
 	}
 
