@@ -83,6 +83,11 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	if err != nil {
 		return nil, err
 	}
+	if userset == nil {
+		// the tuple in the Check request is invalid according to the model being used, so throw an error
+		_, actualErr := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
+		return nil, serverErrors.HandleTupleValidateError(actualErr)
+	}
 
 	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
 		return nil, err
@@ -111,7 +116,8 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 
 	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
 	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
+		return nil, nil
 	}
 	return userset, nil
 }
@@ -260,6 +266,12 @@ func (query *CheckQuery) resolveDirectUserSet(
 
 		userset := usersetTuple.GetUser()
 		object, relation := tupleUtils.SplitObjectRelation(userset)
+		objectType, _ := tupleUtils.SplitObject(object)
+		_, err = typesys.GetRelation(objectType, relation)
+		if err != nil {
+			// the tuple in the request context is invalid according to the model being used, so ignore it
+			continue
+		}
 		tracer := rc.tracer.AppendDirect().AppendString(userset)
 		tupleKey := &openfgapb.TupleKey{
 			Object:   object,
