@@ -198,7 +198,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
 		require.NoError(t, err)
 
-		// Second write of the same tuple should not fail, but won't update the changelog.
+		// Second write of the same tuple should not fail, and won't update the changelog.
 		err = datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
 		require.NoError(t, err)
 
