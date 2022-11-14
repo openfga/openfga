@@ -185,13 +185,13 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		Insert("changelog").
 		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
 
-	deletebuilder := squirrel.Delete("tuple")
+	deleteBuilder := squirrel.Delete("tuple")
 
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := deletebuilder.Where(squirrel.Eq{
+		stmt, args, err := deleteBuilder.Where(squirrel.Eq{
 			"store":       store,
 			"object_type": objectType,
 			"object_id":   objectID,
@@ -228,7 +228,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		}
 	}
 
-	tupleInsertBuilder := squirrel.
+	insertBuilder := squirrel.
 		Insert("tuple").
 		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at").
 		Suffix("on duplicate key update store=store")
@@ -237,7 +237,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := tupleInsertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, squirrel.Expr("NOW()")).ToSql()
+		stmt, args, err := insertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, squirrel.Expr("NOW()")).ToSql()
 		if err != nil {
 			return handleMySQLError(err)
 		}

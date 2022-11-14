@@ -204,7 +204,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		Insert("changelog").
 		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
 
-	deletebuilder := squirrel.
+	deleteBuilder := squirrel.
 		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
 		Delete("tuple")
 
@@ -212,7 +212,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := deletebuilder.Where(squirrel.Eq{
+		stmt, args, err := deleteBuilder.Where(squirrel.Eq{
 			"store":       store,
 			"object_type": objectType,
 			"object_id":   objectID,
@@ -249,7 +249,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		}
 	}
 
-	tupleInsertBuilder := squirrel.
+	insertBuilder := squirrel.
 		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
 		Insert("tuple").
 		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at").
@@ -259,7 +259,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := tupleInsertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").ToSql()
+		stmt, args, err := insertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").ToSql()
 		if err != nil {
 			return handlePostgresError(err)
 		}
