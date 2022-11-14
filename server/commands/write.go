@@ -216,8 +216,6 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgapb.T
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
 		return serverErrors.WriteFailedDueToInvalidInput(nil)
-	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
-		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
 
 	return serverErrors.HandleError("", err)

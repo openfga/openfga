@@ -187,13 +187,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Equal(t, 1, len(tuples))
 	})
 
-	t.Run("delete fails if the tuple does not exist", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
+	t.Run("delete does not fail if the tuple does not exist", func(t *testing.T) {
+		storeID := ulid.Make().String()
 
-		err := datastore.Write(ctx, store, []*openfgapb.TupleKey{tk}, nil)
-		require.EqualError(t, err, expectedError.Error())
+		err := datastore.Write(ctx, storeID, []*openfgapb.TupleKey{{Object: "doc:readme", Relation: "owner", User: "10"}}, nil)
+		require.NoError(t, err)
 	})
 
 	t.Run("deleting a tuple which exists succeeds", func(t *testing.T) {

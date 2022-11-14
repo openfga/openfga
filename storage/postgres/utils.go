@@ -191,15 +191,10 @@ func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
 	}
 }
 
-func handlePostgresError(err error, args ...interface{}) error {
+func handlePostgresError(err error) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
 	} else if strings.Contains(err.Error(), "duplicate key value") {
-		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
-			}
-		}
 		return storage.ErrCollision
 	}
 

@@ -7,7 +7,6 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestHandleMySQLError(t *testing.T) {
@@ -16,12 +15,8 @@ func TestHandleMySQLError(t *testing.T) {
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
 		}
-		err := handleMySQLError(duplicateKeyError, &openfgapb.TupleKey{
-			Object:   "object",
-			Relation: "relation",
-			User:     "user",
-		})
-		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
+		err := handleMySQLError(duplicateKeyError)
+		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
 	t.Run("duplicate entry value error without tuple key returns collision", func(t *testing.T) {

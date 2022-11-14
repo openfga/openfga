@@ -213,18 +213,17 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return handleMySQLError(err)
 		}
 
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-		}
+		// Update the changelog if needed.
+		if rowsAffected == 1 {
+			stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, squirrel.Expr("NOW()")).ToSql()
+			if err != nil {
+				return handleMySQLError(err)
+			}
 
-		stmt, args, err = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, squirrel.Expr("NOW()")).ToSql()
-		if err != nil {
-			return handleMySQLError(err, tk)
-		}
-
-		_, err = tx.ExecContext(ctx, stmt, args...)
-		if err != nil {
-			return handleMySQLError(err)
+			_, err = tx.ExecContext(ctx, stmt, args...)
+			if err != nil {
+				return handleMySQLError(err)
+			}
 		}
 	}
 
@@ -244,7 +243,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 
 		res, err := tx.ExecContext(ctx, stmt, args...)
 		if err != nil {
-			return handleMySQLError(err, tk)
+			return handleMySQLError(err)
 		}
 
 		rowsAffected, err := res.RowsAffected()
@@ -252,6 +251,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return handleMySQLError(err)
 		}
 
+		// Update the changelog if needed.
 		if rowsAffected == 1 {
 			stmt, args, err := changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, squirrel.Expr("NOW()")).ToSql()
 			if err != nil {
@@ -260,7 +260,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 
 			_, err = tx.ExecContext(ctx, stmt, args...)
 			if err != nil {
-				return handleMySQLError(err, tk)
+				return handleMySQLError(err)
 			}
 		}
 	}

@@ -270,10 +270,6 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	now := timestamppb.Now()
 
-	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
-		return err
-	}
-
 	var tuples []*openfgapb.Tuple
 
 Delete:
@@ -301,24 +297,6 @@ Write:
 	s.tuples[store] = tuples
 
 	return nil
-}
-
-func validateTuples(tuples []*openfgapb.Tuple, deletes, writes []*openfgapb.TupleKey) error {
-	for _, tk := range deletes {
-		if !find(tuples, tk) {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-		}
-	}
-	return nil
-}
-
-func find(tuples []*openfgapb.Tuple, tupleKey *openfgapb.TupleKey) bool {
-	for _, tuple := range tuples {
-		if match(tuple.Key, tupleKey) {
-			return true
-		}
-	}
-	return false
 }
 
 // ReadUserTuple See storage.TupleBackend.ReadUserTuple
