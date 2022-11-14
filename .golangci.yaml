@@ -4,6 +4,7 @@ run:
 
 linters:
   enable:
+    - errname
     - gofmt
     - goimports
     - stylecheck

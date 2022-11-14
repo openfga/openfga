@@ -6,11 +6,12 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -23,20 +24,15 @@ func TestReadTuplesQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(err)
-
-	backendState := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "ns1",
-			},
-		},
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, backendState)
+	err := datastore.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(err)
 
 	writes := []*openfgapb.TupleKey{
@@ -112,22 +108,17 @@ func TestReadTuplesQueryInvalidContinuationToken(t *testing.T, datastore storage
 	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
 	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(err)
 
-	state := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
+	err = datastore.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(err)
 
-	q := commands.NewReadTuplesQuery(datastore, logger, encoder)
-	_, err = q.Execute(ctx, &openfgapb.ReadTuplesRequest{
+	_, err = commands.NewReadTuplesQuery(datastore, logger, encoder).Execute(ctx, &openfgapb.ReadTuplesRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})

@@ -8,6 +8,64 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.2.5] - 2022-11-07
+### Security
+* Patches [CVE-2022-39352](https://github.com/openfga/openfga/security/advisories/GHSA-3gfj-fxx4-f22w)
+
+### Added
+* Multi-platform container build manifests to releases (#323)
+
+### Fixed
+* Read RPC returns correct error when authorization model id is not found (#312)
+* Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` (#315)
+
+## [0.2.4] - 2022-10-24
+### Security
+* Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
+
+### Fixed
+* TLS certificate config path mappings (#285)
+* Error message when a `user` field is invalid (#278)
+* host:port mapping with unspecified host (#275)
+* Wait for connection to postgres before starting (#270)
+
+
+### Added
+* Update Go to 1.19
+
+## [0.2.3] - 2022-10-05
+### Added
+* Support for MySQL storage backend (#210). Thank you @MidasLamb!
+* Allow specification of type restrictions in authorization models (#223). Note: Type restriction is not enforced yet, this just allows storing them.
+* Tuple validation against type restrictions in Write API (#232)
+* Upgraded the Postgres storage backend to use pgx v5 (#225)
+
+### Fixed
+* Close database connections after migration (#252)
+* Race condition in streaming ListObjects (#255, #256)
+
+
+## [0.2.2] - 2022-09-15
+### Fixed
+* Reject direct writes if only indirect relationship allowed (#114). Thanks @dblclik!
+* Log internal errors at the grpc layer (#222)
+* Authorization model validation (#224)
+* Bug in `migrate` command (#236)
+* Skip malformed tuples involving tuple to userset definitions (#234)
+
+## [0.2.1] - 2022-08-30
+### Added
+* Support Check API calls on userset types of users (#146)
+* Add backoff when connecting to Postgres (#188)
+
+### Fixed
+* Improve logging of internal server errors (#193)
+* Use Postgres in the sample Docker Compose file (#195)
+* Emit authorization errors (#144)
+* Telemetry in Check and ListObjects APIs (#177)
+* ListObjects API: respect the value of ListObjectsMaxResults (#181)
+
+
 ## [0.2.0] - 2022-08-12
 ### Added
 * [ListObjects API](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects)
@@ -115,7 +173,12 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
+[0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
+[0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
+[0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
+[0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1
 [0.2.0]: https://github.com/openfga/openfga/releases/tag/v0.2.0
 [0.1.7]: https://github.com/openfga/openfga/releases/tag/v0.1.7
 [0.1.6]: https://github.com/openfga/openfga/releases/tag/v0.1.6

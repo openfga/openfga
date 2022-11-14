@@ -3,16 +3,17 @@ package oidc
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/MicahParks/keyfunc"
-	"github.com/go-errors/errors"
 	"github.com/golang-jwt/jwt/v4"
-	grpcAuth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/openfga/openfga/pkg/retryablehttp"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/server/authn"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
@@ -46,7 +47,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 	oidc := &RemoteOidcAuthenticator{
 		IssuerURL:  issuerURL,
 		Audience:   audience,
-		httpClient: retryablehttp.New().StandardClient(),
+		httpClient: retryablehttp.NewClient().StandardClient(),
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
@@ -56,7 +57,7 @@ func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenti
 }
 
 func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context) (*authn.AuthClaims, error) {
-	authHeader, err := grpcAuth.AuthFromMD(requestContext, "Bearer")
+	authHeader, err := grpcauth.AuthFromMD(requestContext, "Bearer")
 	if err != nil {
 		return nil, authn.ErrMissingBearerToken
 	}
@@ -116,14 +117,14 @@ func (oidc *RemoteOidcAuthenticator) Authenticate(requestContext context.Context
 func (oidc *RemoteOidcAuthenticator) fetchKeys() error {
 	oidcConfig, err := oidc.GetConfiguration()
 	if err != nil {
-		return errors.Errorf("Error fetching OIDC configuration: %v", err)
+		return fmt.Errorf("error fetching OIDC configuration: %w", err)
 	}
 
 	oidc.JwksURI = oidcConfig.JWKsURI
 
 	jwks, err := oidc.GetKeys()
 	if err != nil {
-		return errors.Errorf("Error fetching OIDC keys: %v", err)
+		return fmt.Errorf("error fetching OIDC keys: %w", err)
 	}
 
 	oidc.JWKs = jwks
@@ -137,7 +138,7 @@ func (oidc *RemoteOidcAuthenticator) GetKeys() (*keyfunc.JWKS, error) {
 		RefreshInterval: jwkRefreshInterval,
 	})
 	if err != nil {
-		return nil, errors.Errorf("Error fetching keys from %v: %v", oidc.JwksURI, err)
+		return nil, fmt.Errorf("error fetching keys from %v: %w", oidc.JwksURI, err)
 	}
 	return jwks, nil
 }
@@ -146,27 +147,27 @@ func (oidc *RemoteOidcAuthenticator) GetConfiguration() (*authn.OidcConfig, erro
 	wellKnown := strings.TrimSuffix(oidc.IssuerURL, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest("GET", wellKnown, nil)
 	if err != nil {
-		return nil, errors.Errorf("error forming request to get OIDC: %v", err)
+		return nil, fmt.Errorf("error forming request to get OIDC: %w", err)
 	}
 
 	res, err := oidc.httpClient.Do(req)
 	if err != nil {
-		return nil, errors.Errorf("error getting OIDC: %v", err)
+		return nil, fmt.Errorf("error getting OIDC: %w", err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return nil, errors.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
+		return nil, fmt.Errorf("unexpected status code getting OIDC: %v", res.StatusCode)
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, errors.Errorf("error reading response body: %v", err)
+		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
 
 	oidcConfig := &authn.OidcConfig{}
 	if err := json.Unmarshal(body, oidcConfig); err != nil {
-		return nil, errors.Errorf("failed parsing document: %v", err)
+		return nil, fmt.Errorf("failed parsing document: %w", err)
 	}
 
 	if oidcConfig.Issuer == "" {

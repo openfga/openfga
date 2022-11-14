@@ -26,6 +26,7 @@ type ErrorResponse struct {
 // EncodedError allows customized error with code in string and specified http status field
 type EncodedError struct {
 	HTTPStatusCode int
+	GRPCStatusCode codes.Code
 	ActualError    ErrorResponse
 }
 
@@ -42,6 +43,10 @@ func (e *EncodedError) CodeValue() int32 {
 // HTTPStatus returns the HTTP Status code
 func (e *EncodedError) HTTPStatus() int {
 	return e.HTTPStatusCode
+}
+
+func (e *EncodedError) GRPCStatus() *status.Status {
+	return status.New(e.GRPCStatusCode, e.Error())
 }
 
 // Code returns the encoded code in string
@@ -66,6 +71,7 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 	if !IsValidEncodedError(errorCode) {
 		return EncodedError{
 			HTTPStatusCode: http.StatusInternalServerError,
+			GRPCStatusCode: codes.Internal,
 			ActualError: ErrorResponse{
 				Code:    openfgapb.InternalErrorCode(errorCode).String(),
 				Message: sanitizedMessage(message),
@@ -75,22 +81,28 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 	}
 
 	var httpStatusCode int
+	var grpcStatusCode codes.Code
 	var code string
 	if errorCode >= cFirstAuthenticationErrorCode && errorCode < cFirstValidationErrorCode {
 		httpStatusCode = http.StatusUnauthorized
 		code = openfgapb.AuthErrorCode(errorCode).String()
+		grpcStatusCode = codes.Unauthenticated
 	} else if errorCode >= cFirstValidationErrorCode && errorCode < cFirstInternalErrorCode {
 		httpStatusCode = http.StatusBadRequest
 		code = openfgapb.ErrorCode(errorCode).String()
+		grpcStatusCode = codes.InvalidArgument
 	} else if errorCode >= cFirstInternalErrorCode && errorCode < cFirstUnknownEndpointErrorCode {
 		httpStatusCode = http.StatusInternalServerError
 		code = openfgapb.InternalErrorCode(errorCode).String()
+		grpcStatusCode = codes.Internal
 	} else {
 		httpStatusCode = http.StatusNotFound
 		code = openfgapb.NotFoundErrorCode(errorCode).String()
+		grpcStatusCode = codes.NotFound
 	}
 	return EncodedError{
 		HTTPStatusCode: httpStatusCode,
+		GRPCStatusCode: grpcStatusCode,
 		ActualError: ErrorResponse{
 			Code:    code,
 			Message: sanitizedMessage(message),

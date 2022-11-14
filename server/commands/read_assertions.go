@@ -2,10 +2,9 @@ package commands
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -24,8 +23,6 @@ func NewReadAssertionsQuery(backend storage.AssertionsBackend, logger logger.Log
 }
 
 func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgapb.ReadAssertionsResponse, error) {
-	utils.LogDBStats(ctx, query.logger, "ReadAssertions", 1, 0)
-
 	assertions, err := query.backend.ReadAssertions(ctx, store, authorizationModelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

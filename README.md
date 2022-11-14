@@ -12,6 +12,10 @@ A high-performance and flexible authorization/permission engine built for develo
 
 OpenFGA is designed to make it easy for developers to model their application permissions and add and integrate fine-grained authorization into their applications.
 
+It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL and MySQL.
+
+It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. 
+
 ## Getting Started
 
 The following section aims to help you get started quickly. Please look at our official [documentation](https://openfga.dev/) for in-depth information.
@@ -169,11 +173,18 @@ Take a look at examples of how to:
 
 Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 
+## Limitations
+### MySQL Storage engine
+The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga#mysql-limitations)
+
+
 ## Production Readiness
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
+
+OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https://github.com/twintag). Auth0 is not using it in a production environment.
 
 The OpenFGA team will do its best to address all production issues with high priority.
 

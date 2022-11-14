@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -18,51 +18,31 @@ import (
 )
 
 func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
-	store := testutils.CreateRandomString(20)
-
 	require := require.New(t)
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
+	store := ulid.Make().String()
 
 	tests := []struct {
 		name                      string
-		backendState              map[string]*openfgapb.TypeDefinitions
-		request                   *openfgapb.ReadAuthorizationModelsRequest
+		model                     *openfgapb.AuthorizationModel
 		expectedNumModelsReturned int
 	}{
 		{
-			name: "empty",
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
-			},
+			name:                      "empty",
 			expectedNumModelsReturned: 0,
 		},
 		{
-			name: "empty for requested store",
-			backendState: map[string]*openfgapb.TypeDefinitions{
-				"another-store": {
-					TypeDefinitions: []*openfgapb.TypeDefinition{},
-				},
-			},
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
-			},
-			expectedNumModelsReturned: 0,
-		},
-		{
-			name: "multiple type definitions",
-			backendState: map[string]*openfgapb.TypeDefinitions{
-				store: {
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "ns1",
-						},
+			name: "non-empty type definitions",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
 					},
 				},
-			},
-			request: &openfgapb.ReadAuthorizationModelsRequest{
-				StoreId: store,
 			},
 			expectedNumModelsReturned: 1,
 		},
@@ -70,20 +50,15 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if test.backendState != nil {
-				for store, state := range test.backendState {
-					modelID, err := id.NewString()
-					require.NoError(err)
-
-					err = datastore.WriteAuthorizationModel(ctx, store, modelID, state)
-					require.NoError(err)
-				}
+			if test.model != nil {
+				err := datastore.WriteAuthorizationModel(ctx, store, test.model)
+				require.NoError(err)
 			}
 
 			query := commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder)
-			resp, err := query.Execute(ctx, test.request)
-
+			resp, err := query.Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{StoreId: store})
 			require.NoError(err)
+
 			require.Equal(test.expectedNumModelsReturned, len(resp.GetAuthorizationModels()))
 			require.Empty(resp.ContinuationToken, "expected an empty continuation token")
 		})
@@ -94,26 +69,30 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
 
-	tds := &openfgapb.TypeDefinitions{
+	model1 := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
-				Type: "ns1",
+				Type: "repo",
 			},
 		},
 	}
-
-	store := testutils.CreateRandomString(10)
-	modelID1, err := id.NewString()
+	err := datastore.WriteAuthorizationModel(ctx, store, model1)
 	require.NoError(err)
 
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, tds)
-	require.NoError(err)
-
-	modelID2, err := id.NewString()
-	require.NoError(err)
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, tds)
+	model2 := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+			},
+		},
+	}
+	err = datastore.WriteAuthorizationModel(ctx, store, model2)
 	require.NoError(err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -129,7 +108,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	firstResponse, err := query.Execute(ctx, firstRequest)
 	require.NoError(err)
 	require.Len(firstResponse.AuthorizationModels, 1)
-	require.Equal(firstResponse.AuthorizationModels[0].Id, modelID2)
+	require.Equal(firstResponse.AuthorizationModels[0].Id, model2.Id)
 	require.NotEmpty(firstResponse.ContinuationToken, "Expected continuation token")
 
 	secondRequest := &openfgapb.ReadAuthorizationModelsRequest{
@@ -140,7 +119,7 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	secondResponse, err := query.Execute(ctx, secondRequest)
 	require.NoError(err)
 	require.Len(secondResponse.AuthorizationModels, 1)
-	require.Equal(secondResponse.AuthorizationModels[0].Id, modelID1)
+	require.Equal(secondResponse.AuthorizationModels[0].Id, model1.Id)
 	require.Empty(secondResponse.ContinuationToken, "Expected empty continuation token")
 
 	thirdRequest := &openfgapb.ReadAuthorizationModelsRequest{
@@ -165,20 +144,14 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	require.NoError(err)
-
-	tds := &openfgapb.TypeDefinitions{
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
 	}
-
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID, tds)
+	err := datastore.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(err)
 
 	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{

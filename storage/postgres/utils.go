@@ -2,15 +2,14 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4"
-	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -186,22 +185,23 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 	return sb.ToSql()
 }
 
-func rollbackTx(ctx context.Context, tx pgx.Tx, logger log.Logger) {
-	if err := tx.Rollback(ctx); !errors.Is(err, pgx.ErrTxClosed) {
+func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
+	if err := tx.Rollback(); !errors.Is(err, sql.ErrTxDone) {
 		logger.ErrorWithContext(ctx, "failed to rollback transaction", log.Error(err))
 	}
 }
 
 func handlePostgresError(err error, args ...interface{}) error {
-	if errors.Is(err, pgx.ErrNoRows) {
-		return openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
 	} else if strings.Contains(err.Error(), "duplicate key value") {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
+				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 			}
 		}
-		return openfgaerrors.ErrorWithStack(storage.ErrCollision)
+		return storage.ErrCollision
 	}
-	return openfgaerrors.ErrorWithStack(err)
+
+	return fmt.Errorf("postgres error: %w", err)
 }

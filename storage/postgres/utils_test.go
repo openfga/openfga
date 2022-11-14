@@ -1,11 +1,12 @@
 package postgres
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 
-	"github.com/jackc/pgx/v4"
 	"github.com/openfga/openfga/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -16,25 +17,17 @@ func TestHandlePostgresError(t *testing.T) {
 			Relation: "relation",
 			User:     "user",
 		})
-		if !errors.Is(err, storage.ErrInvalidWriteInput) {
-			t.Fatalf("got '%v', expected wrapped '%v'", err, storage.ErrInvalidWriteInput)
-		}
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
 	t.Run("duplicate key value error without tuple key returns collision", func(t *testing.T) {
 		duplicateKeyError := errors.New("duplicate key value")
 		err := handlePostgresError(duplicateKeyError)
-
-		if !errors.Is(err, storage.ErrCollision) {
-			t.Fatalf("got '%v', expected '%v'", err, storage.ErrCollision)
-		}
+		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
-	t.Run("pgx.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
-		err := handlePostgresError(pgx.ErrNoRows)
-
-		if !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("got '%v', expected '%v'", err, storage.ErrNotFound)
-		}
+	t.Run("sql.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
+		err := handlePostgresError(sql.ErrNoRows)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestStore(t *testing.T, datastore storage.OpenFGADatastore) {
+func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
 
@@ -21,13 +21,8 @@ func TestStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	numStores := 10
 	var stores []*openfgapb.Store
 	for i := 0; i < numStores; i++ {
-		id, err := id.NewString()
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		store := &openfgapb.Store{
-			Id:        id,
+			Id:        ulid.Make().String(),
 			Name:      testutils.CreateRandomString(10),
 			CreatedAt: timestamppb.New(time.Now()),
 		}

@@ -68,14 +68,15 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres"],
+                    "enum": ["memory", "postgres", "mysql"],
                     "default": "memory"
                 },
                 "uri": {
                     "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
                     "type": "string",
                     "examples": [
-                        "postgres://user:pass@host:port/datastore?opts"
+                        "postgres://user:pass@host:port/datastore?opts",
+                        "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts"
                     ]
                 },
                 "maxCacheSize": {
@@ -108,15 +109,10 @@
         "grpc": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "Enables or disables the OpenFGA grpc server. If 'http.enabled' is set to true, then this must be set to true.",
-                    "type": "boolean",
-                    "default": true
-                },
                 "addr": {
                     "description": "The host:port address to serve the grpc server on.",
                     "type": "string",
-                    "default": ":8081"
+                    "default": "0.0.0.0:8081"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"
@@ -134,7 +130,7 @@
                 "addr": {
                     "description": "The host:port address to serve the HTTP server on.",
                     "type": "string",
-                    "default": ":8080"
+                    "default": "0.0.0.0:8080"
                 },
                 "tls": {
                     "$ref": "#/definitions/tls"

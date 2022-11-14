@@ -3,6 +3,7 @@ package assets
 import "embed"
 
 const (
+	MySQLMigrationDir    = "migrations/mysql"
 	PostgresMigrationDir = "migrations/postgres"
 )
 

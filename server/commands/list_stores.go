@@ -5,7 +5,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -32,7 +31,6 @@ func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgapb.ListStores
 	}
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-	utils.LogDBStats(ctx, q.logger, "ListStores", 1, 0)
 
 	stores, continuationToken, err := q.storesBackend.ListStores(ctx, paginationOptions)
 	if err != nil {

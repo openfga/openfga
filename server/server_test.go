@@ -9,17 +9,17 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/testutils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/test"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
+	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +47,16 @@ func TestOpenFGAServer(t *testing.T) {
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		test.RunAllTests(t, ds)
+	})
+
+	t.Run("TestMySQLDatastore", func(t *testing.T) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(t, err)
+
 		test.RunAllTests(t, ds)
 	})
 }
@@ -77,7 +87,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 	t.Run("no latest authorization model id found", func(t *testing.T) {
 
-		store := testutils.CreateRandomString(10)
+		store := ulid.Make().String()
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -100,12 +110,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("read existing authorization model", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-
-		modelID, err := id.NewString()
-		if err != nil {
-			t.Fatal(err)
-		}
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
@@ -130,7 +136,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 
 	t.Run("non-valid modelID returns error", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
+		store := ulid.Make().String()
 		modelID := "foo"
 		want := serverErrors.AuthorizationModelNotFound(modelID)
 

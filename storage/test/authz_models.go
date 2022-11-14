@@ -2,28 +2,53 @@ package test
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGADatastore) {
+func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
+	storeID := ulid.Make().String()
 
-	store := testutils.CreateRandomString(10)
-	modelID, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedModel := &openfgapb.TypeDefinitions{
+	t.Run("write, then read, succeeds", func(t *testing.T) {
+		model := &openfgapb.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "folder"}},
+		}
+
+		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
+		require.NoError(t, err)
+
+		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.Id)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(got, model, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-got +want):\n%s", diff)
+		}
+	})
+
+	t.Run("trying to get a model which doesn't exist returns not found", func(t *testing.T) {
+		_, err := datastore.ReadAuthorizationModel(ctx, storeID, ulid.Make().String())
+		require.ErrorIs(t, err, storage.ErrNotFound)
+	})
+}
+
+func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	model1 := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "folder",
@@ -38,150 +63,68 @@ func TestWriteAndReadAuthorizationModel(t *testing.T, datastore storage.OpenFGAD
 		},
 	}
 
-	if err := datastore.WriteAuthorizationModel(ctx, store, modelID, expectedModel); err != nil {
-		t.Errorf("failed to write authorization model: %v", err)
-	}
+	err := datastore.WriteAuthorizationModel(ctx, store, model1)
+	require.NoError(t, err)
 
-	model, err := datastore.ReadAuthorizationModel(ctx, store, modelID)
-	if err != nil {
-		t.Errorf("failed to read authorization model: %v", err)
-	}
-
-	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
-		),
-	}
-
-	if diff := cmp.Diff(expectedModel.TypeDefinitions, model.TypeDefinitions, cmpOpts...); diff != "" {
-		t.Errorf("mismatch (-got +want):\n%s", diff)
-	}
-
-	_, err = datastore.ReadAuthorizationModel(ctx, "undefined", modelID)
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
-	}
-}
-
-func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
-	ctx := context.Background()
-
-	store := testutils.CreateRandomString(10)
-	modelID1, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	tds1 := []*openfgapb.TypeDefinition{
-		{
-			Type: "folder",
-			Relations: map[string]*openfgapb.Userset{
-				"viewer": {
-					Userset: &openfgapb.Userset_This{
-						This: &openfgapb.DirectUserset{},
+	model2 := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "folder",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": {
+						Userset: &openfgapb.Userset_This{
+							This: &openfgapb.DirectUserset{},
+						},
 					},
 				},
 			},
 		},
 	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID1, &openfgapb.TypeDefinitions{TypeDefinitions: tds1})
-	if err != nil {
-		t.Fatalf("failed to write authorization model: %v", err)
-	}
 
-	modelID2, err := id.NewString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	tds2 := []*openfgapb.TypeDefinition{
-		{
-			Type: "folder",
-			Relations: map[string]*openfgapb.Userset{
-				"reader": {
-					Userset: &openfgapb.Userset_This{
-						This: &openfgapb.DirectUserset{},
-					},
-				},
-			},
-		},
-	}
-	err = datastore.WriteAuthorizationModel(ctx, store, modelID2, &openfgapb.TypeDefinitions{TypeDefinitions: tds2})
-	if err != nil {
-		t.Fatalf("failed to write authorization model: %v", err)
-	}
-
-	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
-		),
-	}
+	err = datastore.WriteAuthorizationModel(ctx, store, model2)
+	require.NoError(t, err)
 
 	models, continuationToken, err := datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 1,
 	})
-	if err != nil {
-		t.Fatalf("expected no error but got '%v'", err)
-	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1, got %d", len(models))
-	}
-	if modelID2 != models[0].Id {
-		t.Fatalf("expected '%s', got '%s", modelID2, models[0].Id)
-	}
-	if diff := cmp.Diff(tds2, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.NotEmpty(t, continuationToken)
+
+	if diff := cmp.Diff(model2, models[0], cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)
-	}
-	if len(continuationToken) == 0 {
-		t.Fatalf("expected non-empty continuation token")
 	}
 
 	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
 		PageSize: 2,
 		From:     string(continuationToken),
 	})
-	if err != nil {
-		t.Fatalf("expected no error but got '%v'", err)
-	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1, got %d", len(models))
-	}
-	if modelID1 != models[0].Id {
-		t.Fatalf("expected '%s', got '%s", modelID1, models[0].Id)
-	}
-	if diff := cmp.Diff(tds1, models[0].TypeDefinitions, cmpOpts...); diff != "" {
+	require.NoError(t, err)
+	require.Len(t, models, 1)
+	require.Empty(t, continuationToken)
+
+	if diff := cmp.Diff(model1, models[0], cmpOpts...); diff != "" {
 		t.Fatalf("mismatch (-got +want):\n%s", diff)
-	}
-	if len(continuationToken) != 0 {
-		t.Fatalf("expected empty continuation token but got '%v'", string(continuationToken))
 	}
 }
 
 func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 
 	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 		_, err := datastore.FindLatestAuthorizationModelID(ctx, store)
-		if !errors.Is(err, storage.ErrNotFound) {
-			t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
-		}
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("find latests authorization model should succeed", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		now := time.Now()
-		oldModelID, err := id.NewStringFromTime(now)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = datastore.WriteAuthorizationModel(ctx, store, oldModelID, &openfgapb.TypeDefinitions{
+	t.Run("find latest authorization model should succeed", func(t *testing.T) {
+		store := ulid.Make().String()
+
+		oldModel := &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -192,16 +135,13 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 					},
 				},
 			},
-		})
-		if err != nil {
-			t.Errorf("failed to write authorization model: %v", err)
 		}
+		err := datastore.WriteAuthorizationModel(ctx, store, oldModel)
+		require.NoError(t, err)
 
-		newModelID, err := id.NewStringFromTime(now)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = datastore.WriteAuthorizationModel(ctx, store, newModelID, &openfgapb.TypeDefinitions{
+		newModel := &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "folder",
@@ -212,80 +152,53 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 					},
 				},
 			},
-		})
-		if err != nil {
-			t.Errorf("failed to write authorization model: %v", err)
 		}
+		err = datastore.WriteAuthorizationModel(ctx, store, newModel)
+		require.NoError(t, err)
 
 		latestID, err := datastore.FindLatestAuthorizationModelID(ctx, store)
-		if err != nil {
-			t.Errorf("failed to read latest authorization model: %v", err)
-		}
-
-		if latestID != newModelID {
-			t.Errorf("got '%s', want '%s'", latestID, newModelID)
-		}
+		require.NoError(t, err)
+		require.Equal(t, newModel.Id, latestID)
 	})
 }
 
 func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 
 	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		modelID, err := id.NewString()
-		if err != nil {
-			t.Fatal(err)
-		}
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 
-		_, err = datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
-		if !errors.Is(err, storage.ErrNotFound) {
-			t.Errorf("got error '%v', want '%v'", err, storage.ErrNotFound)
-		}
+		_, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
 	t.Run("read type definition should succeed", func(t *testing.T) {
-		store := testutils.CreateRandomString(10)
-		modelID, err := id.NewString()
-		if err != nil {
-			t.Fatal(err)
-		}
-		expectedTypeDef := &openfgapb.TypeDefinition{
-			Type: "folder",
-			Relations: map[string]*openfgapb.Userset{
-				"viewer": {
-					Userset: &openfgapb.Userset_This{
-						This: &openfgapb.DirectUserset{},
+		store := ulid.Make().String()
+		model := &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": {
+							Userset: &openfgapb.Userset_This{
+								This: &openfgapb.DirectUserset{},
+							},
+						},
 					},
 				},
 			},
 		}
 
-		err = datastore.WriteAuthorizationModel(ctx, store, modelID, &openfgapb.TypeDefinitions{
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				expectedTypeDef,
-			},
-		})
-		if err != nil {
-			t.Errorf("failed to write authorization model: %v", err)
-		}
+		err := datastore.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
 
-		typeDef, err := datastore.ReadTypeDefinition(ctx, store, modelID, "folder")
-		if err != nil {
-			t.Errorf("expected no error but got '%v'", err)
-		}
+		typeDef, err := datastore.ReadTypeDefinition(ctx, store, model.Id, "folder")
+		require.NoError(t, err)
 
-		cmpOpts := []cmp.Option{
-			cmpopts.IgnoreUnexported(
-				openfgapb.TypeDefinition{},
-				openfgapb.Userset{},
-				openfgapb.Userset_This{},
-				openfgapb.DirectUserset{},
-			),
-		}
-
-		if diff := cmp.Diff(expectedTypeDef, typeDef, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(model.TypeDefinitions[0], typeDef, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-got +want):\n%s", diff)
 		}
 	})

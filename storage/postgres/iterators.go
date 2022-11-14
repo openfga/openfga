@@ -1,16 +1,16 @@
 package postgres
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 
-	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v4"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type tupleIterator struct {
-	rows pgx.Rows
+	rows *sql.Rows
 }
 
 var _ storage.TupleIterator = (*tupleIterator)(nil)
@@ -18,7 +18,7 @@ var _ storage.TupleIterator = (*tupleIterator)(nil)
 func (t *tupleIterator) next() (*tupleRecord, error) {
 	if !t.rows.Next() {
 		t.Stop()
-		return nil, storage.TupleIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 
 	var record tupleRecord
@@ -42,7 +42,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
-			if err == storage.TupleIteratorDone {
+			if err == storage.ErrIteratorDone {
 				return res, nil, nil
 			}
 			return nil, nil, err
@@ -54,7 +54,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	// This is why we have LIMIT+1 in the query.
 	tupleRecord, err := t.next()
 	if err != nil {
-		if errors.Is(err, storage.TupleIteratorDone) {
+		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, nil, nil
 		}
 		return nil, nil, err
@@ -80,16 +80,16 @@ func (t *tupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type ObjectIterator struct {
-	rows pgx.Rows
+type objectIterator struct {
+	rows *sql.Rows
 }
 
-var _ storage.ObjectIterator = (*ObjectIterator)(nil)
+var _ storage.ObjectIterator = (*objectIterator)(nil)
 
-func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
+func (o *objectIterator) Next() (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
-		return nil, storage.ObjectIteratorDone
+		return nil, storage.ErrIteratorDone
 	}
 
 	var objectID, objectType string
@@ -107,6 +107,6 @@ func (o *ObjectIterator) Next() (*openfgapb.Object, error) {
 	}, nil
 }
 
-func (o *ObjectIterator) Stop() {
+func (o *objectIterator) Stop() {
 	o.rows.Close()
 }

@@ -9,7 +9,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	mockstorage "github.com/openfga/openfga/storage/mocks"
 	"github.com/stretchr/testify/require"
@@ -98,24 +97,11 @@ func TestValidateWriteTuples(t *testing.T) {
 		expectedError error
 	}
 
-	tracer := telemetry.NewNoopTracer()
-	logger := logger.NewNoopLogger()
-	dbCounter := utils.NewDBCallCounter()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	maxTuplesInWriteOp := 10
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
-
 	badItem := &openfgapb.TupleKey{
 		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
-
-	cmd := NewWriteCommand(mockDatastore, tracer, logger)
 
 	tests := []test{
 		{
@@ -128,18 +114,32 @@ func TestValidateWriteTuples(t *testing.T) {
 			name:          "write failure with invalid user",
 			deletes:       []*openfgapb.TupleKey{},
 			writes:        []*openfgapb.TupleKey{badItem},
-			expectedError: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", badItem),
+			expectedError: serverErrors.InvalidTuple("the 'user' field is invalid", badItem),
 		},
 		{
 			name:          "delete failure with invalid user",
 			deletes:       []*openfgapb.TupleKey{badItem},
 			writes:        []*openfgapb.TupleKey{},
-			expectedError: serverErrors.InvalidTuple("the 'user' field must be a non-empty string", badItem),
+			expectedError: serverErrors.InvalidTuple("the 'user' field is invalid", badItem),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			tracer := telemetry.NewNoopTracer()
+			logger := logger.NewNoopLogger()
+
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			maxTuplesInWriteOp := 10
+			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
+			cmd := NewWriteCommand(mockDatastore, tracer, logger)
+
+			if len(test.writes) > 0 {
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)
+			}
+
 			ctx := context.Background()
 			req := &openfgapb.WriteRequest{
 				StoreId: "abcd123",
@@ -147,7 +147,7 @@ func TestValidateWriteTuples(t *testing.T) {
 				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
 			}
 
-			err := cmd.validateTuplesets(ctx, req, dbCounter)
+			err := cmd.validateTuplesets(ctx, req)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
