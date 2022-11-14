@@ -253,11 +253,9 @@ type TupleBackend interface {
 		opts PaginationOptions,
 	) ([]*openfgapb.Tuple, []byte, error)
 
-	// Write updates data in the tuple backend, performing all delete operations in
-	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// It is expected that
-	// - there is at most 10 deletes/writes
-	// - no duplicate item in delete/write list
+	// Write updates data in the tuple backend, performing all delete operations in `deletes` before writing the values
+	// in `writes`, returning the time of the transaction, or an error. It is expected that there are at most
+	// MaxTuplesInWriteOperation deletes/writes.
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	ReadUserTuple(

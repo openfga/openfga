@@ -132,7 +132,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("delete with a duplicate write succeeds", func(t *testing.T) {
+	t.Run("two deletes and a duplicate write succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tks := []*openfgapb.TupleKey{
 			{
