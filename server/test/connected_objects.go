@@ -401,7 +401,9 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
+										{
+											Type: "user",
+										},
 										{
 											Type:               "group",
 											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},

@@ -277,7 +277,6 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 				return true, nil
 			}
 		}
-
 	case *openfgapb.Userset_Intersection:
 		return true, nil
 	case *openfgapb.Userset_Union:
@@ -557,8 +556,8 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-
 			assignable := t.IsDirectlyAssignable(relation)
+
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
 			}
