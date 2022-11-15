@@ -364,6 +364,28 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
 	{
+		_name: "ExecuteDeleteTupleWhichDoesNotExistSucceeds",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repository",
+					Relations: map[string]*openfgapb.Userset{
+						"administrator": {},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+		},
+		// output
+		err: nil,
+	},
+	{
 		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
 		model: &openfgapb.AuthorizationModel{
