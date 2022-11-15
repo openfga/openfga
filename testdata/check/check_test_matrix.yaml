@@ -596,7 +596,7 @@ tests:
         expectation: false
       - tuple:
           object: document:2
-          relation: writer
+          relation: viewer
           user: charlie
         expectation: false
 
@@ -902,7 +902,7 @@ tests:
         user: daphne
       - object: document:5
         relation: editor
-        user: daphne
+        user: imogen
     assertions:
       - tuple:
           object: document:1
@@ -1076,7 +1076,7 @@ tests:
         relation: owner
         user: charlie
       - object: document:4
-        relation: editor
+        relation: writer
         user: daphne
     assertions:
       - tuple:

@@ -113,7 +113,7 @@ func runCheckTests(t *testing.T, client pb.OpenFGAServiceClient, storeID string,
 					},
 				})
 				require.NoError(t, err)
-				require.Equal(t, assertion.Expectation, resp.Allowed)
+				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
 			}
 		})
 	}
