@@ -255,7 +255,8 @@ type TupleBackend interface {
 
 	// Write updates data in the tuple backend, performing all delete operations in `deletes` before writing the values
 	// in `writes`, returning the time of the transaction, or an error. It is expected that there are at most
-	// MaxTuplesInWriteOperation deletes/writes.
+	// MaxTuplesInWriteOperation deletes/writes. Write is an idempotent operation: writing an existing tuple will be a
+	// no-op, and deleting a non-existing tuple is also a no-op.
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	ReadUserTuple(
