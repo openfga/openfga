@@ -24,8 +24,10 @@ var (
 
 func RelationReference(objectType, relation string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
-		Type:     objectType,
-		Relation: relation,
+		Type: objectType,
+		RelationOrWildcard: &openfgapb.RelationReference_Relation{
+			Relation: relation,
+		},
 	}
 }
 
@@ -709,7 +711,7 @@ type RelationUndefinedError struct {
 func (e *RelationUndefinedError) Error() string {
 
 	if e.ObjectType != "" {
-		return fmt.Sprintf("'%s#%s' relation is undefiend", e.ObjectType, e.Relation)
+		return fmt.Sprintf("'%s#%s' relation is undefined", e.ObjectType, e.Relation)
 	}
 
 	return fmt.Sprintf("'%s' relation is undefined", e.Relation)

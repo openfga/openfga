@@ -522,8 +522,8 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 											Type: "user",
 										},
 										{
-											Type:     "group",
-											Relation: "member",
+											Type:               "group",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
 										},
 									},
 								},
@@ -533,8 +533,8 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 											Type: "user",
 										},
 										{
-											Type:     "group",
-											Relation: "admin",
+											Type:               "group",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "admin"},
 										},
 									},
 								},
@@ -604,8 +604,8 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
-											Type:     "group",
-											Relation: "admin",
+											Type:               "group",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "admin"},
 										},
 									},
 								},
@@ -904,8 +904,8 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
-											Type:     "folder",
-											Relation: "member", //this isn't allowed
+											Type:               "folder",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"}, //this isn't allowed
 										},
 									},
 								},
@@ -960,16 +960,16 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
-											Type:     "folder",
-											Relation: "parent", // this isn't allowed
+											Type:               "folder",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "parent"}, // this isn't allowed
 										},
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										{
-											Type:     "folder",
-											Relation: "parent",
+											Type:               "folder",
+											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "parent"},
 										},
 										{
 											Type: "user",

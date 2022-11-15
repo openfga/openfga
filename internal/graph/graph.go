@@ -128,8 +128,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 			res = append(res, &RelationshipIngress{
 				Type: DirectIngress,
 				Ingress: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: target.GetRelation(),
+					Type: target.GetType(),
+					RelationOrWildcard: &openfgapb.RelationReference_Relation{
+						Relation: target.GetRelation(),
+					},
 				},
 			})
 		}
@@ -150,8 +152,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 					res = append(res, &RelationshipIngress{
 						Type: DirectIngress,
 						Ingress: &openfgapb.RelationReference{
-							Type:     relatedUserType.GetType(),
-							Relation: relatedUserType.GetRelation(),
+							Type: relatedUserType.GetType(),
+							RelationOrWildcard: &openfgapb.RelationReference_Relation{
+								Relation: relatedUserType.GetRelation(),
+							},
 						},
 					})
 				}
@@ -161,8 +165,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		return res, nil
 	case *openfgapb.Userset_ComputedUserset:
 		return g.findIngresses(&openfgapb.RelationReference{
-			Type:     target.GetType(),
-			Relation: t.ComputedUserset.GetRelation(),
+			Type: target.GetType(),
+			RelationOrWildcard: &openfgapb.RelationReference_Relation{
+				Relation: t.ComputedUserset.GetRelation(),
+			},
 		},
 			source, visited)
 	case *openfgapb.Userset_TupleToUserset:
@@ -174,8 +180,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		// We need to check if this is a tuple-to-userset rewrite
 		// parent: [folder#viewer] or parent: [folder]... I need to make better comments
 		relationReference := &openfgapb.RelationReference{
-			Type:     target.GetType(),
-			Relation: tupleset,
+			Type: target.GetType(),
+			RelationOrWildcard: &openfgapb.RelationReference_Relation{
+				Relation: tupleset,
+			},
 		}
 
 		relatedToSourceRef, _ := g.typesystem.IsDirectlyRelated(relationReference, source)
@@ -186,12 +194,16 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 			res = append(res, &RelationshipIngress{
 				Type: TupleToUsersetIngress,
 				Ingress: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: target.GetRelation(),
+					Type: target.GetType(),
+					RelationOrWildcard: &openfgapb.RelationReference_Relation{
+						Relation: target.GetRelation(),
+					},
 				},
 				TuplesetRelation: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: tupleset,
+					Type: target.GetType(),
+					RelationOrWildcard: &openfgapb.RelationReference_Relation{
+						Relation: tupleset,
+					},
 				},
 			})
 		}
@@ -202,8 +214,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 			_, err := g.typesystem.GetRelation(relatedUserType.GetType(), computedUserset)
 			if err == nil {
 				subResults, err := g.findIngresses(&openfgapb.RelationReference{
-					Type:     relatedUserType.GetType(),
-					Relation: computedUserset,
+					Type: relatedUserType.GetType(),
+					RelationOrWildcard: &openfgapb.RelationReference_Relation{
+						Relation: computedUserset,
+					},
 				}, source, visited)
 				if err != nil {
 					return nil, err
