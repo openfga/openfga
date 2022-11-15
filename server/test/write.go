@@ -741,6 +741,56 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 	},
+	{
+		_name: "1.0_Execute_fails_if_type_in_userset_value_was_not_found",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+				},
+			},
+		},
+		err: serverErrors.TypeNotFound("group"),
+	},
+	{
+		_name: "1.0_Execute_fails_if_relation_in_userset_value_was_not_found",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+				},
+			},
+		},
+		err: serverErrors.RelationNotFound("editor", "document", tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor")),
+	},
 	// Begin section with tests for schema version 1.1
 	{
 		_name: "Delete succeeds even if user field contains a type that is not allowed by the current authorization model",
@@ -864,7 +914,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if user field is a userset with a relation that is not allowed by the authorization model (which only allows group:...)",
+		_name: "1.1_Execute_fails_if_relation_in_userset_value_was_not_found",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -903,7 +953,7 @@ var writeCommandTests = []writeCommandTest{
 		err: serverErrors.RelationNotFound("member", "group", tuple.NewTupleKey("document:budget", "reader", "group:abc#member")),
 	},
 	{
-		_name: "Write fails if user field is a userset with a type that is not allowed by the authorization model (which only allows group:...)",
+		_name: "1.1_Execute_fails_if_type_in_userset_value_was_not_found",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
