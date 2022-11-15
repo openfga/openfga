@@ -160,7 +160,7 @@ func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationM
 	// at this point we know the auth model has type information
 	if userType != "" {
 		if _, ok := ts.GetTypeDefinition(userType); !ok {
-			return serverErrors.InvalidWriteInput
+			return serverErrors.WriteFailedDueToInvalidInput(nil)
 		}
 	}
 

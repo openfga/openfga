@@ -923,7 +923,7 @@ var writeCommandTests = []writeCommandTest{
 			},
 			},
 		},
-		err: serverErrors.InvalidWriteInput,
+		err: serverErrors.WriteFailedDueToInvalidInput(nil),
 	},
 	{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
