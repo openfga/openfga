@@ -36,7 +36,7 @@ var githubTuples = []*openfgapb.TupleKey{
 	tuple.NewTupleKey("team:openfga/protocols", "member", "diane"),
 }
 
-func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
+func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []struct {
 		name             string
 		typeDefinitions  []*openfgapb.TypeDefinition

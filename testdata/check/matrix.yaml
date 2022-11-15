@@ -1,6 +1,4 @@
 # Check tests
-# All of these tests will run in the same store, so the tuples must be unique.
-
 tests:
   - name: This
     model: |

@@ -12,7 +12,8 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, ds) })
+	t.Run("TestCheckQuery", func(t *testing.T) { CheckQueryTest(t, ds) })
+	t.Run("TestOldCheckQuery", func(t *testing.T) { CheckQueryTest(t, ds) })
 	t.Run("TestCheckQueryAgainstGitHubModel", func(t *testing.T) { TestCheckQueryAgainstGitHubModel(t, ds) })
 	t.Run("TestCheckQueryWithContextualTuplesAgainstGitHubModel", func(t *testing.T) { TestCheckQueryWithContextualTuplesAgainstGitHubModel(t, ds) })
 	t.Run("TestCheckQueryAuthorizationModelsVersioning", func(t *testing.T) { TestCheckQueryAuthorizationModelsVersioning(t, ds) })
