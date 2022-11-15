@@ -55,7 +55,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 
 	storeID := req.StoreID
 
-	targetUserType, _ := tuple.SplitObject(req.User.Object)
+	targetUserType, _ := tuple.SplitObject(req.User.GetObject())
 
 	targetUserRef := &openfgapb.RelationReference{
 		Type: targetUserType,
@@ -67,7 +67,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	sourceObjRef := &openfgapb.RelationReference{
 		Type: req.ObjectType,
 		RelationOrWildcard: &openfgapb.RelationReference_Relation{
-			Relation: req.User.GetRelation(),
+			Relation: req.Relation,
 		},
 	}
 
