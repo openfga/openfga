@@ -960,6 +960,56 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			},
 			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
 		},
+		{
+			name: "WildcardNotAllowedInTheTuplesetPartOfTTU",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(This(), TupleToUserset("parent", "viewer")),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										WildcardRelationReference("folder"),
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+		},
 	}
 
 	for _, test := range tests {

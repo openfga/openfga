@@ -38,7 +38,7 @@ func DirectRelationReference(objectType, relation string) *openfgapb.RelationRef
 func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
 		Type:               objectType,
-		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{Wildcard: &openfgapb.Wildcard{}},
 	}
 }
 
@@ -58,15 +58,15 @@ func ComputedUserset(relation string) *openfgapb.Userset {
 	}
 }
 
-func TupleToUserset(tuplesetRelation, targetRelation string) *openfgapb.Userset {
+func TupleToUserset(tupleset, computedUserset string) *openfgapb.Userset {
 	return &openfgapb.Userset{
 		Userset: &openfgapb.Userset_TupleToUserset{
 			TupleToUserset: &openfgapb.TupleToUserset{
 				Tupleset: &openfgapb.ObjectRelation{
-					Relation: tuplesetRelation,
+					Relation: tupleset,
 				},
 				ComputedUserset: &openfgapb.ObjectRelation{
-					Relation: targetRelation,
+					Relation: computedUserset,
 				},
 			},
 		},
@@ -556,18 +556,17 @@ func isUsersetRewriteValid(
 }
 
 func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
-	t := New(model)
-	allTupleToUsersetDefinitions := t.GetAllTupleToUsersetsDefinitions()
+	typeSystem := New(model)
 
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
+	for objectType := range typeSystem.typeDefinitions {
+		relations, err := typeSystem.GetRelations(objectType)
 		if err != nil {
 			return err
 		}
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			assignable := t.IsDirectlyAssignable(relation)
+			assignable := typeSystem.IsDirectlyAssignable(relation)
 
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
@@ -581,24 +580,27 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				relatedObjectType := related.GetType()
 				relatedRelation := related.GetRelation()
 
-				if _, err := t.GetRelations(relatedObjectType); err != nil {
+				if _, err := typeSystem.GetRelations(relatedObjectType); err != nil {
 					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 				}
 
-				if relatedRelation != "" {
-					if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
-						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
-					}
-
-					// you cannot specify a userset if the relation is being used in a `x from y` definition (in the `y` part)
-					for _, arrayOfTtus := range allTupleToUsersetDefinitions[objectType] {
+				if related.GetRelationOrWildcard() != nil {
+					// you cannot specify a userset or wildcard if the relation is being used in a `x from y` definition (in the `y` part)
+					for _, arrayOfTtus := range typeSystem.GetAllTupleToUsersetsDefinitions()[objectType] {
 						for _, tupleToUserSetDef := range arrayOfTtus {
 							if tupleToUserSetDef.Tupleset.Relation == name {
 								return &InvalidRelationError{ObjectType: objectType, Relation: name}
 							}
 						}
 					}
+
+					if relatedRelation != "" {
+						if _, err := typeSystem.GetRelation(relatedObjectType, relatedRelation); err != nil {
+							return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
+						}
+					}
 				}
+
 			}
 		}
 	}
