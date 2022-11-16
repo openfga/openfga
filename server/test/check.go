@@ -1222,7 +1222,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1237,7 +1237,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},
@@ -1276,7 +1276,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1291,7 +1291,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},

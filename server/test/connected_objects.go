@@ -60,12 +60,16 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
+										{
+											Type: "folder",
+										},
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
+										{
+											Type: "user",
+										},
 									},
 								},
 							},
@@ -113,12 +117,16 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
+										{
+											Type: "folder",
+										},
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
+										{
+											Type: "user",
+										},
 									},
 								},
 							},
@@ -158,7 +166,9 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
+										{
+											Type: "user",
+										},
 									},
 								},
 							},
@@ -253,8 +263,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-										{Type: "group", Relation: "member"},
+										typesystem.DirectRelationReference("user", ""),
+										typesystem.DirectRelationReference("group", "member"),
 									},
 								},
 							},
@@ -310,8 +320,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"owner": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-										{Type: "group", Relation: "member"},
+										typesystem.DirectRelationReference("user", ""),
+										typesystem.DirectRelationReference("group", "member"),
 									},
 								},
 							},
@@ -355,8 +365,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"member": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-										{Type: "group", Relation: "member"},
+										typesystem.DirectRelationReference("user", ""),
+										typesystem.DirectRelationReference("group", "member"),
 									},
 								},
 							},
@@ -380,8 +390,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-										{Type: "group", Relation: "member"},
+										typesystem.DirectRelationReference("user", ""),
+										typesystem.DirectRelationReference("group", "member"),
 									},
 								},
 							},
@@ -541,8 +551,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"member": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "group", Relation: "member"},
-										{Type: "user"},
+										typesystem.DirectRelationReference("user", ""),
+										typesystem.DirectRelationReference("group", "member"),
 									},
 								},
 							},
