@@ -518,24 +518,14 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"reader": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-										{
-											Type:               "group",
-											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
-										},
+										DirectRelationReference("user", ""),
+										DirectRelationReference("group", "member"),
 									},
 								},
 								"writer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-										{
-											Type:               "group",
-											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "admin"},
-										},
+										DirectRelationReference("user", ""),
+										DirectRelationReference("group", "admin"),
 									},
 								},
 							},
@@ -885,9 +875,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"member": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
@@ -903,10 +891,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:               "folder",
-											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"}, //this isn't allowed
-										},
+										DirectRelationReference("folder", "member"),
 									},
 								},
 							},
@@ -959,21 +944,13 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:               "folder",
-											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "parent"}, // this isn't allowed
-										},
+										DirectRelationReference("folder", "parent"),
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type:               "folder",
-											RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "parent"},
-										},
-										{
-											Type: "user",
-										},
+										DirectRelationReference("user", ""),
+										DirectRelationReference("folder", "parent"),
 									},
 								},
 							},
@@ -1019,7 +996,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("folder", ""),
+										DirectRelationReference("folder", ""),
 									},
 								},
 							},
@@ -1035,12 +1012,12 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"manage": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 								"editor": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
@@ -1048,7 +1025,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1068,7 +1045,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("folder", ""),
+										DirectRelationReference("folder", ""),
 									},
 								},
 							},
@@ -1084,12 +1061,12 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"editor": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
@@ -1097,7 +1074,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1115,7 +1092,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1127,7 +1104,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 					},
 				},
 			},
-			rr:          RelationReference("document", "viewer"),
+			rr:          DirectRelationReference("document", "viewer"),
 			expected:    false,
 			expectedErr: ErrObjectTypeUndefined,
 		},
@@ -1140,7 +1117,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 					},
 				},
 			},
-			rr:          RelationReference("user", "viewer"),
+			rr:          DirectRelationReference("user", "viewer"),
 			expected:    false,
 			expectedErr: ErrRelationUndefined,
 		},
@@ -1187,7 +1164,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("folder", ""),
+										DirectRelationReference("folder", ""),
 									},
 								},
 							},
@@ -1203,12 +1180,12 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"restricted": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 								"editor": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
@@ -1216,7 +1193,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1236,7 +1213,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("folder", ""),
+										DirectRelationReference("folder", ""),
 									},
 								},
 							},
@@ -1252,12 +1229,12 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"restricted": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										RelationReference("user", ""),
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
@@ -1265,7 +1242,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1285,7 +1262,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 					},
 				},
 			},
-			rr:       RelationReference("document", "viewer"),
+			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
@@ -1297,7 +1274,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 					},
 				},
 			},
-			rr:          RelationReference("document", "viewer"),
+			rr:          DirectRelationReference("document", "viewer"),
 			expected:    false,
 			expectedErr: ErrObjectTypeUndefined,
 		},
@@ -1310,7 +1287,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 					},
 				},
 			},
-			rr:          RelationReference("user", "viewer"),
+			rr:          DirectRelationReference("user", "viewer"),
 			expected:    false,
 			expectedErr: ErrRelationUndefined,
 		},

@@ -364,7 +364,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 					Relations: map[string]*openfgapb.RelationMetadata{
 						"viewer": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								typesystem.RelationReference("user", ""),
+								typesystem.DirectRelationReference("user", ""),
 							},
 						},
 					},

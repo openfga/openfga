@@ -22,12 +22,23 @@ var (
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
 )
 
-func RelationReference(objectType, relation string) *openfgapb.RelationReference {
-	return &openfgapb.RelationReference{
+func DirectRelationReference(objectType, relation string) *openfgapb.RelationReference {
+	relationReference := &openfgapb.RelationReference{
 		Type: objectType,
-		RelationOrWildcard: &openfgapb.RelationReference_Relation{
+	}
+	if relation != "" {
+		relationReference.RelationOrWildcard = &openfgapb.RelationReference_Relation{
 			Relation: relation,
-		},
+		}
+	}
+
+	return relationReference
+}
+
+func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
+	return &openfgapb.RelationReference{
+		Type:               objectType,
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
 	}
 }
 
@@ -183,7 +194,7 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 	return r.GetTypeInfo().GetDirectlyRelatedUserTypes(), nil
 }
 
-// IsDirectlyRelated determines whether the type of the target RelationReference contains the source RelationReference.
+// IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) (bool, error) {
 
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
