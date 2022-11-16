@@ -977,9 +977,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 							Relations: map[string]*openfgapb.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
+										DirectRelationReference("user", ""),
 									},
 								},
 							},
