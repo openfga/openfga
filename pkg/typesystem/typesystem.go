@@ -22,10 +22,23 @@ var (
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
 )
 
-func RelationReference(objectType, relation string) *openfgapb.RelationReference {
+func DirectRelationReference(objectType, relation string) *openfgapb.RelationReference {
+	relationReference := &openfgapb.RelationReference{
+		Type: objectType,
+	}
+	if relation != "" {
+		relationReference.RelationOrWildcard = &openfgapb.RelationReference_Relation{
+			Relation: relation,
+		}
+	}
+
+	return relationReference
+}
+
+func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
-		Type:     objectType,
-		Relation: relation,
+		Type:               objectType,
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
 	}
 }
 
@@ -189,7 +202,7 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 	return r.GetTypeInfo().GetDirectlyRelatedUserTypes(), nil
 }
 
-// IsDirectlyRelated determines whether the type of the target RelationReference contains the source RelationReference.
+// IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, source *openfgapb.RelationReference) (bool, error) {
 
 	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
@@ -283,7 +296,6 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 				return true, nil
 			}
 		}
-
 	case *openfgapb.Userset_Intersection:
 		return true, nil
 	case *openfgapb.Userset_Union:
@@ -563,8 +575,8 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-
 			assignable := t.IsDirectlyAssignable(relation)
+
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
 			}
@@ -717,7 +729,7 @@ type RelationUndefinedError struct {
 func (e *RelationUndefinedError) Error() string {
 
 	if e.ObjectType != "" {
-		return fmt.Sprintf("'%s#%s' relation is undefiend", e.ObjectType, e.Relation)
+		return fmt.Sprintf("'%s#%s' relation is undefined", e.ObjectType, e.Relation)
 	}
 
 	return fmt.Sprintf("'%s' relation is undefined", e.Relation)

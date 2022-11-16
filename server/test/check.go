@@ -47,6 +47,43 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		response         *openfgapb.CheckResponse
 	}{
 		{
+			name: "Success when a tuple with an invalid objectType exists in the store",
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				}},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "jon"),
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
+			},
+			response: &openfgapb.CheckResponse{Allowed: false},
+		},
+		{
+			name: "Success when a tuple with an invalid relation exists in the store",
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+			}, {
+				Type: "group",
+			}},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "jon"),
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
+			},
+			response: &openfgapb.CheckResponse{Allowed: false}},
+		{
 			name: "ExecuteWithEmptyTupleKey",
 			// state
 			typeDefinitions: []*openfgapb.TypeDefinition{{
@@ -1185,7 +1222,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1200,7 +1237,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},
@@ -1239,7 +1276,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1254,7 +1291,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},
@@ -1734,6 +1771,7 @@ func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastor
 	}
 }
 
+// TestCheckQueryAuthorizationModelsVersioning ensures that Check is using the "auth model id" passed in as parameter to expand the usersets
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
@@ -1748,15 +1786,11 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner": {Userset: &openfgapb.Userset_This{}},
-					"editor": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "owner"}}},
-							}},
-						},
-					},
+					"owner": typesystem.This(),
+					"editor": typesystem.Union(
+						typesystem.This(),
+						typesystem.ComputedUserset("owner"),
+					),
 				},
 			},
 		},
@@ -1772,8 +1806,8 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner":  {Userset: &openfgapb.Userset_This{}},
-					"editor": {Userset: &openfgapb.Userset_This{}},
+					"owner":  typesystem.This(),
+					"editor": typesystem.This(),
 				},
 			},
 		},

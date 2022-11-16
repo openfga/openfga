@@ -1065,8 +1065,8 @@ var writeCommandTests = []writeCommandTest{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 									{
-										Type:     "group",
-										Relation: "member",
+										Type:               "group",
+										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
@@ -1107,8 +1107,8 @@ var writeCommandTests = []writeCommandTest{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 									{
-										Type:     "group",
-										Relation: "member",
+										Type:               "group",
+										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
@@ -1149,8 +1149,8 @@ var writeCommandTests = []writeCommandTest{
 										Type: "user",
 									},
 									{
-										Type:     "group",
-										Relation: "member",
+										Type:               "group",
+										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
@@ -1227,8 +1227,8 @@ var writeCommandTests = []writeCommandTest{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 									{
-										Type:     "group",
-										Relation: "member",
+										Type:               "group",
+										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
