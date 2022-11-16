@@ -756,7 +756,6 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		tuples: []*openfgapb.TupleKey{},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{
 				TupleKeys: []*openfgapb.TupleKey{
@@ -781,7 +780,6 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		tuples: []*openfgapb.TupleKey{},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{
 				TupleKeys: []*openfgapb.TupleKey{
@@ -929,7 +927,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+						"reader": typesystem.This(),
 					},
 					Metadata: &openfgapb.Metadata{
 						Relations: map[string]*openfgapb.RelationMetadata{
@@ -968,7 +966,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+						"reader": typesystem.This(),
 					},
 					Metadata: &openfgapb.Metadata{
 						Relations: map[string]*openfgapb.RelationMetadata{
@@ -1450,9 +1448,8 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			require.ErrorIs(gotErr, test.err)
 
-			// todo: validate the response bodies are equivalent
 			if test.response != nil {
-				require.NotNil(resp)
+				require.Equal(test.response, resp)
 			}
 		})
 	}

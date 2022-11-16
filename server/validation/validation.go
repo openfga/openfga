@@ -15,9 +15,13 @@ func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBacken
 	if err := tuple.ValidateUser(tk); err != nil {
 		return nil, err
 	}
-	if err := ValidateUserIfItsAUserset(ctx, backend, store, authorizationModelID, tk); err != nil {
-		return nil, err
+	user := tk.GetUser()
+	if tuple.IsObjectRelation(user) {
+		if err := ValidateUserIfItsAUserset(ctx, backend, store, authorizationModelID, user, tk); err != nil {
+			return nil, err
+		}
 	}
+
 	return ValidateObjectsRelations(ctx, backend, store, authorizationModelID, tk)
 }
 
@@ -50,26 +54,23 @@ func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitio
 	return userset, nil
 }
 
-// ValidateUserIfItsAUserset returns an error if the t.User is a userset and its type/relation don't exist in the modelID
-func ValidateUserIfItsAUserset(ctx context.Context, backend storage.TypeDefinitionReadBackend, store string, modelID string, t *openfgapb.TupleKey) error {
-	user := t.GetUser()
-	if tuple.IsObjectRelation(user) {
-		object, relation := tuple.SplitObjectRelation(user)
-		objectType, _ := tuple.SplitObject(object)
+// ValidateUserIfItsAUserset returns an error if the user is a userset and its type/relation don't exist in the model
+func ValidateUserIfItsAUserset(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID, user string, tk *openfgapb.TupleKey) error {
+	object, relation := tuple.SplitObjectRelation(user)
+	objectType, _ := tuple.SplitObject(object)
 
-		typeDefinition, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return &tuple.TypeNotFoundError{TypeName: objectType}
-			}
-
-			return err
+	typeDefinition, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &tuple.TypeNotFoundError{TypeName: objectType}
 		}
 
-		_, ok := typeDefinition.Relations[relation]
-		if !ok {
-			return &tuple.RelationNotFoundError{Relation: relation, TypeName: objectType, TupleKey: t}
-		}
+		return err
+	}
+
+	_, ok := typeDefinition.Relations[relation]
+	if !ok {
+		return &tuple.RelationNotFoundError{Relation: relation, TypeName: objectType, TupleKey: tk}
 	}
 	return nil
 }
