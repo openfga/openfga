@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -49,7 +50,7 @@ func TestCheck(t *testing.T) {
 		}
 	}()
 
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
@@ -93,11 +94,7 @@ func runCheckTests(t *testing.T, client pb.OpenFGAServiceClient, storeID string,
 				_, err = client.Write(ctx, &pb.WriteRequest{
 					StoreId: storeID,
 					Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
-						{
-							Object:   tuple.Object,
-							Relation: tuple.Relation,
-							User:     tuple.User,
-						},
+						tupleUtils.NewTupleKey(tuple.Object, tuple.Relation, tuple.User),
 					}},
 				})
 				require.NoError(t, err)
@@ -105,15 +102,22 @@ func runCheckTests(t *testing.T, client pb.OpenFGAServiceClient, storeID string,
 
 			for _, assertion := range test.Assertions {
 				resp, err := client.Check(ctx, &pb.CheckRequest{
-					StoreId: storeID,
-					TupleKey: &pb.TupleKey{
-						Object:   assertion.Tuple.Object,
-						Relation: assertion.Tuple.Relation,
-						User:     assertion.Tuple.User,
-					},
+					StoreId:  storeID,
+					TupleKey: tupleUtils.NewTupleKey(assertion.Tuple.Object, assertion.Tuple.Relation, assertion.Tuple.User),
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+			}
+
+			// Delete the tuples.
+			for _, tuple := range test.Tuples {
+				_, err = client.Write(ctx, &pb.WriteRequest{
+					StoreId: storeID,
+					Deletes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+						tupleUtils.NewTupleKey(tuple.Object, tuple.Relation, tuple.User),
+					}},
+				})
+				require.NoError(t, err)
 			}
 		})
 	}
