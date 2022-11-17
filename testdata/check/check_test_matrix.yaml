@@ -677,8 +677,8 @@ tests:
         relations
           define writer as self
           define editor as self
-          define boss as self
-          define viewer as boss and (editor but not writer)
+          define owner as self
+          define viewer as owner and (editor but not writer)
     tuples:
       - object: document:1
         relation: editor
@@ -687,22 +687,22 @@ tests:
         relation: writer
         user: abigail
       - object: document:1
-        relation: boss
+        relation: owner
         user: abigail
       - object: document:2
         relation: editor
         user: beatrix
       - object: document:2
-        relation: boss
+        relation: owner
         user: beatrix
       - object: document:3
         relation: writer
         user: charlie
       - object: document:3
-        relation: boss
+        relation: owner
         user: charlie
       - object: document:4
-        relation: boss
+        relation: owner
         user: abigail
       - object: document:5
         relation: editor
