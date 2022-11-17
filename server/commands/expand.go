@@ -61,14 +61,15 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	typesys := typesystem.New(model)
 
-	rel, err := typesys.GetRelation(tupleUtils.GetType(object), relation)
+	objectType := tupleUtils.GetType(object)
+	rel, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			// todo(jon-whit): handle this case. Should we ever be able to get here if the code above was correct?
+			return nil, serverErrors.TypeNotFound(objectType)
 		}
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			// todo(jon-whit): handle this case. Should we ever be able to get here if the code above was correct?
+			return nil, serverErrors.RelationNotFound(relation, objectType, tk)
 		}
 
 		return nil, serverErrors.HandleError("", err)

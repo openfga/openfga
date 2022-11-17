@@ -109,8 +109,6 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 // getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
 func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgapb.Userset, error) {
-	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
-	defer span.End()
 
 	typesys := typesystem.New(rc.model)
 
