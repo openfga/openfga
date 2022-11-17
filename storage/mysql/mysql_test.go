@@ -1,6 +1,7 @@
 package mysql_test
 
 import (
+	"context"
 	"testing"
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
@@ -15,6 +16,6 @@ func TestMySQLDatastore(t *testing.T) {
 	uri := testDatastore.GetConnectionURI()
 	ds, err := mysql.NewMySQLDatastore(uri)
 	require.NoError(t, err)
-
+	defer ds.Close(context.Background())
 	test.RunAllTests(t, ds)
 }

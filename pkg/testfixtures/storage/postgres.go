@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 )
 
 var (
-	expireTimeout = 60 * time.Second
+	expireTimeout = 10 * time.Minute //benchmarks take a while to run
 )
 
 type postgresTestContainer struct {
@@ -108,6 +109,10 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	t.Cleanup(func() {
 		stopContainer()
+		goleak.VerifyNone(t,
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler above
+		)
 	})
 
 	pgTestContainer := &postgresTestContainer{

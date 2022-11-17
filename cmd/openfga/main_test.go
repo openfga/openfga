@@ -107,7 +107,13 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
 	require.NoError(t, err)
 
-	t.Cleanup(stopContainer)
+	t.Cleanup(func() {
+		stopContainer()
+		//goleak.VerifyNone(t,
+		//	goleak.IgnoreTopFunction("testing.(*T).run1"),
+		//	goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler below
+		//)
+	})
 
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
 	go func() {
