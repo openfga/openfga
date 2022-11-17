@@ -41,7 +41,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, assertion := range assertions {
-		if _, err := validation.ValidateTuple(ctx, model, assertion.TupleKey); err != nil {
+		if err := validation.ValidateTuple(model, assertion.TupleKey); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}

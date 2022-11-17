@@ -9,43 +9,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-/*
-	// valid object
-	{
-		name:  "repo:sandcastle",
-		valid: true,
-	},
-*/
-
-/*
- relations
-	// valid
-	{
-		name:  "imavalidrelation",
-		valid: true,
-	},
-*/
-
-/*
-users
-		{
-			name:  "anne@openfga",
-			valid: true,
-		},
-		{
-			name:  "*",
-			valid: true,
-		},
-		{
-			name:  "document:10",
-			valid: true,
-		},
-		{
-			name:  "github:org-iam#member",
-			valid: true,
-		},
-*/
-
 func TestValidateTuple(t *testing.T) {
 
 	tests := []struct {
@@ -77,6 +40,11 @@ func TestValidateTuple(t *testing.T) {
 		{
 			name:        "Malformed Object 5",
 			tuple:       tuple.NewTupleKey("group:group:group", "relation", "user:jon"),
+			expectError: true,
+		},
+		{
+			name:        "Malformed Object 6",
+			tuple:       tuple.NewTupleKey(":", "relation", "user:jon"),
 			expectError: true,
 		},
 		{
@@ -262,7 +230,64 @@ func TestValidateTuple(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:  "Incorrect User Object Reference in Tupleset Relation",
+			name:  "Untyped wildcard in 1.1 model",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "*"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name:  "Typed wildcard with valid object type in 1.1 model",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+										typesystem.WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name:  "Incorrect_User_Object_Reference_in_Tupleset_Relation",
 			tuple: tuple.NewTupleKey("document:1", "parent", "someuser"),
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: typesystem.SchemaVersion1_0,
@@ -312,6 +337,71 @@ func TestValidateTuple(t *testing.T) {
 						Relations: map[string]*openfgapb.Userset{
 							"ancestor": typesystem.This(),
 							"viewer":   typesystem.TupleToUserset("ancestor", "viewer"),
+						},
+					},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name:  "Typed wildcard (User) value in Tupleset Relation (1.1 models)",
+			tuple: tuple.NewTupleKey("document:1", "parent", "folder:*"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.This(),
+							"viewer": typesystem.TupleToUserset("parent", "viewer"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "folder"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: true,
+		},
+		{
+			name:  "Tupleset relation involving rewrite returns error",
+			tuple: tuple.NewTupleKey("document:1", "parent", "folder:1"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": typesystem.ComputedUserset("editor"),
+							"editor": typesystem.This(),
+							"viewer": typesystem.TupleToUserset("parent", "viewer"),
 						},
 					},
 				},

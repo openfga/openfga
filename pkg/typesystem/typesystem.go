@@ -125,6 +125,12 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	}
 }
 
+// GetAuthorizationModel returns the underlying AuthorizationModel this TypeSystem was
+// constructed from.
+func (t *TypeSystem) GetAuthorizationModel() *openfgapb.AuthorizationModel {
+	return t.model
+}
+
 // GetAuthorizationModelID returns the id for the authorization model this
 // TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
@@ -768,6 +774,19 @@ func (t *TypeSystem) GetAllTupleToUsersetsDefinitions() map[string]map[string][]
 		}
 	}
 	return response
+}
+
+func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
+
+	for _, ttuDefinitions := range t.GetAllTupleToUsersetsDefinitions()[objectType] {
+		for _, ttuDef := range ttuDefinitions {
+			if ttuDef.Tupleset.Relation == relation {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
 }
 
 func (t *TypeSystem) getAllTupleToUsersetsDefinitions(relationDef *openfgapb.Userset, resp *[]*openfgapb.TupleToUserset) []*openfgapb.TupleToUserset {

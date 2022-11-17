@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -82,8 +81,20 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 			return serverErrors.HandleTupleValidateError(err)
 		}
 
-		var relation *openfgapb.Relation
-		// todo(jon-whit): get this from the typesystem
+		objectType, _ := tupleUtils.SplitObject(tk.GetObject())
+
+		relation, err := typesys.GetRelation(objectType, tk.GetRelation())
+		if err != nil {
+			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+				return serverErrors.TypeNotFound(objectType)
+			}
+
+			if errors.Is(err, typesystem.ErrRelationUndefined) {
+				return serverErrors.RelationNotFound(tk.GetRelation(), objectType, tk)
+			}
+
+			return serverErrors.HandleError("", err)
+		}
 
 		// Validate that we are not trying to write to an indirect-only relationship
 		if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
@@ -93,8 +104,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 	for _, tk := range deletes {
 		// For delete, we only need to ensure it is well form but no need to validate whether relation exists
-		if err := tupleUtils.ValidateUser(tk); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
+		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
+			return serverErrors.InvalidTuple("the 'user' field is invalid", tk)
 		}
 	}
 
@@ -103,68 +114,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	}
 
 	return nil
-}
-
-// validateTypesForTuple makes sure that when writing a tuple, the types are compatible.
-// 1. If the tuple is of the form (user=person:bob, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "person".
-// 2. If the tuple is of the form (user=group:abc#member, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
-// 3. If the tuple is of the form (user=*, relation=reader, object=doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
-func (c *WriteCommand) validateTypesForTuple(authModel *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
-	objectType, _ := tupleUtils.SplitObject(tk.GetObject())    // e.g. "doc"
-	userType, userID := tupleUtils.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
-	_, userRel := tupleUtils.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
-
-	ts := typesystem.New(authModel)
-
-	typeDefinitionForObject, ok := ts.GetTypeDefinition(objectType)
-	if !ok {
-		msg := fmt.Sprintf("type '%s' does not exist in the authorization model", objectType)
-		return serverErrors.NewInternalError(msg, errors.New(msg))
-	}
-
-	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
-	if relationsForObject == nil {
-		if ts.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
-			msg := "invalid authorization model"
-			return serverErrors.NewInternalError(msg, errors.New(msg))
-		} else {
-			// authorization model is old/unspecified and does not have type information
-			return nil
-		}
-	}
-
-	// at this point we know the auth model has type information
-	if userType != "" {
-		if _, ok := ts.GetTypeDefinition(userType); !ok {
-			return serverErrors.InvalidWriteInput
-		}
-	}
-
-	relationInformation := relationsForObject[tk.Relation]
-
-	// case 1
-	if userRel == "" && userID != "*" {
-		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-			if typeInformation.GetType() == userType {
-				return nil
-			}
-		}
-	} else if userRel != "" { // case 2
-		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-			if typeInformation.GetType() == userType && typeInformation.GetRelation() == userRel {
-				return nil
-			}
-		}
-	} else if userID == "*" { // case 3
-		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-			if typeInformation.GetType() != "" && typeInformation.GetRelation() == "" {
-				return nil
-			}
-		}
-	}
-
-	return serverErrors.InvalidTuple(fmt.Sprintf("User '%s' is not allowed to have relation %s with %s", tk.User, tk.Relation, tk.Object), tk)
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.

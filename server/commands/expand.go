@@ -3,10 +3,9 @@ package commands
 import (
 	"context"
 	"errors"
-	"fmt"
-	"reflect"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -14,7 +13,6 @@ import (
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -52,28 +50,26 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	err = validation.ValidateObject(object, model)
+	err = validation.ValidateObject(model, tk)
 	if err != nil {
-
+		return nil, serverErrors.HandleTupleValidateError(err)
 	}
 
-	objectType, _ := tupleUtils.SplitObject(object)
-
-	err = validation.ValidateRelation(objectType, relation, model)
+	err = validation.ValidateRelation(model, tk)
 	if err != nil {
-
+		return nil, serverErrors.HandleTupleValidateError(err)
 	}
 
 	typesys := typesystem.New(model)
 
-	rel, err := typesys.GetRelation(objectType, relation)
+	rel, err := typesys.GetRelation(tuple.GetType(object), relation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-
+			// todo(jon-whit): handle this case. Should we ever be able to get here if the code above was correct?
 		}
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
-
+			// todo(jon-whit): handle this case. Should we ever be able to get here if the code above was correct?
 		}
 
 		return nil, serverErrors.HandleError("", err)
@@ -106,7 +102,7 @@ func (query *ExpandQuery) resolveUserset(
 
 	switch us := userset.Userset.(type) {
 	case nil, *openfgapb.Userset_This:
-		return query.resolveThis(ctx, store, tk)
+		return query.resolveThis(ctx, store, tk, typesys)
 	case *openfgapb.Userset_ComputedUserset:
 		return query.resolveComputedUserset(ctx, us.ComputedUserset, tk)
 	case *openfgapb.Userset_TupleToUserset:
@@ -123,26 +119,31 @@ func (query *ExpandQuery) resolveUserset(
 }
 
 // resolveThis resolves a DirectUserset into a leaf node containing a distinct set of users with that relation.
-func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
+func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.UsersetTree_Node, error) {
 	ctx, span := query.tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
-	iter, err := query.datastore.Read(ctx, store, tk)
+	tupleIter, err := query.datastore.Read(ctx, store, tk)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
-	defer iter.Stop()
+
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
+		validation.FilterInvalidTuples(typesys.GetAuthorizationModel()),
+	)
+	defer filteredIter.Stop()
 
 	distinctUsers := make(map[string]bool)
 	for {
-		tuple, err := iter.Next()
+		tk, err := filteredIter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
 		}
-		distinctUsers[tuple.GetKey().GetUser()] = true
+		distinctUsers[tk.GetUser()] = true
 	}
 
 	users := make([]string, 0, len(distinctUsers))
@@ -214,7 +215,7 @@ func (query *ExpandQuery) resolveTupleToUserset(
 	tupleset := userset.GetTupleset().GetRelation()
 
 	objectType, _ := tupleUtils.SplitObject(targetObject)
-	relation, err := typesys.GetRelation(objectType, tupleset)
+	_, err := typesys.GetRelation(objectType, tupleset)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return nil, serverErrors.TypeNotFound(objectType)
@@ -223,21 +224,6 @@ func (query *ExpandQuery) resolveTupleToUserset(
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
 			return nil, serverErrors.RelationNotFound(tupleset, objectType, tupleUtils.NewTupleKey(tk.Object, tupleset, tk.User))
 		}
-	}
-
-	tuplesetRewrite := relation.GetRewrite().GetUserset()
-	if tuplesetRewrite != nil && reflect.TypeOf(tuplesetRewrite) != reflect.TypeOf(&openfgapb.Userset_This{}) {
-		query.logger.Warn(
-			fmt.Sprintf("unexpected rewrite on tupleset relation '%s#%s'", objectType, tupleset),
-			zap.String("store_id", store),
-			zap.String("authorization_model_id", typesys.GetAuthorizationModelID()),
-			zap.String("object_type", objectType),
-			zap.String("relation", tupleset),
-		)
-
-		return nil, serverErrors.InvalidAuthorizationModelInput(
-			fmt.Errorf("unexpected rewrite on relation '%s#%s'", objectType, tupleset),
-		)
 	}
 
 	tsKey := &openfgapb.TupleKey{
@@ -249,53 +235,28 @@ func (query *ExpandQuery) resolveTupleToUserset(
 		tsKey.Relation = tk.GetRelation()
 	}
 
-	iter, err := query.datastore.Read(ctx, store, tsKey)
+	tupleIter, err := query.datastore.Read(ctx, store, tsKey)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
-	defer iter.Stop()
+
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
+		validation.FilterInvalidTuples(typesys.GetAuthorizationModel()),
+	)
+	defer filteredIter.Stop()
 
 	var computed []*openfgapb.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
-		tuple, err := iter.Next()
+		tk, err := filteredIter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
 			}
 			return nil, serverErrors.HandleError("", err)
 		}
-		user := tuple.GetKey().GetUser()
-
-		if user == Wildcard {
-			objectType, _ := tupleUtils.SplitObject(targetObject)
-
-			query.logger.WarnWithContext(
-				ctx,
-				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s'", tupleset),
-				zap.String("store_id", store),
-				zap.String("authorization_model_id", typesys.GetAuthorizationModelID()),
-				zap.String("object_type", objectType),
-			)
-
-			return nil, serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", objectType, tupleset),
-				tupleUtils.NewTupleKey(targetObject, tupleset, Wildcard),
-			)
-		}
-
-		// user must contain a type (i.e., be an object or userset)
-		if tupleUtils.GetType(user) == "" {
-			continue
-		}
-
-		userType := tupleUtils.GetUserTypeFromUser(user)
-		if userType == tupleUtils.UserSet {
-			return nil, serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected userset evaluated on relation '%s#%s'", objectType, tupleset),
-				tupleUtils.NewTupleKey(targetObject, tupleset, user),
-			)
-		}
+		user := tk.GetUser()
 
 		tObject, tRelation := tupleUtils.SplitObjectRelation(user)
 		// We only proceed in the case that tRelation == userset.GetComputedUserset().GetRelation().

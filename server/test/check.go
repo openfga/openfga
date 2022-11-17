@@ -841,10 +841,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jose@openfga"),
 				Trace:    true,
 			},
-			err: serverErrors.InvalidTuple(
-				"unexpected userset evaluated on relation 'repo#manager'",
-				tuple.NewTupleKey("repo:openfga/canaveral", "manager", "org:openfga#repo_admin"),
-			),
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
 			name: "ExecuteCanResolveRecursiveComputedUserSets",
@@ -955,37 +952,17 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"parent": {Userset: &openfgapb.Userset_This{}},
-						"owner":  {Userset: &openfgapb.Userset_This{}},
-						"editor": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "owner",
-									}}},
-								}},
-							},
-						},
-						"viewer": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "editor",
-									}}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "parent",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "viewer",
-										},
-									}}},
-								}},
-							},
-						},
+						"parent": typesystem.This(),
+						"owner":  typesystem.This(),
+						"editor": typesystem.Union(
+							typesystem.This(),
+							typesystem.ComputedUserset("owner"),
+						),
+						"viewer": typesystem.Union(
+							typesystem.This(),
+							typesystem.ComputedUserset("editor"),
+							typesystem.TupleToUserset("parent", "viewer"),
+						),
 					},
 				},
 			},
@@ -1248,10 +1225,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:doc1", "parent", "*"), // wildcard not allowed on tupleset relations
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:anne"),
 			},
-			err: serverErrors.InvalidTuple(
-				"unexpected wildcard evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:doc1", "parent", commands.Wildcard),
-			),
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
 			name:             "Error if * encountered in TTU evaluation including ContextualTuples",
@@ -1298,10 +1272,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			err: serverErrors.InvalidTuple(
-				"unexpected wildcard evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:doc1", "parent", commands.Wildcard),
-			),
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
 			name:             "Error if rewrite encountered in tupleset relation",
@@ -1360,10 +1331,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey:         tuple.NewTupleKey("document:1", "viewer", "org:y"),
 				ContextualTuples: &openfgapb.ContextualTupleKeys{},
 			},
-			err: serverErrors.InvalidTuple(
-				"unexpected userset evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:1", "parent", "org:y#can_view"),
-			),
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
 			//type org
@@ -1396,10 +1364,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey:         tuple.NewTupleKey("document:1", "viewer", "org:y"),
 				ContextualTuples: &openfgapb.ContextualTupleKeys{},
 			},
-			err: serverErrors.InvalidTuple(
-				"unexpected userset evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
-			),
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 	}
 

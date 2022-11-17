@@ -9,6 +9,7 @@ import (
 
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -85,7 +86,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}
 	if userset == nil {
 		// the tuple in the Check request is invalid according to the model being used, so throw an error
-		_, actualErr := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
+		actualErr := validation.ValidateTuple(rc.model, rc.tk)
 		return nil, serverErrors.HandleTupleValidateError(actualErr)
 	}
 
@@ -114,11 +115,34 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
 	defer span.End()
 
-	var relation *openfgapb.Relation
-	// todo(jon-whit): get the relation and make sure we return the same errors we were before if
-	// it doesn't exist
+	typesys := typesystem.New(rc.model)
 
-	err := validation.ValidateTuple(rc.model, rc.tk)
+	objectType, _ := tuple.SplitObject(rc.tk.GetObject())
+
+	relation, err := typesys.GetRelation(objectType, rc.tk.GetRelation())
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return nil, serverErrors.HandleTupleValidateError(
+				&tuple.TypeNotFoundError{
+					TypeName: objectType,
+				},
+			)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return nil, serverErrors.HandleTupleValidateError(
+				&tuple.RelationNotFoundError{
+					TypeName: objectType,
+					Relation: rc.tk.GetRelation(),
+					TupleKey: rc.tk,
+				},
+			)
+		}
+
+		return nil, err
+	}
+
+	err = validation.ValidateTuple(rc.model, rc.tk)
 	if err != nil {
 		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
 		return nil, nil

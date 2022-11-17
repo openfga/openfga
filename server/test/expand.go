@@ -14,7 +14,6 @@ import (
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -133,26 +132,14 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "repo",
 					Relations: map[string]*openfgapb.Userset{
-						"admin": {
-							Userset: &openfgapb.Userset_TupleToUserset{
-								TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset: &openfgapb.ObjectRelation{
-										Relation: "manager",
-									},
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Object:   "$TUPLE_USERSET_OBJECT",
-										Relation: "repo_admin",
-									},
-								},
-							},
-						},
-						"manager": {},
+						"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
+						"manager": typesystem.This(),
 					},
 				},
 				{
 					Type: "org",
 					Relations: map[string]*openfgapb.Userset{
-						"repo_admin": {},
+						"repo_admin": typesystem.This(),
 					},
 				},
 			},
@@ -239,7 +226,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/foo",
 					Relation: "manager",
-					User:     "amy",
+					User:     "amy", // should be skipped since it's not a valid target for a tupleset relation
 				},
 			},
 			request: &openfgapb.ExpandRequest{
@@ -740,6 +727,211 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 		},
+		{
+			name: "TupleToUserset involving wildcard is skipped",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "*"),
+				tuple.NewTupleKey("document:X", "viewer", "jon"),
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: &openfgapb.ExpandResponse{
+				Tree: &openfgapb.UsersetTree{
+					Root: &openfgapb.UsersetTree_Node{
+						Name: "document:1#viewer",
+						Value: &openfgapb.UsersetTree_Node_Union{
+							Union: &openfgapb.UsersetTree_Nodes{
+								Nodes: []*openfgapb.UsersetTree_Node{
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_Users{},
+											},
+										},
+									},
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
+													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
+														Tupleset: "document:1#parent",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Tuple involving userset skipped if it is referenced in a TTU rewrite",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"editor": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: &openfgapb.ExpandResponse{
+				Tree: &openfgapb.UsersetTree{
+					Root: &openfgapb.UsersetTree_Node{
+						Name: "document:1#viewer",
+						Value: &openfgapb.UsersetTree_Node_Leaf{
+							Leaf: &openfgapb.UsersetTree_Leaf{
+								Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
+									TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
+										Tupleset: "document:1#parent",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Tuple involving userset skipped if same ComputedUserset involved in TTU rewrite",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(),
+							typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "jon"),
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: &openfgapb.ExpandResponse{
+				Tree: &openfgapb.UsersetTree{
+					Root: &openfgapb.UsersetTree_Node{
+						Name: "document:1#viewer",
+						Value: &openfgapb.UsersetTree_Node_Union{
+							Union: &openfgapb.UsersetTree_Nodes{
+								Nodes: []*openfgapb.UsersetTree_Node{
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_Users{},
+											},
+										},
+									},
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
+													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
+														Tupleset: "document:1#parent",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Tupleset relation involving rewrite skipped",
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.ComputedUserset("editor"),
+						"editor": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "editor", "document:2"),
+				tuple.NewTupleKey("document:2", "viewer", "jon"),
+			},
+			expected: &openfgapb.ExpandResponse{
+				Tree: &openfgapb.UsersetTree{
+					Root: &openfgapb.UsersetTree_Node{
+						Name: "document:1#viewer",
+						Value: &openfgapb.UsersetTree_Node_Union{
+							Union: &openfgapb.UsersetTree_Nodes{
+								Nodes: []*openfgapb.UsersetTree_Node{
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_Users{},
+											},
+										},
+									},
+									{
+										Name: "document:1#viewer",
+										Value: &openfgapb.UsersetTree_Node_Leaf{
+											Leaf: &openfgapb.UsersetTree_Leaf{
+												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
+													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
+														Tupleset: "document:1#parent",
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	require := require.New(t)
@@ -781,6 +973,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "bar",
 				},
 			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{Type: "repo"},
+			},
 			expected: serverErrors.InvalidExpandInput,
 		},
 		{
@@ -790,6 +985,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Object:   ":",
 					Relation: "bar",
 				},
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{Type: "repo"},
 			},
 			expected: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
 				Object:   ":",
@@ -804,6 +1002,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "bar",
 				},
 			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{Type: "repo"},
+			},
 			expected: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
 				Object:   "github:",
 				Relation: "bar",
@@ -816,15 +1017,21 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Object: "bar",
 				},
 			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{Type: "repo"},
+			},
 			expected: serverErrors.InvalidExpandInput,
 		},
 		{
-			name: "type not found",
+			name: "object type not found",
 			request: &openfgapb.ExpandRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "foo:bar",
 					Relation: "baz",
 				},
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{Type: "repo"},
 			},
 			expected: serverErrors.TypeNotFound("foo"),
 		},
@@ -839,113 +1046,13 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:bar",
 					Relation: "baz",
+					User:     "jon",
 				},
 			},
 			expected: serverErrors.RelationNotFound("baz", "repo", &openfgapb.TupleKey{
 				Object:   "repo:bar",
 				Relation: "baz",
 			}),
-		},
-		{
-			name: "TupleToUserset involving wildcard returns error",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"parent": typesystem.This(),
-						"viewer": typesystem.Union(
-							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
-						),
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "*"),
-				tuple.NewTupleKey("document:X", "viewer", "jon"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: serverErrors.InvalidTuple(
-				"unexpected wildcard evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:1", "parent", "*"),
-			),
-		},
-		{
-			name: "Tupleset relation involving rewrite returns error",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"parent": typesystem.ComputedUserset("editor"),
-						"editor": typesystem.This(),
-						"viewer": typesystem.Union(
-							typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
-						),
-					},
-				},
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: serverErrors.InvalidAuthorizationModelInput(
-				errors.Errorf("unexpected rewrite on relation '%s#%s'", "document", "parent"),
-			),
-		},
-		{
-			name: "Tuple involving userset returns error if it is referenced in a TTU rewrite",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
-						"viewer": typesystem.This(),
-					},
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"parent": typesystem.This(),
-						"editor": typesystem.This(),
-						"viewer": typesystem.TupleToUserset("parent", "viewer"),
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: serverErrors.InvalidTuple(
-				"unexpected userset evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
-			),
-		},
-		{
-			name: "Tuple involving userset returns error if same ComputedUserset involved in TTU rewrite",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"parent": typesystem.This(),
-						"viewer": typesystem.Union(
-							typesystem.This(),
-							typesystem.TupleToUserset("parent", "viewer"),
-						),
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
-				tuple.NewTupleKey("document:2", "viewer", "jon"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: serverErrors.InvalidTuple(
-				"unexpected userset evaluated on relation 'document#parent'",
-				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
-			),
 		},
 	}
 

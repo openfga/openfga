@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -923,7 +922,7 @@ var writeCommandTests = []writeCommandTest{
 			},
 			},
 		},
-		err: serverErrors.InvalidWriteInput,
+		err: serverErrors.TypeNotFound("impossible"),
 	},
 	{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
@@ -978,11 +977,25 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
 				},
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+						"reader": typesystem.This(),
 					},
 					Metadata: &openfgapb.Metadata{
 						Relations: map[string]*openfgapb.RelationMetadata{
@@ -1096,6 +1109,18 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
 				},
 				{
 					Type: "document",
@@ -1135,6 +1160,18 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
 				},
 				{
 					Type: "document",
@@ -1167,7 +1204,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write succeeds if user is * and type references a specific type",
+		_name: "Write succeeds if user is wildcard and type references a specific type",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1175,9 +1212,6 @@ var writeCommandTests = []writeCommandTest{
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
-				},
-				{
-					Type: "group",
 				},
 				{
 					Type: "document",
@@ -1189,8 +1223,9 @@ var writeCommandTests = []writeCommandTest{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 									{
-										Type: "group",
+										Type: "user",
 									},
+									typesystem.WildcardRelationReference("user"),
 								},
 							},
 						},
@@ -1200,12 +1235,12 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
+				tuple.NewTupleKey("document:budget", "reader", "user:*"),
 			}},
 		},
 	},
 	{
-		_name: "Write fails if user is * and type does not reference a specific type",
+		_name: "Write fails if user is a typed wildcard and the type restrictions don't permit it",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1226,10 +1261,7 @@ var writeCommandTests = []writeCommandTest{
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									{
-										Type:               "group",
-										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
-									},
+									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
 						},
@@ -1239,36 +1271,13 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
+				tuple.NewTupleKey("document:budget", "reader", "group:*"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User '*' is not allowed to have relation reader with document:budget",
-			tuple.NewTupleKey("document:budget", "reader", "*"),
+		err: serverErrors.InvalidTuple("User 'group:*' is not allowed to have relation reader with document:budget",
+			tuple.NewTupleKey("document:budget", "reader", "group:*"),
 		),
 	},
-	{
-		_name: "Write fails if schema version is 1.1 but type definitions are lacking metadata",
-		// state
-		model: &openfgapb.AuthorizationModel{
-			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
-			}},
-		},
-		err: serverErrors.NewInternalError("invalid authorization model", errors.New("invalid authorization model")),
-	},
-
 	{
 		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation",
 		model: &openfgapb.AuthorizationModel{
@@ -1296,7 +1305,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected userset relationship 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1330,7 +1339,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected userset relationship 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1364,7 +1373,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected userset relationship 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1398,39 +1407,9 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected userset relationship 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
-	},
-	{
-		_name: "Write succeeds if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation of another type",
-		model: &openfgapb.AuthorizationModel{
-			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
-						"owner": typesystem.This(),
-						"parent": typesystem.Union( // let's confuse the code. if this were defined in 'document' type, it would fail
-							typesystem.TupleToUserset("parent", "owner"),
-						),
-					},
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"owner":  typesystem.This(),
-						"parent": typesystem.This(),
-					},
-				},
-			},
-		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
-			}},
-		},
 	},
 }
 
