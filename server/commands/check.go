@@ -9,7 +9,6 @@ import (
 
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -24,8 +23,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
-
-const Wildcard = "*"
 
 // A CheckQuery can be used to Check if a User has a Relation to an Object
 // CheckQuery instances may be safely shared by multiple go-routines
@@ -117,13 +114,13 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 
 	typesys := typesystem.New(rc.model)
 
-	objectType, _ := tuple.SplitObject(rc.tk.GetObject())
+	objectType := tupleUtils.GetType(rc.tk.GetObject())
 
 	relation, err := typesys.GetRelation(objectType, rc.tk.GetRelation())
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return nil, serverErrors.HandleTupleValidateError(
-				&tuple.TypeNotFoundError{
+				&tupleUtils.TypeNotFoundError{
 					TypeName: objectType,
 				},
 			)
@@ -131,7 +128,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
 			return nil, serverErrors.HandleTupleValidateError(
-				&tuple.RelationNotFoundError{
+				&tupleUtils.RelationNotFoundError{
 					TypeName: objectType,
 					Relation: rc.tk.GetRelation(),
 					TupleKey: rc.tk,
@@ -558,7 +555,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 
 		objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
 
-		if userObj == Wildcard {
+		if userObj == tupleUtils.Wildcard {
 
 			query.logger.WarnWithContext(
 				ctx,
@@ -570,7 +567,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 
 			return serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", objectType, relation),
-				tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, Wildcard),
+				tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, tupleUtils.Wildcard),
 			)
 		}
 

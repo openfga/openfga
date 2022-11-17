@@ -155,7 +155,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		targetUserStr := req.targetUserRef.GetObject()
 
 		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		if userObj == targetUserStr || userObj == Wildcard {
+		if userObj == targetUserStr || userObj == tuple.Wildcard {
 			tuples = append(tuples, &openfgapb.Tuple{Key: t})
 		}
 	}
@@ -166,7 +166,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		Relation:   tuplesetRelation,
 		UserFilter: []*openfgapb.ObjectRelation{
 			{Object: req.targetUserRef.Object},
-			{Object: Wildcard},
+			{Object: tuple.Wildcard},
 		},
 	})
 	if err != nil {
@@ -195,11 +195,11 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 
 		userObj, _ := tuple.SplitObjectRelation(tk.GetUser())
 
-		if userObj == Wildcard {
+		if userObj == tuple.Wildcard {
 
 			return serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", foundObjectType, tuplesetRelation),
-				tuple.NewTupleKey(foundObject, tuplesetRelation, Wildcard),
+				tuple.NewTupleKey(foundObject, tuplesetRelation, tuple.Wildcard),
 			)
 		}
 
@@ -267,7 +267,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			targetUserStr = fmt.Sprintf("%s#%s", targetUserStr, req.targetUserRef.GetRelation())
 		}
 
-		if t.GetUser() == targetUserStr || t.GetUser() == Wildcard {
+		if t.GetUser() == targetUserStr || t.GetUser() == tuple.Wildcard {
 			tuples = append(tuples, &openfgapb.Tuple{Key: t})
 		}
 	}
@@ -278,7 +278,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		Relation:   ingress.GetRelation(),
 		UserFilter: []*openfgapb.ObjectRelation{
 			req.targetUserRef,
-			{Object: Wildcard},
+			{Object: tuple.Wildcard},
 		},
 	})
 	if err != nil {

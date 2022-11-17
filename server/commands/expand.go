@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
@@ -62,7 +61,7 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	typesys := typesystem.New(model)
 
-	rel, err := typesys.GetRelation(tuple.GetType(object), relation)
+	rel, err := typesys.GetRelation(tupleUtils.GetType(object), relation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			// todo(jon-whit): handle this case. Should we ever be able to get here if the code above was correct?
@@ -77,7 +76,6 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	userset := rel.GetRewrite()
 
-	// pass the model AND the typesystem?
 	root, err := query.resolveUserset(ctx, store, userset, tk, typesys)
 	if err != nil {
 		return nil, err
@@ -214,7 +212,7 @@ func (query *ExpandQuery) resolveTupleToUserset(
 
 	tupleset := userset.GetTupleset().GetRelation()
 
-	objectType, _ := tupleUtils.SplitObject(targetObject)
+	objectType := tupleUtils.GetType(targetObject)
 	_, err := typesys.GetRelation(objectType, tupleset)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {

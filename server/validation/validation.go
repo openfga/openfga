@@ -36,7 +36,7 @@ func ValidateTuple(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) 
 		return err
 	}
 
-	objectType, _ := tuple.SplitObject(tk.GetObject())
+	objectType := tuple.GetType(tk.GetObject())
 	relation := tk.GetRelation()
 
 	hasTypeInfo, err := typesys.HasTypeInfo(objectType, relation)
@@ -121,7 +121,7 @@ func validateTuplesetRestrictions(model *openfgapb.AuthorizationModel, tk *openf
 // 2. If the tuple is of the form (user=group:abc#member, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
 // 3. If the tuple is of the form (user=*, relation=reader, object=doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
 func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
-	objectType, _ := tuple.SplitObject(tk.GetObject())    // e.g. "doc"
+	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
 	userType, userID := tuple.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
 	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
 
@@ -129,9 +129,10 @@ func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb
 
 	typeDefinitionForObject, ok := ts.GetTypeDefinition(objectType)
 	if !ok {
-		msg := fmt.Sprintf("type '%s' does not exist in the authorization model", objectType)
-		//return serverErrors.NewInternalError(msg, errors.New(msg))
-		return fmt.Errorf(msg)
+		return &tuple.InvalidTupleError{
+			Reason:   fmt.Sprintf("type '%s' does not exist in the authorization model", objectType),
+			TupleKey: tk,
+		}
 	}
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
@@ -140,17 +141,19 @@ func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb
 			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
 			msg := "invalid authorization model"
 			return fmt.Errorf(msg)
-		} else {
-			// authorization model is old/unspecified and does not have type information
-			return nil
 		}
+
+		// authorization model is old/unspecified and does not have type information
+		return nil
 	}
 
 	// at this point we know the auth model has type information
 	if userType != "" {
 		if _, ok := ts.GetTypeDefinition(userType); !ok {
-			//return serverErrors.InvalidWriteInput
-			return fmt.Errorf("todo: update me")
+			return &tuple.InvalidTupleError{
+				Reason:   fmt.Sprintf("undefined type for user '%s'", tk.GetUser()),
+				TupleKey: tk,
+			}
 		}
 	}
 
@@ -180,6 +183,8 @@ func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb
 	return &tuple.InvalidTupleError{Reason: fmt.Sprintf("User '%s' is not allowed to have relation %s with %s", tk.User, tk.Relation, tk.Object), TupleKey: tk}
 }
 
+// NoopFilterFunc returns a filter function that does not filter out any tuple provided
+// to it.
 func NoopFilterFunc() storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgapb.TupleKey) bool {
 		return true
@@ -212,7 +217,7 @@ func ValidateObject(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey)
 
 	typesys := typesystem.New(model)
 
-	objectType, _ := tuple.SplitObject(object)
+	objectType := tuple.GetType(object)
 	_, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
 		return &tuple.TypeNotFoundError{TypeName: objectType}
@@ -233,10 +238,9 @@ func ValidateRelation(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKe
 		return &tuple.InvalidTupleError{Reason: "invalid relation", TupleKey: tk}
 	}
 
-	// todo(jon-whit): memoize this
 	typesys := typesystem.New(model)
 
-	objectType, _ := tuple.SplitObject(object)
+	objectType := tuple.GetType(object)
 
 	_, err := typesys.GetRelation(objectType, relation)
 	if err != nil {
@@ -278,7 +282,7 @@ func ValidateUser(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) e
 	}
 
 	userObject, userRelation := tuple.SplitObjectRelation(user)
-	userObjectType, _ := tuple.SplitObject(userObject)
+	userObjectType := tuple.GetType(userObject)
 
 	// for 1.0 and 1.1 models if the 'user' field is a userset then we validate the 'object#relation'
 	// by making sure the user objectType and relation are defined in the model.

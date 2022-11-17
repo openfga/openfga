@@ -196,7 +196,7 @@ func (u *userSet) Get(value string) (resolutionTracer, bool) {
 	var found bool
 	var rt resolutionTracer
 	if rt, found = u.u[value]; !found {
-		if rt, found = u.u[Wildcard]; !found {
+		if rt, found = u.u[tupleUtils.Wildcard]; !found {
 			return nil, false
 		}
 	}
@@ -322,9 +322,8 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 	}
 
 	return &resolutionContext{
-		store: rc.store,
-		model: rc.model,
-		///modelID:          rc.modelID,
+		store:            rc.store,
+		model:            rc.model,
 		users:            rc.users,
 		targetUser:       rc.targetUser,
 		tk:               tk,
