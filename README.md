@@ -79,7 +79,7 @@ You can install from source using Go modules:
 2. Then use the install command:
 
    ```bash
-   go install github.com/openfga/openfga/cmd/openfga
+   make build
    ```
 
 3. Run the server with:
