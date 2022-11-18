@@ -101,7 +101,7 @@ Alternatively you can build OpenFGA by cloning the project from this Github repo
 2. Then use the build command:
 
    ```bash
-   go build cmd/openfga/openfga.go
+   go build -o ./openfga ./cmd/openfga
    ```
 
 3. Run the server with:
