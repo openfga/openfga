@@ -70,7 +70,7 @@ func TestCheck(t *testing.T) {
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
-	
+
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
