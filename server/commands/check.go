@@ -551,43 +551,6 @@ func (query *CheckQuery) resolveTupleToUserset(
 
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser()) // userObj=folder:budgets, userRel=""
 
-		objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
-
-		if userObj == tupleUtils.Wildcard {
-
-			query.logger.WarnWithContext(
-				ctx,
-				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
-				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.model.Id),
-				zap.String("object_type", objectType),
-			)
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", objectType, relation),
-				tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, tupleUtils.Wildcard),
-			)
-		}
-
-		if tupleUtils.UserSet == tupleUtils.GetUserTypeFromUser(tuple.GetUser()) {
-			query.logger.WarnWithContext(
-				ctx,
-				fmt.Sprintf("unexpected userset evaluated on tupleset relation '%s#%s'", objectType, relation),
-				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.model.Id),
-				zap.String("object_type", objectType),
-			)
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected userset evaluated on relation '%s#%s'", tupleUtils.GetType(rc.tk.GetObject()), relation),
-				tupleUtils.NewTupleKey(tuple.GetObject(), relation, tuple.GetUser()),
-			)
-		}
-
-		if !tupleUtils.IsValidObject(userObj) {
-			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
-		}
-
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
 
 		if userRel == "" {
