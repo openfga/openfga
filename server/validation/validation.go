@@ -15,6 +15,13 @@ func ValidateTuple(ctx context.Context, backend storage.TypeDefinitionReadBacken
 	if err := tuple.ValidateUser(tk); err != nil {
 		return nil, err
 	}
+	user := tk.GetUser()
+	if tuple.IsObjectRelation(user) {
+		if err := ValidateUserIfItsAUserset(ctx, backend, store, authorizationModelID, user, tk); err != nil {
+			return nil, err
+		}
+	}
+
 	return ValidateObjectsRelations(ctx, backend, store, authorizationModelID, tk)
 }
 
@@ -43,5 +50,27 @@ func ValidateObjectsRelations(ctx context.Context, backend storage.TypeDefinitio
 	if !ok {
 		return nil, &tuple.RelationNotFoundError{Relation: t.GetRelation(), TypeName: ns.GetType(), TupleKey: t}
 	}
+
 	return userset, nil
+}
+
+// ValidateUserIfItsAUserset returns an error if the user is a userset and its type/relation don't exist in the model
+func ValidateUserIfItsAUserset(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID, user string, tk *openfgapb.TupleKey) error {
+	object, relation := tuple.SplitObjectRelation(user)
+	objectType, _ := tuple.SplitObject(object)
+
+	typeDefinition, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &tuple.TypeNotFoundError{TypeName: objectType}
+		}
+
+		return err
+	}
+
+	_, ok := typeDefinition.Relations[relation]
+	if !ok {
+		return &tuple.RelationNotFoundError{Relation: relation, TypeName: objectType, TupleKey: tk}
+	}
+	return nil
 }
