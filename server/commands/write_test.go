@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -85,9 +84,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := cmd.validateNoDuplicatesAndCorrectSize(test.deletes, test.writes)
-			if !reflect.DeepEqual(err, test.expectedError) {
-				t.Errorf("Expected error %v, got %v", test.expectedError, err)
-			}
+			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
 }

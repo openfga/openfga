@@ -1366,6 +1366,42 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			response: &openfgapb.CheckResponse{Allowed: false},
 		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedType",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+			},
+			err: serverErrors.TypeNotFound("group"),
+		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedRelation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			},
+			err: serverErrors.RelationNotFound(
+				"editor",
+				"document",
+				tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			),
+		},
 	}
 
 	ctx := context.Background()

@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -309,5 +310,26 @@ func ValidateUser(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) e
 		}
 	}
 
+	return nil
+}
+
+// ValidateUserIfItsAUserset returns an error if the user is a userset and its type/relation don't exist in the model
+func ValidateUserIfItsAUserset(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID, user string, tk *openfgapb.TupleKey) error {
+	object, relation := tuple.SplitObjectRelation(user)
+	objectType, _ := tuple.SplitObject(object)
+
+	typeDefinition, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &tuple.TypeNotFoundError{TypeName: objectType}
+		}
+
+		return err
+	}
+
+	_, ok := typeDefinition.Relations[relation]
+	if !ok {
+		return &tuple.RelationNotFoundError{Relation: relation, TypeName: objectType, TupleKey: tk}
+	}
 	return nil
 }
