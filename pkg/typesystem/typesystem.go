@@ -781,6 +781,11 @@ func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]
 // TupleToUserset rewrite as a tupleset relation (e.g. the right hand side of a `X from Y`).
 func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
 
+	_, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return false, err
+	}
+
 	for _, ttuDefinitions := range t.getAllTupleToUsersetsDefinitions()[objectType] {
 		for _, ttuDef := range ttuDefinitions {
 			if ttuDef.Tupleset.Relation == relation {

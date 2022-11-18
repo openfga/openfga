@@ -1306,3 +1306,201 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 		})
 	}
 }
+
+func TestIsTuplesetRelation(t *testing.T) {
+
+	tests := []struct {
+		name          string
+		model         *openfgapb.AuthorizationModel
+		objectType    string
+		relation      string
+		expected      bool
+		expectedError error
+	}{
+		{
+			name:          "undefined_object_type_returns_error",
+			objectType:    "document",
+			relation:      "viewer",
+			expected:      false,
+			expectedError: ErrObjectTypeUndefined,
+		},
+		{
+			name: "undefined_relation_returns_error",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+					},
+				},
+			},
+			objectType:    "document",
+			relation:      "viewer",
+			expected:      false,
+			expectedError: ErrRelationUndefined,
+		},
+		{
+			name: "direct_tupleset_relation",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_union",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(
+								This(),
+								TupleToUserset("parent", "viewer"),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_intersection",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Intersection(
+								This(),
+								TupleToUserset("parent", "viewer"),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_exclusion",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Difference(
+								This(),
+								TupleToUserset("parent", "viewer"),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_nested_union",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Intersection(
+								This(),
+								Union(TupleToUserset("parent", "viewer")),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_nested_intersection",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(
+								This(),
+								Intersection(TupleToUserset("parent", "viewer")),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "tupleset_relation_under_nested_exclusion",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(
+								This(),
+								Difference(This(), TupleToUserset("parent", "viewer")),
+							),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "parent",
+			expected:   true,
+		},
+		{
+			name: "not_a_tupleset_relation",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			objectType: "document",
+			relation:   "viewer",
+			expected:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			typesys := New(test.model)
+
+			actual, err := typesys.IsTuplesetRelation(test.objectType, test.relation)
+			require.ErrorIs(t, err, test.expectedError)
+			require.Equal(t, test.expected, actual)
+		})
+	}
+}
