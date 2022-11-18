@@ -1206,7 +1206,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
-			name:             "edge case 1",
+			name:             "EdgeCase1",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "abigail"),
@@ -1215,25 +1215,14 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "folder",
 					Relations: map[string]*openfgapb.Userset{
-						"viewer": {
-							Userset: &openfgapb.Userset_This{},
-						},
+						"viewer": typesystem.This(),
 					},
 				},
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"parent": {
-							Userset: &openfgapb.Userset_This{},
-						},
-						"viewer": {
-							Userset: &openfgapb.Userset_TupleToUserset{
-								TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
-									ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
-								},
-							},
-						},
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
 					},
 				},
 			},
