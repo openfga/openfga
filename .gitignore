@@ -1,9 +1,10 @@
 bin
 .idea
 .vscode
-openfga
-
 dist/
+
+openfga
+!openfga/
 
 coverage*.out
 *.swp

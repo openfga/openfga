@@ -3,10 +3,10 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -145,6 +145,14 @@ func (c *combinedIterator[T]) Stop() {
 // all of the values from both iterators. If the two iterators yield the same value then duplicates will be returned.
 func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iter1, iter2}
+}
+
+func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
+	iter := &staticIterator[*openfgapb.Tuple]{
+		items: tuples,
+	}
+
+	return iter
 }
 
 // NewStaticTupleKeyIterator returns a TupleKeyIterator that iterates over the provided slice.
@@ -335,11 +343,8 @@ type AuthorizationModelBackend interface {
 
 type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error)
-
 	DeleteStore(ctx context.Context, id string) error
-
 	GetStore(ctx context.Context, id string) (*openfgapb.Store, error)
-
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgapb.Store, []byte, error)
 }
 

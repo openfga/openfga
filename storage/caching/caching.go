@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
-	"github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -37,7 +36,7 @@ func (c *cachedOpenFGADatastore) ReadTypeDefinition(ctx context.Context, storeID
 
 	td, err := c.OpenFGADatastore.ReadTypeDefinition(ctx, storeID, modelID, name)
 	if err != nil {
-		return nil, errors.ErrorWithStack(err)
+		return nil, err
 	}
 
 	c.cache.Set(cacheKey, td, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl
@@ -55,7 +54,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
-		return nil, errors.ErrorWithStack(err)
+		return nil, err
 	}
 
 	c.cache.Set(cacheKey, model, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl

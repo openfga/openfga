@@ -57,7 +57,7 @@ func (i *IndirectWriteError) Error() string {
 	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
 }
 
-// ValidateUser returns whether the user is valid.  If not, return error
+// ValidateUser returns whether the user of the provided TupleKey is well-formed. If not, return error
 func ValidateUser(tk *openfgapb.TupleKey) error {
 	if !IsValidUser(tk.GetUser()) {
 		return &InvalidTupleError{Reason: "the 'user' field is invalid", TupleKey: tk}

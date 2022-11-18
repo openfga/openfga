@@ -3,9 +3,8 @@ package commands
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -27,20 +26,13 @@ func NewCreateStoreCommand(
 }
 
 func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgapb.CreateStoreRequest) (*openfgapb.CreateStoreResponse, error) {
-	storeID, err := id.NewString()
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
 	store, err := s.storesBackend.CreateStore(ctx, &openfgapb.Store{
-		Id:   storeID,
+		Id:   ulid.Make().String(),
 		Name: req.Name,
 	})
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	utils.LogDBStats(ctx, s.logger, "CreateStore", 0, 1)
 
 	return &openfgapb.CreateStoreResponse{
 		Id:        store.Id,

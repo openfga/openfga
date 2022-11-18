@@ -1,10 +1,10 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
 	"testing"
 
-	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v5"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -26,8 +26,8 @@ func TestHandlePostgresError(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
-	t.Run("pgx.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
-		err := handlePostgresError(pgx.ErrNoRows)
+	t.Run("sql.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
+		err := handlePostgresError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

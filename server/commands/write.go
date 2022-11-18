@@ -8,7 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
@@ -38,13 +37,10 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, tracer trace.Tracer, lo
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
-	dbCallsCounter := utils.NewDBCallCounter()
-	if err := c.validateTuplesets(ctx, req, dbCallsCounter); err != nil {
-		utils.LogDBStats(ctx, c.logger, "Write", dbCallsCounter.GetReadCalls(), 0)
+	if err := c.validateTuplesets(ctx, req); err != nil {
 		return nil, err
 	}
 
-	utils.LogDBStats(ctx, c.logger, "Write", dbCallsCounter.GetReadCalls(), 1)
 	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
 	if err != nil {
 		return nil, handleError(err)
@@ -53,8 +49,8 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 	return &openfgapb.WriteResponse{}, nil
 }
 
-func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.WriteRequest, dbCallsCounter utils.DBCallCounter) error {
-	ctx, span := c.tracer.Start(ctx, "validateAndAuthenticateTuplesets")
+func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.WriteRequest) error {
+	ctx, span := c.tracer.Start(ctx, "validateTuplesets")
 	defer span.End()
 
 	store := req.GetStoreId()
@@ -70,7 +66,6 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 
 	if len(writes) > 0 {
 		// only read the auth model if we are adding tuples
-		dbCallsCounter.AddReadCall()
 		var err error
 		authModel, err = c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
@@ -79,14 +74,18 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 	}
 
 	for _, tk := range writes {
-		tupleUserset, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk, dbCallsCounter)
+		tupleUserset, err := validation.ValidateTuple(ctx, c.datastore, store, modelID, tk)
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 
 		// Validate that we are not trying to write to an indirect-only relationship
-		if !typesystem.ContainsSelf(tupleUserset) {
+		if !typesystem.RewriteContainsSelf(tupleUserset) {
 			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
+		}
+
+		if err := c.validateNoUsersetForRelationReferencedInTupleset(authModel, tk); err != nil {
+			return err
 		}
 
 		if err := c.validateTypesForTuple(authModel, tk); err != nil {
@@ -103,6 +102,27 @@ func (c *WriteCommand) validateTuplesets(ctx context.Context, req *openfgapb.Wri
 
 	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (c *WriteCommand) validateNoUsersetForRelationReferencedInTupleset(authModel *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+	if !tupleUtils.IsObjectRelation(tk.GetUser()) {
+		return nil
+	}
+
+	objType := tupleUtils.GetType(tk.GetObject())
+
+	// at this point we know tk.User is a userset
+	// if tk.Relation is used in a `x from y` definition (in the `y` part), throw an error
+	ts := typesystem.New(authModel)
+	for _, arrayOfTtus := range ts.GetAllTupleToUsersetsDefinitions()[objType] {
+		for _, tupleToUserSetDef := range arrayOfTtus {
+			if tupleToUserSetDef.Tupleset.Relation == tk.Relation {
+				return serverErrors.InvalidTuple(fmt.Sprintf("Userset '%s' is not allowed to have relation '%s' with '%s'", tk.User, tk.Relation, tk.Object), tk)
+			}
+		}
 	}
 
 	return nil

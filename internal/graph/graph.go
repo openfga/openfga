@@ -1,17 +1,35 @@
 package graph
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+)
+
+type ctxKey string
+
+const (
+	resolutionDepthCtxKey ctxKey = "resolution-depth"
 )
 
 var (
 	ErrTargetError    = errors.New("graph: target incorrectly specified")
 	ErrNotImplemented = errors.New("graph: intersection and exclusion are not yet implemented")
 )
+
+// ContextWithResolutionDepth attaches the provided graph resolution depth to the parent context.
+func ContextWithResolutionDepth(parent context.Context, depth uint32) context.Context {
+	return context.WithValue(parent, resolutionDepthCtxKey, depth)
+}
+
+// ResolutionDepthFromContext returns the current graph resolution depth from the provided context (if any).
+func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
+	depth, ok := ctx.Value(resolutionDepthCtxKey).(uint32)
+	return depth, ok
+}
 
 // RelationshipIngressType is used to define an enum of the type of ingresses between
 // source object references and target user references that exist in the graph of
@@ -84,9 +102,9 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 	}
 	visited[key] = struct{}{}
 
-	relation, ok := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
-	if !ok {
-		return nil, ErrTargetError
+	relation, err := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
+	if err != nil {
+		return nil, err
 	}
 
 	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
@@ -94,24 +112,32 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 
 // findIngressesWithRewrite is what we use for recursive calls on the rewrites, particularly union where we don't
 // update the target and source, and only the rewrite.
-func (g *ConnectedObjectGraph) findIngressesWithRewrite(target *openfgapb.RelationReference, source *openfgapb.RelationReference, rewrite *openfgapb.Userset, visited map[string]struct{}) ([]*RelationshipIngress, error) {
+func (g *ConnectedObjectGraph) findIngressesWithRewrite(
+	target *openfgapb.RelationReference,
+	source *openfgapb.RelationReference,
+	rewrite *openfgapb.Userset,
+	visited map[string]struct{},
+) ([]*RelationshipIngress, error) {
 	switch t := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
 		var res []*RelationshipIngress
 
-		if ok := g.typesystem.IsDirectlyRelated(target, source); ok {
+		ok, _ := g.typesystem.IsDirectlyRelated(target, source)
+
+		if ok {
 			res = append(res, &RelationshipIngress{
-				Type: DirectIngress,
-				Ingress: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: target.GetRelation(),
-				},
+				Type:    DirectIngress,
+				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 			})
 		}
 
-		for _, relatedUserType := range g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), target.GetRelation()) {
+		relatedUserTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), target.GetRelation())
+
+		for _, relatedUserType := range relatedUserTypes {
 			if relatedUserType.GetRelation() != "" {
-				if ok := g.typesystem.IsDirectlyRelated(relatedUserType, source); ok {
+				ok, _ := g.typesystem.IsDirectlyRelated(relatedUserType, source)
+
+				if ok {
 					key := fmt.Sprintf("%s#%s", relatedUserType.GetType(), relatedUserType.GetRelation())
 					if _, ok := visited[key]; ok {
 						continue
@@ -119,11 +145,8 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(target *openfgapb.Relati
 					visited[key] = struct{}{}
 
 					res = append(res, &RelationshipIngress{
-						Type: DirectIngress,
-						Ingress: &openfgapb.RelationReference{
-							Type:     relatedUserType.GetType(),
-							Relation: relatedUserType.GetRelation(),
-						},
+						Type:    DirectIngress,
+						Ingress: typesystem.DirectRelationReference(relatedUserType.GetType(), relatedUserType.GetRelation()),
 					})
 				}
 			}
@@ -131,11 +154,11 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(target *openfgapb.Relati
 
 		return res, nil
 	case *openfgapb.Userset_ComputedUserset:
-		return g.findIngresses(&openfgapb.RelationReference{
-			Type:     target.GetType(),
-			Relation: t.ComputedUserset.GetRelation(),
-		},
-			source, visited)
+		return g.findIngresses(
+			typesystem.DirectRelationReference(target.GetType(), t.ComputedUserset.GetRelation()),
+			source,
+			visited,
+		)
 	case *openfgapb.Userset_TupleToUserset:
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
@@ -144,30 +167,30 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(target *openfgapb.Relati
 
 		// We need to check if this is a tuple-to-userset rewrite
 		// parent: [folder#viewer] or parent: [folder]... I need to make better comments
-		relationReference := &openfgapb.RelationReference{
-			Type:     target.GetType(),
-			Relation: tupleset,
-		}
-		if g.typesystem.IsDirectlyRelated(relationReference, source) || g.typesystem.IsDirectlyRelated(relationReference, &openfgapb.RelationReference{Type: source.GetType()}) {
+		relationReference := typesystem.DirectRelationReference(target.GetType(), tupleset)
+
+		relatedToSourceRef, _ := g.typesystem.IsDirectlyRelated(relationReference, source)
+
+		relatedToSourceObjType, _ := g.typesystem.IsDirectlyRelated(relationReference, &openfgapb.RelationReference{Type: source.GetType()})
+
+		if relatedToSourceRef || relatedToSourceObjType {
 			res = append(res, &RelationshipIngress{
-				Type: TupleToUsersetIngress,
-				Ingress: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: target.GetRelation(),
-				},
-				TuplesetRelation: &openfgapb.RelationReference{
-					Type:     target.GetType(),
-					Relation: tupleset,
-				},
+				Type:             TupleToUsersetIngress,
+				Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 			})
 		}
 
-		for _, relatedUserType := range g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset) {
-			if _, ok := g.typesystem.GetRelation(relatedUserType.GetType(), computedUserset); ok {
-				subResults, err := g.findIngresses(&openfgapb.RelationReference{
-					Type:     relatedUserType.GetType(),
-					Relation: computedUserset,
-				}, source, visited)
+		tuplesetDirectlyRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
+
+		for _, relatedUserType := range tuplesetDirectlyRelatedTypes {
+			_, err := g.typesystem.GetRelation(relatedUserType.GetType(), computedUserset)
+			if err == nil {
+				subResults, err := g.findIngresses(
+					typesystem.DirectRelationReference(relatedUserType.GetType(), computedUserset),
+					source,
+					visited,
+				)
 				if err != nil {
 					return nil, err
 				}

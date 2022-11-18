@@ -29,8 +29,8 @@ jobs:
 
       - id: go-cache-paths
         run: |
-          echo "::set-output name=go-build::$(go env GOCACHE)"
-          echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+          echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+          echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
       - uses: actions/cache@v3
@@ -48,11 +48,14 @@ jobs:
         run: make unit-test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v3
         with:
           files: ./coverageunit.out
           verbose: true
           fail_ci_if_error: false
+
+      - name: Run govulncheck
+        run: govulncheck ./...
 
   functional-tests:
       runs-on: ubuntu-latest
@@ -66,8 +69,8 @@ jobs:
 
         - id: go-cache-paths
           run: |
-            echo "::set-output name=go-build::$(go env GOCACHE)"
-            echo "::set-output name=go-mod::$(go env GOMODCACHE)"
+            echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
+            echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
         # Cache go build and go mod cache, used to speedup go test
         - uses: actions/cache@v3
@@ -80,7 +83,7 @@ jobs:
               ${{ runner.os }}-go
 
         # build the openfga/openfga image for the functional tests
-        - uses: docker/build-push-action@v2
+        - uses: docker/build-push-action@v3
           with:
             file: Dockerfile
             push: false # don't publish the built container for functional tests
@@ -88,13 +91,6 @@ jobs:
 
         - name: Functional Tests
           run: make functional-test
-
-        - name: upload coverage to codecov
-          uses: codecov/codecov-action@v2
-          with:
-            files: ./coveragefunctional.out
-            verbose: true
-            fail_ci_if_error: false 
 
   go-bench:
     runs-on: ubuntu-latest
