@@ -1213,6 +1213,9 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
+					Type: "user",
+				},
+				{
 					Type: "folder",
 					Relations: map[string]*openfgapb.Userset{
 						"viewer": typesystem.This(),
