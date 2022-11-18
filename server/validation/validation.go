@@ -105,11 +105,15 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 		}
 	}
 
-	// tupleset relation involving a userset (e.g. object#relation)
-	return &tuple.InvalidTupleError{
-		Reason:   fmt.Sprintf("unexpected userset relationship '%s' with tupleset relation '%s#%s'", user, objectType, relation),
-		TupleKey: tk,
+	// tupleset relation involving a userset (e.g. object#relation) or a user_id (e.g. not a valid object)
+	if !tuple.IsValidObject(user) {
+		return &tuple.InvalidTupleError{
+			Reason:   fmt.Sprintf("unexpected user '%s' with tupleset relation '%s#%s'", user, objectType, relation),
+			TupleKey: tk,
+		}
 	}
+
+	return nil
 }
 
 // validateTypeRestrictions makes sure the type restrictions are enforced.
@@ -267,7 +271,10 @@ func ValidateUser(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error 
 	// the 'user' field must be an object (e.g. 'type:id') or object#relation (e.g. 'type:id#relation')
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
-			return &tuple.InvalidTupleError{Reason: "the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"}
+			return &tuple.InvalidTupleError{
+				Reason:   "the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)",
+				TupleKey: tk,
+			}
 		}
 	}
 

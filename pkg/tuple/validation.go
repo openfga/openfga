@@ -18,6 +18,11 @@ func (i *InvalidTupleError) Error() string {
 	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
 }
 
+func (i *InvalidTupleError) Is(target error) bool {
+	_, ok := target.(*InvalidTupleError)
+	return ok
+}
+
 // InvalidObjectFormatError is returned if the object is invalid
 type InvalidObjectFormatError struct {
 	TupleKey *openfgapb.TupleKey
@@ -25,6 +30,11 @@ type InvalidObjectFormatError struct {
 
 func (i *InvalidObjectFormatError) Error() string {
 	return fmt.Sprintf("Invalid object format '%s'.", i.TupleKey.String())
+}
+
+func (i *InvalidObjectFormatError) Is(target error) bool {
+	_, ok := target.(*InvalidObjectFormatError)
+	return ok
 }
 
 // TypeNotFoundError is returned if type is not found
@@ -36,6 +46,11 @@ func (i *TypeNotFoundError) Error() string {
 	return fmt.Sprintf("Type not found for %s", i.TypeName)
 }
 
+func (i *TypeNotFoundError) Is(target error) bool {
+	_, ok := target.(*TypeNotFoundError)
+	return ok
+}
+
 // RelationNotFoundError is returned if the relation is not found
 type RelationNotFoundError struct {
 	TupleKey *openfgapb.TupleKey
@@ -45,6 +60,11 @@ type RelationNotFoundError struct {
 
 func (i *RelationNotFoundError) Error() string {
 	return fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", i.Relation, i.TypeName, i.TupleKey.String())
+}
+
+func (i *RelationNotFoundError) Is(target error) bool {
+	_, ok := target.(*RelationNotFoundError)
+	return ok
 }
 
 // IndirectWriteError is used to categorize errors specific to write check logic
