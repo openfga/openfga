@@ -83,7 +83,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}
 	if userset == nil {
 		// the tuple in the Check request is invalid according to the model being used, so throw an error
-		actualErr := validation.ValidateTuple(rc.model, rc.tk)
+		actualErr := validation.ValidateTuple(typesys, rc.tk)
 		return nil, serverErrors.HandleTupleValidateError(actualErr)
 	}
 
@@ -137,7 +137,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 		return nil, err
 	}
 
-	err = validation.ValidateTuple(rc.model, rc.tk)
+	err = validation.ValidateTuple(typesys, rc.tk)
 	if err != nil {
 		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
 		return nil, nil

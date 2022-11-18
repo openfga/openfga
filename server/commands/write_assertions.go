@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
@@ -40,8 +41,10 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
+	typesys := typesystem.New(model)
+
 	for _, assertion := range assertions {
-		if err := validation.ValidateTuple(model, assertion.TupleKey); err != nil {
+		if err := validation.ValidateTuple(typesys, assertion.TupleKey); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}

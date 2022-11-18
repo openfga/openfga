@@ -76,7 +76,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	}
 
 	for _, tk := range writes {
-		err := validation.ValidateTuple(authModel, tk)
+		err := validation.ValidateTuple(typesys, tk)
 		if err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}

@@ -49,17 +49,17 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	err = validation.ValidateObject(model, tk)
-	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
-	}
-
-	err = validation.ValidateRelation(model, tk)
-	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
-	}
-
 	typesys := typesystem.New(model)
+
+	err = validation.ValidateObject(typesys, tk)
+	if err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	err = validation.ValidateRelation(typesys, tk)
+	if err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
 	objectType := tupleUtils.GetType(object)
 	rel, err := typesys.GetRelation(objectType, relation)

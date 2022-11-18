@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -13,26 +12,24 @@ import (
 )
 
 // ValidateTuple checks whether a tuple is welformed and valid according to the provided model.
-func ValidateTuple(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
-	typesys := typesystem.New(model)
-
-	if err := ValidateUser(model, tk); err != nil {
+	if err := ValidateUser(typesys, tk); err != nil {
 		return err
 	}
 
-	if err := ValidateObject(model, tk); err != nil {
+	if err := ValidateObject(typesys, tk); err != nil {
 		return err
 	}
 
-	if err := ValidateRelation(model, tk); err != nil {
+	if err := ValidateRelation(typesys, tk); err != nil {
 		return err
 	}
 
 	// now we assume our tuple is well-formed, it's time to check
 	// the tuple against other model and type-restriction constraints
 
-	err := validateTuplesetRestrictions(model, tk)
+	err := validateTuplesetRestrictions(typesys, tk)
 	if err != nil {
 		return err
 	}
@@ -46,7 +43,7 @@ func ValidateTuple(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) 
 	}
 
 	if hasTypeInfo {
-		err := validateTypeRestrictions(model, tk)
+		err := validateTypeRestrictions(typesys, tk)
 		if err != nil {
 			return err
 		}
@@ -63,9 +60,7 @@ func ValidateTuple(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) 
 // 1. `document:1#parent@folder:1#parent` (cannot evaluate/assign a userset value to a tupleset relation)
 // 2. `document:1#parent@*` (cannot evaluate/assign untyped wildcard to a tupleset relation (1.0 models))
 // 3. `document:1#parent@folder:*` (cannot evaluate/assign typed wildcard to a tupleset relation (1.1. models))
-func validateTuplesetRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
-
-	typesys := typesystem.New(model)
+func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
 	objectType := tuple.GetType(tk.GetObject())
 	relation := tk.GetRelation()
@@ -121,14 +116,12 @@ func validateTuplesetRestrictions(model *openfgapb.AuthorizationModel, tk *openf
 // 1. If the tuple is of the form (user=person:bob, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "person".
 // 2. If the tuple is of the form (user=group:abc#member, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
 // 3. If the tuple is of the form (user=*, relation=reader, object=doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
-func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
 	userType, userID := tuple.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
 	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
 
-	ts := typesystem.New(model)
-
-	typeDefinitionForObject, ok := ts.GetTypeDefinition(objectType)
+	typeDefinitionForObject, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
 		return &tuple.InvalidTupleError{
 			Reason:   fmt.Sprintf("type '%s' does not exist in the authorization model", objectType),
@@ -138,7 +131,7 @@ func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
 	if relationsForObject == nil {
-		if ts.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
 			msg := "invalid authorization model"
 			return fmt.Errorf(msg)
@@ -150,7 +143,7 @@ func validateTypeRestrictions(model *openfgapb.AuthorizationModel, tk *openfgapb
 
 	// at this point we know the auth model has type information
 	if userType != "" {
-		if _, ok := ts.GetTypeDefinition(userType); !ok {
+		if _, ok := typesys.GetTypeDefinition(userType); !ok {
 			return &tuple.InvalidTupleError{
 				Reason:   fmt.Sprintf("undefined type for user '%s'", tk.GetUser()),
 				TupleKey: tk,
@@ -199,8 +192,9 @@ func NoopFilterFunc() storage.TupleKeyFilterFunc {
 func FilterInvalidTuples(model *openfgapb.AuthorizationModel) storage.TupleKeyFilterFunc {
 
 	return func(tupleKey *openfgapb.TupleKey) bool {
+		typesys := typesystem.New(model)
 
-		err := ValidateTuple(model, tupleKey)
+		err := ValidateTuple(typesys, tupleKey)
 		return err == nil
 	}
 }
@@ -208,15 +202,13 @@ func FilterInvalidTuples(model *openfgapb.AuthorizationModel) storage.TupleKeyFi
 // validateObject validates the provided object string 'type:id' against the provided
 // model. An object is considered valid if it validates against one of the type
 // definitions included in the provided model.
-func ValidateObject(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
 	object := tk.GetObject()
 
 	if !tuple.IsValidObject(object) {
 		return &tuple.InvalidObjectFormatError{TupleKey: tk}
 	}
-
-	typesys := typesystem.New(model)
 
 	objectType := tuple.GetType(object)
 	_, ok := typesys.GetTypeDefinition(objectType)
@@ -230,7 +222,7 @@ func ValidateObject(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey)
 // ValidateRelation validates the relation on the provided objectType against the given model.
 // A relation is valid if it is defined as a relation for the type definition of the given
 // objectType.
-func ValidateRelation(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+func ValidateRelation(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
 	object := tk.GetObject()
 	relation := tk.GetRelation()
@@ -238,8 +230,6 @@ func ValidateRelation(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKe
 	if !tuple.IsValidRelation(relation) {
 		return &tuple.InvalidTupleError{Reason: "invalid relation", TupleKey: tk}
 	}
-
-	typesys := typesystem.New(model)
 
 	objectType := tuple.GetType(object)
 
@@ -264,13 +254,12 @@ func ValidateRelation(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKe
 // a userset value, then the objectType and relation must be defined. For 1.1 models
 // the user field must either be a userset or an object, and if it's an object we
 // verify the objectType is defined in the model.
-func ValidateUser(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) error {
+func ValidateUser(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
 	if !tuple.IsValidUser(tk.GetUser()) {
 		return &tuple.InvalidTupleError{Reason: "the 'user' field is invalid", TupleKey: tk}
 	}
 
-	typesys := typesystem.New(model)
 	schemaVersion := typesys.GetSchemaVersion()
 
 	user := tk.GetUser()
@@ -310,26 +299,5 @@ func ValidateUser(model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey) e
 		}
 	}
 
-	return nil
-}
-
-// ValidateUserIfItsAUserset returns an error if the user is a userset and its type/relation don't exist in the model
-func ValidateUserIfItsAUserset(ctx context.Context, backend storage.TypeDefinitionReadBackend, store, modelID, user string, tk *openfgapb.TupleKey) error {
-	object, relation := tuple.SplitObjectRelation(user)
-	objectType, _ := tuple.SplitObject(object)
-
-	typeDefinition, err := backend.ReadTypeDefinition(ctx, store, modelID, objectType)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return &tuple.TypeNotFoundError{TypeName: objectType}
-		}
-
-		return err
-	}
-
-	_, ok := typeDefinition.Relations[relation]
-	if !ok {
-		return &tuple.RelationNotFoundError{Relation: relation, TypeName: objectType, TupleKey: tk}
-	}
 	return nil
 }

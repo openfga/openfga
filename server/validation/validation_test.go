@@ -412,7 +412,8 @@ func TestValidateTuple(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := ValidateTuple(test.model, test.tuple)
+
+			err := ValidateTuple(typesystem.New(test.model), test.tuple)
 
 			if test.expectError {
 				require.Error(t, err)
