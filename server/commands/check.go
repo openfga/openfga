@@ -561,15 +561,13 @@ func (query *CheckQuery) resolveTupleToUserset(
 			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
 		}
 
-		userObjType, _ := tupleUtils.SplitObject(userObj)
-
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
 		if userRel == "" {
 			userRel = usersetRel // userRel=reader
 		}
 
 		// Verify that userRel is actually a relation on userObjType and if not, skip it
-		if _, err := typesys.GetRelation(userObjType, userRel); err != nil {
+		if _, err := typesys.GetRelation(tupleUtils.GetType(userObj), userRel); err != nil {
 			continue
 		}
 
