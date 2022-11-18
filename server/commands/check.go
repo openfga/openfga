@@ -525,7 +525,6 @@ func (query *CheckQuery) resolveTupleToUserset(
 		}
 
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser()) // userObj=folder:budgets, userRel=""
-		userObjType, _ := tupleUtils.SplitObject(userObj)
 		objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
 
 		if userObj == Wildcard {
@@ -562,21 +561,15 @@ func (query *CheckQuery) resolveTupleToUserset(
 			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
 		}
 
-		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
+		userObjType, _ := tupleUtils.SplitObject(userObj)
 
+		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
 		if userRel == "" {
 			userRel = usersetRel // userRel=reader
 		}
 
-		// Verify that userRel is actually a relation on userObjType
-		td, err := query.datastore.ReadTypeDefinition(ctx, rc.store, rc.modelID, userObjType)
-		if err != nil {
-			if err == storage.ErrNotFound {
-				continue
-			}
-			return err
-		}
-		if _, ok := td.GetRelations()[userRel]; !ok {
+		// Verify that userRel is actually a relation on userObjType and if not, skip it
+		if _, err := typesys.GetRelation(userObjType, userRel); err != nil {
 			continue
 		}
 
