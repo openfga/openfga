@@ -55,17 +55,9 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 
 	storeID := req.StoreID
 
-	targetUserType, _ := tuple.SplitObject(req.User.Object)
-
-	targetUserRef := &openfgapb.RelationReference{
-		Type:     targetUserType,
-		Relation: req.User.Relation,
-	}
-
-	sourceObjRef := &openfgapb.RelationReference{
-		Type:     req.ObjectType,
-		Relation: req.Relation,
-	}
+	targetUserType, _ := tuple.SplitObject(req.User.GetObject())
+	targetUserRef := typesystem.DirectRelationReference(targetUserType, req.User.GetRelation())
+	sourceObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
 	g := graph.BuildConnectedObjectGraph(c.Typesystem)

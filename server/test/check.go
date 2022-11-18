@@ -1206,6 +1206,37 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
+			name:             "EdgeCase1",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "abigail"),
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "user:beatrix"), // user is an object
+			},
+			response: &openfgapb.CheckResponse{
+				Allowed: false,
+			},
+		},
+		{
 			name:             "Error if * encountered in TupleToUserset evaluation",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
@@ -1222,7 +1253,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1237,7 +1268,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},
@@ -1276,7 +1307,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"parent": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("folder", ""),
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1291,7 +1322,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"viewer": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.RelationReference("user", ""),
+									typesystem.DirectRelationReference("user", ""),
 								},
 							},
 						},
@@ -1399,6 +1430,42 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.InvalidTuple(
 				"unexpected userset evaluated on relation 'document#parent'",
 				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
+			),
+		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedType",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+			},
+			err: serverErrors.TypeNotFound("group"),
+		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedRelation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			},
+			err: serverErrors.RelationNotFound(
+				"editor",
+				"document",
+				tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
 			),
 		},
 	}
