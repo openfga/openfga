@@ -1,14 +1,15 @@
-package cmd
+package checktestmatrix
 
 import (
 	"context"
 	"log"
 	"os"
-	"path/filepath"
-	"runtime"
 	"testing"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	parser "github.com/craigpastro/openfga-dsl-parser"
+	"github.com/openfga/openfga/cmd"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -40,42 +41,43 @@ type assertion struct {
 }
 
 func TestCheck(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
+	cfg := cmd.MustDefaultConfigWithRandomPorts()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := cmd.RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
-
-	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer conn.Close()
 
 	client := pb.NewOpenFGAServiceClient(conn)
-	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "CheckTest"})
+
+	var resp *pb.CreateStoreResponse
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 10 * time.Second
+	err = backoff.Retry(func() error {
+		resp, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "CheckTest"})
+		if err != nil {
+			return err
+		}
+		return nil
+	}, policy)
 	require.NoError(t, err)
+
 	storeID := resp.GetId()
-
-	_, filename, _, _ := runtime.Caller(0)
-	dir := filepath.Join(filepath.Dir(filename), "..", "testdata", "check")
-	entries, err := os.ReadDir(dir)
+	
+	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
-	for _, entry := range entries {
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
-		require.NoError(t, err)
+	var tests checkTests
+	err = yaml.Unmarshal(data, &tests)
 
-		var tests checkTests
-		err = yaml.Unmarshal(data, &tests)
-		require.NoError(t, err)
-
-		runCheckTests(t, client, storeID, tests)
-	}
+	runCheckTests(t, client, storeID, tests)
 }
 
 func runCheckTests(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {
