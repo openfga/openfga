@@ -746,6 +746,46 @@ func TestHTTPServerEnabled(t *testing.T) {
 	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 }
 
+func TestNoopMetricExporter(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.HTTP.Enabled = false
+	cfg.Metrics.Enabled = false
+	cfg.Metrics.Endpoint = "0.0.0.0:9090"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	_, err := retryablehttp.Get(fmt.Sprintf("http://%s", cfg.Metrics.Endpoint))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "Get \"http://0.0.0.0:9090\": dial tcp 0.0.0.0:9090: connect: connection refused")
+}
+
+func TestOTLPExporter(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.HTTP.Enabled = true
+	cfg.Metrics.Enabled = true
+	cfg.Metrics.Endpoint = "localhost:4317"
+	cfg.Metrics.Protocol = "grpc"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	_, err := retryablehttp.Get(fmt.Sprintf("http://%s", cfg.HTTP.Addr))
+	require.NoError(t, err)
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
@@ -850,4 +890,16 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.metrics.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Metrics.Enabled)
+
+	val = res.Get("properties.metrics.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Endpoint)
+
+	val = res.Get("properties.metrics.properties.protocol.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Protocol)
 }

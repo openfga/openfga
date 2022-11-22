@@ -148,6 +148,27 @@
                 }
             }
         },
+        "metrics": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Toggle OTel Collector export of metrics",
+                    "type": "boolean",
+                    "default": false
+                },
+                "endpoint": {
+                    "description": "Remote OTEL collector endpoint",
+                    "type": "string",
+                    "default": "localhost:4317"
+                },
+                "protocol": {
+                    "description": "Protocol used to send metrics to the collector",
+                    "type": "string",
+                    "enum": ["grpc", "http"],
+                    "default": "grpc"
+                }
+            }
+        },
         "http": {
             "type": "object",
             "properties": {

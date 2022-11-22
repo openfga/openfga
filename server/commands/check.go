@@ -53,7 +53,6 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
 		instrument.WithUnit(unit.Dimensionless),
 	)
-
 	var resolutionTracer resolutionTracer = &noopResolutionTracer{}
 	if req.GetTrace() {
 		resolutionTracer = newStringResolutionTracer()
@@ -101,7 +100,7 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 	}
 
 	if statCheckResolutionDepth != nil {
-		statCheckResolutionDepth.Observe(ctx, int64(rc.metadata.GetResolve()))
+		statCheckResolutionDepth.Add(ctx, int64(rc.metadata.GetResolve()))
 	}
 
 	return &openfgapb.CheckResponse{

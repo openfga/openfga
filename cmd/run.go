@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
@@ -162,6 +164,13 @@ type ProfilerConfig struct {
 	Addr    string
 }
 
+// MetricsConfig defines metrics configuration and exposure settings.
+type MetricsConfig struct {
+	Enabled  bool
+	Endpoint string
+	Protocol string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -197,6 +206,7 @@ type Config struct {
 	Log        LogConfig
 	Playground PlaygroundConfig
 	Profiler   ProfilerConfig
+	Metrics    MetricsConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -241,6 +251,11 @@ func DefaultConfig() *Config {
 		Profiler: ProfilerConfig{
 			Enabled: false,
 			Addr:    ":3001",
+		},
+		Metrics: MetricsConfig{
+			Enabled:  false,
+			Protocol: "grpc",
+			Endpoint: "localhost:4317",
 		},
 	}
 }
@@ -366,11 +381,20 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 	tracer := telemetry.NewNoopTracer()
-	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
-	var datastore storage.OpenFGADatastore
 	var err error
+	var meter metric.Meter
+	if config.Metrics.Enabled {
+		meter, err = telemetry.NewOTLPMeter(logger, ctx, config.Metrics.Protocol, config.Metrics.Endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to generate otlp meter: %w", err)
+		}
+	} else {
+		meter = metric.NewNoopMeter()
+	}
+
+	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
@@ -831,4 +855,13 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
+
+	cmd.Flags().Bool("metrics", defaultConfig.Metrics.Enabled, "toggle OTel metrics exporter")
+	util.MustBindPFlag("metrics.enabled", cmd.Flags().Lookup("metrics"))
+
+	cmd.Flags().String("metrics-endpoint", defaultConfig.Metrics.Endpoint, "OTel Collector endpoint to use")
+	util.MustBindPFlag("metrics.endpoint", cmd.Flags().Lookup("metrics-endpoint"))
+
+	cmd.Flags().String("metrics-protocol", defaultConfig.Metrics.Protocol, "the protocol to use to send OTLP metrics")
+	util.MustBindPFlag("metrics.protocol", cmd.Flags().Lookup("metrics-protocol"))
 }
