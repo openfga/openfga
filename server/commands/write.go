@@ -61,13 +61,12 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 		return serverErrors.InvalidWriteInput
 	}
 
-	var authModel *openfgapb.AuthorizationModel
 	var typesys *typesystem.TypeSystem
 
 	if len(writes) > 0 {
 		// only read the auth model if we are adding tuples
 		var err error
-		authModel, err = c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			return err
 		}
