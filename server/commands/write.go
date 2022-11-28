@@ -61,43 +61,40 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 		return serverErrors.InvalidWriteInput
 	}
 
-	var typesys *typesystem.TypeSystem
-
 	if len(writes) > 0 {
-		// only read the auth model if we are adding tuples
-		var err error
+
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			return err
 		}
 
-		typesys = typesystem.New(authModel)
-	}
+		typesys := typesystem.New(authModel)
 
-	for _, tk := range writes {
-		err := validation.ValidateTuple(typesys, tk)
-		if err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-
-		objectType, _ := tupleUtils.SplitObject(tk.GetObject())
-
-		relation, err := typesys.GetRelation(objectType, tk.GetRelation())
-		if err != nil {
-			if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-				return serverErrors.TypeNotFound(objectType)
+		for _, tk := range writes {
+			err := validation.ValidateTuple(typesys, tk)
+			if err != nil {
+				return serverErrors.HandleTupleValidateError(err)
 			}
 
-			if errors.Is(err, typesystem.ErrRelationUndefined) {
-				return serverErrors.RelationNotFound(tk.GetRelation(), objectType, tk)
+			objectType, _ := tupleUtils.SplitObject(tk.GetObject())
+
+			relation, err := typesys.GetRelation(objectType, tk.GetRelation())
+			if err != nil {
+				if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+					return serverErrors.TypeNotFound(objectType)
+				}
+
+				if errors.Is(err, typesystem.ErrRelationUndefined) {
+					return serverErrors.RelationNotFound(tk.GetRelation(), objectType, tk)
+				}
+
+				return serverErrors.HandleError("", err)
 			}
 
-			return serverErrors.HandleError("", err)
-		}
-
-		// Validate that we are not trying to write to an indirect-only relationship
-		if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
-			return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
+			// Validate that we are not trying to write to an indirect-only relationship
+			if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
+				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
+			}
 		}
 	}
 
