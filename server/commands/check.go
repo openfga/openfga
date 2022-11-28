@@ -77,7 +77,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
-	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
+	userset, err := query.getTypeDefinitionRelationUsersets(rc.tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -108,13 +108,11 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 }
 
 // getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
-func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgapb.Userset, error) {
+func (query *CheckQuery) getTypeDefinitionRelationUsersets(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
 
-	typesys := typesystem.New(rc.model)
+	objectType := tupleUtils.GetType(tk.GetObject())
 
-	objectType := tupleUtils.GetType(rc.tk.GetObject())
-
-	relation, err := typesys.GetRelation(objectType, rc.tk.GetRelation())
+	relation, err := typesys.GetRelation(objectType, tk.GetRelation())
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return nil, serverErrors.HandleTupleValidateError(
@@ -128,8 +126,8 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 			return nil, serverErrors.HandleTupleValidateError(
 				&tupleUtils.RelationNotFoundError{
 					TypeName: objectType,
-					Relation: rc.tk.GetRelation(),
-					TupleKey: rc.tk,
+					Relation: tk.GetRelation(),
+					TupleKey: tk,
 				},
 			)
 		}
@@ -137,7 +135,7 @@ func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, 
 		return nil, err
 	}
 
-	err = validation.ValidateTuple(typesys, rc.tk)
+	err = validation.ValidateTuple(typesys, tk)
 	if err != nil {
 		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
 		return nil, nil
@@ -222,7 +220,7 @@ func (query *CheckQuery) resolveComputed(
 	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
-	userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
+	userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
 	if err != nil {
 		return err
 	}
@@ -309,7 +307,7 @@ func (query *CheckQuery) resolveDirectUserSet(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
+			userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
 			if err == nil {
 				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}
@@ -569,7 +567,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC) // folder:budgets#reader
+			userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys) // folder:budgets#reader
 			if err == nil {
 				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}

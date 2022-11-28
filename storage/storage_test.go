@@ -204,6 +204,7 @@ func ExampleNewFilteredTupleKeyIterator() {
 			return tk.GetRelation() == "editor"
 		},
 	)
+	defer iter.Stop()
 
 	var filtered []string
 	for {

@@ -203,7 +203,7 @@ func FilterInvalidTuples(model *openfgapb.AuthorizationModel) storage.TupleKeyFi
 	}
 }
 
-// validateObject validates the provided object string 'type:id' against the provided
+// ValidateObject validates the provided object string 'type:id' against the provided
 // model. An object is considered valid if it validates against one of the type
 // definitions included in the provided model.
 func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
