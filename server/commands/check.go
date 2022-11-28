@@ -77,7 +77,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
-	userset, err := query.getTypeDefinitionRelationUsersets(rc.tk, typesys)
+	userset, err := getTypeDefinitionRelationUsersets(rc.tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 }
 
 // getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
-func (query *CheckQuery) getTypeDefinitionRelationUsersets(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
+func getTypeDefinitionRelationUsersets(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
 
 	objectType := tupleUtils.GetType(tk.GetObject())
 
@@ -220,7 +220,7 @@ func (query *CheckQuery) resolveComputed(
 	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
-	userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
+	userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
 	if err != nil {
 		return err
 	}
@@ -307,7 +307,7 @@ func (query *CheckQuery) resolveDirectUserSet(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
+			userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
 			if err == nil {
 				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}
@@ -572,7 +572,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(nestedRC.tk, typesys) // folder:budgets#reader
+			userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys) // folder:budgets#reader
 			if err == nil {
 				err = query.resolveNode(ctx, nestedRC, userset, typesys)
 			}

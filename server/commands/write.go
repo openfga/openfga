@@ -103,7 +103,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	}
 
 	for _, tk := range deletes {
-		// For delete, we only need to ensure it is well form but no need to validate whether relation exists
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
 			return serverErrors.InvalidTuple("the 'user' field is invalid", tk)
 		}

@@ -117,9 +117,9 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 }
 
 // validateTypeRestrictions makes sure the type restrictions are enforced.
-// 1. If the tuple is of the form (user=person:bob, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "person".
-// 2. If the tuple is of the form (user=group:abc#member, relation=reader, object=doc:budget), then the type "doc", relation "reader" must allow type "group", relation "member".
-// 3. If the tuple is of the form (user=*, relation=reader, object=doc:budget), we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
+// 1. If the tuple is of the form doc:budget#reader@person:bob, then the type "doc", relation "reader" must allow type "person".
+// 2. If the tuple is of the form doc:budget#reader@group:abc#member, then the type "doc", relation "reader" must allow type "group", relation "member".
+// 3. If the tuple is of the form doc:budget#reader@*, we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
 func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
 	userType, userID := tuple.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
