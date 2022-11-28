@@ -84,7 +84,7 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 	// tupleset relation involving a rewrite
 	if rewrite != nil && reflect.TypeOf(rewrite) != reflect.TypeOf(&openfgapb.Userset_This{}) {
 		return &tuple.InvalidTupleError{
-			Reason:   fmt.Sprintf("unexpected rewrite encountered with tupelset relation '%s#%s'", objectType, relation),
+			Reason:   fmt.Sprintf("unexpected rewrite encountered with tupleset relation '%s#%s'", objectType, relation),
 			TupleKey: tk,
 		}
 	}
