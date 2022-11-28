@@ -2,8 +2,11 @@ package checktestmatrix
 
 import (
 	"context"
+	"fmt"
+	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,46 +44,56 @@ type assertion struct {
 }
 
 func TestCheck(t *testing.T) {
-	cfg := cmd.MustDefaultConfigWithRandomPorts()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := cmd.RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	defer conn.Close()
-
-	client := pb.NewOpenFGAServiceClient(conn)
-
-	var resp *pb.CreateStoreResponse
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
-	err = backoff.Retry(func() error {
-		resp, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "CheckTest"})
-		if err != nil {
-			return err
-		}
-		return nil
-	}, policy)
-	require.NoError(t, err)
-
-	storeID := resp.GetId()
-
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
 	var tests checkTests
 	err = yaml.Unmarshal(data, &tests)
 
-	runCheckTests(t, client, storeID, tests)
+	for _, engine := range []string{"memory", "postgres", "mysql"} {
+		t.Run(fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine)), func(t *testing.T) {
+			container := storage.RunDatastoreTestContainer(t, engine)
+
+			cfg := cmd.MustDefaultConfigWithRandomPorts()
+			cfg.Datastore.Engine = engine
+			cfg.Datastore.URI = container.GetConnectionURI()
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			go func() {
+				if err := cmd.RunServer(ctx, cfg); err != nil {
+					log.Fatal(err)
+				}
+			}()
+
+			conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			require.NoError(t, err)
+			defer conn.Close()
+
+			client := pb.NewOpenFGAServiceClient(conn)
+
+			var resp *pb.CreateStoreResponse
+			policy := backoff.NewExponentialBackOff()
+			policy.MaxElapsedTime = 10 * time.Second
+			err = backoff.Retry(func() error {
+				resp, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "CheckTest"})
+				if err != nil {
+					return err
+				}
+				return nil
+			}, policy)
+			require.NoError(t, err)
+
+			storeID := resp.GetId()
+
+			runTest(t, client, storeID, tests)
+
+			cancel() // shutdown the server
+		})
+	}
 }
 
-func runCheckTests(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {
+func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {
 	ctx := context.Background()
 
 	for _, test := range tests.Tests {

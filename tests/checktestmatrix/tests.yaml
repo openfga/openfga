@@ -53,6 +53,29 @@ tests:
           user: abigail
         expectation: false
 
+  - name: TupleToUserset
+    model: |
+      type folder
+        relations
+          define viewer as self
+      type document
+        relations
+          define parent as self
+          define viewer as viewer from parent
+    tuples:
+      - object: document:1
+        relation: parent
+        user: folder:x
+      - object: folder:x
+        relation: viewer
+        user: abigail
+    assertions:
+      - tuple:
+          object: document:1
+          relation: viewer
+          user: abigail
+        expectation: true
+
   - name: ThisAndUnion
     model: |
       type document
