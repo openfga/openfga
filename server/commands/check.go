@@ -550,9 +550,13 @@ func (query *CheckQuery) resolveTupleToUserset(
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser()) // userObj=folder:budgets, userRel=""
 
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
-
 		if userRel == "" {
 			userRel = usersetRel // userRel=reader
+		}
+
+		// Verify that userRel is actually a relation on userObjType and if not, skip it
+		if _, err := typesys.GetRelation(tupleUtils.GetType(userObj), userRel); err != nil {
+			continue
 		}
 
 		tupleKey := &openfgapb.TupleKey{
@@ -560,6 +564,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 			Relation: userRel,         //reader
 			User:     rc.tk.GetUser(), //anne
 		}
+
 		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(userObj, userRel))
 		nestedRC := rc.fork(tupleKey, tracer, false)
 

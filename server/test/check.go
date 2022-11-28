@@ -36,7 +36,7 @@ var githubTuples = []*openfgapb.TupleKey{
 	tuple.NewTupleKey("team:openfga/protocols", "member", "diane"),
 }
 
-func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
+func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []struct {
 		name             string
 		typeDefinitions  []*openfgapb.TypeDefinition
@@ -1180,6 +1180,37 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			response: &openfgapb.CheckResponse{
 				Allowed: true,
+			},
+		},
+		{
+			name:             "EdgeCase1",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "abigail"),
+			},
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "user:beatrix"), // user is an object
+			},
+			response: &openfgapb.CheckResponse{
+				Allowed: false,
 			},
 		},
 		{
