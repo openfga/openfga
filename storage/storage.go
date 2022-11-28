@@ -223,6 +223,49 @@ func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
 	}
 }
 
+// TupleKeyFilterFunc is a filter function that is used to filter out tuples from a TupleKey iterator
+// that don't meet some criteria. Implementations should return true if the tuple should be returned
+// and false if it should be filtered out.
+type TupleKeyFilterFunc func(tupleKey *openfgapb.TupleKey) bool
+
+type filteredTupleKeyIterator struct {
+	iter   TupleKeyIterator
+	filter TupleKeyFilterFunc
+}
+
+var _ TupleKeyIterator = &filteredTupleKeyIterator{}
+
+// Next() returns the next most tuple in the underlying iterator that meets
+// the filter function this iterator was constructed with.
+func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
+
+	for {
+		tuple, err := f.iter.Next()
+		if err != nil {
+			return nil, err
+		}
+
+		if f.filter(tuple) {
+			return tuple, nil
+		}
+	}
+}
+
+// Stop terminates iteration over the underlying iterator.
+func (f *filteredTupleKeyIterator) Stop() {
+	f.iter.Stop()
+}
+
+// NewFilteredTupleKeyIterator returns an iterator that filters out all tuples that don't
+// meet the conditions of the provided TupleFilterFunc.
+func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFunc) TupleKeyIterator {
+
+	return &filteredTupleKeyIterator{
+		iter,
+		filter,
+	}
+}
+
 // Typesafe aliases for Write arguments.
 
 type Writes = []*openfgapb.TupleKey
