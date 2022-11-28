@@ -161,14 +161,6 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 	return &tuple.InvalidTupleError{Reason: fmt.Sprintf("User '%s' is not allowed to have relation %s with %s", tk.User, tk.Relation, tk.Object), TupleKey: tk}
 }
 
-// NoopFilterFunc returns a filter function that does not filter out any tuple provided
-// to it.
-func NoopFilterFunc() storage.TupleKeyFilterFunc {
-	return func(tupleKey *openfgapb.TupleKey) bool {
-		return true
-	}
-}
-
 // FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide
 // a generic filtering mechanism when reading tuples. It is particularly useful to filter
 // out tuples that aren't valid according to the provided model, which can help filter
