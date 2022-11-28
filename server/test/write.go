@@ -1379,6 +1379,36 @@ var writeCommandTests = []writeCommandTest{
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
+	{
+		_name: "Write succeeds if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation of another type",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": typesystem.This(),
+						"parent": typesystem.Union(
+							typesystem.TupleToUserset("parent", "owner"), // 'folder#parent' is a tupleset relation but 'document#parent' is not
+						),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"owner":  typesystem.This(),
+						"parent": typesystem.This(),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#owner"), // the 'document#parent' relation isn't a tupleset so this is fine
+			}},
+		},
+	},
 }
 
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
