@@ -3,7 +3,6 @@ package checktestmatrix
 import (
 	"context"
 	"fmt"
-	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"log"
 	"os"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	parser "github.com/craigpastro/openfga-dsl-parser"
 	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -49,9 +49,12 @@ func TestCheck(t *testing.T) {
 
 	var tests checkTests
 	err = yaml.Unmarshal(data, &tests)
+	require.NoError(t, err)
 
 	for _, engine := range []string{"memory", "postgres", "mysql"} {
-		t.Run(fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine)), func(t *testing.T) {
+		name := fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine))
+
+		t.Run(name, func(t *testing.T) {
 			container := storage.RunDatastoreTestContainer(t, engine)
 
 			cfg := cmd.MustDefaultConfigWithRandomPorts()
@@ -72,15 +75,10 @@ func TestCheck(t *testing.T) {
 
 			client := pb.NewOpenFGAServiceClient(conn)
 
-			var resp *pb.CreateStoreResponse
 			policy := backoff.NewExponentialBackOff()
 			policy.MaxElapsedTime = 10 * time.Second
-			err = backoff.Retry(func() error {
-				resp, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "CheckTest"})
-				if err != nil {
-					return err
-				}
-				return nil
+			resp, err := backoff.RetryWithData(func() (*pb.CreateStoreResponse, error) {
+				return client.CreateStore(ctx, &pb.CreateStoreRequest{Name: name})
 			}, policy)
 			require.NoError(t, err)
 
