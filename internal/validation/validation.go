@@ -134,26 +134,6 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 	}
 
 	relationsForObject := typeDefinitionForObject.GetMetadata().GetRelations()
-	if relationsForObject == nil {
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-			// if we get here, there's a bug in the validation of WriteAuthorizationModel API
-			msg := "invalid authorization model"
-			return fmt.Errorf(msg)
-		}
-
-		// authorization model is old/unspecified and does not have type information
-		return nil
-	}
-
-	// at this point we know the auth model has type information
-	if userType != "" {
-		if _, ok := typesys.GetTypeDefinition(userType); !ok {
-			return &tuple.InvalidTupleError{
-				Reason:   fmt.Sprintf("undefined type for user '%s'", tk.GetUser()),
-				TupleKey: tk,
-			}
-		}
-	}
 
 	relationInformation := relationsForObject[tk.Relation]
 

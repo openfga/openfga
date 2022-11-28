@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/validation"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
