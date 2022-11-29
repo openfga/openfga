@@ -185,13 +185,16 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 }
 
 // NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
-// contained in the provided list of TupleKeys.
-func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
+// contained in the provided list of TupleKeys. You can optionally pass in a function that
+// will remove the objects that don't match the filter.
+func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey, filterFunc TupleKeyFilterFunc) ObjectIterator {
 
 	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
-		objectType, objectID := tuple.SplitObject(tk.GetObject())
-		objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
+		if filterFunc != nil && filterFunc(tk) {
+			objectType, objectID := tuple.SplitObject(tk.GetObject())
+			objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
+		}
 	}
 
 	return NewStaticObjectIterator(objects)
@@ -235,7 +238,7 @@ type filteredTupleKeyIterator struct {
 
 var _ TupleKeyIterator = &filteredTupleKeyIterator{}
 
-// Next() returns the next most tuple in the underlying iterator that meets
+// Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
 func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
 

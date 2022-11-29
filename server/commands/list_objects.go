@@ -238,25 +238,26 @@ func (q *ListObjectsQuery) performChecks(
 	errChan chan<- error,
 	resolvedChan chan<- struct{},
 ) {
-	g := new(errgroup.Group)
-	g.SetLimit(maximumConcurrentChecks)
-	var objectsFound = new(uint32)
-
-	iter1 := storage.NewTupleKeyObjectIterator(req.GetContextualTuples().GetTupleKeys())
+	iter1 := storage.NewTupleKeyObjectIterator(
+		req.GetContextualTuples().GetTupleKeys(),
+		func(tk *openfgapb.TupleKey) bool {
+			return tuple.GetType(tk.GetObject()) == req.GetType()
+		})
 
 	iter2, err := q.Datastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
 	if err != nil {
+		iter1.Stop()
 		errChan <- err
 		return
 	}
 
 	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
 	iter := storage.NewUniqueObjectIterator(iter1, iter2)
-	if err != nil {
-		errChan <- err
-		return
-	}
 	defer iter.Stop()
+
+	g := new(errgroup.Group)
+	g.SetLimit(maximumConcurrentChecks)
+	var objectsFound = new(uint32)
 
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {

@@ -132,6 +132,17 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
+				name: "ignores irrelevant contextual tuples in the checks because they are not of the same type",
+				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "owner",
+						Object:   "org:abc",
+					}}}),
+				expectedResult: []string{},
+				expectedError:  nil,
+			},
+			{
 				name:           "returns error if unknown type",
 				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
 				expectedResult: nil,
@@ -236,6 +247,17 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Object:   "team:abc",
 					}}}),
 				expectedResult: []string{"2", "6"},
+				expectedError:  nil,
+			},
+			{
+				name: "ignores irrelevant contextual tuples in the checks because they are not of the same type",
+				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "owner",
+						Object:   "org:abc",
+					}}}),
+				expectedResult: []string{},
 				expectedError:  nil,
 			},
 			{
