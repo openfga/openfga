@@ -899,7 +899,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 					},
 				},
 			},
-			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+			err: InvalidRelationTypeError("document", "parent", "folder", "member"),
 		},
 		{
 			name: "userset specified as allowed type, but the relation is used in a TTU rewrite included in a union",
@@ -958,7 +958,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 					},
 				},
 			},
-			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+			err: InvalidRelationTypeError("document", "parent", "folder", "parent"),
 		},
 		{
 			name: "WildcardNotAllowedInTheTuplesetPartOfTTU",
@@ -1006,7 +1006,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 					},
 				},
 			},
-			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+			err: InvalidRelationTypeError("document", "parent", "folder", ""),
 		},
 	}
 

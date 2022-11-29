@@ -599,13 +599,9 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				}
 
 				if related.GetRelationOrWildcard() != nil {
-					// you cannot specify a userset or wildcard if the relation is being used in a `x from y` definition (in the `y` part)
-					for _, arrayOfTtus := range typesys.getAllTupleToUsersetsDefinitions()[objectType] {
-						for _, tupleToUserSetDef := range arrayOfTtus {
-							if tupleToUserSetDef.Tupleset.Relation == name {
-								return &InvalidRelationError{ObjectType: objectType, Relation: name}
-							}
-						}
+					// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
+					if ok, _ := typesys.IsTuplesetRelation(objectType, name); ok {
+						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 					}
 
 					if relatedRelation != "" {
@@ -780,7 +776,7 @@ func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]
 }
 
 // IsTuplesetRelation returns a boolean indicating if the provided relation is defined under a
-// TupleToUserset rewrite as a tupleset relation (e.g. the right hand side of a `X from Y`).
+// TupleToUserset rewrite as a tupleset relation (i.e. the right hand side of a `X from Y`).
 func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
 
 	_, err := t.GetRelation(objectType, relation)
