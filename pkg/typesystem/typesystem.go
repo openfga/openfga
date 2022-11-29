@@ -570,17 +570,17 @@ func isUsersetRewriteValid(
 }
 
 func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
-	typeSystem := New(model)
+	typesys := New(model)
 
-	for objectType := range typeSystem.typeDefinitions {
-		relations, err := typeSystem.GetRelations(objectType)
+	for objectType := range typesys.typeDefinitions {
+		relations, err := typesys.GetRelations(objectType)
 		if err != nil {
 			return err
 		}
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			assignable := typeSystem.IsDirectlyAssignable(relation)
+			assignable := typesys.IsDirectlyAssignable(relation)
 
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
@@ -594,13 +594,13 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				relatedObjectType := related.GetType()
 				relatedRelation := related.GetRelation()
 
-				if _, err := typeSystem.GetRelations(relatedObjectType); err != nil {
+				if _, err := typesys.GetRelations(relatedObjectType); err != nil {
 					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 				}
 
 				if related.GetRelationOrWildcard() != nil {
 					// you cannot specify a userset or wildcard if the relation is being used in a `x from y` definition (in the `y` part)
-					for _, arrayOfTtus := range typeSystem.GetAllTupleToUsersetsDefinitions()[objectType] {
+					for _, arrayOfTtus := range typesys.getAllTupleToUsersetsDefinitions()[objectType] {
 						for _, tupleToUserSetDef := range arrayOfTtus {
 							if tupleToUserSetDef.Tupleset.Relation == name {
 								return &InvalidRelationError{ObjectType: objectType, Relation: name}
@@ -609,7 +609,7 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 					}
 
 					if relatedRelation != "" {
-						if _, err := typeSystem.GetRelation(relatedObjectType, relatedRelation); err != nil {
+						if _, err := typesys.GetRelation(relatedObjectType, relatedRelation); err != nil {
 							return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 						}
 					}
