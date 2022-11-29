@@ -487,18 +487,15 @@ tests:
           user: beatrix
         expectation: true
 
-  - name: UnionAndIntersection
+  - name: UnionAndUnion
     model: |
       type document
         relations
           define writer as self
           define editor as self
           define owner as self
-          define viewer as owner or (editor and writer)
+          define viewer as writer or (editor or owner)
     tuples:
-      - object: document:1
-        relation: editor
-        user: abigail
       - object: document:1
         relation: writer
         user: abigail
@@ -506,7 +503,45 @@ tests:
         relation: editor
         user: beatrix
       - object: document:3
+        relation: owner
+        user: charlie
+    assertions:
+      - tuple:
+          object: document:1
+          relation: viewer
+          user: abigail
+        expectation: true
+      - tuple:
+          object: document:2
+          relation: viewer
+          user: beatrix
+        expectation: true
+      - tuple:
+          object: document:3
+          relation: viewer
+          user: charlie
+        expectation: true
+
+  - name: UnionAndIntersection
+    model: |
+      type document
+        relations
+          define writer as self
+          define editor as self
+          define owner as self
+          define viewer as writer or (editor and owner)
+    tuples:
+      - object: document:1
         relation: writer
+        user: abigail
+      - object: document:2
+        relation: editor
+        user: beatrix
+      - object: document:2
+        relation: owner
+        user: beatrix
+      - object: document:3
+        relation: editor
         user: charlie
       - object: document:4
         relation: owner
@@ -521,7 +556,7 @@ tests:
           object: document:2
           relation: viewer
           user: beatrix
-        expectation: false
+        expectation: true
       - tuple:
           object: document:3
           relation: viewer
@@ -531,7 +566,7 @@ tests:
           object: document:4
           relation: viewer
           user: daphne
-        expectation: true
+        expectation: false
 
   - name: UnionAndExclusion
     model: |
