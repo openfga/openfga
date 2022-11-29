@@ -15,6 +15,8 @@ const (
 	UserSet UserType = "userset"
 )
 
+const Wildcard = "*"
+
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
 	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
@@ -73,8 +75,8 @@ func GetType(objectID string) string {
 	return t
 }
 
-// GetRelation returns the 'relation' portion of an object relation string, which may be empty if the input is malformed
-// (or does not contain a relation specifier).
+// GetRelation returns the 'relation' portion of an object relation string (e.g. `object#relation`), which may be empty if the input is malformed
+// (or does not contain a relation).
 func GetRelation(objectRelation string) string {
 	_, relation := SplitObjectRelation(objectRelation)
 	return relation
@@ -83,12 +85,6 @@ func GetRelation(objectRelation string) string {
 // IsObjectRelation returns true if the given string specifies a valid object and relation.
 func IsObjectRelation(userset string) bool {
 	return GetType(userset) != "" && GetRelation(userset) != ""
-}
-
-// IsType returns true if the given string contains just a type.
-func IsType(object string) bool {
-	t, id := SplitObject(object)
-	return t != "" && id == ""
 }
 
 // ToObjectRelationString formats an object/relation pair as an object#relation string. This is the inverse of
@@ -128,6 +124,24 @@ func IsValidUser(user string) bool {
 	}
 	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
+	}
+
+	return false
+}
+
+// IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*')
+func IsWildcard(s string) bool {
+	return s == Wildcard || IsTypedWildcard(s)
+}
+
+// IsTypedWildcard returns true if the string 's' is a typed wildcard. A typed wildcard
+// has the form 'type:*'.
+func IsTypedWildcard(s string) bool {
+	if IsValidObject(s) {
+		_, id := SplitObject(s)
+		if id == Wildcard {
+			return true
+		}
 	}
 
 	return false

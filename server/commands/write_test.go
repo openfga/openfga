@@ -89,7 +89,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	}
 }
 
-func TestValidateWriteTuples(t *testing.T) {
+func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
 		deletes       []*openfgapb.TupleKey
@@ -98,7 +98,7 @@ func TestValidateWriteTuples(t *testing.T) {
 	}
 
 	badItem := &openfgapb.TupleKey{
-		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
+		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(20)),
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
@@ -147,7 +147,7 @@ func TestValidateWriteTuples(t *testing.T) {
 				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
 			}
 
-			err := cmd.validateTuplesets(ctx, req)
+			err := cmd.validateWriteRequest(ctx, req)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
