@@ -1017,7 +1017,7 @@ tests:
         user: daphne
       - object: document:5
         relation: editor
-        user: imogen
+        user: elise
     assertions:
       - tuple:
           object: document:1
@@ -1042,7 +1042,7 @@ tests:
       - tuple:
           object: document:5
           relation: viewer
-          user: imogen
+          user: elise
         expectation: true
 
   - name: ExclusionAndUnionInSubtract
@@ -1060,24 +1060,15 @@ tests:
       - object: document:1
         relation: editor
         user: abigail
-      - object: document:1
-        relation: owner
-        user: abigail
       - object: document:2
         relation: writer
         user: beatrix
       - object: document:2
-        relation: editor
+        relation: owner
         user: beatrix
       - object: document:3
         relation: writer
         user: charlie
-      - object: document:3
-        relation: owner
-        user: charlie
-      - object: document:4
-        relation: writer
-        user: daphne
     assertions:
       - tuple:
           object: document:1
@@ -1093,11 +1084,6 @@ tests:
           object: document:3
           relation: viewer
           user: charlie
-        expectation: false
-      - tuple:
-          object: document:4
-          relation: viewer
-          user: daphne
         expectation: true
 
   - name: ExclusionAndIntersectionInBase
@@ -1132,7 +1118,7 @@ tests:
         user: daphne
       - object: document:5
         relation: owner
-        user: imogen
+        user: elise
     assertions:
       - tuple:
           object: document:1
@@ -1157,7 +1143,7 @@ tests:
       - tuple:
           object: document:5
           relation: viewer
-          user: imogen
+          user: elise
         expectation: false
 
   - name: ExclusionAndIntersectionInSubtract
