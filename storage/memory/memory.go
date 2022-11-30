@@ -226,11 +226,6 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
@@ -331,42 +326,34 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
 			return t, nil
 		}
 	}
+
 	telemetry.TraceError(span, storage.ErrNotFound)
 	return nil, storage.ErrNotFound
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
-func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(&openfgapb.TupleKey{
-			Object:   key.GetObject(),
-			Relation: key.GetRelation(),
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
 			matches = append(matches, t)
 		}
 	}
+
 	return &staticIterator{tuples: matches}, nil
 }
 

@@ -235,7 +235,7 @@ type filteredTupleKeyIterator struct {
 
 var _ TupleKeyIterator = &filteredTupleKeyIterator{}
 
-// Next() returns the next most tuple in the underlying iterator that meets
+// Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
 func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
 
