@@ -187,14 +187,30 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 // NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
 // contained in the provided list of TupleKeys. You can optionally pass in a function that
 // will remove the objects that don't match the filter.
-func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey, filterFunc TupleKeyFilterFunc) ObjectIterator {
+func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
 
 	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
-		if filterFunc != nil && filterFunc(tk) {
-			objectType, objectID := tuple.SplitObject(tk.GetObject())
-			objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
+		objectType, objectID := tuple.SplitObject(tk.GetObject())
+		objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
+	}
+
+	return NewStaticObjectIterator(objects)
+}
+
+func NewObjectIteratorFromTupleKeyIterator(iter TupleKeyIterator) ObjectIterator {
+	objects := make([]*openfgapb.Object, 0)
+	for {
+		tk, err := iter.Next()
+		if err != nil {
+			if err == ErrIteratorDone {
+				break
+			} else {
+				return nil
+			}
 		}
+		objectType, objectID := tuple.SplitObject(tk.GetObject())
+		objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
 	}
 
 	return NewStaticObjectIterator(objects)

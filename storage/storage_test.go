@@ -151,7 +151,7 @@ func ExampleNewUniqueObjectIterator() {
 		tuple.NewTupleKey("document:doc1", "viewer", "elbuo"),
 	}
 
-	iter1 := NewTupleKeyObjectIterator(contextualTuples, nil)
+	iter1 := NewTupleKeyObjectIterator(contextualTuples)
 
 	// this would generally be a database call
 	iter2 := NewStaticObjectIterator([]*openfgapb.Object{

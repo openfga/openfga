@@ -238,11 +238,11 @@ func (q *ListObjectsQuery) performChecks(
 	errChan chan<- error,
 	resolvedChan chan<- struct{},
 ) {
-	iter1 := storage.NewTupleKeyObjectIterator(
-		req.GetContextualTuples().GetTupleKeys(),
+	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
+		storage.NewStaticTupleKeyIterator(req.GetContextualTuples().GetTupleKeys()),
 		func(tk *openfgapb.TupleKey) bool {
 			return tuple.GetType(tk.GetObject()) == req.GetType()
-		})
+		}))
 
 	iter2, err := q.Datastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
 	if err != nil {
