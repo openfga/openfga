@@ -899,7 +899,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 					},
 				},
 			},
-			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+			err: InvalidRelationTypeError("document", "parent", "folder", "member"),
 		},
 		{
 			name: "userset specified as allowed type, but the relation is used in a TTU rewrite included in a union",
@@ -958,7 +958,55 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 					},
 				},
 			},
-			err: &InvalidRelationError{ObjectType: "document", Relation: "parent"},
+			err: InvalidRelationTypeError("document", "parent", "folder", "parent"),
+		},
+		{
+			name: "WildcardNotAllowedInTheTuplesetPartOfTTU",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": Union(This(), TupleToUserset("parent", "viewer")),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										WildcardRelationReference("folder"),
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: InvalidRelationTypeError("document", "parent", "folder", ""),
 		},
 	}
 
