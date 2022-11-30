@@ -107,7 +107,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}, nil
 }
 
-// getTypeRelationRewrite validates a tuple and returns the userset corresponding to the "object" and "relation"
+// getTypeRelationRewrite returns the rewrite corresponding to the "object" and "relation"
 func getTypeRelationRewrite(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
 	objectType := tupleUtils.GetType(tk.GetObject())
 
