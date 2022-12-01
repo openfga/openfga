@@ -136,6 +136,9 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
+		if err == storage.ErrNotFound {
+			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		}
 		return serverErrors.HandleError("", err)
 	}
 
