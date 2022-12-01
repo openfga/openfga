@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/karlseguin/ccache/v2"
 	"html/template"
 	"net"
 	"net/http"
@@ -363,6 +364,7 @@ func runServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
+	datastore = caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
@@ -436,7 +438,8 @@ func runServer(ctx context.Context, config *Config) error {
 	}
 
 	svr := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
+		CheckCache:   ccache.New(ccache.Configure()),
+		Datastore:    datastore,
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,

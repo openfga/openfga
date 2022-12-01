@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/karlseguin/ccache/v2"
+
 	"github.com/oklog/ulid/v2"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -31,17 +33,19 @@ const (
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	tracer    trace.Tracer
-	meter     metric.Meter
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	transport gateway.Transport
-	config    *Config
+	tracer     trace.Tracer
+	meter      metric.Meter
+	logger     logger.Logger
+	datastore  storage.OpenFGADatastore
+	checkCache *ccache.Cache
+	encoder    encoder.Encoder
+	transport  gateway.Transport
+	config     *Config
 }
 
 type Dependencies struct {
 	Datastore    storage.OpenFGADatastore
+	CheckCache   *ccache.Cache
 	Tracer       trace.Tracer
 	Meter        metric.Meter
 	Logger       logger.Logger
@@ -60,13 +64,14 @@ type Config struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
 	return &Server{
-		tracer:    dependencies.Tracer,
-		meter:     dependencies.Meter,
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		tracer:     dependencies.Tracer,
+		meter:      dependencies.Meter,
+		logger:     dependencies.Logger,
+		datastore:  dependencies.Datastore,
+		checkCache: dependencies.CheckCache,
+		encoder:    dependencies.TokenEncoder,
+		transport:  dependencies.Transport,
+		config:     config,
 	}
 }
 
@@ -101,6 +106,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
+		CheckCache:            s.checkCache,
 		Logger:                s.logger,
 		Tracer:                s.tracer,
 		Meter:                 s.meter,
@@ -239,7 +245,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	q := commands.NewCheckQuery(s.datastore, s.checkCache, 10*time.Second, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,

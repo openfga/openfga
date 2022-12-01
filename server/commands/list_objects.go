@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/karlseguin/ccache/v2"
+
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -28,6 +30,7 @@ const (
 
 type ListObjectsQuery struct {
 	Datastore             storage.OpenFGADatastore
+	CheckCache            *ccache.Cache
 	Logger                logger.Logger
 	Tracer                trace.Tracer
 	Meter                 metric.Meter
@@ -297,7 +300,7 @@ func (q *ListObjectsQuery) internalCheck(
 	objectsFound *uint32,
 	resultsChan chan<- string,
 ) error {
-	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
+	query := NewCheckQuery(q.Datastore, q.CheckCache, 10*time.Second, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
 
 	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              req.GetStoreId(),
