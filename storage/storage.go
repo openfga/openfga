@@ -186,10 +186,8 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 }
 
 // NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
-// contained in the provided list of TupleKeys. You can optionally pass in a function that
-// will remove the objects that don't match the filter.
+// contained in the provided list of TupleKeys.
 func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
-
 	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
 		objectType, objectID := tuple.SplitObject(tk.GetObject())
