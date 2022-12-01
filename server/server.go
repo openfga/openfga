@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v2"
-
 	"github.com/oklog/ulid/v2"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
