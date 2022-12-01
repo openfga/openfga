@@ -28,18 +28,12 @@ type checkTests struct {
 type checkTest struct {
 	Name       string
 	Model      string
-	Tuples     []tuple
+	Tuples     []*pb.TupleKey
 	Assertions []assertion
 }
 
-type tuple struct {
-	Object   string
-	Relation string
-	User     string
-}
-
 type assertion struct {
-	Tuple       tuple
+	Tuple       *pb.TupleKey
 	Expectation bool
 }
 
@@ -106,9 +100,7 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests
 			for _, tuple := range test.Tuples {
 				_, err = client.Write(ctx, &pb.WriteRequest{
 					StoreId: storeID,
-					Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
-						tupleUtils.NewTupleKey(tuple.Object, tuple.Relation, tuple.User),
-					}},
+					Writes:  &pb.TupleKeys{TupleKeys: []*pb.TupleKey{tuple}},
 				})
 				require.NoError(t, err)
 			}
@@ -116,7 +108,7 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests
 			for _, assertion := range test.Assertions {
 				resp, err := client.Check(ctx, &pb.CheckRequest{
 					StoreId:  storeID,
-					TupleKey: tupleUtils.NewTupleKey(assertion.Tuple.Object, assertion.Tuple.Relation, assertion.Tuple.User),
+					TupleKey: assertion.Tuple,
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
