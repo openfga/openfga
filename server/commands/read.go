@@ -2,8 +2,10 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -38,6 +40,10 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
+
+	if tupleUtils.GetType(tk.GetObject()) == "" && tk.GetUser() == "" {
+		return nil, serverErrors.ValidationError(fmt.Sprintf("objectID and user are required to read: '%s'", tk.String()))
+	}
 
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {

@@ -2,10 +2,10 @@ package commands
 
 import (
 	"context"
+	"errors"
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -28,27 +28,5 @@ func NewReadTuplesQuery(backend storage.TupleBackend, logger logger.Logger, enco
 
 // Execute the ReadTuplesQuery, returning the `openfga.Tuple`(s) for the store.
 func (q *ReadTuplesQuery) Execute(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
-	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
-	if err != nil {
-		return nil, serverErrors.InvalidContinuationToken
-	}
-
-	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	tuples, continuationToken, err := q.backend.ReadByStore(ctx, req.GetStoreId(), paginationOptions)
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	encodedToken, err := q.encoder.Encode(continuationToken)
-	if err != nil {
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	resp := &openfgapb.ReadTuplesResponse{
-		Tuples:            tuples,
-		ContinuationToken: encodedToken,
-	}
-
-	return resp, nil
+	return nil, errors.New("unimplemented")
 }
