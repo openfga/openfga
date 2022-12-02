@@ -75,16 +75,16 @@ func BuildConnectedObjectGraph(typesystem *typesystem.TypeSystem) *ConnectedObje
 	}
 }
 
-// RelationshipIngresses computes the incoming edges (ingresses) that are possible between the source object and
-// relation and the target user (user or userset).
+// RelationshipIngresses computes the incoming edges (ingresses) that are possible between the target relation reference
+// and the source relational reference.
 //
-// To look up Ingresses(`document#viewer`, `source`), where `source` is an object type with no relation, find the rewrites and types of viewer in the document type:
-// 1. If `source` is a relational type then add `source, direct` to the result.
+// To look up Ingresses(`document#viewer`, `source`), where `source` is an object type with no relation, find the rewrite and types of viewer in the document type:
+// 1. If `source` is a directly related type then add `source, direct` to the result.
 // 2. If `objectType#relation` is a type and `objectType#relation` can be a `source` then add `objectType#relation, direct` to the result.
 // 3. If computed userset, say `define viewer as writer`, then recurse on `document#writer, source`.
 // 4. If tuple-to-userset, say, viewer from parent. Go to parent and find its types. In this case, `folder`. Go to `folder` and see if it has a `viewer` relation. If so, recurse on `folder#viewer, source`.
 //
-// To look up Ingresses(`document#viewer`, `folder#viewer`), find the rewrites and relations of viewer in the document type:
+// To look up Ingresses(`document#viewer`, `folder#viewer`), find the rewrite and relations of viewer in the document type:
 // 1. If `folder#viewer` is a relational type then add `folder#viewer, direct` to the result.
 // 2. If computed userset, say `define viewer as writer`, then recurse on `document#writer, folder#viewer`.
 // 3. If tuple-to-userset, say, viewer from parent. Go to parent and find its related types.

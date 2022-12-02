@@ -708,6 +708,74 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "IngressesInvolvingWildcardInTypes",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"editor": typesystem.This(),
+							"viewer": typesystem.ComputedUserset("editor"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("document", "editor"),
+				},
+			},
+		},
+		{
+			name: "IngressesInvolvingWildcardInSource",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"editor": typesystem.This(),
+							"viewer": typesystem.ComputedUserset("editor"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.WildcardRelationReference("user"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("document", "editor"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

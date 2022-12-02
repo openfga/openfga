@@ -38,7 +38,7 @@ func DirectRelationReference(objectType, relation string) *openfgapb.RelationRef
 func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
 		Type:               objectType,
-		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{Wildcard: &openfgapb.Wildcard{}},
 	}
 }
 
@@ -217,8 +217,11 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, sour
 	}
 
 	for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == relationReference.GetType() && source.GetRelation() == relationReference.GetRelation() {
-			return true, nil
+		if source.GetType() == relationReference.GetType() {
+			// Either the relations are the same or one or both are wildcard type.
+			if relationReference.GetRelation() == source.GetRelation() || (relationReference.GetRelation() == "" && source.GetRelation() == "") {
+				return true, nil
+			}
 		}
 	}
 
