@@ -77,17 +77,17 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
-	userset, err := getTypeDefinitionRelationUsersets(rc.tk, typesys)
+	err = validation.ValidateTuple(typesys, tk)
+	if err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
 		return nil, err
 	}
-	if userset == nil {
-		// the tuple in the Check request is invalid according to the model being used, so throw an error
-		actualErr := validation.ValidateTuple(typesys, rc.tk)
-		return nil, serverErrors.HandleTupleValidateError(actualErr)
-	}
 
-	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
+	if err := query.resolveNode(ctx, rc, rewrite, typesys); err != nil {
 		return nil, err
 	}
 
@@ -107,38 +107,13 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}, nil
 }
 
-// getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
-func getTypeDefinitionRelationUsersets(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
-
+// getTypeRelationRewrite returns the rewrite corresponding to the "object" and "relation"
+func getTypeRelationRewrite(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
 	objectType := tupleUtils.GetType(tk.GetObject())
 
 	relation, err := typesys.GetRelation(objectType, tk.GetRelation())
 	if err != nil {
-		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return nil, serverErrors.HandleTupleValidateError(
-				&tupleUtils.TypeNotFoundError{
-					TypeName: objectType,
-				},
-			)
-		}
-
-		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return nil, serverErrors.HandleTupleValidateError(
-				&tupleUtils.RelationNotFoundError{
-					TypeName: objectType,
-					Relation: tk.GetRelation(),
-					TupleKey: tk,
-				},
-			)
-		}
-
 		return nil, err
-	}
-
-	err = validation.ValidateTuple(typesys, tk)
-	if err != nil {
-		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
-		return nil, nil
 	}
 
 	return relation.GetRewrite(), nil
@@ -220,11 +195,13 @@ func (query *CheckQuery) resolveComputed(
 	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
-	userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
+
+	rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
 	if err != nil {
 		return err
 	}
-	return query.resolveNode(ctx, nestedRC, userset, typesys)
+
+	return query.resolveNode(ctx, nestedRC, rewrite, typesys)
 }
 
 // resolveDirectUserSet attempts to find individual user concurrently by resolving the usersets. If the user is found
@@ -307,9 +284,9 @@ func (query *CheckQuery) resolveDirectUserSet(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys)
+			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset, typesys)
+				err = query.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
 			select {
@@ -572,9 +549,9 @@ func (query *CheckQuery) resolveTupleToUserset(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := getTypeDefinitionRelationUsersets(nestedRC.tk, typesys) // folder:budgets#reader
+			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys) // folder:budgets#reader
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset, typesys)
+				err = query.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
 			select {

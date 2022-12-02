@@ -147,6 +147,7 @@ func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iter1, iter2}
 }
 
+// NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
 func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
 	iter := &staticIterator[*openfgapb.Tuple]{
 		items: tuples,
@@ -187,7 +188,6 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 // NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
 // contained in the provided list of TupleKeys.
 func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
-
 	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
 		objectType, objectID := tuple.SplitObject(tk.GetObject())
@@ -195,6 +195,30 @@ func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
 	}
 
 	return NewStaticObjectIterator(objects)
+}
+
+type tupleKeyObjectIterator struct {
+	iter TupleKeyIterator
+}
+
+var _ ObjectIterator = (*tupleKeyObjectIterator)(nil)
+
+func (t *tupleKeyObjectIterator) Next() (*openfgapb.Object, error) {
+	tk, err := t.iter.Next()
+	if err != nil {
+		return nil, err
+	}
+	objectType, objectID := tuple.SplitObject(tk.GetObject())
+	return &openfgapb.Object{Type: objectType, Id: objectID}, nil
+}
+
+func (t *tupleKeyObjectIterator) Stop() {
+	t.iter.Stop()
+}
+
+// NewObjectIteratorFromTupleKeyIterator takes a TupleKeyIterator and yields all the objects from it as a ObjectIterator.
+func NewObjectIteratorFromTupleKeyIterator(iter TupleKeyIterator) ObjectIterator {
+	return &tupleKeyObjectIterator{iter}
 }
 
 type staticIterator[T any] struct {
