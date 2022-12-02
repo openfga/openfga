@@ -339,18 +339,6 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return &tupleIterator{rows: rows}, nil
 }
 
-func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
-	defer span.End()
-
-	iter, err := p.read(ctx, store, nil, opts)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return iter.toArray(opts)
-}
-
 func (p *Postgres) MaxTuplesInWriteOperation() int {
 	return p.maxTuplesInWrite
 }

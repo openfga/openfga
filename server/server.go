@@ -190,15 +190,23 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	})
 }
 
+// ReadTuples returns all tuples for a given store.
+//
+// Deprecated: Please use Read with an empty tuple instead.
 func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
+	resp, err := s.Read(ctx, &openfgapb.ReadRequest{
+		StoreId:           req.GetStoreId(),
+		PageSize:          req.GetPageSize(),
+		ContinuationToken: req.GetContinuationToken(),
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	ctx, span := s.tracer.Start(ctx, "readTuples", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
-	defer span.End()
-
-	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encoder)
-	return q.Execute(ctx, req)
+	return &openfgapb.ReadTuplesResponse{
+		Tuples:            resp.GetTuples(),
+		ContinuationToken: resp.GetContinuationToken(),
+	}, nil
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {

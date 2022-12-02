@@ -2,7 +2,7 @@ package commands
 
 import (
 	"context"
-	"fmt"
+
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -38,11 +38,14 @@ func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logge
 // nil or empty.
 func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
 	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
 
-	if tupleUtils.GetType(tk.GetObject()) == "" && tk.GetUser() == "" {
-		return nil, serverErrors.ValidationError(fmt.Sprintf("objectID and user are required to read: '%s'", tk.String()))
+	// Restrict our reads due to some compatibility issues in one of our storage implementations.
+	if !(tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "") {
+		objectType, objectId := tupleUtils.SplitObject(tk.GetObject())
+		if objectType == "" || (objectId == "" && tk.GetUser() == "") {
+			return nil, serverErrors.ValidationError("to read all tuples pass an empty tuple, otherwise object type is required and both object id and user cannot be empty")
+		}
 	}
 
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
@@ -51,10 +54,6 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	}
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-
-	if _, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID); err != nil {
-		return nil, serverErrors.AuthorizationModelNotFound(modelID)
-	}
 
 	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
 	if err != nil {

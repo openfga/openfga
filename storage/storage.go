@@ -331,13 +331,6 @@ type TupleBackend interface {
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
 
-	// ReadByStore reads the tuples associated with `store`.
-	ReadByStore(
-		ctx context.Context,
-		store string,
-		opts PaginationOptions,
-	) ([]*openfgapb.Tuple, []byte, error)
-
 	// MaxTuplesInWriteOperation returns the maximum number of items allowed in a single write transaction
 	MaxTuplesInWriteOperation() int
 }
