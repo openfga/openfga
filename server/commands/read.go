@@ -42,8 +42,8 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 
 	// Restrict our reads due to some compatibility issues in one of our storage implementations.
 	if !(tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "") {
-		objectType, objectId := tupleUtils.SplitObject(tk.GetObject())
-		if objectType == "" || (objectId == "" && tk.GetUser() == "") {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		if objectType == "" || (objectID == "" && tk.GetUser() == "") {
 			return nil, serverErrors.ValidationError("to read all tuples pass an empty tuple, otherwise object type is required and both object id and user cannot be empty")
 		}
 	}

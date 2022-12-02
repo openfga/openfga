@@ -18,8 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var errObjectOrUserMustBeSpecified = errors.New("either object or user must be specified")
-
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
 	continuationToken []byte
