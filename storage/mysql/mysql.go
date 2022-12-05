@@ -292,6 +292,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
@@ -349,6 +350,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var modelIDs []string
 	var modelID string
@@ -547,6 +549,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var stores []*openfgapb.Store
 	var id string
@@ -651,6 +654,7 @@ func (m *MySQL) ReadChanges(
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var changes []*openfgapb.TupleChange
 	var ulid string
