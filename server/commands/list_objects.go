@@ -170,9 +170,8 @@ func (q *ListObjectsQuery) Execute(
 				return &openfgapb.ListObjectsResponse{
 					ObjectIds: objectIDs,
 				}, nil
-			} else {
-				objectIDs = append(objectIDs, objectID)
 			}
+			objectIDs = append(objectIDs, objectID)
 		case genericError, ok := <-errChan:
 			if ok {
 				return nil, serverErrors.NewInternalError("", genericError)
