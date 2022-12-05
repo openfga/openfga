@@ -210,7 +210,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga-server",
@@ -579,37 +579,24 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
 
-	model := &openfgapb.AuthorizationModel{
-		Id:            ulid.Make().String(),
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-			},
-		},
-	}
-
-	err := datastore.WriteAuthorizationModel(ctx, store, model)
-	require.NoError(t, err)
-
 	writes := []*openfgapb.TupleKey{
 		{
 			Object:   "repo:openfga/foo",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie",
 		},
 		{
 			Object:   "repo:openfga/bar",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie",
 		},
 		{
 			Object:   "repo:openfga/baz",
 			Relation: "admin",
-			User:     "github|jon.allie@openfga",
+			User:     "github|jon.allie",
 		},
 	}
-	err = datastore.Write(ctx, store, nil, writes)
+	err := datastore.Write(ctx, store, nil, writes)
 	require.NoError(t, err)
 
 	cmd := commands.NewReadQuery(datastore, tracer, logger, encoder.NewBase64Encoder())
