@@ -174,19 +174,12 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-
 	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
-		StoreId:              store,
-		TupleKey:             tk,
-		AuthorizationModelId: modelID,
-		PageSize:             req.GetPageSize(),
-		ContinuationToken:    req.GetContinuationToken(),
+		StoreId:           store,
+		TupleKey:          tk,
+		PageSize:          req.GetPageSize(),
+		ContinuationToken: req.GetContinuationToken(),
 	})
 }
 
