@@ -185,7 +185,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 
 // ReadTuples returns all tuples for a given store.
 //
-// Deprecated: Please use Read with an empty tuple instead.
+// Deprecated: Please use Read with a null tuple instead.
 func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
 	resp, err := s.Read(ctx, &openfgapb.ReadRequest{
 		StoreId:           req.GetStoreId(),
