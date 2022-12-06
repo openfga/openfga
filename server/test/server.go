@@ -32,11 +32,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 	t.Run("TestReadQuerySuccess", func(t *testing.T) { ReadQuerySuccessTest(t, ds) })
 	t.Run("TestReadQueryError", func(t *testing.T) { ReadQueryErrorTest(t, ds) })
-
-	t.Run("TestReadTuplesQuery", func(t *testing.T) { TestReadTuplesQuery(t, ds) })
-	t.Run("TestReadTuplesQueryInvalidContinuationToken",
-		func(t *testing.T) { TestReadTuplesQueryInvalidContinuationToken(t, ds) },
-	)
+	t.Run("TestReadAllTuples", func(t *testing.T) { ReadAllTuplesTest(t, ds) })
+	t.Run("TestReadAllTuplesInvalidContinuationToken", func(t *testing.T) { ReadAllTuplesInvalidContinuationTokenTest(t, ds) })
 
 	t.Run("TestReadAuthorizationModelsWithoutPaging",
 		func(t *testing.T) { TestReadAuthorizationModelsWithoutPaging(t, ds) },

@@ -308,7 +308,7 @@ func NewMockStreamServer(size int) *mockStreamServer {
 }
 
 func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error {
-	x.channel <- m.ObjectId
+	x.channel <- m.Object
 	return nil
 }
 
@@ -355,8 +355,8 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			require.ErrorIs(t, err, test.expectedError)
 
 			if res != nil {
-				require.LessOrEqual(t, len(res.ObjectIds), defaultListObjectsMaxResults)
-				require.Subset(t, test.expectedResult, res.ObjectIds)
+				require.LessOrEqual(t, len(res.Objects), defaultListObjectsMaxResults)
+				require.Subset(t, test.expectedResult, res.Objects)
 			}
 		})
 	}
