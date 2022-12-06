@@ -1559,6 +1559,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 		model  *openfgapb.AuthorizationModel
 		target *openfgapb.RelationReference
 		source *openfgapb.RelationReference
+		result bool
 	}{
 		{
 			name: "WildcardAndWildcard",
@@ -1586,6 +1587,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			},
 			target: DirectRelationReference("document", "viewer"),
 			source: WildcardRelationReference("user"),
+			result: false,
 		},
 		{
 			name: "WildcardAndDirect",
@@ -1613,6 +1615,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			},
 			target: DirectRelationReference("document", "viewer"),
 			source: DirectRelationReference("user", ""),
+			result: true,
 		},
 		{
 			name: "DirectAndWildcard",
@@ -1640,15 +1643,17 @@ func TestIsDirectlyRelated(t *testing.T) {
 			},
 			target: DirectRelationReference("document", "viewer"),
 			source: WildcardRelationReference("user"),
+			result: false,
 		},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			typesys := New(test.model)
 
 			ok, err := typesys.IsDirectlyRelated(test.target, test.source)
 			require.NoError(t, err)
-			require.True(t, ok)
+			require.Equal(t, ok, test.result)
 		})
 	}
 }
