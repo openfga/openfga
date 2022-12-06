@@ -1587,7 +1587,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			},
 			target: DirectRelationReference("document", "viewer"),
 			source: WildcardRelationReference("user"),
-			result: false,
+			result: true,
 		},
 		{
 			name: "WildcardAndDirect",
