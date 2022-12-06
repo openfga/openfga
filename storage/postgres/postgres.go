@@ -94,7 +94,7 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
 	}
 
-	db.SetMaxIdleConns(4)
+	db.SetMaxIdleConns(5)
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute

@@ -90,7 +90,7 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
 	}
 
-	db.SetMaxIdleConns(4)
+	db.SetMaxIdleConns(5)
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
