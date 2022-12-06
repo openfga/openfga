@@ -232,6 +232,8 @@ func (q *ListObjectsQuery) performChecks(
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) {
+	g := new(errgroup.Group)
+	g.SetLimit(maximumConcurrentChecks)
 	var objectsFound = new(uint32)
 
 	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
@@ -251,35 +253,34 @@ func (q *ListObjectsQuery) performChecks(
 	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
-	topg, subgctx := errgroup.WithContext(ctx)
-	topg.SetLimit(maximumConcurrentChecks)
-	topg.Go(func() error {
-		<-ctx.Done()
-		return ctx.Err()
-	})
-
 	// iterate over all object IDs in the store and check if the user has relation with each
 ForLoop:
 	for {
-		object, err := iter.Next()
-		if err != nil {
-			if !errors.Is(err, storage.ErrIteratorDone) {
-				errChan <- err
+		select {
+		case <-ctx.Done():
+			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
+			break ForLoop
+		default:
+			object, err := iter.Next()
+			if err != nil {
+				if !errors.Is(err, storage.ErrIteratorDone) {
+					errChan <- err
+				}
+				break ForLoop
 			}
-			break ForLoop
-		}
-		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
-			break ForLoop
-		}
+			if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
+				break ForLoop
+			}
 
-		checkFunction := func() error {
-			return q.internalCheck(subgctx, object, req, objectsFound, resultsChan)
-		}
+			checkFunction := func() error {
+				return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
+			}
 
-		topg.Go(checkFunction)
+			g.Go(checkFunction)
+		}
 	}
 
-	err = topg.Wait()
+	err = g.Wait()
 	if err != nil {
 		errChan <- err
 	}

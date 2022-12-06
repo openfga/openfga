@@ -68,34 +68,32 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		return err
 	}
 
-	topg, gctx := errgroup.WithContext(ctx)
-
-	// cancel the group context if the parent ctx is cancelled
-	topg.Go(func() error {
-		<-ctx.Done()
-		return ctx.Err()
-	})
-
 	for _, ingress := range ingresses {
-		r := &reverseExpandRequest{
-			storeID:          storeID,
-			ingress:          ingress,
-			sourceObjectRef:  sourceObjRef,
-			targetUserRef:    req.User,
-			contextualTuples: req.ContextualTuples,
-		}
-
-		var err error
-		switch ingress.Type {
-		case graph.DirectIngress:
-			err = c.reverseExpandDirect(gctx, r, resultChan, foundObjectsMap, foundCount)
-		case graph.TupleToUsersetIngress:
-			err = c.reverseExpandTupleToUserset(gctx, r, resultChan, foundObjectsMap, foundCount)
+		select {
+		case <-ctx.Done():
+			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
+			return nil
 		default:
-			err = fmt.Errorf("unsupported ingress type")
-		}
-		if err != nil {
-			return err
+			r := &reverseExpandRequest{
+				storeID:          storeID,
+				ingress:          ingress,
+				sourceObjectRef:  sourceObjRef,
+				targetUserRef:    req.User,
+				contextualTuples: req.ContextualTuples,
+			}
+
+			var err error
+			switch ingress.Type {
+			case graph.DirectIngress:
+				err = c.reverseExpandDirect(ctx, r, resultChan, foundObjectsMap, foundCount)
+			case graph.TupleToUsersetIngress:
+				err = c.reverseExpandTupleToUserset(ctx, r, resultChan, foundObjectsMap, foundCount)
+			default:
+				err = fmt.Errorf("unsupported ingress type")
+			}
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -184,60 +182,70 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
+	g := errgroup.Group{}
+	g.SetLimit(100) // set some concurrency limit
 
+ForLoop:
 	for {
-		t, err := iter.Next()
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				return subg.Wait()
+		select {
+		case <-ctx.Done():
+			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
+			break ForLoop
+		default:
+			t, err := iter.Next()
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break ForLoop
+				}
+
+				return err
 			}
 
-			return err
-		}
+			tk := t.GetKey()
 
-		tk := t.GetKey()
+			foundObject := tk.GetObject()
+			foundObjectType, _ := tuple.SplitObject(foundObject)
 
-		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
+			userObj, _ := tuple.SplitObjectRelation(tk.GetUser())
 
-		userObj, _ := tuple.SplitObjectRelation(tk.GetUser())
+			if userObj == tuple.Wildcard {
 
-		if userObj == tuple.Wildcard {
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", foundObjectType, tuplesetRelation),
-				tuple.NewTupleKey(foundObject, tuplesetRelation, tuple.Wildcard),
-			)
-		}
-
-		if _, ok := foundObjectsMap.Load(foundObject); ok {
-			// todo(jon-whit): we could optimize this by avoiding reading this
-			// from the database in the first place
-
-			// if we've already evaluated/found the object, then continue
-			continue
-		}
-
-		if foundObjectType == sourceObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
-				return subg.Wait()
+				return serverErrors.InvalidTuple(
+					fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", foundObjectType, tuplesetRelation),
+					tuple.NewTupleKey(foundObject, tuplesetRelation, tuple.Wildcard),
+				)
 			}
 
-			resultChan <- foundObject
-			foundObjectsMap.Store(foundObject, struct{}{})
-		}
+			if _, ok := foundObjectsMap.Load(foundObject); ok {
+				// todo(jon-whit): we could optimize this by avoiding reading this
+				// from the database in the first place
 
-		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
-				StoreID:          store,
-				ObjectType:       sourceObjectType,
-				Relation:         sourceObjectRel,
-				User:             &openfgapb.ObjectRelation{Object: foundObject, Relation: req.targetUserRef.Relation},
-				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
-		})
+				// if we've already evaluated/found the object, then continue
+				continue
+			}
+
+			if foundObjectType == sourceObjectType {
+				if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
+					break ForLoop
+				}
+
+				resultChan <- foundObject
+				foundObjectsMap.Store(foundObject, struct{}{})
+			}
+
+			g.Go(func() error {
+				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+					StoreID:          store,
+					ObjectType:       sourceObjectType,
+					Relation:         sourceObjectRel,
+					User:             &openfgapb.ObjectRelation{Object: foundObject, Relation: req.targetUserRef.Relation},
+					ContextualTuples: req.contextualTuples,
+				}, resultChan, foundObjectsMap, foundCount)
+			})
+		}
 	}
+
+	return g.Wait()
 }
 
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
@@ -295,53 +303,63 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
+	g := errgroup.Group{}
+	g.SetLimit(100) // set some concurrency limit
 
+ForLoop:
 	for {
-		t, err := iter.Next()
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				return subg.Wait()
+		select {
+		case <-ctx.Done():
+			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
+			break ForLoop
+		default:
+			t, err := iter.Next()
+			if err != nil {
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break ForLoop
+				}
+
+				return err
 			}
 
-			return err
-		}
+			tk := t.GetKey()
 
-		tk := t.GetKey()
+			foundObject := tk.GetObject()
+			foundObjectType, _ := tuple.SplitObject(foundObject)
 
-		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
+			if _, ok := foundObjectsMap.Load(foundObject); ok {
+				// todo(jon-whit): we could optimize this by avoiding reading this
+				// from the database in the first place
 
-		if _, ok := foundObjectsMap.Load(foundObject); ok {
-			// todo(jon-whit): we could optimize this by avoiding reading this
-			// from the database in the first place
-
-			// if we've already evaluated/found the object, then continue
-			continue
-		}
-
-		if foundObjectType == sourceObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
-				return subg.Wait()
+				// if we've already evaluated/found the object, then continue
+				continue
 			}
 
-			resultChan <- foundObject
-			foundObjectsMap.Store(foundObject, struct{}{})
-		}
+			if foundObjectType == sourceObjectType {
+				if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
+					break ForLoop
+				}
 
-		user := &openfgapb.ObjectRelation{Object: foundObject}
-		if tk.GetRelation() != "" {
-			user.Relation = tk.GetRelation()
-		}
+				resultChan <- foundObject
+				foundObjectsMap.Store(foundObject, struct{}{})
+			}
 
-		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
-				StoreID:          store,
-				ObjectType:       sourceObjectType,
-				Relation:         sourceObjectRel,
-				User:             user,
-				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
-		})
+			user := &openfgapb.ObjectRelation{Object: foundObject}
+			if tk.GetRelation() != "" {
+				user.Relation = tk.GetRelation()
+			}
+
+			g.Go(func() error {
+				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+					StoreID:          store,
+					ObjectType:       sourceObjectType,
+					Relation:         sourceObjectRel,
+					User:             user,
+					ContextualTuples: req.contextualTuples,
+				}, resultChan, foundObjectsMap, foundCount)
+			})
+		}
 	}
+
+	return g.Wait()
 }
