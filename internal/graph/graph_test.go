@@ -709,6 +709,67 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
+			name: "UserIsASubsetOfUserStar",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+				},
+			},
+		},
+		{
+			name: "UserStarIsNotASubsetOfUser",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target:   typesystem.DirectRelationReference("document", "viewer"),
+			source:   typesystem.WildcardRelationReference("user"),
+			expected: []*RelationshipIngress{},
+		},
+		{
 			name: "IngressesInvolvingWildcardInTypes",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -767,14 +828,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 					},
 				},
 			},
-			target: typesystem.DirectRelationReference("document", "viewer"),
-			source: typesystem.WildcardRelationReference("user"),
-			expected: []*RelationshipIngress{
-				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "editor"),
-				},
-			},
+			target:   typesystem.DirectRelationReference("document", "viewer"),
+			source:   typesystem.WildcardRelationReference("user"),
+			expected: []*RelationshipIngress{},
 		},
 	}
 
