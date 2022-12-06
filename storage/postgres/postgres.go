@@ -352,6 +352,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
@@ -409,6 +410,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var modelIDs []string
 	var modelID string
@@ -589,6 +591,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var stores []*openfgapb.Store
 	var id string
@@ -693,6 +696,7 @@ func (p *Postgres) ReadChanges(
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var changes []*openfgapb.TupleChange
 	var ulid string
