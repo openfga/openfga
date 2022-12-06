@@ -567,7 +567,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgapb.CheckRequest{
 				StoreId: ulid.Make().String(),
 				// AuthorizationModelId is generated automatically during testData bootstrap
-				TupleKey: tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+				TupleKey: tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
 				Trace:    true,
 			},
 			output: output{
@@ -597,7 +597,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				},
 				tuples: &openfgapb.TupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
+						tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
 					},
 				},
 			},

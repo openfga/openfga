@@ -84,7 +84,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			{
 				name:           "does not return duplicates",
 				request:        newListObjectsRequest(store, "repo", "admin", "anna", model.Id, nil),
-				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6"},
 				expectedError:  nil,
 			},
 
@@ -96,13 +96,13 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
 				name:           "performs correct checks",
 				request:        newListObjectsRequest(store, "repo", "admin", "bob", model.Id, nil),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -117,7 +117,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"2", "5", "6", "7"},
+				expectedResult: []string{"repo:2", "repo:5", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
@@ -128,7 +128,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -201,31 +201,31 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		testCases := []listObjectsTestCase{
 			{
 				name:           "does not return duplicates",
-				request:        newListObjectsRequest(store, "repo", "admin", "anna", model.Id, nil),
-				expectedResult: []string{"1", "2", "3", "4", "6"},
+				request:        newListObjectsRequest(store, "repo", "admin", "user:anna", model.Id, nil),
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6"},
 				expectedError:  nil,
 			},
 
 			{
 				name: "respects max results",
-				request: newListObjectsRequest(store, "repo", "admin", "anna", model.Id, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "user:anna", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "anna",
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
 				name:           "performs correct checks",
-				request:        newListObjectsRequest(store, "repo", "admin", "bob", model.Id, nil),
-				expectedResult: []string{"2", "6"},
+				request:        newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, nil),
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
 				name: "includes contextual tuples in the checks",
-				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "admin",
@@ -235,23 +235,23 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"2", "5", "6", "7"},
+				expectedResult: []string{"repo:2", "repo:5", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
 				name: "ignores irrelevant contextual tuples in the checks",
-				request: newListObjectsRequest(store, "repo", "admin", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
 				name: "ignores irrelevant contextual tuples in the checks because they are not of the same type",
-				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+				request: newListObjectsRequest(store, "repo", "owner", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "owner",
@@ -262,13 +262,13 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			{
 				name:           "returns error if unknown type",
-				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
+				request:        newListObjectsRequest(store, "unknown", "admin", "user:anna", model.Id, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.TypeNotFound("unknown"),
 			},
 			{
 				name:           "returns error if unknown relation",
-				request:        newListObjectsRequest(store, "repo", "unknown", "anna", model.Id, nil),
+				request:        newListObjectsRequest(store, "repo", "unknown", "user:anna", model.Id, nil),
 				expectedResult: nil,
 				expectedError:  serverErrors.RelationNotFound("unknown", "repo", nil),
 			},
@@ -308,7 +308,7 @@ func NewMockStreamServer(size int) *mockStreamServer {
 }
 
 func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error {
-	x.channel <- m.ObjectId
+	x.channel <- m.Object
 	return nil
 }
 
@@ -355,8 +355,8 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			require.ErrorIs(t, err, test.expectedError)
 
 			if res != nil {
-				require.LessOrEqual(t, len(res.ObjectIds), defaultListObjectsMaxResults)
-				require.Subset(t, test.expectedResult, res.ObjectIds)
+				require.LessOrEqual(t, len(res.Objects), defaultListObjectsMaxResults)
+				require.Subset(t, test.expectedResult, res.Objects)
 			}
 		})
 	}

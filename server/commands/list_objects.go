@@ -157,7 +157,7 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	attributes := make([]attribute.KeyValue, 1)
-	objectIDs := make([]string, 0)
+	objects := make([]string, 0)
 
 	for {
 		select {
@@ -165,13 +165,13 @@ func (q *ListObjectsQuery) Execute(
 			if !ok {
 				// Channel closed! No more results. Send them all
 				attributes = append(attributes, attribute.Bool("complete_results", true))
-				listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
+				listObjectsGauge.Observe(ctx, int64(len(objects)), attributes...)
 
 				return &openfgapb.ListObjectsResponse{
-					ObjectIds: objectIDs,
+					Objects: objects,
 				}, nil
 			}
-			objectIDs = append(objectIDs, objectID)
+			objects = append(objects, objectID)
 		case genericError, ok := <-errChan:
 			if ok {
 				return nil, serverErrors.NewInternalError("", genericError)
@@ -207,14 +207,14 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 	for {
 		select {
-		case objectID, ok := <-resultsChan:
+		case object, ok := <-resultsChan:
 			if !ok {
 				// Channel closed! No more results.
 				return nil
 			}
 
 			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-				ObjectId: objectID,
+				Object: object,
 			}); err != nil {
 				return serverErrors.NewInternalError("", err)
 			}
@@ -309,7 +309,7 @@ func (q *ListObjectsQuery) internalCheck(
 		return nil
 	}
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
-		resultsChan <- obj.Id
+		resultsChan <- tuple.ObjectKey(obj)
 	}
 
 	return nil

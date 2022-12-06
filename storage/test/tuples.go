@@ -161,9 +161,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		err = datastore.Write(ctx, storeID, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]})
 		require.EqualError(t, err, expectedError.Error())
 
-		tuples, _, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 50})
+		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
 		require.NoError(t, err)
-
 		require.Equal(t, len(tks), len(tuples))
 	})
 
@@ -340,8 +339,8 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NotEmpty(t, contToken)
 	})
 
-	t.Run("readByStore pagination works properly", func(t *testing.T) {
-		tuple0, contToken0, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 1})
+	t.Run("ReadPaginationWorks", func(t *testing.T) {
+		tuple0, contToken0, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuple0, 1)
 		require.NotEmpty(t, contToken0)
@@ -350,7 +349,7 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 			t.Fatalf("mismatch (-got +want):\n%s", diff)
 		}
 
-		tuple1, contToken1, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		require.NoError(t, err)
 		require.Len(t, tuple1, 1)
 		require.Empty(t, contToken1)
@@ -361,14 +360,14 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 
 	t.Run("reading by storeID completely does not return a continuation token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 2})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
 	t.Run("reading by storeID partially returns a continuation token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadByStore(ctx, storeID, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
 		require.NotEmpty(t, contToken)
