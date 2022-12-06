@@ -123,7 +123,6 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		var res []*RelationshipIngress
 
 		ok, _ := g.typesystem.IsDirectlyRelated(target, source)
-
 		if ok {
 			res = append(res, &RelationshipIngress{
 				Type:    DirectIngress,
