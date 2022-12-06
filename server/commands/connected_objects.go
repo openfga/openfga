@@ -191,7 +191,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
+		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
 		userObj, _ := tuple.SplitObjectRelation(tk.GetUser())
 
@@ -216,7 +216,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 				break
 			}
 
-			resultChan <- foundObject
+			resultChan <- foundObjectID
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
@@ -303,7 +303,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
+		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
 		if _, ok := foundObjectsMap.Load(foundObject); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
@@ -318,7 +318,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 				break
 			}
 
-			resultChan <- foundObject
+			resultChan <- foundObjectID
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 

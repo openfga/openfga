@@ -181,7 +181,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
 			},
-			expectedObjects: []string{"folder:folder1", "folder:folder2"},
+			expectedObjects: []string{"folder1", "folder2"},
 		},
 		{
 			name: "Resolve direct relationships with tuples and contextual tuples",
@@ -222,7 +222,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			},
-			expectedObjects: []string{"document:doc1", "document:doc3"},
+			expectedObjects: []string{"doc1", "doc3"},
 		},
 		{
 			name: "Direct relations involving relationships with users and usersets",
@@ -278,7 +278,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:doc3", "viewer", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedObjects: []string{"document:doc1", "document:doc3"},
+			expectedObjects: []string{"doc1", "doc3"},
 		},
 		{
 			name: "Success with direct relationships and computed usersets",
@@ -335,7 +335,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:doc3", "owner", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedObjects: []string{"document:doc1", "document:doc3"},
+			expectedObjects: []string{"doc1", "doc3"},
 		},
 		{
 			name: "Success with many tuples",
@@ -428,7 +428,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedObjects: []string{"document:doc1", "document:doc2"},
+			expectedObjects: []string{"doc1", "doc2"},
 		},
 		{
 			name: "Resolve objects involved in recursive hierarchy",
@@ -476,7 +476,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
 			},
-			expectedObjects: []string{"folder:folder1", "folder:folder2", "folder:folder3"},
+			expectedObjects: []string{"folder1", "folder2", "folder3"},
 		},
 		{
 			name: "Resolution Depth Exceeded Failure",
@@ -565,7 +565,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
 				tuple.NewTupleKey("group:iam", "member", "user:jon"),
 			},
-			expectedObjects: []string{"group:auth0", "group:eng"},
+			expectedObjects: []string{"auth0", "eng"},
 		},
 	}
 
