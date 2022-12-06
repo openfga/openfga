@@ -171,15 +171,15 @@ func (q *ListObjectsQuery) Execute(
 		return nil, genericError
 	}
 
-	objectIDs := make([]string, 0)
-	for objectID := range resultsChan {
-		objectIDs = append(objectIDs, objectID)
+	objects := make([]string, 0)
+	for object := range resultsChan {
+		objects = append(objects, object)
 	}
 
-	listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
+	listObjectsGauge.Observe(ctx, int64(len(objects)), attributes...)
 
 	return &openfgapb.ListObjectsResponse{
-		ObjectIds: objectIDs,
+		Objects: objects,
 	}, nil
 }
 
@@ -213,13 +213,13 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		select {
 		case <-timeoutCtx.Done():
 			return nil
-		case objectID, ok := <-resultsChan:
+		case object, ok := <-resultsChan:
 			if !ok {
 				return nil //channel was closed
 			}
 
 			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-				ObjectId: objectID,
+				Object: object,
 			}); err != nil {
 				return serverErrors.NewInternalError("", err)
 			}
