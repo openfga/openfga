@@ -311,7 +311,7 @@ func (q *ListObjectsQuery) internalCheck(
 		return nil
 	}
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
-		resultsChan <- obj.Id
+		resultsChan <- tuple.ObjectKey(obj)
 	}
 
 	return nil

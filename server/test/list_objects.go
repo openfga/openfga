@@ -84,7 +84,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			{
 				name:           "does not return duplicates",
 				request:        newListObjectsRequest(store, "repo", "admin", "anna", model.Id, nil),
-				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6"},
 				expectedError:  nil,
 			},
 
@@ -96,13 +96,13 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
 				name:           "performs correct checks",
 				request:        newListObjectsRequest(store, "repo", "admin", "bob", model.Id, nil),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -117,7 +117,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"2", "5", "6", "7"},
+				expectedResult: []string{"repo:2", "repo:5", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
@@ -128,7 +128,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -202,7 +202,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			{
 				name:           "does not return duplicates",
 				request:        newListObjectsRequest(store, "repo", "admin", "user:anna", model.Id, nil),
-				expectedResult: []string{"1", "2", "3", "4", "6"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6"},
 				expectedError:  nil,
 			},
 
@@ -214,13 +214,13 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"1", "2", "3", "4", "6", "7"},
+				expectedResult: []string{"repo:1", "repo:2", "repo:3", "repo:4", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
 				name:           "performs correct checks",
 				request:        newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, nil),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -235,7 +235,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"2", "5", "6", "7"},
+				expectedResult: []string{"repo:2", "repo:5", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
@@ -246,7 +246,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
-				expectedResult: []string{"2", "6"},
+				expectedResult: []string{"repo:2", "repo:6"},
 				expectedError:  nil,
 			},
 			{
