@@ -49,7 +49,6 @@ type listObjectsRequest interface {
 func (q *ListObjectsQuery) handler(
 	ctx context.Context,
 	req listObjectsRequest,
-	resolvedChan chan<- struct{},
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) error {
@@ -77,7 +76,7 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
-		q.performChecks(ctx, req, resultsChan, errChan, resolvedChan)
+		q.performChecks(ctx, req, resultsChan, errChan)
 	}
 
 	_, err = typesys.GetRelation(targetObjectType, targetRelation)
@@ -112,10 +111,8 @@ func (q *ListObjectsQuery) handler(
 			}, resultsChan)
 			if err != nil {
 				errChan <- err
-				return
 			}
 
-			close(resolvedChan)
 			close(resultsChan)
 		}
 	}
@@ -146,7 +143,6 @@ func (q *ListObjectsQuery) Execute(
 	}
 
 	errChan := make(chan error)
-	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -155,32 +151,33 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err = q.handler(timeoutCtx, req, resolvedChan, resultsChan, errChan)
+	err = q.handler(timeoutCtx, req, resultsChan, errChan)
 	if err != nil {
 		return nil, err
 	}
 
 	attributes := make([]attribute.KeyValue, 1)
+	objects := make([]string, 0)
 
-	select {
-	case <-timeoutCtx.Done():
-		attributes = append(attributes, attribute.Bool("complete_results", false))
-	case <-resolvedChan:
-		attributes = append(attributes, attribute.Bool("complete_results", true))
-	case genericError := <-errChan:
-		return nil, genericError
+	for {
+		select {
+		case objectID, ok := <-resultsChan:
+			if !ok {
+				// Channel closed! No more results. Send them all
+				attributes = append(attributes, attribute.Bool("complete_results", true))
+				listObjectsGauge.Observe(ctx, int64(len(objects)), attributes...)
+
+				return &openfgapb.ListObjectsResponse{
+					Objects: objects,
+				}, nil
+			}
+			objects = append(objects, objectID)
+		case genericError, ok := <-errChan:
+			if ok {
+				return nil, serverErrors.NewInternalError("", genericError)
+			}
+		}
 	}
-
-	objectIDs := make([]string, 0)
-	for objectID := range resultsChan {
-		objectIDs = append(objectIDs, objectID)
-	}
-
-	listObjectsGauge.Observe(ctx, int64(len(objectIDs)), attributes...)
-
-	return &openfgapb.ListObjectsResponse{
-		ObjectIds: objectIDs,
-	}, nil
 }
 
 func (q *ListObjectsQuery) ExecuteStreamed(
@@ -195,7 +192,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	}
 
 	errChan := make(chan error)
-	resolvedChan := make(chan struct{})
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -204,22 +200,21 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.handler(timeoutCtx, req, resolvedChan, resultsChan, errChan)
+	err := q.handler(timeoutCtx, req, resultsChan, errChan)
 	if err != nil {
 		return err
 	}
 
 	for {
 		select {
-		case <-timeoutCtx.Done():
-			return nil
-		case objectID, ok := <-resultsChan:
+		case object, ok := <-resultsChan:
 			if !ok {
-				return nil //channel was closed
+				// Channel closed! No more results.
+				return nil
 			}
 
 			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-				ObjectId: objectID,
+				Object: object,
 			}); err != nil {
 				return serverErrors.NewInternalError("", err)
 			}
@@ -236,8 +231,11 @@ func (q *ListObjectsQuery) performChecks(
 	req listObjectsRequest,
 	resultsChan chan<- string,
 	errChan chan<- error,
-	resolvedChan chan<- struct{},
 ) {
+	g := new(errgroup.Group)
+	g.SetLimit(maximumConcurrentChecks)
+	var objectsFound = new(uint32)
+
 	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
 		storage.NewStaticTupleKeyIterator(req.GetContextualTuples().GetTupleKeys()),
 		func(tk *openfgapb.TupleKey) bool {
@@ -255,30 +253,31 @@ func (q *ListObjectsQuery) performChecks(
 	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
-	g := new(errgroup.Group)
-	g.SetLimit(maximumConcurrentChecks)
-	var objectsFound = new(uint32)
-
 	// iterate over all object IDs in the store and check if the user has relation with each
+ForLoop:
 	for {
-		object, err := iter.Next()
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			} else {
-				errChan <- err
-				return
+		select {
+		case <-ctx.Done():
+			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
+			break ForLoop
+		default:
+			object, err := iter.Next()
+			if err != nil {
+				if !errors.Is(err, storage.ErrIteratorDone) {
+					errChan <- err
+				}
+				break ForLoop
 			}
-		}
-		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
-			break
-		}
+			if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
+				break ForLoop
+			}
 
-		checkFunction := func() error {
-			return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
-		}
+			checkFunction := func() error {
+				return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
+			}
 
-		g.Go(checkFunction)
+			g.Go(checkFunction)
+		}
 	}
 
 	err = g.Wait()
@@ -287,7 +286,6 @@ func (q *ListObjectsQuery) performChecks(
 	}
 
 	close(resultsChan)
-	close(resolvedChan)
 }
 
 func (q *ListObjectsQuery) internalCheck(
@@ -311,7 +309,7 @@ func (q *ListObjectsQuery) internalCheck(
 		return nil
 	}
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
-		resultsChan <- obj.Id
+		resultsChan <- tuple.ObjectKey(obj)
 	}
 
 	return nil

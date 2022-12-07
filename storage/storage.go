@@ -297,9 +297,12 @@ type Deletes = []*openfgapb.TupleKey
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
-	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
-	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
-	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
+	// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled. If nil,
+	// Read will return an iterator over all the `Tuple`s in the given store. If the `TupleKey` is partially filled,
+	// it will return an iterator over those `Tuple`s which match the `TupleKey`. Note that at least one of `Object`
+	// or `User` (or both), must be specified in this case.
+	//
+	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
 
 	// ListObjectsByType returns all the objects of a specific type.
@@ -354,13 +357,6 @@ type TupleBackend interface {
 		store string,
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
-
-	// ReadByStore reads the tuples associated with `store`.
-	ReadByStore(
-		ctx context.Context,
-		store string,
-		opts PaginationOptions,
-	) ([]*openfgapb.Tuple, []byte, error)
 
 	// MaxTuplesInWriteOperation returns the maximum number of items allowed in a single write transaction
 	MaxTuplesInWriteOperation() int
