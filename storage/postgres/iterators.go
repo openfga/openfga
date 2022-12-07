@@ -70,11 +70,16 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 }
 
 func (t *tupleIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
-	record, err := t.next()
-	if err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, storage.ErrIteratorDone
+	default:
+		record, err := t.next()
+		if err != nil {
+			return nil, err
+		}
+		return record.asTuple(), nil
 	}
-	return record.asTuple(), nil
 }
 
 func (t *tupleIterator) Stop() {
@@ -88,24 +93,29 @@ type objectIterator struct {
 var _ storage.ObjectIterator = (*objectIterator)(nil)
 
 func (o *objectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
-	if !o.rows.Next() {
-		o.Stop()
+	select {
+	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
-	}
+	default:
+		if !o.rows.Next() {
+			o.Stop()
+			return nil, storage.ErrIteratorDone
+		}
 
-	var objectID, objectType string
-	if err := o.rows.Scan(&objectType, &objectID); err != nil {
-		return nil, handlePostgresError(err)
-	}
+		var objectID, objectType string
+		if err := o.rows.Scan(&objectType, &objectID); err != nil {
+			return nil, handlePostgresError(err)
+		}
 
-	if o.rows.Err() != nil {
-		return nil, handlePostgresError(o.rows.Err())
-	}
+		if o.rows.Err() != nil {
+			return nil, handlePostgresError(o.rows.Err())
+		}
 
-	return &openfgapb.Object{
-		Type: objectType,
-		Id:   objectID,
-	}, nil
+		return &openfgapb.Object{
+			Type: objectType,
+			Id:   objectID,
+		}, nil
+	}
 }
 
 func (o *objectIterator) Stop() {

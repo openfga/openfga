@@ -45,12 +45,17 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 }
 
 func (s *staticIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
-	if len(s.tuples) == 0 {
+	select {
+	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
+	default:
+		if len(s.tuples) == 0 {
+			return nil, storage.ErrIteratorDone
+		}
+		next, rest := s.tuples[0], s.tuples[1:]
+		s.tuples = rest
+		return next, nil
 	}
-	next, rest := s.tuples[0], s.tuples[1:]
-	s.tuples = rest
-	return next, nil
 }
 
 func (s *staticIterator) Stop() {}

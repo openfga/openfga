@@ -73,50 +73,39 @@ var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 // Next returns the next most unique object from the two underlying iterators.
 // If the context is cancelled or times out, it should return ErrIteratorDone
 func (u *uniqueObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
-ForLoop:
 	for {
-		select {
-		case <-ctx.Done():
-			return nil, ErrIteratorDone
-		default:
-			obj, err := u.iter1.Next(ctx)
-			if err != nil {
-				if err == ErrIteratorDone {
-					break ForLoop
-				}
-
-				return nil, err
+		obj, err := u.iter1.Next(ctx)
+		if err != nil {
+			if err == ErrIteratorDone {
+				break
 			}
 
-			// if the object has not already been seen, then store it and return it
-			_, ok := u.objects.Load(tuple.ObjectKey(obj))
-			if !ok {
-				u.objects.Store(tuple.ObjectKey(obj), struct{}{})
-				return obj, nil
-			}
+			return nil, err
+		}
+
+		// if the object has not already been seen, then store it and return it
+		_, ok := u.objects.Load(tuple.ObjectKey(obj))
+		if !ok {
+			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
+			return obj, nil
 		}
 
 	}
 
 	// assumption is that iter2 yields unique values to begin with
 	for {
-		select {
-		case <-ctx.Done():
-			return nil, ErrIteratorDone
-		default:
-			obj, err := u.iter2.Next(ctx)
-			if err != nil {
-				if err == ErrIteratorDone {
-					return nil, ErrIteratorDone
-				}
-
-				return nil, err
+		obj, err := u.iter2.Next(ctx)
+		if err != nil {
+			if err == ErrIteratorDone {
+				return nil, ErrIteratorDone
 			}
 
-			_, ok := u.objects.Load(tuple.ObjectKey(obj))
-			if !ok {
-				return obj, nil
-			}
+			return nil, err
+		}
+
+		_, ok := u.objects.Load(tuple.ObjectKey(obj))
+		if !ok {
+			return obj, nil
 		}
 	}
 }
@@ -131,29 +120,23 @@ type combinedIterator[T any] struct {
 }
 
 func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
-	select {
-	case <-ctx.Done():
-		var val T
-		return val, ErrIteratorDone
-	default:
-		val, err := c.iter1.Next(ctx)
-		if err != nil {
-			if !errors.Is(err, ErrIteratorDone) {
-				return val, err
-			}
-		} else {
-			return val, nil
+	val, err := c.iter1.Next(ctx)
+	if err != nil {
+		if !errors.Is(err, ErrIteratorDone) {
+			return val, err
 		}
-
-		val, err = c.iter2.Next(ctx)
-		if err != nil {
-			if !errors.Is(err, ErrIteratorDone) {
-				return val, err
-			}
-		}
-
-		return val, err
+	} else {
+		return val, nil
 	}
+
+	val, err = c.iter2.Next(ctx)
+	if err != nil {
+		if !errors.Is(err, ErrIteratorDone) {
+			return val, err
+		}
+	}
+
+	return val, err
 }
 
 func (c *combinedIterator[T]) Stop() {
@@ -247,14 +230,19 @@ type staticIterator[T any] struct {
 
 func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
-	if len(s.items) == 0 {
+	select {
+	case <-ctx.Done():
 		return val, ErrIteratorDone
+	default:
+		if len(s.items) == 0 {
+			return val, ErrIteratorDone
+		}
+
+		next, rest := s.items[0], s.items[1:]
+		s.items = rest
+
+		return next, nil
 	}
-
-	next, rest := s.items[0], s.items[1:]
-	s.items = rest
-
-	return next, nil
 }
 
 func (s *staticIterator[T]) Stop() {}
