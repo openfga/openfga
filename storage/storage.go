@@ -52,6 +52,7 @@ type TupleKeyIterator = Iterator[*openfgapb.TupleKey]
 type uniqueObjectIterator struct {
 	iter1, iter2 ObjectIterator
 	objects      sync.Map
+	ctx          context.Context
 }
 
 // NewUniqueObjectIterator returns an ObjectIterator that iterates over two ObjectIterators and yields only distinct
@@ -59,10 +60,12 @@ type uniqueObjectIterator struct {
 //
 // iter1 should generally be provided by a constrained iterator (e.g. contextual tuples) and iter2 should be provided
 // by a storage iterator that already guarantees uniqueness.
-func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
+// If the context is cancelled, Next() will return ErrIteratorDone
+func NewUniqueObjectIterator(iter1, iter2 ObjectIterator, ctx context.Context) ObjectIterator {
 	return &uniqueObjectIterator{
 		iter1: iter1,
 		iter2: iter2,
+		ctx:   ctx,
 	}
 }
 
@@ -70,39 +73,50 @@ var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 
 // Next returns the next most unique object from the two underlying iterators.
 func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
-
+ForLoop:
 	for {
-		obj, err := u.iter1.Next()
-		if err != nil {
-			if err == ErrIteratorDone {
-				break
+		select {
+		case <-u.ctx.Done():
+			return nil, ErrIteratorDone
+		default:
+			obj, err := u.iter1.Next()
+			if err != nil {
+				if err == ErrIteratorDone {
+					break ForLoop
+				}
+
+				return nil, err
 			}
 
-			return nil, err
+			// if the object has not already been seen, then store it and return it
+			_, ok := u.objects.Load(tuple.ObjectKey(obj))
+			if !ok {
+				u.objects.Store(tuple.ObjectKey(obj), struct{}{})
+				return obj, nil
+			}
 		}
 
-		// if the object has not already been seen, then store it and return it
-		_, ok := u.objects.Load(tuple.ObjectKey(obj))
-		if !ok {
-			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
-			return obj, nil
-		}
 	}
 
 	// assumption is that iter2 yields unique values to begin with
 	for {
-		obj, err := u.iter2.Next()
-		if err != nil {
-			if err == ErrIteratorDone {
-				return nil, ErrIteratorDone
+		select {
+		case <-u.ctx.Done():
+			return nil, ErrIteratorDone
+		default:
+			obj, err := u.iter2.Next()
+			if err != nil {
+				if err == ErrIteratorDone {
+					return nil, ErrIteratorDone
+				}
+
+				return nil, err
 			}
 
-			return nil, err
-		}
-
-		_, ok := u.objects.Load(tuple.ObjectKey(obj))
-		if !ok {
-			return obj, nil
+			_, ok := u.objects.Load(tuple.ObjectKey(obj))
+			if !ok {
+				return obj, nil
+			}
 		}
 	}
 }
@@ -114,26 +128,33 @@ func (u *uniqueObjectIterator) Stop() {
 
 type combinedIterator[T any] struct {
 	iter1, iter2 Iterator[T]
+	ctx          context.Context
 }
 
 func (c *combinedIterator[T]) Next() (T, error) {
-	val, err := c.iter1.Next()
-	if err != nil {
-		if !errors.Is(err, ErrIteratorDone) {
-			return val, err
+	select {
+	case <-c.ctx.Done():
+		var val T
+		return val, ErrIteratorDone
+	default:
+		val, err := c.iter1.Next()
+		if err != nil {
+			if !errors.Is(err, ErrIteratorDone) {
+				return val, err
+			}
+		} else {
+			return val, nil
 		}
-	} else {
-		return val, nil
-	}
 
-	val, err = c.iter2.Next()
-	if err != nil {
-		if !errors.Is(err, ErrIteratorDone) {
-			return val, err
+		val, err = c.iter2.Next()
+		if err != nil {
+			if !errors.Is(err, ErrIteratorDone) {
+				return val, err
+			}
 		}
-	}
 
-	return val, err
+		return val, err
+	}
 }
 
 func (c *combinedIterator[T]) Stop() {
@@ -143,8 +164,9 @@ func (c *combinedIterator[T]) Stop() {
 
 // NewCombinedIterator takes two generic iterators of a given type T and combines them into a single iterator that yields
 // all of the values from both iterators. If the two iterators yield the same value then duplicates will be returned.
-func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
-	return &combinedIterator[T]{iter1, iter2}
+// If the context is cancelled, Next() will return ErrIteratorDone
+func NewCombinedIterator[T any](iter1, iter2 Iterator[T], ctx context.Context) Iterator[T] {
+	return &combinedIterator[T]{iter1, iter2, ctx}
 }
 
 // NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.

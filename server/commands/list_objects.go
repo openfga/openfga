@@ -76,7 +76,12 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
-		q.performChecks(ctx, req, resultsChan, errChan)
+		err = q.performChecks(ctx, req, resultsChan)
+		if err != nil {
+			errChan <- err
+		}
+
+		close(resultsChan)
 	}
 
 	_, err = typesys.GetRelation(targetObjectType, targetRelation)
@@ -226,14 +231,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	}
 }
 
-func (q *ListObjectsQuery) performChecks(
-	ctx context.Context,
-	req listObjectsRequest,
-	resultsChan chan<- string,
-	errChan chan<- error,
-) {
-	g := new(errgroup.Group)
-	g.SetLimit(maximumConcurrentChecks)
+func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string) error {
 	var objectsFound = new(uint32)
 
 	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
@@ -245,47 +243,37 @@ func (q *ListObjectsQuery) performChecks(
 	iter2, err := q.Datastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
 	if err != nil {
 		iter1.Stop()
-		errChan <- err
-		return
+		return err
 	}
 
 	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
-	iter := storage.NewUniqueObjectIterator(iter1, iter2)
+	iter := storage.NewUniqueObjectIterator(iter1, iter2, ctx)
 	defer iter.Stop()
 
+	subg, subgctx := errgroup.WithContext(ctx)
+	subg.SetLimit(maximumConcurrentChecks)
+
 	// iterate over all object IDs in the store and check if the user has relation with each
-ForLoop:
 	for {
-		select {
-		case <-ctx.Done():
-			// if the request times out, or it's cancelled manually, we short circuit so that we avoid unnecessary database lookups
-			break ForLoop
-		default:
-			object, err := iter.Next()
-			if err != nil {
-				if !errors.Is(err, storage.ErrIteratorDone) {
-					errChan <- err
-				}
-				break ForLoop
+		object, err := iter.Next()
+		if err != nil {
+			if !errors.Is(err, storage.ErrIteratorDone) {
+				return err
 			}
-			if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
-				break ForLoop
-			}
-
-			checkFunction := func() error {
-				return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
-			}
-
-			g.Go(checkFunction)
+			break
 		}
+		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
+			break
+		}
+
+		checkFunction := func() error {
+			return q.internalCheck(subgctx, object, req, objectsFound, resultsChan)
+		}
+
+		subg.Go(checkFunction)
 	}
 
-	err = g.Wait()
-	if err != nil {
-		errChan <- err
-	}
-
-	close(resultsChan)
+	return subg.Wait()
 }
 
 func (q *ListObjectsQuery) internalCheck(

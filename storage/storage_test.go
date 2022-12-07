@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -79,7 +80,7 @@ func TestCombinedIterator(t *testing.T) {
 
 	iter1 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[0]})
 	iter2 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[1]})
-	iter := NewCombinedIterator(iter1, iter2)
+	iter := NewCombinedIterator(iter1, iter2, context.Background())
 
 	var actual []*openfgapb.TupleKey
 	for {
@@ -124,7 +125,7 @@ func TestUniqueObjectIterator(t *testing.T) {
 		{Type: "document", Id: "4"},
 	})
 
-	iter := NewUniqueObjectIterator(iter1, iter2)
+	iter := NewUniqueObjectIterator(iter1, iter2, context.Background())
 	defer iter.Stop()
 
 	var actual []string
@@ -169,7 +170,7 @@ func ExampleNewUniqueObjectIterator() {
 	// constrained than the other iterator (iter2). In practice iter2 will
 	// be coming from a database that should guarantee uniqueness over the
 	// objects yielded.
-	iter := NewUniqueObjectIterator(iter1, iter2)
+	iter := NewUniqueObjectIterator(iter1, iter2, context.Background())
 	defer iter.Stop()
 
 	var objects []string
