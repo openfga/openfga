@@ -19,7 +19,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 		expected []*RelationshipIngress
 	}{
 		{
-			name: "Direct ingress through ComputedUserset with multiple type restrictions",
+			name: "direct_ingress_through_ComputedUserset_with_multiple_type_restrictions",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -74,7 +74,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Direct ingress through ComputedUserset",
+			name: "direct_ingress_through_ComputedUserset",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -108,7 +108,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Direct ingress through TupleToUserset with multiple type restrictions",
+			name: "direct_ingress_through_TupleToUserset_with_multiple_type_restrictions",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -189,7 +189,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Direct ingress with union involving self and computed userset",
+			name: "direct_ingress_with_union_involving_self_and_computed_userset",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -709,7 +709,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "UserIsASubsetOfUserStar",
+			name: "user_is_a_subset_of_user_*",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -742,7 +742,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "UserStarIsNotASubsetOfUser",
+			name: "user_*_is_not_a_subset_of_user",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -770,7 +770,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			expected: []*RelationshipIngress{},
 		},
 		{
-			name: "UserStarIsRelatedToUserStar",
+			name: "user_*_is_related_to_user_*",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -803,7 +803,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "IngressesInvolvingWildcardInTypes",
+			name: "ingresses_involving_wildcard_in_types",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -837,7 +837,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "IngressesInvolvingWildcardInSource",
+			name: "ingresses_involving_wildcard_in_source",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -866,7 +866,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			expected: []*RelationshipIngress{},
 		},
 		{
-			name: "IngressesInvolvingWildcards1",
+			name: "ingresses_involving_wildcards_1",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -927,7 +927,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "IngressesInvolvingWildcards2",
+			name: "ingresses_involving_wildcards_2",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{

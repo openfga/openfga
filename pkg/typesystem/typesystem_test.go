@@ -1562,7 +1562,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 		result bool
 	}{
 		{
-			name: "WildcardAndWildcard",
+			name: "wildcard_and_wildcard",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1590,7 +1590,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			result: true,
 		},
 		{
-			name: "WildcardAndDirect",
+			name: "wildcard_and_direct",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1618,7 +1618,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			result: true,
 		},
 		{
-			name: "DirectAndWildcard",
+			name: "direct_and_wildcard",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
