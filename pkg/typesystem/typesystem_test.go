@@ -1552,3 +1552,108 @@ func TestIsTuplesetRelation(t *testing.T) {
 		})
 	}
 }
+
+func TestIsDirectlyRelated(t *testing.T) {
+	tests := []struct {
+		name   string
+		model  *openfgapb.AuthorizationModel
+		target *openfgapb.RelationReference
+		source *openfgapb.RelationReference
+		result bool
+	}{
+		{
+			name: "wildcard_and_wildcard",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: DirectRelationReference("document", "viewer"),
+			source: WildcardRelationReference("user"),
+			result: true,
+		},
+		{
+			name: "wildcard_and_direct",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: DirectRelationReference("document", "viewer"),
+			source: DirectRelationReference("user", ""),
+			result: true,
+		},
+		{
+			name: "direct_and_wildcard",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: DirectRelationReference("document", "viewer"),
+			source: WildcardRelationReference("user"),
+			result: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			typesys := New(test.model)
+
+			ok, err := typesys.IsDirectlyRelated(test.target, test.source)
+			require.NoError(t, err)
+			require.Equal(t, ok, test.result)
+		})
+	}
+}

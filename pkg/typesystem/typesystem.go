@@ -219,8 +219,13 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, sour
 	}
 
 	for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == relationReference.GetType() && source.GetRelation() == relationReference.GetRelation() {
-			return true, nil
+		if source.GetType() == relationReference.GetType() {
+			// Either the relations are not wildcards and are the same
+			// or the relationReference is a wildcard type (e.g. user:*) and the source may or may not have a wildcard (but certainly no relation)
+			if relationReference.GetWildcard() == nil && source.GetWildcard() == nil && relationReference.GetRelation() == source.GetRelation() ||
+				(relationReference.GetWildcard() != nil && source.GetRelation() == "") {
+				return true, nil
+			}
 		}
 	}
 
