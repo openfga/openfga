@@ -37,8 +37,10 @@ func DirectRelationReference(objectType, relation string) *openfgapb.RelationRef
 
 func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
-		Type:               objectType,
-		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{Wildcard: &openfgapb.Wildcard{}},
+		Type: objectType,
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{
+			Wildcard: &openfgapb.Wildcard{},
+		},
 	}
 }
 

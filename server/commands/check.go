@@ -253,10 +253,26 @@ func (query *CheckQuery) resolveDirectUserSet(
 			return serverErrors.HandleError("", err)
 		}
 
-		// If a single star is available, then assume user exists and break.
-		if usersetTuple.GetUser() == "*" {
+		foundUser := usersetTuple.GetUser()
+
+		schemaVersion := typesys.GetSchemaVersion()
+
+		if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
 			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
 			break
+		}
+
+		if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
+
+			wildcardType := tupleUtils.GetType(foundUser)
+
+			if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
+				continue
+			}
+
+			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+			break
+
 		}
 
 		// Avoid launching more goroutines by checking if the user has been found in another goroutine.

@@ -95,7 +95,7 @@ func ToObjectRelationString(object, relation string) string {
 
 // GetUserTypeFromUser returns the type of user (userset or user).
 func GetUserTypeFromUser(user string) UserType {
-	if IsObjectRelation(user) || user == "*" {
+	if IsObjectRelation(user) || IsWildcard(user) {
 		return UserSet
 	}
 	return User
