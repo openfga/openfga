@@ -117,13 +117,13 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 }
 
 // validateTypeRestrictions makes sure the type restrictions are enforced.
-// 1. If the tuple is of the form doc:budget#reader@person:bob, then the type "doc", relation "reader" must allow type "person".
-// 2. If the tuple is of the form doc:budget#reader@group:abc#member, then the type "doc", relation "reader" must allow type "group", relation "member".
-// 3. If the tuple is of the form doc:budget#reader@*, we allow it only if the type "doc" relation "reader" allows at least one type (with no relation)
+// 1. If the tuple is of the form doc:budget#reader@person:bob, then 'doc#reader' must allow type 'person'.
+// 2. If the tuple is of the form doc:budget#reader@group:abc#member, then 'doc#reader' must allow 'group#member'.
+// 3. If the tuple is of the form doc:budget#reader@person:*, we allow it only if 'doc#reader' allows the typed wildcard 'person:*'.
 func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
-	userType, userID := tuple.SplitObject(tk.GetUser())   // e.g. (person, bob) or (group, abc#member) or ("", *)
-	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (*, "")
+	userType, _ := tuple.SplitObject(tk.GetUser())        // e.g. (person, bob) or (group, abc#member) or ("", person:*)
+	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
 
 	typeDefinitionForObject, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
@@ -137,28 +137,39 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 
 	relationInformation := relationsForObject[tk.Relation]
 
-	// case 1
-	if userRel == "" && userID != "*" {
-		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-			if typeInformation.GetType() == userType {
-				return nil
-			}
-		}
-	} else if userRel != "" { // case 2
+	user := tk.GetUser()
+
+	if tuple.IsObjectRelation(user) {
+		// case 2 documented above
 		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
 			if typeInformation.GetType() == userType && typeInformation.GetRelation() == userRel {
 				return nil
 			}
 		}
-	} else if userID == "*" { // case 3
+
+		return &tuple.InvalidTupleError{Reason: fmt.Sprintf("'%s#%s' is not an allowed type restriction for '%s#%s'", userType, userRel, objectType, tk.GetRelation()), TupleKey: tk}
+	}
+
+	if tuple.IsTypedWildcard(user) {
+		// case 3 documented above
 		for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-			if typeInformation.GetType() != "" && typeInformation.GetRelation() == "" {
+
+			if typeInformation.GetType() == userType && typeInformation.GetWildcard() != nil {
 				return nil
 			}
 		}
+
+		return &tuple.InvalidTupleError{Reason: fmt.Sprintf("the typed wildcard '%s' is not an allowed type restriction for '%s#%s'", user, objectType, tk.GetRelation()), TupleKey: tk}
 	}
 
-	return &tuple.InvalidTupleError{Reason: fmt.Sprintf("User '%s' is not allowed to have relation %s with %s", tk.User, tk.Relation, tk.Object), TupleKey: tk}
+	// the user must be an object (case 1), so check directly against the objectType
+	for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
+		if typeInformation.GetType() == userType && typeInformation.GetWildcard() == nil {
+			return nil
+		}
+	}
+
+	return &tuple.InvalidTupleError{Reason: fmt.Sprintf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation()), TupleKey: tk}
 }
 
 // FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide
