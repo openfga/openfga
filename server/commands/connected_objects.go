@@ -175,14 +175,14 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		return err
 	}
 
-	iter := storage.NewCombinedIterator(iter1, iter2, ctx)
+	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -289,14 +289,14 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		return err
 	}
 
-	iter := storage.NewCombinedIterator(iter1, iter2, ctx)
+	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break

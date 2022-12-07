@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 
@@ -68,7 +69,7 @@ func (t *tupleIterator) toArray(opts storage.PaginationOptions) ([]*openfgapb.Tu
 	return res, contToken, nil
 }
 
-func (t *tupleIterator) Next() (*openfgapb.Tuple, error) {
+func (t *tupleIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
 	record, err := t.next()
 	if err != nil {
 		return nil, err
@@ -86,7 +87,7 @@ type objectIterator struct {
 
 var _ storage.ObjectIterator = (*objectIterator)(nil)
 
-func (o *objectIterator) Next() (*openfgapb.Object, error) {
+func (o *objectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 	if !o.rows.Next() {
 		o.Stop()
 		return nil, storage.ErrIteratorDone

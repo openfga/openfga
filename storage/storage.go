@@ -33,7 +33,9 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 type Iterator[T any] interface {
-	Next() (T, error)
+	// Next will return the next available item. If the context is cancelled or times out, it should return ErrIteratorDone
+	Next(ctx context.Context) (T, error)
+	// Stop terminates iteration over the underlying iterator.
 	Stop()
 }
 
@@ -52,7 +54,6 @@ type TupleKeyIterator = Iterator[*openfgapb.TupleKey]
 type uniqueObjectIterator struct {
 	iter1, iter2 ObjectIterator
 	objects      sync.Map
-	ctx          context.Context
 }
 
 // NewUniqueObjectIterator returns an ObjectIterator that iterates over two ObjectIterators and yields only distinct
@@ -60,26 +61,25 @@ type uniqueObjectIterator struct {
 //
 // iter1 should generally be provided by a constrained iterator (e.g. contextual tuples) and iter2 should be provided
 // by a storage iterator that already guarantees uniqueness.
-// If the context is cancelled, Next() will return ErrIteratorDone
-func NewUniqueObjectIterator(iter1, iter2 ObjectIterator, ctx context.Context) ObjectIterator {
+func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
 	return &uniqueObjectIterator{
 		iter1: iter1,
 		iter2: iter2,
-		ctx:   ctx,
 	}
 }
 
 var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 
 // Next returns the next most unique object from the two underlying iterators.
-func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
+// If the context is cancelled or times out, it should return ErrIteratorDone
+func (u *uniqueObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 ForLoop:
 	for {
 		select {
-		case <-u.ctx.Done():
+		case <-ctx.Done():
 			return nil, ErrIteratorDone
 		default:
-			obj, err := u.iter1.Next()
+			obj, err := u.iter1.Next(ctx)
 			if err != nil {
 				if err == ErrIteratorDone {
 					break ForLoop
@@ -101,10 +101,10 @@ ForLoop:
 	// assumption is that iter2 yields unique values to begin with
 	for {
 		select {
-		case <-u.ctx.Done():
+		case <-ctx.Done():
 			return nil, ErrIteratorDone
 		default:
-			obj, err := u.iter2.Next()
+			obj, err := u.iter2.Next(ctx)
 			if err != nil {
 				if err == ErrIteratorDone {
 					return nil, ErrIteratorDone
@@ -128,16 +128,15 @@ func (u *uniqueObjectIterator) Stop() {
 
 type combinedIterator[T any] struct {
 	iter1, iter2 Iterator[T]
-	ctx          context.Context
 }
 
-func (c *combinedIterator[T]) Next() (T, error) {
+func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 	select {
-	case <-c.ctx.Done():
+	case <-ctx.Done():
 		var val T
 		return val, ErrIteratorDone
 	default:
-		val, err := c.iter1.Next()
+		val, err := c.iter1.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
@@ -146,7 +145,7 @@ func (c *combinedIterator[T]) Next() (T, error) {
 			return val, nil
 		}
 
-		val, err = c.iter2.Next()
+		val, err = c.iter2.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
@@ -164,9 +163,8 @@ func (c *combinedIterator[T]) Stop() {
 
 // NewCombinedIterator takes two generic iterators of a given type T and combines them into a single iterator that yields
 // all of the values from both iterators. If the two iterators yield the same value then duplicates will be returned.
-// If the context is cancelled, Next() will return ErrIteratorDone
-func NewCombinedIterator[T any](iter1, iter2 Iterator[T], ctx context.Context) Iterator[T] {
-	return &combinedIterator[T]{iter1, iter2, ctx}
+func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
+	return &combinedIterator[T]{iter1, iter2}
 }
 
 // NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
@@ -193,8 +191,8 @@ type tupleKeyIterator struct {
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
-func (t *tupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
-	tuple, err := t.iter.Next()
+func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgapb.TupleKey, error) {
+	tuple, err := t.iter.Next(ctx)
 	return tuple.GetKey(), err
 }
 
@@ -225,8 +223,8 @@ type tupleKeyObjectIterator struct {
 
 var _ ObjectIterator = (*tupleKeyObjectIterator)(nil)
 
-func (t *tupleKeyObjectIterator) Next() (*openfgapb.Object, error) {
-	tk, err := t.iter.Next()
+func (t *tupleKeyObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
+	tk, err := t.iter.Next(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +245,7 @@ type staticIterator[T any] struct {
 	items []T
 }
 
-func (s *staticIterator[T]) Next() (T, error) {
+func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
 	if len(s.items) == 0 {
 		return val, ErrIteratorDone
@@ -283,10 +281,10 @@ var _ TupleKeyIterator = &filteredTupleKeyIterator{}
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
+func (f *filteredTupleKeyIterator) Next(ctx context.Context) (*openfgapb.TupleKey, error) {
 
 	for {
-		tuple, err := f.iter.Next()
+		tuple, err := f.iter.Next(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -297,7 +295,6 @@ func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
 	}
 }
 
-// Stop terminates iteration over the underlying iterator.
 func (f *filteredTupleKeyIterator) Stop() {
 	f.iter.Stop()
 }

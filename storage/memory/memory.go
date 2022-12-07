@@ -44,7 +44,7 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
+func (s *staticIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
 	if len(s.tuples) == 0 {
 		return nil, storage.ErrIteratorDone
 	}

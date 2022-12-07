@@ -247,7 +247,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 	}
 
 	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
-	iter := storage.NewUniqueObjectIterator(iter1, iter2, ctx)
+	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
@@ -255,7 +255,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
-		object, err := iter.Next()
+		object, err := iter.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, storage.ErrIteratorDone) {
 				return err

@@ -57,7 +57,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -80,11 +80,11 @@ func TestCombinedIterator(t *testing.T) {
 
 	iter1 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[0]})
 	iter2 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[1]})
-	iter := NewCombinedIterator(iter1, iter2, context.Background())
+	iter := NewCombinedIterator(iter1, iter2)
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -125,12 +125,12 @@ func TestUniqueObjectIterator(t *testing.T) {
 		{Type: "document", Id: "4"},
 	})
 
-	iter := NewUniqueObjectIterator(iter1, iter2, context.Background())
+	iter := NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
 	var actual []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -170,12 +170,12 @@ func ExampleNewUniqueObjectIterator() {
 	// constrained than the other iterator (iter2). In practice iter2 will
 	// be coming from a database that should guarantee uniqueness over the
 	// objects yielded.
-	iter := NewUniqueObjectIterator(iter1, iter2, context.Background())
+	iter := NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
 	var objects []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
@@ -209,7 +209,7 @@ func ExampleNewFilteredTupleKeyIterator() {
 
 	var filtered []string
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break

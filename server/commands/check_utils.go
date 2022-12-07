@@ -359,7 +359,7 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(usersetTuples)
 
 	return storage.NewFilteredTupleKeyIterator(
-		storage.NewCombinedIterator(iter1, iter2, ctx),
+		storage.NewCombinedIterator(iter1, iter2),
 		validation.FilterInvalidTuples(rc.model),
 	), nil
 }
@@ -375,7 +375,7 @@ func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBack
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(tuples)
 
 	return storage.NewFilteredTupleKeyIterator(
-		storage.NewCombinedIterator(iter1, iter2, ctx),
+		storage.NewCombinedIterator(iter1, iter2),
 		validation.FilterInvalidTuples(rc.model),
 	), nil
 }
