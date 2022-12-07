@@ -131,22 +131,6 @@ func (mr *MockTupleBackendMockRecorder) Read(arg0, arg1, arg2 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockTupleBackend)(nil).Read), arg0, arg1, arg2)
 }
 
-// ReadByStore mocks base method.
-func (m *MockTupleBackend) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadByStore", ctx, store, opts)
-	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadByStore indicates an expected call of ReadByStore.
-func (mr *MockTupleBackendMockRecorder) ReadByStore(ctx, store, opts interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadByStore", reflect.TypeOf((*MockTupleBackend)(nil).ReadByStore), ctx, store, opts)
-}
-
 // ReadPage mocks base method.
 func (m *MockTupleBackend) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	m.ctrl.T.Helper()
@@ -895,22 +879,6 @@ func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, stor
 func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, options interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadAuthorizationModels), ctx, store, options)
-}
-
-// ReadByStore mocks base method.
-func (m *MockOpenFGADatastore) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadByStore", ctx, store, opts)
-	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadByStore indicates an expected call of ReadByStore.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadByStore(ctx, store, opts interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadByStore", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadByStore), ctx, store, opts)
 }
 
 // ReadChanges mocks base method.
