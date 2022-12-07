@@ -29,8 +29,8 @@ run: build ## Run the OpenFGA server with in-memory storage
 	./openfga run
 
 
-.PHONY: start-postgres-container
-start-postgres-container: ## Start a Postgres Docker container
+.PHONY: start-postgres
+start-postgres: ## Start a Postgres Docker container
 	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
 	@echo \> use \'postgres://postgres:password@localhost:5432/postgres\' to connect to postgres
 
@@ -43,8 +43,8 @@ migrate-postgres: build ## Run Postgres migrations
 run-postgres: build ## Run the OpenFGA server with Postgres storage
 	./openfga run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@localhost:5432/postgres'
 
-.PHONY: start-mysql-container
-start-mysql-container: build ## Start a MySQL Docker container
+.PHONY: start-mysql
+start-mysql: build ## Start a MySQL Docker container
 	docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8
 	
 .PHONY: migrate-mysql
