@@ -75,12 +75,19 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
-
-	err = validation.ValidateTuple(typesys, tk)
-	if err != nil {
+	if err := validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
+
+	if err := validation.ValidateRelation(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if err := validation.ValidateUser(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
