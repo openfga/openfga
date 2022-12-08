@@ -207,7 +207,6 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
-	t.Run("TestExpand", func(t *testing.T) { GRPCExpandTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
