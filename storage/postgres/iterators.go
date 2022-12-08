@@ -22,8 +22,8 @@ var _ storage.TupleIterator = (*tupleIterator)(nil)
 func NewPostgresTupleIterator(rows *sql.Rows) *tupleIterator {
 	return &tupleIterator{
 		rows:     rows,
-		resultCh: make(chan *tupleRecord),
-		errCh:    make(chan error),
+		resultCh: make(chan *tupleRecord, 1),
+		errCh:    make(chan error, 1),
 	}
 }
 
@@ -31,7 +31,7 @@ func (t *tupleIterator) next(ctx context.Context) (*tupleRecord, error) {
 	go func() {
 		if !t.rows.Next() {
 			t.Stop()
-			t.errCh <- storage.ErrIteratorDone
+			close(t.resultCh)
 			return
 		}
 
@@ -120,8 +120,8 @@ type objectIterator struct {
 func NewPostgresObjectIterator(rows *sql.Rows) *objectIterator {
 	return &objectIterator{
 		rows:     rows,
-		resultCh: make(chan *openfgapb.Object),
-		errCh:    make(chan error),
+		resultCh: make(chan *openfgapb.Object, 1),
+		errCh:    make(chan error, 1),
 	}
 }
 
@@ -131,7 +131,7 @@ func (o *objectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 	go func() {
 		if !o.rows.Next() {
 			o.Stop()
-			o.errCh <- storage.ErrIteratorDone
+			close(o.resultCh)
 			return
 		}
 
