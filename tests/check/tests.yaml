@@ -10,22 +10,22 @@ tests:
         tuples:
           - object: document:1
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
 
   - name: ComputedUserset
@@ -40,22 +40,22 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: writer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
 
   - name: TupleToUserset
@@ -77,12 +77,12 @@ tests:
             user: folder:x
           - object: folder:x
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
 
   - name: ThisAndUnion
@@ -97,20 +97,20 @@ tests:
         tuples:
           - object: document:1
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
 
   - name: ThisAndIntersection
@@ -125,31 +125,31 @@ tests:
         tuples:
           - object: document:1
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: viewer
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: ThisAndExclusionBase
@@ -164,31 +164,31 @@ tests:
         tuples:
           - object: document:1
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: viewer
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: ComputedUsersetAndUnion
@@ -204,20 +204,20 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
 
   - name: ComputedUsersetAndIntersection
@@ -233,31 +233,31 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: ComputedUsersetAndExclusion
@@ -273,31 +273,31 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: TupleToUsersetAndComputedUserset
@@ -320,12 +320,12 @@ tests:
             user: folder:X
           - object: folder:X
             relation: writer
-            user: user:abigail
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
 
   - name: TupleToUsersetAndTupleToUserset
@@ -355,12 +355,12 @@ tests:
             user: group:G
           - object: group:G
             relation: member
-            user: user:abigail
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
 
   - name: TupleToUsersetAndUnion
@@ -384,20 +384,20 @@ tests:
             user: folder:X
           - object: folder:X
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: editor
-            user: user:beatrix
+            user: user:badger
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
 
   - name: TupleToUsersetAndIntersection
@@ -421,31 +421,31 @@ tests:
             user: folder:X
           - object: folder:X
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: folder:X
             relation: editor
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:1
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: TupleToUsersetAndExclusion
@@ -469,31 +469,31 @@ tests:
             user: folder:X
           - object: folder:X
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: folder:X
             relation: editor
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:1
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: UnionAndTupleToUserset
@@ -515,20 +515,20 @@ tests:
             user: folder:X
           - object: folder:X
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:beatrix
+            user: user:badger
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
 
   - name: UnionAndUnion
@@ -545,28 +545,28 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
 
   - name: UnionAndIntersection
@@ -583,39 +583,39 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: owner
-            user: user:daphne
+            user: user:duck
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
 
   - name: UnionAndExclusion
@@ -632,39 +632,39 @@ tests:
         tuples:
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: owner
-            user: user:daphne
+            user: user:duck
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
 
   - name: IntersectionAndTupleToUserset
@@ -687,31 +687,31 @@ tests:
             user: folder:X
           - object: folder:X
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: viewer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: IntersectionAndUnion
@@ -728,50 +728,50 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: editor
-            user: user:daphne
+            user: user:duck
           - object: document:5
             relation: owner
-            user: user:elise
+            user: user:eagle
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
           - tuple:
               object: document:5
               relation: viewer
-              user: user:elise
+              user: user:eagle
             expectation: false
 
   - name: IntersectionAndIntersection
@@ -788,64 +788,64 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: writer
-            user: user:daphne
+            user: user:duck
           - object: document:5
             relation: editor
-            user: user:elise
+            user: user:eagle
           - object: document:6
             relation: owner
-            user: user:fernanda
+            user: user:fox
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
           - tuple:
               object: document:5
               relation: viewer
-              user: user:elise
+              user: user:eagle
             expectation: false
           - tuple:
               object: document:6
               relation: viewer
-              user: user:fernanda
+              user: user:fox
             expectation: false
 
   - name: IntersectionAndExclusion
@@ -862,64 +862,64 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: writer
-            user: user:daphne
+            user: user:duck
           - object: document:5
             relation: editor
-            user: user:elise
+            user: user:eagle
           - object: document:6
             relation: owner
-            user: user:fernanda
+            user: user:fox
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
           - tuple:
               object: document:5
               relation: viewer
-              user: user:elise
+              user: user:eagle
             expectation: false
           - tuple:
               object: document:6
               relation: viewer
-              user: user:fernanda
+              user: user:fox
             expectation: false
 
   - name: ExclusionAndComputedUnion
@@ -935,31 +935,31 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: ExclusionAndTupleToUsersetInBase
@@ -982,31 +982,31 @@ tests:
             user: folder:X
           - object: folder:X
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: viewer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
 
   - name: ExclusionAndTupleToUsersetInSubtract
@@ -1029,31 +1029,31 @@ tests:
             user: folder:X
           - object: folder:X
             relation: viewer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: folder:X
             relation: viewer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:1
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
 
   - name: ExclusionAndUnionInBase
@@ -1070,56 +1070,56 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: editor
-            user: user:charlie
+            user: user:cheetah
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: writer
-            user: user:daphne
+            user: user:duck
           - object: document:5
             relation: editor
-            user: user:elise
+            user: user:eagle
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: true
           - tuple:
               object: document:5
               relation: viewer
-              user: user:elise
+              user: user:eagle
             expectation: true
 
   - name: ExclusionAndUnionInSubtract
@@ -1136,34 +1136,34 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
 
   - name: ExclusionAndIntersectionInBase
@@ -1180,53 +1180,53 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: editor
-            user: user:daphne
+            user: user:duck
           - object: document:5
             relation: owner
-            user: user:elise
+            user: user:eagle
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: false
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: false
           - tuple:
               object: document:5
               relation: viewer
-              user: user:elise
+              user: user:eagle
             expectation: false
 
   - name: ExclusionAndIntersectionInSubtract
@@ -1243,48 +1243,48 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
           - object: document:4
             relation: writer
-            user: user:daphne
+            user: user:duck
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: true
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
           - tuple:
               object: document:4
               relation: viewer
-              user: user:daphne
+              user: user:duck
             expectation: true
 
   - name: ExclusionAndExclusionInBase
@@ -1301,34 +1301,34 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: owner
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: false
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
 
   - name: ExclusionAndExclusionInSubtract
@@ -1344,38 +1344,38 @@ tests:
         tuples:
           - object: document:1
             relation: writer
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: editor
-            user: user:abigail
+            user: user:aardvark
           - object: document:1
             relation: owner
-            user: user:abigail
+            user: user:aardvark
           - object: document:2
             relation: writer
-            user: user:beatrix
+            user: user:badger
           - object: document:2
             relation: editor
-            user: user:beatrix
+            user: user:badger
           - object: document:3
             relation: writer
-            user: user:charlie
+            user: user:cheetah
           - object: document:3
             relation: owner
-            user: user:charlie
+            user: user:cheetah
         assertions:
           - tuple:
               object: document:1
               relation: viewer
-              user: user:abigail
+              user: user:aardvark
             expectation: true
           - tuple:
               object: document:2
               relation: viewer
-              user: user:beatrix
+              user: user:badger
             expectation: false
           - tuple:
               object: document:3
               relation: viewer
-              user: user:charlie
+              user: user:cheetah
             expectation: true
