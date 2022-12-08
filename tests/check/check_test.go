@@ -2,10 +2,8 @@ package check
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +11,6 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -26,7 +23,11 @@ type checkTests struct {
 }
 
 type checkTest struct {
-	Name       string
+	Name   string
+	Stages []stage
+}
+
+type stage struct {
 	Model      string
 	Tuples     []*pb.TupleKey
 	Assertions []assertion
@@ -37,7 +38,19 @@ type assertion struct {
 	Expectation bool
 }
 
-func TestCheck(t *testing.T) {
+func TestCheckMemory(t *testing.T) {
+	testCheck(t, "memory")
+}
+
+func TestCheckPostgres(t *testing.T) {
+	testCheck(t, "postgres")
+}
+
+func TestCheckMySQL(t *testing.T) {
+	testCheck(t, "mysql")
+}
+
+func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
@@ -45,86 +58,76 @@ func TestCheck(t *testing.T) {
 	err = yaml.Unmarshal(data, &tests)
 	require.NoError(t, err)
 
-	engines := []string{"memory", "postgres", "mysql"}
-	for _, engine := range engines {
-		name := fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine))
+	container := storage.RunDatastoreTestContainer(t, engine)
 
-		t.Run(name, func(t *testing.T) {
-			container := storage.RunDatastoreTestContainer(t, engine)
+	cfg := cmd.MustDefaultConfigWithRandomPorts()
+	cfg.Datastore.Engine = engine
+	cfg.Datastore.URI = container.GetConnectionURI()
 
-			cfg := cmd.MustDefaultConfigWithRandomPorts()
-			cfg.Datastore.Engine = engine
-			cfg.Datastore.URI = container.GetConnectionURI()
+	ctx, cancel := context.WithCancel(context.Background())
 
-			ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		if err := cmd.RunServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-			go func() {
-				if err := cmd.RunServer(ctx, cfg); err != nil {
-					log.Fatal(err)
-				}
-			}()
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
 
-			conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			require.NoError(t, err)
-			defer conn.Close()
+	client := pb.NewOpenFGAServiceClient(conn)
 
-			client := pb.NewOpenFGAServiceClient(conn)
+	// Ensure the service is up before continuing.
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 10 * time.Second
+	err = backoff.Retry(func() error {
+		_, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
+		return err
+	}, policy)
+	require.NoError(t, err)
 
-			policy := backoff.NewExponentialBackOff()
-			policy.MaxElapsedTime = 10 * time.Second
-			resp, err := backoff.RetryWithData(func() (*pb.CreateStoreResponse, error) {
-				return client.CreateStore(ctx, &pb.CreateStoreRequest{Name: name})
-			}, policy)
-			require.NoError(t, err)
+	runTests(t, client, tests)
 
-			storeID := resp.GetId()
-
-			runTest(t, client, storeID, tests)
-
-			cancel() // shutdown the server
-		})
-	}
+	// Shutdown the server.
+	cancel()
 }
 
-func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {
+func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	ctx := context.Background()
 
 	for _, test := range tests.Tests {
-		t.Run(test.Name, func(t *testing.T) {
-			_, err := client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-				StoreId:         storeID,
-				TypeDefinitions: parser.MustParse(test.Model),
-				SchemaVersion:   "1.1",
+		for _, stage := range test.Stages {
+			t.Run(test.Name, func(t *testing.T) {
+				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "EnsureServiceIsUp"})
+				require.NoError(t, err)
+
+				storeID := resp.GetId()
+
+				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					TypeDefinitions: parser.MustParse(stage.Model),
+					SchemaVersion:   "1.1",
+				})
+				require.NoError(t, err)
+
+				for _, tuple := range stage.Tuples {
+					_, err = client.Write(ctx, &pb.WriteRequest{
+						StoreId: storeID,
+						Writes:  &pb.TupleKeys{TupleKeys: []*pb.TupleKey{tuple}},
+					})
+					require.NoError(t, err)
+				}
+
+				for _, assertion := range stage.Assertions {
+					resp, err := client.Check(ctx, &pb.CheckRequest{
+						StoreId:  storeID,
+						TupleKey: assertion.Tuple,
+					})
+					require.NoError(t, err)
+					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+				}
 			})
-			require.NoError(t, err)
-
-			for _, tuple := range test.Tuples {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Writes:  &pb.TupleKeys{TupleKeys: []*pb.TupleKey{tuple}},
-				})
-				require.NoError(t, err)
-			}
-
-			for _, assertion := range test.Assertions {
-				resp, err := client.Check(ctx, &pb.CheckRequest{
-					StoreId:  storeID,
-					TupleKey: assertion.Tuple,
-				})
-				require.NoError(t, err)
-				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-			}
-
-			// Delete the tuples.
-			for _, tuple := range test.Tuples {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Deletes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
-						tupleUtils.NewTupleKey(tuple.Object, tuple.Relation, tuple.User),
-					}},
-				})
-				require.NoError(t, err)
-			}
-		})
+		}
 	}
 }
