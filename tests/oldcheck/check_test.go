@@ -2,10 +2,8 @@ package oldcheck
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -37,7 +35,19 @@ type assertion struct {
 	Expectation bool
 }
 
-func TestCheck(t *testing.T) {
+func TestCheckMemory(t *testing.T) {
+	testCheck(t, "memory")
+}
+
+func TestCheckPostgres(t *testing.T) {
+	testCheck(t, "postgres")
+}
+
+func TestCheckMySQL(t *testing.T) {
+	testCheck(t, "mysql")
+}
+
+func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
@@ -45,45 +55,40 @@ func TestCheck(t *testing.T) {
 	err = yaml.Unmarshal(data, &tests)
 	require.NoError(t, err)
 
-	engines := []string{"memory", "postgres", "mysql"}
-	for _, engine := range engines {
-		name := fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine))
+	container := storage.RunDatastoreTestContainer(t, engine)
 
-		t.Run(name, func(t *testing.T) {
-			container := storage.RunDatastoreTestContainer(t, engine)
+	cfg := cmd.MustDefaultConfigWithRandomPorts()
+	cfg.Datastore.Engine = engine
+	cfg.Datastore.URI = container.GetConnectionURI()
 
-			cfg := cmd.MustDefaultConfigWithRandomPorts()
-			cfg.Datastore.Engine = engine
-			cfg.Datastore.URI = container.GetConnectionURI()
+	ctx, cancel := context.WithCancel(context.Background())
 
-			ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		if err := cmd.RunServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-			go func() {
-				if err := cmd.RunServer(ctx, cfg); err != nil {
-					log.Fatal(err)
-				}
-			}()
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
 
-			conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			require.NoError(t, err)
-			defer conn.Close()
+	client := pb.NewOpenFGAServiceClient(conn)
 
-			client := pb.NewOpenFGAServiceClient(conn)
+	// Ensure the service is up before continuing.
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 10 * time.Second
+	resp, err := backoff.RetryWithData(func() (*pb.CreateStoreResponse, error) {
+		return client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
+	}, policy)
+	require.NoError(t, err)
 
-			policy := backoff.NewExponentialBackOff()
-			policy.MaxElapsedTime = 10 * time.Second
-			resp, err := backoff.RetryWithData(func() (*pb.CreateStoreResponse, error) {
-				return client.CreateStore(ctx, &pb.CreateStoreRequest{Name: name})
-			}, policy)
-			require.NoError(t, err)
+	storeID := resp.GetId()
 
-			storeID := resp.GetId()
+	runTest(t, client, storeID, tests)
 
-			runTest(t, client, storeID, tests)
-
-			cancel() // shutdown the server
-		})
-	}
+	// Shutdown the server.
+	cancel()
 }
 
 func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {

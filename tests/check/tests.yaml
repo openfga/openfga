@@ -1335,6 +1335,7 @@ tests:
     stages:
       - model: |
           type user
+          
           type document
             relations
               define writer: [user] as self
@@ -1378,4 +1379,46 @@ tests:
               object: document:3
               relation: viewer
               user: user:cheetah
+            expectation: true
+
+  - name: userset_as_user
+    stages:
+      - model: |
+          type user
+          
+          type group
+            relations
+              define member: [user] as self
+    
+          type document
+            relations
+              define viewer: [group#member] as self
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: group:x#member
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: group:x#member
+            expectation: true
+
+  - name: wildcard_direct
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define viewer: [user:*] as self
+        tuples:
+          - object: document:public
+            relation: viewer
+            user: user:*
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:aardvark
             expectation: true
