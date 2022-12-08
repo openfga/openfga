@@ -30,8 +30,11 @@ func NewMysqlTupleIterator(rows *sql.Rows) *tupleIterator {
 func (t *tupleIterator) next(ctx context.Context) (*tupleRecord, error) {
 	go func() {
 		if !t.rows.Next() {
-			t.Stop()
-			close(t.resultCh)
+			if err := t.rows.Err(); err != nil {
+				t.errCh <- err
+				return
+			}
+			t.errCh <- storage.ErrIteratorDone
 			return
 		}
 
@@ -54,20 +57,14 @@ func (t *tupleIterator) next(ctx context.Context) (*tupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	case err := <-t.errCh:
 		return nil, handleMySQLError(err)
-	case result, ok := <-t.resultCh:
-		if ok {
-			return result, nil
-		}
-
-		return nil, storage.ErrIteratorDone
+	case result := <-t.resultCh:
+		return result, nil
 	}
 }
 
 // toArray converts the tupleIterator to an []*openfgapb.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
 func (t *tupleIterator) toArray(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	defer t.Stop()
-
 	var res []*openfgapb.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next(ctx)
@@ -130,8 +127,11 @@ var _ storage.ObjectIterator = (*objectIterator)(nil)
 func (o *objectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 	go func() {
 		if !o.rows.Next() {
-			o.Stop()
-			close(o.resultCh)
+			if err := o.rows.Err(); err != nil {
+				o.errCh <- err
+				return
+			}
+			o.errCh <- storage.ErrIteratorDone
 			return
 		}
 
@@ -157,12 +157,8 @@ func (o *objectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 		return nil, storage.ErrIteratorDone
 	case err := <-o.errCh:
 		return nil, handleMySQLError(err)
-	case result, ok := <-o.resultCh:
-		if ok {
-			return result, nil
-		}
-
-		return nil, storage.ErrIteratorDone
+	case result := <-o.resultCh:
+		return result, nil
 	}
 }
 

@@ -144,6 +144,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
 	return iter.toArray(ctx, opts)
 }
@@ -276,6 +277,7 @@ func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.Pagi
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 	return iter.toArray(ctx, opts)
 }
 

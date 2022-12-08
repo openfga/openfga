@@ -163,6 +163,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
 	return iter.toArray(ctx, opts)
 }
