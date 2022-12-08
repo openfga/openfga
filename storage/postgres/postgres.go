@@ -36,11 +36,28 @@ type Postgres struct {
 	logger                   logger.Logger
 	maxTuplesInWrite         int
 	maxTypesInTypeDefinition int
+
+	maxOpenConns    int
+	maxIdleConns    int
+	connMaxIdleTime time.Duration
+	connMaxLifetime time.Duration
 }
 
 var _ storage.OpenFGADatastore = &Postgres{}
 
 type PostgresOption func(*Postgres)
+
+func WithTracer(t trace.Tracer) PostgresOption {
+	return func(p *Postgres) {
+		p.tracer = t
+	}
+}
+
+func WithLogger(l logger.Logger) PostgresOption {
+	return func(p *Postgres) {
+		p.logger = l
+	}
+}
 
 func WithMaxTuplesInWrite(maxTuples int) PostgresOption {
 	return func(p *Postgres) {
@@ -54,15 +71,27 @@ func WithMaxTypesInTypeDefinition(maxTypes int) PostgresOption {
 	}
 }
 
-func WithLogger(l logger.Logger) PostgresOption {
+func WithMaxOpenConns(c int) PostgresOption {
 	return func(p *Postgres) {
-		p.logger = l
+		p.maxOpenConns = c
 	}
 }
 
-func WithTracer(t trace.Tracer) PostgresOption {
+func WithMaxIdleConns(c int) PostgresOption {
 	return func(p *Postgres) {
-		p.tracer = t
+		p.maxIdleConns = c
+	}
+}
+
+func WithConnMaxIdleTime(d time.Duration) PostgresOption {
+	return func(p *Postgres) {
+		p.connMaxIdleTime = d
+	}
+}
+
+func WithConnMaxLifetime(d time.Duration) PostgresOption {
+	return func(p *Postgres) {
+		p.connMaxLifetime = d
 	}
 }
 
@@ -94,7 +123,21 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
 	}
 
-	db.SetMaxIdleConns(5)
+	if p.maxOpenConns != 0 {
+		db.SetMaxOpenConns(p.maxOpenConns)
+	}
+
+	if p.maxIdleConns != 0 {
+		db.SetMaxIdleConns(p.maxIdleConns)
+	}
+
+	if p.connMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(p.connMaxIdleTime)
+	}
+
+	if p.connMaxLifetime != 0 {
+		db.SetConnMaxLifetime(p.connMaxLifetime)
+	}
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute

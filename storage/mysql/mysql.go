@@ -34,9 +34,26 @@ type MySQL struct {
 	logger                   logger.Logger
 	maxTuplesInWrite         int
 	maxTypesInTypeDefinition int
+
+	maxOpenConns    int
+	maxIdleConns    int
+	connMaxIdleTime time.Duration
+	connMaxLifetime time.Duration
 }
 
 type MySQLOption func(*MySQL)
+
+func WithTracer(t trace.Tracer) MySQLOption {
+	return func(m *MySQL) {
+		m.tracer = t
+	}
+}
+
+func WithLogger(l logger.Logger) MySQLOption {
+	return func(m *MySQL) {
+		m.logger = l
+	}
+}
 
 func WithMaxTuplesInWrite(maxTuples int) MySQLOption {
 	return func(m *MySQL) {
@@ -50,15 +67,27 @@ func WithMaxTypesInTypeDefinition(maxTypes int) MySQLOption {
 	}
 }
 
-func WithLogger(l logger.Logger) MySQLOption {
+func WithMaxOpenConns(c int) MySQLOption {
 	return func(m *MySQL) {
-		m.logger = l
+		m.maxOpenConns = c
 	}
 }
 
-func WithTracer(t trace.Tracer) MySQLOption {
+func WithMaxIdleConns(c int) MySQLOption {
 	return func(m *MySQL) {
-		m.tracer = t
+		m.maxIdleConns = c
+	}
+}
+
+func WithConnMaxIdleTime(d time.Duration) MySQLOption {
+	return func(m *MySQL) {
+		m.connMaxIdleTime = d
+	}
+}
+
+func WithConnMaxLifetime(d time.Duration) MySQLOption {
+	return func(m *MySQL) {
+		m.connMaxLifetime = d
 	}
 }
 
@@ -90,7 +119,21 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
 	}
 
-	db.SetMaxIdleConns(5)
+	if m.maxOpenConns != 0 {
+		db.SetMaxOpenConns(m.maxOpenConns)
+	}
+
+	if m.maxIdleConns != 0 {
+		db.SetMaxIdleConns(m.maxIdleConns)
+	}
+
+	if m.connMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(m.connMaxIdleTime)
+	}
+
+	if m.connMaxLifetime != 0 {
+		db.SetConnMaxLifetime(m.connMaxLifetime)
+	}
 
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 1 * time.Minute
