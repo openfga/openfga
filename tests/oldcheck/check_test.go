@@ -1,4 +1,4 @@
-package checktestmatrix
+package oldcheck
 
 import (
 	"context"
@@ -45,7 +45,8 @@ func TestCheck(t *testing.T) {
 	err = yaml.Unmarshal(data, &tests)
 	require.NoError(t, err)
 
-	for _, engine := range []string{"memory", "postgres", "mysql"} {
+	engines := []string{"memory", "postgres", "mysql"}
+	for _, engine := range engines {
 		name := fmt.Sprintf("TestCheckWith%s", strings.ToUpper(engine))
 
 		t.Run(name, func(t *testing.T) {
@@ -92,8 +93,8 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests
 		t.Run(test.Name, func(t *testing.T) {
 			_, err := client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
-				TypeDefinitions: parser.MustParse(test.Model),
 				SchemaVersion:   "1.0",
+				TypeDefinitions: parser.MustParse(test.Model),
 			})
 			require.NoError(t, err)
 
