@@ -373,19 +373,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{
 						Type: "repo",
 						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
-									},
-								},
-							},
+							"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
 							"manager": typesystem.This(),
 						},
 					},
@@ -454,19 +442,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{
 						Type: "repo",
 						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_TupleToUserset{
-									TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
-									},
-								},
-							},
+							"admin":   typesystem.TupleToUserset("manager", "repo_admin"),
 							"manager": typesystem.This(),
 						},
 						Metadata: &openfgapb.Metadata{
