@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -75,12 +76,59 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
-
-	err = validation.ValidateTuple(typesys, tk)
-	if err != nil {
+	if err := validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
+
+	if err := validation.ValidateRelation(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if err := validation.ValidateUser(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+		g := graph.BuildConnectedObjectGraph(typesys)
+
+		user := tk.GetUser()
+
+		userObjectType := tupleUtils.GetType(user)
+
+		sourceRef := typesystem.DirectRelationReference(
+			userObjectType,
+			"",
+		)
+
+		if tupleUtils.IsObjectRelation(user) {
+			_, userRelation := tupleUtils.SplitObjectRelation(user)
+
+			sourceRef = typesystem.DirectRelationReference(
+				userObjectType,
+				userRelation,
+			)
+		}
+
+		if tupleUtils.IsTypedWildcard(user) {
+			sourceRef = typesystem.WildcardRelationReference(userObjectType)
+		}
+
+		ingresses, err := g.RelationshipIngresses(typesystem.DirectRelationReference(
+			tupleUtils.GetType(tk.GetObject()),
+			tk.GetRelation(),
+		), sourceRef)
+		if err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+
+		if len(ingresses) < 1 {
+			return &openfgapb.CheckResponse{
+				Allowed: false,
+			}, nil
+		}
+	}
+
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
