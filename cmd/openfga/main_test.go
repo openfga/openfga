@@ -658,6 +658,61 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				},
 			},
 		},
+		{
+			name: "indirectly_related_types",
+			input: &openfgapb.CheckRequest{
+				StoreId:  ulid.Make().String(),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			output: output{
+				resp:      &openfgapb.CheckResponse{Allowed: true},
+				errorCode: codes.OK,
+			},
+			testData: &testData{
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("group:eng", "member", "user:jon"),
+					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				},
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "group",
+							Relations: map[string]*openfgapb.Userset{
+								"member": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"member": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("user", ""),
+										},
+									},
+								},
+							},
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("group", "member"),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	conn := connect(t, tester)
