@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -76,10 +77,10 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
-	//err = validation.ValidateTuple(typesys, tk)
-	//if err != nil {
-	//	return nil, serverErrors.HandleTupleValidateError(err)
-	//}
+	err = validation.ValidateTuple(typesys, tk)
+	if err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
