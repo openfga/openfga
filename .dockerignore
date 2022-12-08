@@ -1,1 +1,4 @@
 .github
+.vscode
+testdata
+tools
