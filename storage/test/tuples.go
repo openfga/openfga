@@ -416,6 +416,7 @@ func ListObjectsByTypeTest(t *testing.T, ds storage.OpenFGADatastore) {
 			if err == storage.ErrIteratorDone {
 				break
 			}
+			require.NoError(t, err)
 		}
 
 		actual = append(actual, tuple.ObjectKey(obj))
