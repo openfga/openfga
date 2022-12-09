@@ -17,6 +17,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -473,10 +474,8 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	type testData struct {
-		storeID         string
-		modelID         string
-		tuples          *openfgapb.TupleKeys
-		typeDefinitions []*openfgapb.TypeDefinition
+		tuples []*openfgapb.TupleKey
+		model  *openfgapb.AuthorizationModel
 	}
 
 	type output struct {
@@ -563,7 +562,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "blerb",
+			name: "union_with_direct_check_single_operand",
 			input: &openfgapb.CheckRequest{
 				StoreId: ulid.Make().String(),
 				// AuthorizationModelId is generated automatically during testData bootstrap
@@ -577,27 +576,139 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				},
 			},
 			testData: &testData{
-				typeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_Union{
-									Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-										{
-											Userset: &openfgapb.Userset_This{
-												This: &openfgapb.DirectUserset{},
-											},
+				model: &openfgapb.AuthorizationModel{
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "repo",
+							Relations: map[string]*openfgapb.Userset{
+								"admin": typesystem.Union(typesystem.This()),
+							},
+						},
+					},
+				},
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
+				},
+			},
+		},
+		{
+			name: "typed_wildcard_string_is_treated_as_literal_in_1.0_models",
+			input: &openfgapb.CheckRequest{
+				StoreId:  ulid.Make().String(),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			output: output{
+				resp:      &openfgapb.CheckResponse{Allowed: false},
+				errorCode: codes.OK,
+			},
+			testData: &testData{
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				},
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_0,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "typed_wildcard_string_is_treated_as_wildcard_in_1.1_models",
+			input: &openfgapb.CheckRequest{
+				StoreId:  ulid.Make().String(),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			output: output{
+				resp:      &openfgapb.CheckResponse{Allowed: true},
+				errorCode: codes.OK,
+			},
+			testData: &testData{
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				},
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											{Type: "user"},
+											typesystem.WildcardRelationReference("user"),
 										},
-									}},
+									},
 								},
 							},
 						},
 					},
 				},
-				tuples: &openfgapb.TupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
+			},
+		},
+		{
+			name: "indirectly_related_types",
+			input: &openfgapb.CheckRequest{
+				StoreId:  ulid.Make().String(),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			output: output{
+				resp:      &openfgapb.CheckResponse{Allowed: true},
+				errorCode: codes.OK,
+			},
+			testData: &testData{
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("group:eng", "member", "user:jon"),
+					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				},
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "group",
+							Relations: map[string]*openfgapb.Userset{
+								"member": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"member": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("user", ""),
+										},
+									},
+								},
+							},
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("group", "member"),
+										},
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -617,7 +728,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			if test.testData != nil {
 				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
-					TypeDefinitions: test.testData.typeDefinitions,
+					SchemaVersion:   test.testData.model.SchemaVersion,
+					TypeDefinitions: test.testData.model.TypeDefinitions,
 				})
 				require.NoError(t, err)
 
@@ -626,7 +738,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               test.testData.tuples,
+					Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
 				})
 				require.NoError(t, err)
 			}
@@ -647,6 +759,117 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCExpandTest(t *testing.T, tester OpenFGATester) {
 
+}
+
+// TestCheckWorkflows are tests that involve workflows that define assertions for
+// Checks against multi-model stores etc..
+func TestCheckWorkflows(t *testing.T) {
+
+	tester, err := newOpenFGATester(t)
+	require.NoError(t, err)
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	/*
+	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
+	 * from a prior model does not impact the Check outcome of a model that should not
+	 * involve it. For example,
+	 *
+	 * type user
+	 * type document
+	 *   relations
+	 *     define viewer: [user:*]
+	 *
+	 * write(document:1#viewer@user:*)
+	 *
+	 * type user
+	 * type document
+	 *	relations
+	 *	  define viewer: [user]
+	 *
+	 * check(document:1#viewer@user:jon) --> {allowed: false}
+	 */
+	t.Run("TypedWildcardsFromOtherModelsIgnored", func(t *testing.T) {
+		resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+			Name: "openfga-demo",
+		})
+		require.NoError(t, err)
+
+		storeID := resp1.GetId()
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.WildcardRelationReference("user"),
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		resp, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		})
+		require.NoError(t, err)
+		require.False(t, resp.Allowed)
+	})
 }
 
 func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {

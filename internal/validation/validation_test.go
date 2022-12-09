@@ -479,6 +479,114 @@ func TestValidateTuple(t *testing.T) {
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "folder:1"),
 			},
 		},
+		{
+			name:  "typed_wildcard_without_allowed_type_restriction",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Reason:   "the typed wildcard 'user:*' is not an allowed type restriction for 'document#viewer'",
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			},
+		},
+		{
+			name:  "relation_reference_without_allowed_type_restriction",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "group",
+						Relations: map[string]*openfgapb.Userset{
+							"member": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Reason:   "'group#member' is not an allowed type restriction for 'document#viewer'",
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			},
+		},
+		{
+			name:  "type_without_allowed_type_restriction",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Reason:   "type 'user' is not an allowed type restriction for 'document#viewer'",
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+		},
 	}
 
 	for _, test := range tests {

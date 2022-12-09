@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -206,26 +207,34 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
-	t.Run("reading a tuple that exists succeeds", func(t *testing.T) {
+	t.Run("reading_a_tuple_that_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tuple1 := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}}
-		tuple2 := &openfgapb.Tuple{Key: &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "doc:other#viewer"}}
+		tuple1 := tuple.NewTupleKey("doc:readme", "owner", "user:jon")
+		tuple2 := tuple.NewTupleKey("doc:readme", "viewer", "doc:other#viewer")
+		tuple3 := tuple.NewTupleKey("doc:readme", "viewer", "user:*")
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tuple1.Key, tuple2.Key})
+		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tuple1, tuple2, tuple3})
 		require.NoError(t, err)
 
-		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1.Key)
+		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(gotTuple, tuple1, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(gotTuple.Key, tuple1, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
 		}
 
-		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2.Key)
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(gotTuple, tuple2, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(gotTuple.Key, tuple2, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		}
+
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(gotTuple.Key, tuple3, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
 		}
 	})
 
@@ -252,6 +261,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			},
 			{
 				Object:   "doc:readme",
+				Relation: "owner",
+				User:     "user:*",
+			},
+			{
+				Object:   "doc:readme",
 				Relation: "viewer",
 				User:     "org:openfgapb#viewer",
 			},
@@ -262,25 +276,32 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
 		require.NoError(t, err)
-		defer gotTuples.Stop()
+
+		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
+		defer iter.Stop()
 
 		var gotTupleKeys []*openfgapb.TupleKey
-		// We should find the first two tupleKeys
-		for i := 0; i < 2; i++ {
-			gotTuple, err := gotTuples.Next()
+		for {
+			tk, err := iter.Next()
 			if err != nil {
-				t.Fatal(err)
+				if errors.Is(err, storage.ErrIteratorDone) {
+					break
+				}
+
+				require.Fail(t, "unexpected error encountered")
 			}
 
-			gotTupleKeys = append(gotTupleKeys, gotTuple.Key)
+			gotTupleKeys = append(gotTupleKeys, tk)
 		}
 
 		// Then the iterator should run out
 		_, err = gotTuples.Next()
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 
-		if diff := cmp.Diff(gotTupleKeys, tks[:2], cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		require.Len(t, gotTupleKeys, 3)
+
+		if diff := cmp.Diff(gotTupleKeys, tks[:3], cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
 		}
 	})
 

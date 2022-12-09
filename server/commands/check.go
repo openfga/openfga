@@ -75,12 +75,19 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
-
-	err = validation.ValidateTuple(typesys, tk)
-	if err != nil {
+	if err := validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
+
+	if err := validation.ValidateRelation(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if err := validation.ValidateUser(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
@@ -253,10 +260,26 @@ func (query *CheckQuery) resolveDirectUserSet(
 			return serverErrors.HandleError("", err)
 		}
 
-		// If a single star is available, then assume user exists and break.
-		if usersetTuple.GetUser() == "*" {
+		foundUser := usersetTuple.GetUser()
+
+		schemaVersion := typesys.GetSchemaVersion()
+
+		if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
 			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
 			break
+		}
+
+		if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
+
+			wildcardType := tupleUtils.GetType(foundUser)
+
+			if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
+				continue
+			}
+
+			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+			break
+
 		}
 
 		// Avoid launching more goroutines by checking if the user has been found in another goroutine.
