@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -56,7 +57,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -83,7 +84,7 @@ func TestCombinedIterator(t *testing.T) {
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -129,7 +130,7 @@ func TestUniqueObjectIterator(t *testing.T) {
 
 	var actual []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -174,7 +175,7 @@ func ExampleNewUniqueObjectIterator() {
 
 	var objects []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
@@ -208,7 +209,7 @@ func ExampleNewFilteredTupleKeyIterator() {
 
 	var filtered []string
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
