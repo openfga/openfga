@@ -1,5 +1,5 @@
 tests:
-  - name: This
+  - name: this
     stages:
       - model: |
           type user
@@ -17,6 +17,7 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+            trace: .(direct).
           - tuple:
               object: document:2
               relation: viewer
@@ -28,7 +29,7 @@ tests:
               user: user:badger
             expectation: false
 
-  - name: ComputedUserset
+  - name: computed_userset
     stages:
       - model: |
           type user
@@ -47,6 +48,7 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+            trace: .(computed-userset).document:1#writer.(direct).
           - tuple:
               object: document:2
               relation: writer
@@ -58,7 +60,7 @@ tests:
               user: user:aardvark
             expectation: false
 
-  - name: TupleToUserset
+  - name: tuple_to_userset
     stages:
       - model: |
           type user
@@ -84,8 +86,9 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+            trace: .(tuple-to-userset).document:1#parent.folder:x#viewer.(direct).
 
-  - name: ThisAndUnion
+  - name: this_and_union
     stages:
       - model: |
           type user
@@ -107,13 +110,14 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+            trace: .union.0(direct).
           - tuple:
               object: document:2
               relation: viewer
               user: user:badger
             expectation: true
 
-  - name: ThisAndIntersection
+  - name: this_and_intersection
     stages:
       - model: |
           type user
@@ -152,7 +156,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: ThisAndExclusionBase
+  - name: this_and_exclusion_base
     stages:
       - model: |
           type user
@@ -191,7 +195,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: ComputedUsersetAndUnion
+  - name: computed_userset_and_union
     stages:
       - model: |
           type user
@@ -220,7 +224,7 @@ tests:
               user: user:badger
             expectation: true
 
-  - name: ComputedUsersetAndIntersection
+  - name: computed_userset_and_intersection
     stages:
       - model: |
           type user
@@ -260,7 +264,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: ComputedUsersetAndExclusion
+  - name: computed_userset_and_exclusion
     stages:
       - model: |
           type user
@@ -300,7 +304,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: TupleToUsersetAndComputedUserset
+  - name: tuple_to_userset_and_computed_userset
     stages:
       - model: |
           type user
@@ -328,7 +332,7 @@ tests:
               user: user:aardvark
             expectation: true
 
-  - name: TupleToUsersetAndTupleToUserset
+  - name: tuple_to_userset_and_tuple_to_userset
     stages:
       - model: |
           type user
@@ -363,7 +367,7 @@ tests:
               user: user:aardvark
             expectation: true
 
-  - name: TupleToUsersetAndUnion
+  - name: tuple_to_userset_and_union
     stages:
       - model: |
           type user
@@ -400,7 +404,7 @@ tests:
               user: user:badger
             expectation: true
 
-  - name: TupleToUsersetAndIntersection
+  - name: tuple_to_userset_and_intersection
     stages:
       - model: |
           type user
@@ -448,7 +452,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: TupleToUsersetAndExclusion
+  - name: tuple_to_userset_and_exclusion
     stages:
       - model: |
           type user
@@ -496,7 +500,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: UnionAndTupleToUserset
+  - name: union_and_tuple_to_userset
     stages:
       - model: |
           type user
@@ -531,7 +535,7 @@ tests:
               user: user:badger
             expectation: true
 
-  - name: UnionAndUnion
+  - name: union_and_union
     stages:
       - model: |
           type user
@@ -569,7 +573,7 @@ tests:
               user: user:cheetah
             expectation: true
 
-  - name: UnionAndIntersection
+  - name: union_and_intersection
     stages:
       - model: |
           type user
@@ -618,7 +622,7 @@ tests:
               user: user:duck
             expectation: false
 
-  - name: UnionAndExclusion
+  - name: union_and_exclusion
     stages:
       - model: |
           type user
@@ -667,7 +671,7 @@ tests:
               user: user:duck
             expectation: false
 
-  - name: IntersectionAndTupleToUserset
+  - name: intersection_and_tuple_to_userset
     stages:
       - model: |
           type user
@@ -714,7 +718,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: IntersectionAndUnion
+  - name: intersection_and_union
     stages:
       - model: |
           type user
@@ -774,7 +778,7 @@ tests:
               user: user:eagle
             expectation: false
 
-  - name: IntersectionAndIntersection
+  - name: intersection_and_intersection
     stages:
       - model: |
           type user
@@ -848,7 +852,7 @@ tests:
               user: user:fox
             expectation: false
 
-  - name: IntersectionAndExclusion
+  - name: intersection_and_exclusion
     stages:
       - model: |
           type user
@@ -922,7 +926,7 @@ tests:
               user: user:fox
             expectation: false
 
-  - name: ExclusionAndComputedUnion
+  - name: exclusion_and_computed_userset
     stages:
       - model: |
           type user
@@ -962,7 +966,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: ExclusionAndTupleToUsersetInBase
+  - name: exclusion_and_tuple_to_userset_in_base
     stages:
       - model: |
           type user
@@ -1009,7 +1013,7 @@ tests:
               user: user:cheetah
             expectation: false
 
-  - name: ExclusionAndTupleToUsersetInSubtract
+  - name: exclusion_and_tuple_to_userset_in_subtract
     stages:
       - model: |
           type user
@@ -1056,7 +1060,7 @@ tests:
               user: user:cheetah
             expectation: true
 
-  - name: ExclusionAndUnionInBase
+  - name: exclusion_and_union_in_base
     stages:
       - model: |
           type user
@@ -1122,7 +1126,7 @@ tests:
               user: user:eagle
             expectation: true
 
-  - name: ExclusionAndUnionInSubtract
+  - name: exclusion_and_union_in_subtract
     stages:
       - model: |
           type user
@@ -1166,7 +1170,7 @@ tests:
               user: user:cheetah
             expectation: true
 
-  - name: ExclusionAndIntersectionInBase
+  - name: exclusion_and_intersection_in_base
     stages:
       - model: |
           type user
@@ -1229,7 +1233,7 @@ tests:
               user: user:eagle
             expectation: false
 
-  - name: ExclusionAndIntersectionInSubtract
+  - name: exclusion_and_intersection_in_subtract
     stages:
       - model: |
           type user
@@ -1287,7 +1291,7 @@ tests:
               user: user:duck
             expectation: true
 
-  - name: ExclusionAndExclusionInBase
+  - name: exclusion_and_exclusion_in_base
     stages:
       - model: |
           type user
@@ -1331,7 +1335,7 @@ tests:
               user: user:cheetah
             expectation: true
 
-  - name: ExclusionAndExclusionInSubtract
+  - name: exclusion_and_exclusion_in_subtract
     stages:
       - model: |
           type user
