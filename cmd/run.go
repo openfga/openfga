@@ -766,13 +766,13 @@ func bindRunFlags(cmd *cobra.Command) {
 	util.MustBindPFlag("datastore.maxCacheSize", cmd.Flags().Lookup("datastore-max-cache-size"))
 
 	cmd.Flags().Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
-	util.MustBindPFlag("datastore.max.open.conns", cmd.Flags().Lookup("datastore-max-open-conns"))
+	util.MustBindPFlag("datastore.maxOpenConns", cmd.Flags().Lookup("datastore-max-open-conns"))
 	cmd.Flags().Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections in the idle connection pool")
-	util.MustBindPFlag("datastore.max.idle.conns", cmd.Flags().Lookup("datastore-max-idle-conns"))
+	util.MustBindPFlag("datastore.maxIdleConns", cmd.Flags().Lookup("datastore-max-idle-conns"))
 	cmd.Flags().Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection may be idle")
-	util.MustBindPFlag("datastore.conn.max.idle.time", cmd.Flags().Lookup("datastore-conn-max-idle-time"))
+	util.MustBindPFlag("datastore.connMaxIdleTime", cmd.Flags().Lookup("datastore-conn-max-idle-time"))
 	cmd.Flags().Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection may be reused")
-	util.MustBindPFlag("datastore.conn.max.lifetime", cmd.Flags().Lookup("datastore-conn-max-lifetime"))
+	util.MustBindPFlag("datastore.connMaxLifetime", cmd.Flags().Lookup("datastore-conn-max-lifetime"))
 
 	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 	util.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))

@@ -748,6 +748,20 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
 
+	val = res.Get("properties.datastore.properties.maxIdleConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
+
+	val = res.Get("properties.datastore.properties.maxOpenConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxOpenConns)
+
+	val = res.Get("properties.datastore.properties.connMaxIdleTime.default")
+	require.True(t, val.Exists())
+
+	val = res.Get("properties.datastore.properties.connMaxLifetime.default")
+	require.True(t, val.Exists())
+
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.GRPC.Addr)
