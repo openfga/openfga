@@ -171,7 +171,7 @@ func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType 
 		return nil, err
 	}
 
-	return &objectIterator{rows: rows}, nil
+	return NewMysqlObjectIterator(rows), nil
 }
 
 func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -189,8 +189,9 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
-	return iter.toArray(opts)
+	return iter.toArray(ctx, opts)
 }
 
 func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*tupleIterator, error) {
@@ -207,7 +208,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -310,7 +311,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, tupleKey *o
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
@@ -321,7 +322,8 @@ func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.Pagi
 	if err != nil {
 		return nil, nil, err
 	}
-	return iter.toArray(opts)
+	defer iter.Stop()
+	return iter.toArray(ctx, opts)
 }
 
 func (m *MySQL) MaxTuplesPerWrite() int {
@@ -766,7 +768,7 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 // IsReady reports whether this MySQL datastore instance is ready

@@ -252,7 +252,7 @@ func (query *CheckQuery) resolveDirectUserSet(
 	}
 
 	for {
-		usersetTuple, err := iter.Next()
+		usersetTuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -535,7 +535,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

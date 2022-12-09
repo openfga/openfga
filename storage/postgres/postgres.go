@@ -190,7 +190,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	return &objectIterator{rows: rows}, nil
+	return NewPostgresObjectIterator(rows), nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -208,8 +208,9 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
-	return iter.toArray(opts)
+	return iter.toArray(ctx, opts)
 }
 
 func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*tupleIterator, error) {
@@ -226,7 +227,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -359,7 +360,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
@@ -381,7 +382,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) MaxTuplesPerWrite() int {
