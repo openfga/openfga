@@ -11,7 +11,6 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -78,25 +77,29 @@ func testCheck(t *testing.T, engine string) {
 	// Ensure the service is up before continuing.
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 10 * time.Second
-	resp, err := backoff.RetryWithData(func() (*pb.CreateStoreResponse, error) {
-		return client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
+	err = backoff.Retry(func() error {
+		_, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
+		return err
 	}, policy)
 	require.NoError(t, err)
 
-	storeID := resp.GetId()
-
-	runTest(t, client, storeID, tests)
+	runTest(t, client, tests)
 
 	// Shutdown the server.
 	cancel()
 }
 
-func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests checkTests) {
+func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	ctx := context.Background()
 
 	for _, test := range tests.Tests {
 		t.Run(test.Name, func(t *testing.T) {
-			_, err := client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+			require.NoError(t, err)
+
+			storeID := resp.GetId()
+
+			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   "1.0",
 				TypeDefinitions: parser.MustParse(test.Model),
@@ -118,17 +121,6 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, storeID string, tests
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-			}
-
-			// Delete the tuples.
-			for _, tuple := range test.Tuples {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Deletes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
-						tupleUtils.NewTupleKey(tuple.Object, tuple.Relation, tuple.User),
-					}},
-				})
-				require.NoError(t, err)
 			}
 		})
 	}

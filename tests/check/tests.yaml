@@ -1397,11 +1397,19 @@ tests:
           - object: document:1
             relation: viewer
             user: group:x#member
+          - object: group:x
+            relation: member
+            user: user:aardvark
         assertions:
           - tuple:
               object: document:1
               relation: viewer
               user: group:x#member
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
             expectation: true
 
   - name: wildcard_direct
@@ -1421,4 +1429,9 @@ tests:
               object: document:public
               relation: viewer
               user: user:aardvark
+            expectation: true
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:*
             expectation: true

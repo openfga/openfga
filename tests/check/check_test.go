@@ -99,7 +99,7 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	for _, test := range tests.Tests {
 		for _, stage := range test.Stages {
 			t.Run(test.Name, func(t *testing.T) {
-				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "EnsureServiceIsUp"})
+				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
 				require.NoError(t, err)
 
 				storeID := resp.GetId()

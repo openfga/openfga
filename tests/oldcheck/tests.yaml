@@ -1330,12 +1330,17 @@ tests:
         relations
           define viewer as self
     tuples:
-      - object: document:public
+      - object: document:1
         relation: viewer
         user: user:*
     assertions:
       - tuple:
-          object: document:public
+          object: document:1
+          relation: viewer
+          user: user:*
+        expectation: true
+      - tuple:
+          object: document:1
           relation: viewer
           user: user:aardvark
         expectation: false
