@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -84,10 +85,18 @@ func testCheck(t *testing.T, engine string) {
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 10 * time.Second
 	err = backoff.Retry(func() error {
-		_, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
+		resp, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
 			Service: pb.OpenFGAService_ServiceDesc.ServiceName,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+
+		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
+			return fmt.Errorf("not serving")
+		}
+
+		return nil
 	}, policy)
 	require.NoError(t, err)
 
