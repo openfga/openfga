@@ -635,12 +635,12 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
-// MaxTuplesInWriteOperation returns the maximum number of tuples allowed in one write operation
-func (s *MemoryBackend) MaxTuplesPerWriteOperation() int {
+// MaxTuplesPerWriteOperation returns the maximum number of tuples allowed in one write operation
+func (s *MemoryBackend) MaxTuplesPerWrite() int {
 	return s.maxTuplesPerWrite
 }
 
-// MaxTypesInTypeDefinition returns the maximum number of types allowed in a type definition
+// MaxTypesPerAuthorizationModel returns the maximum number of types allowed in a type definition
 func (s *MemoryBackend) MaxTypesPerAuthorizationModel() int {
 	return s.maxTypesPerAuthorizationModel
 }

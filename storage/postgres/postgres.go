@@ -233,7 +233,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	ctx, span := p.tracer.Start(ctx, "postgres.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > p.MaxTuplesPerWriteOperation() {
+	if len(deletes)+len(writes) > p.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
@@ -384,7 +384,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return &tupleIterator{rows: rows}, nil
 }
 
-func (p *Postgres) MaxTuplesPerWriteOperation() int {
+func (p *Postgres) MaxTuplesPerWrite() int {
 	return p.maxTuplesPerWrite
 }
 

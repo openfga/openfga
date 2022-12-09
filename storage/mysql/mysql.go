@@ -214,7 +214,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	ctx, span := m.tracer.Start(ctx, "mysql.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > m.MaxTuplesPerWriteOperation() {
+	if len(deletes)+len(writes) > m.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
@@ -324,7 +324,7 @@ func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.Pagi
 	return iter.toArray(opts)
 }
 
-func (m *MySQL) MaxTuplesPerWriteOperation() int {
+func (m *MySQL) MaxTuplesPerWrite() int {
 	return m.maxTuplesPerWrite
 }
 
