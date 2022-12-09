@@ -11,6 +11,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -102,7 +103,7 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 
 			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
-				SchemaVersion:   "1.0",
+				SchemaVersion:   typesystem.SchemaVersion1_0,
 				TypeDefinitions: parser.MustParse(test.Model),
 			})
 			require.NoError(t, err)

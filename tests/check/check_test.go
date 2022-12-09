@@ -11,10 +11,12 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 )
 
@@ -77,18 +79,19 @@ func testCheck(t *testing.T, engine string) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	client := pb.NewOpenFGAServiceClient(conn)
-
 	// Ensure the service is up before continuing.
+	client := healthv1pb.NewHealthClient(conn)
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 10 * time.Second
 	err = backoff.Retry(func() error {
-		_, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
+		_, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
+			Service: pb.OpenFGAService_ServiceDesc.ServiceName,
+		})
 		return err
 	}, policy)
 	require.NoError(t, err)
 
-	runTests(t, client, tests)
+	runTests(t, pb.NewOpenFGAServiceClient(conn), tests)
 
 	// Shutdown the server.
 	cancel()
@@ -107,8 +110,8 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 
 				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
 					TypeDefinitions: parser.MustParse(stage.Model),
-					SchemaVersion:   "1.1",
 				})
 				require.NoError(t, err)
 
