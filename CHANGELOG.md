@@ -8,6 +8,25 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.2.6] - 2002-12-12
+
+### Added
+- Refactored validation code (#341)
+- Improved test coverage (#386, #347)
+- Improvements for ListObjects (#379)
+- Updating check for 1.1 models (#387)
+- Add support for typed wildcards in 1.1 models (#350, #370, #371, #348)
+- Read with nil tuple_key returns all tuples in the given store (#372)
+
+## Fixed
+- Goroutine leak in ListObjects (#368)
+- ListObjects with contextual tuples not returning correct IDs (#366)
+- Conflicting authorization models causing unexpected errors (#342)
+- Inconsistent response format for ListObjects (#379)
+
+## Deprecated
+- ReadTuples. Please use Read with nil tuple_key instead. (#372)
+
 ## [0.2.5] - 2022-11-07
 ### Security
 * Patches [CVE-2022-39352](https://github.com/openfga/openfga/security/advisories/GHSA-3gfj-fxx4-f22w)
