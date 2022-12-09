@@ -131,8 +131,8 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgapb.T
 		tuples[key] = struct{}{}
 	}
 
-	if len(tuples) > c.datastore.MaxTuplesInWriteOperation() {
-		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesInWriteOperation())
+	if len(tuples) > c.datastore.MaxTuplesPerWriteOperation() {
+		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWriteOperation())
 	}
 	return nil
 }

@@ -358,8 +358,8 @@ type TupleBackend interface {
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
 
-	// MaxTuplesInWriteOperation returns the maximum number of items allowed in a single write transaction
-	MaxTuplesInWriteOperation() int
+	// MaxTuplesPerWriteOperation returns the maximum number of items allowed in a single write transaction
+	MaxTuplesPerWriteOperation() int
 }
 
 // ReadStartingWithUserFilter specifies the filter options that will be used to constrain the ReadStartingWithUser
@@ -390,7 +390,7 @@ type TypeDefinitionReadBackend interface {
 // TypeDefinitionWriteBackend Provides a write interface for managing typed definition.
 type TypeDefinitionWriteBackend interface {
 	// MaxTypesInTypeDefinition returns the maximum number of items allowed for type definitions
-	MaxTypesInTypeDefinition() int
+	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
 	// It is expected that the number of type definitions is less than or equal to 24

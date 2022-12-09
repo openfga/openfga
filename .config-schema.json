@@ -83,6 +83,26 @@
                     "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
                     "type": "integer",
                     "default": 100000
+                },
+                "datastore-max-open-conns": {
+                    "description": "The maximum number of open connections to the datastore.",
+                    "type": "integer",
+                    "default": "database/sql default"
+                },
+                "datastore-max-idle-conns": {
+                    "description": "the maximum number of connections in the idle connection pool.",
+                    "type": "integer",
+                    "default": ""
+                },
+                "datastore-conn-max-idle-time": {
+                    "description": "the maximum amount of time a connection may be idle",
+                    "type": "duration",
+                    "default": "database/sql default"
+                },
+                "datastore-conn-max-lifetime": {
+                    "description": "the maximum amount of time a connection may be reused",
+                    "type": "duration",
+                    "default": "database/sql default"
                 }
             }
         },

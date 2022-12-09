@@ -24,16 +24,16 @@ import (
 )
 
 const (
-	defaultMaxTuplesInWrite     = 100
-	defaultMaxTypesInDefinition = 100
+	defaultMaxTuplesPerWrite             = 100
+	defaultMaxTypesPerAuthorizationModel = 100
 )
 
 type MySQL struct {
-	db                       *sql.DB
-	tracer                   trace.Tracer
-	logger                   logger.Logger
-	maxTuplesInWrite         int
-	maxTypesInTypeDefinition int
+	db                            *sql.DB
+	tracer                        trace.Tracer
+	logger                        logger.Logger
+	maxTuplesPerWrite             int
+	maxTypesPerAuthorizationModel int
 
 	maxOpenConns    int
 	maxIdleConns    int
@@ -55,15 +55,15 @@ func WithLogger(l logger.Logger) MySQLOption {
 	}
 }
 
-func WithMaxTuplesInWrite(maxTuples int) MySQLOption {
+func WithMaxTuplesPerWrite(maxTuples int) MySQLOption {
 	return func(m *MySQL) {
-		m.maxTuplesInWrite = maxTuples
+		m.maxTuplesPerWrite = maxTuples
 	}
 }
 
-func WithMaxTypesInTypeDefinition(maxTypes int) MySQLOption {
+func WithMaxTypesPerAuthorizationModel(maxTypes int) MySQLOption {
 	return func(m *MySQL) {
-		m.maxTypesInTypeDefinition = maxTypes
+		m.maxTypesPerAuthorizationModel = maxTypes
 	}
 }
 
@@ -106,12 +106,12 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.tracer = telemetry.NewNoopTracer()
 	}
 
-	if m.maxTuplesInWrite == 0 {
-		m.maxTuplesInWrite = defaultMaxTuplesInWrite
+	if m.maxTuplesPerWrite == 0 {
+		m.maxTuplesPerWrite = defaultMaxTuplesPerWrite
 	}
 
-	if m.maxTypesInTypeDefinition == 0 {
-		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
+	if m.maxTypesPerAuthorizationModel == 0 {
+		m.maxTypesPerAuthorizationModel = defaultMaxTypesPerAuthorizationModel
 	}
 
 	db, err := sql.Open("mysql", uri)
@@ -214,7 +214,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	ctx, span := m.tracer.Start(ctx, "mysql.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > m.MaxTuplesInWriteOperation() {
+	if len(deletes)+len(writes) > m.MaxTuplesPerWriteOperation() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
@@ -324,8 +324,8 @@ func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.Pagi
 	return iter.toArray(opts)
 }
 
-func (m *MySQL) MaxTuplesInWriteOperation() int {
-	return m.maxTuplesInWrite
+func (m *MySQL) MaxTuplesPerWriteOperation() int {
+	return m.maxTuplesPerWrite
 }
 
 func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
@@ -474,8 +474,8 @@ func (m *MySQL) ReadTypeDefinition(
 	return &typeDef, nil
 }
 
-func (m *MySQL) MaxTypesInTypeDefinition() int {
-	return m.maxTypesInTypeDefinition
+func (m *MySQL) MaxTypesPerAuthorizationModel() int {
+	return m.maxTypesPerAuthorizationModel
 }
 
 func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
@@ -485,8 +485,8 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
-	if len(typeDefinitions) > m.MaxTypesInTypeDefinition() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesInTypeDefinition)
+	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
+		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerAuthorizationModel)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES (?, ?, ?, ?, ?)"
