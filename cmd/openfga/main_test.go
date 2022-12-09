@@ -207,7 +207,6 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
-	t.Run("TestExpand", func(t *testing.T) { GRPCExpandTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
@@ -561,158 +560,6 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				errorCode: codes.InvalidArgument,
 			},
 		},
-		{
-			name: "union_with_direct_check_single_operand",
-			input: &openfgapb.CheckRequest{
-				StoreId: ulid.Make().String(),
-				// AuthorizationModelId is generated automatically during testData bootstrap
-				TupleKey: tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
-				Trace:    true,
-			},
-			output: output{
-				resp: &openfgapb.CheckResponse{
-					Allowed:    true,
-					Resolution: ".union.0(direct).",
-				},
-			},
-			testData: &testData{
-				model: &openfgapb.AuthorizationModel{
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "repo",
-							Relations: map[string]*openfgapb.Userset{
-								"admin": typesystem.Union(typesystem.This()),
-							},
-						},
-					},
-				},
-				tuples: []*openfgapb.TupleKey{
-					tuple.NewTupleKey("repo:expressjs/express", "admin", "github|bob@openfga.com"),
-				},
-			},
-		},
-		{
-			name: "typed_wildcard_string_is_treated_as_literal_in_1.0_models",
-			input: &openfgapb.CheckRequest{
-				StoreId:  ulid.Make().String(),
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			},
-			output: output{
-				resp:      &openfgapb.CheckResponse{Allowed: false},
-				errorCode: codes.OK,
-			},
-			testData: &testData{
-				tuples: []*openfgapb.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				},
-				model: &openfgapb.AuthorizationModel{
-					SchemaVersion: typesystem.SchemaVersion1_0,
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "document",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": typesystem.This(),
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "typed_wildcard_string_is_treated_as_wildcard_in_1.1_models",
-			input: &openfgapb.CheckRequest{
-				StoreId:  ulid.Make().String(),
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			},
-			output: output{
-				resp:      &openfgapb.CheckResponse{Allowed: true},
-				errorCode: codes.OK,
-			},
-			testData: &testData{
-				tuples: []*openfgapb.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				},
-				model: &openfgapb.AuthorizationModel{
-					SchemaVersion: typesystem.SchemaVersion1_1,
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "user",
-						},
-						{
-							Type: "document",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": typesystem.This(),
-							},
-							Metadata: &openfgapb.Metadata{
-								Relations: map[string]*openfgapb.RelationMetadata{
-									"viewer": {
-										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-											{Type: "user"},
-											typesystem.WildcardRelationReference("user"),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "indirectly_related_types",
-			input: &openfgapb.CheckRequest{
-				StoreId:  ulid.Make().String(),
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			},
-			output: output{
-				resp:      &openfgapb.CheckResponse{Allowed: true},
-				errorCode: codes.OK,
-			},
-			testData: &testData{
-				tuples: []*openfgapb.TupleKey{
-					tuple.NewTupleKey("group:eng", "member", "user:jon"),
-					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				},
-				model: &openfgapb.AuthorizationModel{
-					SchemaVersion: typesystem.SchemaVersion1_1,
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "user",
-						},
-						{
-							Type: "group",
-							Relations: map[string]*openfgapb.Userset{
-								"member": typesystem.This(),
-							},
-							Metadata: &openfgapb.Metadata{
-								Relations: map[string]*openfgapb.RelationMetadata{
-									"member": {
-										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-											typesystem.DirectRelationReference("user", ""),
-										},
-									},
-								},
-							},
-						},
-						{
-							Type: "document",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": typesystem.This(),
-							},
-							Metadata: &openfgapb.Metadata{
-								Relations: map[string]*openfgapb.RelationMetadata{
-									"viewer": {
-										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-											typesystem.DirectRelationReference("group", "member"),
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
 	}
 
 	conn := connect(t, tester)
@@ -755,10 +602,6 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
-}
-
-func GRPCExpandTest(t *testing.T, tester OpenFGATester) {
-
 }
 
 // TestCheckWorkflows are tests that involve workflows that define assertions for
@@ -1122,49 +965,4 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
-}
-
-func TestFunctionalHTTP(t *testing.T) {
-
-	require := require.New(t)
-
-	tester, err := newOpenFGATester(t)
-	require.NoError(err)
-	defer tester.Cleanup()
-
-	t.Run("TestCreateStore", HTTPCreateStoreTest)
-	t.Run("TestListStores", HTTPListStoresTest)
-	t.Run("TestDeleteStore", HTTPDeleteStoreTest)
-	t.Run("TestWrite", HTTPWriteTest)
-	t.Run("TestRead", HTTPReadTest)
-	t.Run("TestCheck", HTTPCheckTest)
-	t.Run("TestExpand", HTTPExpandTest)
-}
-
-func HTTPCreateStoreTest(t *testing.T) {
-
-}
-
-func HTTPListStoresTest(t *testing.T) {
-
-}
-
-func HTTPDeleteStoreTest(t *testing.T) {
-
-}
-
-func HTTPWriteTest(t *testing.T) {
-
-}
-
-func HTTPReadTest(t *testing.T) {
-
-}
-
-func HTTPCheckTest(t *testing.T) {
-
-}
-
-func HTTPExpandTest(t *testing.T) {
-
 }

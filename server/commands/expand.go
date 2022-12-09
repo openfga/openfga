@@ -135,7 +135,7 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 
 	distinctUsers := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -248,7 +248,7 @@ func (query *ExpandQuery) resolveTupleToUserset(
 	var computed []*openfgapb.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

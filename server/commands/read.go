@@ -44,7 +44,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	if tk != nil {
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		if objectType == "" || (objectID == "" && tk.GetUser() == "") {
-			return nil, serverErrors.ValidationError("to read all tuples pass an empty tuple, otherwise object type is required and both object id and user cannot be empty")
+			return nil, serverErrors.ValidationError("the 'tuple_key' field was provided but the object type field is required and both the object id and user cannot be empty")
 		}
 	}
 
