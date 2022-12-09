@@ -16,7 +16,6 @@ import (
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 )
 
@@ -75,19 +74,18 @@ func testCheck(t *testing.T, engine string) {
 	require.NoError(t, err)
 	defer conn.Close()
 
+	client := pb.NewOpenFGAServiceClient(conn)
+
 	// Ensure the service is up before continuing.
-	client := healthv1pb.NewHealthClient(conn)
 	policy := backoff.NewExponentialBackOff()
 	policy.MaxElapsedTime = 10 * time.Second
 	err = backoff.Retry(func() error {
-		_, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
-			Service: pb.OpenFGAService_ServiceDesc.ServiceName,
-		})
+		_, err = client.CreateStore(ctx, &pb.CreateStoreRequest{Name: engine})
 		return err
 	}, policy)
 	require.NoError(t, err)
 
-	runTest(t, pb.NewOpenFGAServiceClient(conn), tests)
+	runTest(t, client, tests)
 
 	// Shutdown the server.
 	cancel()
