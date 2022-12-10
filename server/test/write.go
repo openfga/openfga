@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -402,7 +403,12 @@ var writeCommandTests = []writeCommandTest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
 		// output
-		err: serverErrors.TypeNotFound("repository"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "repository"},
+				TupleKey: tk,
+			},
+		),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingUserError",
@@ -426,7 +432,12 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("the 'user' field is invalid", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
+				TupleKey: tuple.NewTupleKey("repo:openfga", "owner", ""),
+			},
+		),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
@@ -450,7 +461,10 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("", "owner", "elbuo@github.com")),
+		err: serverErrors.ValidationError(&tuple.InvalidTupleError{
+			Cause:    fmt.Errorf("invalid 'object' field format"),
+			TupleKey: tuple.NewTupleKey("", "owner", "elbuo@github.com"),
+		}),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
@@ -474,7 +488,12 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("invalid relation", tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com")),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'relation' field is malformed"),
+				TupleKey: tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com"),
+			},
+		),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
@@ -498,10 +517,14 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound(
-			"undefined",
-			"repo",
-			tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause: &tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "undefined",
+				},
+				TupleKey: tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+			},
 		),
 	},
 	{
@@ -544,7 +567,12 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("openfga", "owner", "github|jose@openfga")),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
+				TupleKey: tuple.NewTupleKey("openfga", "owner", "github|jose@openfga"),
+			},
+		),
 	},
 	{
 		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
@@ -575,10 +603,14 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound(
-			"writer",
-			"repo",
-			tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause: &tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "writer",
+				},
+				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
+			},
 		),
 	},
 	{
@@ -762,7 +794,12 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		err: serverErrors.TypeNotFound("group"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "group"},
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+			},
+		),
 	},
 	{
 		_name: "1.0_Execute_fails_if_relation_in_userset_value_was_not_found",
@@ -786,7 +823,15 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		err: serverErrors.RelationNotFound("editor", "document", tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor")),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause: &tuple.RelationNotFoundError{
+					TypeName: "document",
+					Relation: "editor",
+				},
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			},
+		),
 	},
 	// Begin section with tests for schema version 1.1
 	{
@@ -863,11 +908,16 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("org:openfga", "owner", "impossible:1"),
+				tuple.NewTupleKey("org:openfga", "owner", "undefined:1"),
 			},
 			},
 		},
-		err: serverErrors.TypeNotFound("impossible"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "undefined"},
+				TupleKey: tuple.NewTupleKey("org:openfga", "owner", "undefined:1"),
+			},
+		),
 	},
 	{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
@@ -906,9 +956,15 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
-			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("type 'user' is not an allowed type restriction for 'document#reader'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+			},
 		),
+		// err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
+		// 	tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+		// ),
 	},
 	{
 		_name: "1.1_Execute_fails_if_relation_in_userset_value_was_not_found",
@@ -947,7 +1003,15 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
-		err: serverErrors.RelationNotFound("member", "group", tuple.NewTupleKey("document:budget", "reader", "group:abc#member")),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause: &tuple.RelationNotFoundError{
+					TypeName: "group",
+					Relation: "member",
+				},
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
+			},
+		),
 	},
 	{
 		_name: "1.1_Execute_fails_if_type_in_userset_value_was_not_found",
@@ -983,10 +1047,15 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "notallowed:abc#member"),
+				tuple.NewTupleKey("document:budget", "reader", "undefined:abc#member"),
 			}},
 		},
-		err: serverErrors.TypeNotFound("notallowed"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "undefined"},
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "undefined:abc#member"),
+			},
+		),
 	},
 	{
 		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows user:...)",
@@ -1045,10 +1114,7 @@ var writeCommandTests = []writeCommandTest{
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									{
-										Type:               "group",
-										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
-									},
+									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
 						},
@@ -1061,8 +1127,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
-			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("type 'user' is not an allowed type restriction for 'document#reader'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "user:abc"),
+			},
 		),
 	},
 	{
@@ -1242,8 +1311,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:*"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("the typed wildcard 'group:*' is not an allowed type restriction for 'document#reader'",
-			tuple.NewTupleKey("document:budget", "reader", "group:*"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the typed wildcard 'group:*' is not an allowed type restriction for 'document#reader'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "group:*"),
+			},
 		),
 	},
 	{
@@ -1273,8 +1345,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
-			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			},
 		),
 	},
 	{
@@ -1307,8 +1382,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
-			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			},
 		),
 	},
 	{
@@ -1341,8 +1419,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
-			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			},
 		),
 	},
 	{
@@ -1375,8 +1456,11 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
-			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
+				TupleKey: tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+			},
 		),
 	},
 	{

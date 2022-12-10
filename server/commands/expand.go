@@ -51,14 +51,13 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	typesys := typesystem.New(model)
 
-	err = validation.ValidateObject(typesys, tk)
-	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+	if err = validation.ValidateObject(typesys, tk); err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	err = validation.ValidateRelation(typesys, tk)
 	if err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	objectType := tupleUtils.GetType(object)

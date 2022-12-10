@@ -144,7 +144,12 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser"),
 			},
 			// output
-			err: serverErrors.RelationNotFound("inexistent", "repo", tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser")),
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "inexistent",
+				},
+			),
 		},
 		{
 			name: "ExecuteFailsWithInvalidUser",
@@ -606,7 +611,9 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
 			},
-			err: serverErrors.TypeNotFound("group"),
+			err: serverErrors.ValidationError(
+				&tuple.TypeNotFoundError{TypeName: "group"},
+			),
 		},
 		{
 			name:             "CheckWithUsersetContainingUndefinedRelation",
@@ -622,10 +629,11 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
 			},
-			err: serverErrors.RelationNotFound(
-				"editor",
-				"document",
-				tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "document",
+					Relation: "editor",
+				},
 			),
 		},
 	}
