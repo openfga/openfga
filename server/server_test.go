@@ -45,16 +45,18 @@ func TestOpenFGAServer(t *testing.T) {
 
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
-		defer ds.Close(context.Background())
 		require.NoError(t, err)
 
 		test.RunAllTests(t, ds)
+		err = ds.Close(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
-		defer ds.Close(context.Background())
 		test.RunAllTests(t, ds)
+		err := ds.Close(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("TestMySQLDatastore", func(t *testing.T) {
@@ -63,9 +65,10 @@ func TestOpenFGAServer(t *testing.T) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := mysql.NewMySQLDatastore(uri)
 		require.NoError(t, err)
-		defer ds.Close(context.Background())
 
 		test.RunAllTests(t, ds)
+		err = ds.Close(context.Background())
+		require.NoError(t, err)
 	})
 }
 
