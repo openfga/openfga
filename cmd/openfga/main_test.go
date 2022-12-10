@@ -207,6 +207,7 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
+	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
@@ -599,6 +600,106 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			if test.output.errorCode == codes.OK {
 				require.Equal(t, test.output.resp.Allowed, response.Allowed)
 				require.Equal(t, test.output.resp.Resolution, response.Resolution)
+			}
+		})
+	}
+}
+
+func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
+	type testData struct {
+		tuples []*openfgapb.TupleKey
+		model  *openfgapb.AuthorizationModel
+	}
+
+	type output struct {
+		resp      *openfgapb.ListObjectsResponse
+		errorCode codes.Code
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgapb.ListObjectsRequest
+		output   output
+		testData *testData
+	}{
+		{
+			name: "undefined_model_id_returns_error",
+			input: &openfgapb.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(), // generate random ulid so it doesn't match
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.Code(openfgapb.ErrorCode_authorization_model_not_found),
+			},
+			testData: &testData{
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("user", ""),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			storeID := test.input.StoreId
+
+			if test.testData != nil {
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   test.testData.model.SchemaVersion,
+					TypeDefinitions: test.testData.model.TypeDefinitions,
+				})
+				require.NoError(t, err)
+
+				modelID := resp.GetAuthorizationModelId()
+
+				if len(test.testData.tuples) > 0 {
+					_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+						StoreId:              storeID,
+						AuthorizationModelId: modelID,
+						Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
+					})
+					require.NoError(t, err)
+				}
+			}
+
+			response, err := client.ListObjects(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if test.output.errorCode == codes.OK {
+				require.Equal(t, test.output.resp.Objects, response.Objects)
 			}
 		})
 	}
