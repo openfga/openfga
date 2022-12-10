@@ -80,14 +80,20 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID := req.GetAuthorizationModelId()
+
+	if modelID == "" {
+		var err error
+
+		modelID, err = s.resolveAuthorizationModelID(ctx, storeID, modelID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
-		return nil, serverErrors.HandleError("", err)
+		return nil, serverErrors.AuthorizationModelNotFound(modelID)
 	}
 
 	typesys := typesystem.New(model)
