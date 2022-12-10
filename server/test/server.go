@@ -12,9 +12,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, ds) })
-	t.Run("TestCheckQueryAgainstGitHubModel", func(t *testing.T) { TestCheckQueryAgainstGitHubModel(t, ds) })
-	t.Run("TestCheckQueryWithContextualTuplesAgainstGitHubModel", func(t *testing.T) { TestCheckQueryWithContextualTuplesAgainstGitHubModel(t, ds) })
+	t.Run("TestCheckQuery", func(t *testing.T) { CheckQueryTest(t, ds) })
 	t.Run("TestCheckQueryAuthorizationModelsVersioning", func(t *testing.T) { TestCheckQueryAuthorizationModelsVersioning(t, ds) })
 
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
@@ -32,11 +30,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 	t.Run("TestReadQuerySuccess", func(t *testing.T) { ReadQuerySuccessTest(t, ds) })
 	t.Run("TestReadQueryError", func(t *testing.T) { ReadQueryErrorTest(t, ds) })
-
-	t.Run("TestReadTuplesQuery", func(t *testing.T) { TestReadTuplesQuery(t, ds) })
-	t.Run("TestReadTuplesQueryInvalidContinuationToken",
-		func(t *testing.T) { TestReadTuplesQueryInvalidContinuationToken(t, ds) },
-	)
+	t.Run("TestReadAllTuples", func(t *testing.T) { ReadAllTuplesTest(t, ds) })
+	t.Run("TestReadAllTuplesInvalidContinuationToken", func(t *testing.T) { ReadAllTuplesInvalidContinuationTokenTest(t, ds) })
 
 	t.Run("TestReadAuthorizationModelsWithoutPaging",
 		func(t *testing.T) { TestReadAuthorizationModelsWithoutPaging(t, ds) },

@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -422,10 +421,9 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:openfga",
-				Relation: "owner",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "owner", ""),
+			}},
 		},
 		// output
 		err: serverErrors.InvalidTuple("the 'user' field is invalid", &openfgapb.TupleKey{Object: "repo:openfga", Relation: "owner"}),
@@ -447,16 +445,12 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Relation: "owner",
-				User:     "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("", "owner", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-			Relation: "owner",
-			User:     "elbuo@github.com",
-		}),
+		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("", "owner", "elbuo@github.com")),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
@@ -475,13 +469,12 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object: "repo:openfga",
-				User:   "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidTuple("invalid relation", &openfgapb.TupleKey{Object: "repo:openfga", User: "elbuo@github.com"}),
+		err: serverErrors.InvalidTuple("invalid relation", tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com")),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
@@ -500,15 +493,16 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				Object:   "repo:openfga",
-				Relation: "BadRelation",
-				User:     "elbuo@github.com",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound("BadRelation", "repo",
-			&openfgapb.TupleKey{Object: "repo:openfga", Relation: "BadRelation", User: "elbuo@github.com"}),
+		err: serverErrors.RelationNotFound(
+			"undefined",
+			"repo",
+			tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
+		),
 	},
 	{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
@@ -544,19 +538,13 @@ var writeCommandTests = []writeCommandTest{
 		},
 		// input
 		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
-				// invalid because it has no :
-				Object:   "openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			}}},
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				// invalid because object has no :
+				tuple.NewTupleKey("openfga", "owner", "github|jose@openfga"),
+			}},
 		},
 		// output
-		err: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-			Object:   "openfga",
-			Relation: "owner",
-			User:     "github|jose@openfga",
-		}),
+		err: serverErrors.InvalidObjectFormat(tuple.NewTupleKey("openfga", "owner", "github|jose@openfga")),
 	},
 	{
 		_name: "ExecuteReturnsErrorIfWriteRelationDoesNotExistInAuthorizationModel",
@@ -583,19 +571,15 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "github|jose@openfga",
-				},
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
 			}},
 		},
 		// output
-		err: serverErrors.RelationNotFound("writer", "repo", &openfgapb.TupleKey{
-			Object:   "repo:openfga/openfga",
-			Relation: "writer",
-			User:     "github|jose@openfga",
-		}),
+		err: serverErrors.RelationNotFound(
+			"writer",
+			"repo",
+			tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
+		),
 	},
 	{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
@@ -619,20 +603,12 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
 			}},
 		},
 	},
@@ -667,26 +643,10 @@ var writeCommandTests = []writeCommandTest{
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
 	},
@@ -719,50 +679,18 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "admin",
-				User:     "github|jose@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "writer",
-				User:     "team:openfga/iam#member",
-			},
-			{
-				Object:   "team:openfga/iam",
-				Relation: "member",
-				User:     "iaco@openfga",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+			tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
 	},
@@ -795,54 +723,70 @@ var writeCommandTests = []writeCommandTest{
 			},
 		},
 		tuples: []*openfgapb.TupleKey{
-			{
-				Object:   "org:openfga",
-				Relation: "owner",
-				User:     "github|yenkel@openfga",
-			},
-			{
-				Object:   "repo:openfga/openfga",
-				Relation: "reader",
-				User:     "team:openfga/platform#member",
-			},
+			tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 		},
 		// input
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "writer",
-					User:     "team:openfga/iam#member",
-				},
-				{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "iaco@openfga",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				{
-					Object:   "org:openfga",
-					Relation: "owner",
-					User:     "github|yenkel@openfga",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "reader",
-					User:     "team:openfga/platform#member",
-				},
+				tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 			}},
 		},
+	},
+	{
+		_name: "1.0_Execute_fails_if_type_in_userset_value_was_not_found",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+				},
+			},
+		},
+		err: serverErrors.TypeNotFound("group"),
+	},
+	{
+		_name: "1.0_Execute_fails_if_relation_in_userset_value_was_not_found",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+				},
+			},
+		},
+		err: serverErrors.RelationNotFound("editor", "document", tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor")),
 	},
 	// Begin section with tests for schema version 1.1
 	{
@@ -923,7 +867,7 @@ var writeCommandTests = []writeCommandTest{
 			},
 			},
 		},
-		err: serverErrors.InvalidWriteInput,
+		err: serverErrors.TypeNotFound("impossible"),
 	},
 	{
 		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
@@ -962,12 +906,12 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User 'user:abc' is not allowed to have relation reader with document:budget",
+		err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
 			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 		),
 	},
 	{
-		_name: "Write fails if user field is a userset that is not allowed by the authorization model (which only allows group:...)",
+		_name: "1.1_Execute_fails_if_relation_in_userset_value_was_not_found",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -982,7 +926,7 @@ var writeCommandTests = []writeCommandTest{
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+						"reader": typesystem.This(),
 					},
 					Metadata: &openfgapb.Metadata{
 						Relations: map[string]*openfgapb.RelationMetadata{
@@ -1003,9 +947,46 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User 'group:abc#member' is not allowed to have relation reader with document:budget",
-			tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
-		),
+		err: serverErrors.RelationNotFound("member", "group", tuple.NewTupleKey("document:budget", "reader", "group:abc#member")),
+	},
+	{
+		_name: "1.1_Execute_fails_if_type_in_userset_value_was_not_found",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "group",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "group",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:budget", "reader", "notallowed:abc#member"),
+			}},
+		},
+		err: serverErrors.TypeNotFound("notallowed"),
 	},
 	{
 		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows user:...)",
@@ -1080,7 +1061,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User 'user:abc' is not allowed to have relation reader with document:budget",
+		err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
 			tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 		),
 	},
@@ -1096,6 +1077,18 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
 				},
 				{
 					Type: "document",
@@ -1135,6 +1128,18 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
 				},
 				{
 					Type: "document",
@@ -1167,7 +1172,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write succeeds if user is * and type references a specific type",
+		_name: "Write succeeds if user is wildcard and type references a specific type",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1175,9 +1180,6 @@ var writeCommandTests = []writeCommandTest{
 			TypeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
-				},
-				{
-					Type: "group",
 				},
 				{
 					Type: "document",
@@ -1189,8 +1191,9 @@ var writeCommandTests = []writeCommandTest{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 									{
-										Type: "group",
+										Type: "user",
 									},
+									typesystem.WildcardRelationReference("user"),
 								},
 							},
 						},
@@ -1200,12 +1203,12 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
+				tuple.NewTupleKey("document:budget", "reader", "user:*"),
 			}},
 		},
 	},
 	{
-		_name: "Write fails if user is * and type does not reference a specific type",
+		_name: "Write fails if user is a typed wildcard and the type restrictions don't permit it",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1226,10 +1229,7 @@ var writeCommandTests = []writeCommandTest{
 						Relations: map[string]*openfgapb.RelationMetadata{
 							"reader": {
 								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									{
-										Type:               "group",
-										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
-									},
+									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
 						},
@@ -1239,36 +1239,13 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
+				tuple.NewTupleKey("document:budget", "reader", "group:*"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("User '*' is not allowed to have relation reader with document:budget",
-			tuple.NewTupleKey("document:budget", "reader", "*"),
+		err: serverErrors.InvalidTuple("the typed wildcard 'group:*' is not an allowed type restriction for 'document#reader'",
+			tuple.NewTupleKey("document:budget", "reader", "group:*"),
 		),
 	},
-	{
-		_name: "Write fails if schema version is 1.1 but type definitions are lacking metadata",
-		// state
-		model: &openfgapb.AuthorizationModel{
-			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "reader", "*"),
-			}},
-		},
-		err: serverErrors.NewInternalError("invalid authorization model", errors.New("invalid authorization model")),
-	},
-
 	{
 		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation",
 		model: &openfgapb.AuthorizationModel{
@@ -1296,7 +1273,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1330,7 +1307,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1364,7 +1341,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1398,7 +1375,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
-		err: serverErrors.InvalidTuple("Userset 'folder:budgets#admin' is not allowed to have relation 'parent' with 'document:budget'",
+		err: serverErrors.InvalidTuple("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'",
 			tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 		),
 	},
@@ -1412,8 +1389,8 @@ var writeCommandTests = []writeCommandTest{
 					Type: "folder",
 					Relations: map[string]*openfgapb.Userset{
 						"owner": typesystem.This(),
-						"parent": typesystem.Union( // let's confuse the code. if this were defined in 'document' type, it would fail
-							typesystem.TupleToUserset("parent", "owner"),
+						"parent": typesystem.Union(
+							typesystem.TupleToUserset("parent", "owner"), // 'folder#parent' is a tupleset relation but 'document#parent' is not
 						),
 					},
 				},
@@ -1428,7 +1405,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
+				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#owner"), // the 'document#parent' relation isn't a tupleset so this is fine
 			}},
 		},
 	},
@@ -1460,9 +1437,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.ErrorIs(gotErr, test.err)
 
 			if test.response != nil {
-				if resp == nil {
-					t.Error("Expected non nil response, got nil")
-				}
+				require.Equal(test.response, resp)
 			}
 		})
 	}

@@ -82,7 +82,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			expectedError: serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", "folder", "parent"),
-				tuple.NewTupleKey("folder:folderX", "parent", commands.Wildcard),
+				tuple.NewTupleKey("folder:folderX", "parent", tuple.Wildcard),
 			),
 		},
 		{
@@ -137,7 +137,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgapb.TupleKey{},
 			expectedError: serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", "folder", "parent"),
-				tuple.NewTupleKey("folder:folderX", "parent", commands.Wildcard),
+				tuple.NewTupleKey("folder:folderX", "parent", tuple.Wildcard),
 			),
 		},
 		{
@@ -561,11 +561,11 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("group:auth0", "member", "group:eng#member"),
+				tuple.NewTupleKey("group:opensource", "member", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
 				tuple.NewTupleKey("group:iam", "member", "user:jon"),
 			},
-			expectedObjects: []string{"group:auth0", "group:eng"},
+			expectedObjects: []string{"group:opensource", "group:eng"},
 		},
 	}
 

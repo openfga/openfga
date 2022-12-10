@@ -8,11 +8,11 @@ import (
 	"sync"
 
 	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -23,8 +23,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
-
-const Wildcard = "*"
 
 // A CheckQuery can be used to Check if a User has a Relation to an Object
 // CheckQuery instances may be safely shared by multiple go-routines
@@ -68,7 +66,7 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	model, err := query.datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
-		if err == storage.ErrNotFound {
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
 		}
 
@@ -77,19 +75,26 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), req.GetAuthorizationModelId(), tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
+	if err := validation.ValidateObject(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
 
-	userset, err := query.getTypeDefinitionRelationUsersets(ctx, rc)
+	if err := validation.ValidateRelation(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if err := validation.ValidateUser(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
+
+	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
 		return nil, err
 	}
-	if userset == nil {
-		// the tuple in the Check request is invalid according to the model being used, so throw an error
-		_, actualErr := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
-		return nil, serverErrors.HandleTupleValidateError(actualErr)
-	}
 
-	if err := query.resolveNode(ctx, rc, userset, typesys); err != nil {
+	if err := query.resolveNode(ctx, rc, rewrite, typesys); err != nil {
 		return nil, err
 	}
 
@@ -109,17 +114,16 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 	}, nil
 }
 
-// getTypeDefinitionRelationUsersets validates a tuple and returns the userset corresponding to the "object" and "relation"
-func (query *CheckQuery) getTypeDefinitionRelationUsersets(ctx context.Context, rc *resolutionContext) (*openfgapb.Userset, error) {
-	ctx, span := query.tracer.Start(ctx, "getTypeDefinitionRelationUsersets")
-	defer span.End()
+// getTypeRelationRewrite returns the rewrite corresponding to the "object" and "relation"
+func getTypeRelationRewrite(tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.Userset, error) {
+	objectType := tupleUtils.GetType(tk.GetObject())
 
-	userset, err := validation.ValidateTuple(ctx, query.datastore, rc.store, rc.modelID, rc.tk)
+	relation, err := typesys.GetRelation(objectType, tk.GetRelation())
 	if err != nil {
-		// the tuple in the request context is invalid according to the model being used, so ignore it and swallow the error
-		return nil, nil
+		return nil, err
 	}
-	return userset, nil
+
+	return relation.GetRewrite(), nil
 }
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
@@ -128,6 +132,7 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 		query.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
+
 	ctx, span := query.tracer.Start(ctx, "resolveNode")
 	defer span.End()
 	if rc.shouldShortCircuit() {
@@ -171,7 +176,7 @@ func (query *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext,
 			query.logger.Warn(
 				fmt.Sprintf("unexpected rewrite on tupleset relation '%s#%s'", objectType, tupleset),
 				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
+				zap.String("authorization_model_id", rc.model.Id),
 				zap.String("object_type", objectType),
 				zap.String("relation", tupleset),
 			)
@@ -197,11 +202,13 @@ func (query *CheckQuery) resolveComputed(
 	computedTK := &openfgapb.TupleKey{Object: rc.tk.GetObject(), Relation: nodes.ComputedUserset.GetRelation(), User: rc.tk.GetUser()}
 	tracer := rc.tracer.AppendComputed().AppendString(tupleUtils.ToObjectRelationString(computedTK.GetObject(), computedTK.GetRelation()))
 	nestedRC := rc.fork(computedTK, tracer, false)
-	userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
+
+	rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
 	if err != nil {
 		return err
 	}
-	return query.resolveNode(ctx, nestedRC, userset, typesys)
+
+	return query.resolveNode(ctx, nestedRC, rewrite, typesys)
 }
 
 // resolveDirectUserSet attempts to find individual user concurrently by resolving the usersets. If the user is found
@@ -245,7 +252,7 @@ func (query *CheckQuery) resolveDirectUserSet(
 	}
 
 	for {
-		usersetTuple, err := iter.Next()
+		usersetTuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -253,10 +260,26 @@ func (query *CheckQuery) resolveDirectUserSet(
 			return serverErrors.HandleError("", err)
 		}
 
-		// If a single star is available, then assume user exists and break.
-		if usersetTuple.GetUser() == "*" {
+		foundUser := usersetTuple.GetUser()
+
+		schemaVersion := typesys.GetSchemaVersion()
+
+		if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
 			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
 			break
+		}
+
+		if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
+
+			wildcardType := tupleUtils.GetType(foundUser)
+
+			if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
+				continue
+			}
+
+			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+			break
+
 		}
 
 		// Avoid launching more goroutines by checking if the user has been found in another goroutine.
@@ -284,9 +307,9 @@ func (query *CheckQuery) resolveDirectUserSet(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC)
+			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset, typesys)
+				err = query.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
 			select {
@@ -372,7 +395,7 @@ func (query *CheckQuery) resolveIntersection(
 	for idx, userset := range nodes.Intersection.Child {
 		idx, userset := idx, userset
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, userset, typesys)
 			if err != nil {
@@ -441,7 +464,7 @@ func (query *CheckQuery) resolveDifference(
 	for idx, set := range sets {
 		idx, set := idx, set
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.modelID, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := query.resolveNode(ctx, nestedRC, set, typesys)
 			if err != nil {
@@ -512,7 +535,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -526,47 +549,14 @@ func (query *CheckQuery) resolveTupleToUserset(
 
 		userObj, userRel := tupleUtils.SplitObjectRelation(tuple.GetUser()) // userObj=folder:budgets, userRel=""
 
-		objectType, _ := tupleUtils.SplitObject(rc.tk.GetObject())
-
-		if userObj == Wildcard {
-
-			query.logger.WarnWithContext(
-				ctx,
-				fmt.Sprintf("unexpected wildcard evaluated on tupleset relation '%s#%s'", objectType, relation),
-				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
-				zap.String("object_type", objectType),
-			)
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", objectType, relation),
-				tupleUtils.NewTupleKey(rc.tk.GetObject(), relation, Wildcard),
-			)
-		}
-
-		if tupleUtils.UserSet == tupleUtils.GetUserTypeFromUser(tuple.GetUser()) {
-			query.logger.WarnWithContext(
-				ctx,
-				fmt.Sprintf("unexpected userset evaluated on tupleset relation '%s#%s'", objectType, relation),
-				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.modelID),
-				zap.String("object_type", objectType),
-			)
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected userset evaluated on relation '%s#%s'", tupleUtils.GetType(rc.tk.GetObject()), relation),
-				tupleUtils.NewTupleKey(tuple.GetObject(), relation, tuple.GetUser()),
-			)
-		}
-
-		if !tupleUtils.IsValidObject(userObj) {
-			continue // TupleToUserset tuplesets should be of the form 'objectType:id' or 'objectType:id#relation' but are not guaranteed to be because it is neither a user or userset
-		}
-
 		usersetRel := node.TupleToUserset.GetComputedUserset().GetRelation() //reader
-
 		if userRel == "" {
 			userRel = usersetRel // userRel=reader
+		}
+
+		// Verify that userRel is actually a relation on userObjType and if not, skip it
+		if _, err := typesys.GetRelation(tupleUtils.GetType(userObj), userRel); err != nil {
+			continue
 		}
 
 		tupleKey := &openfgapb.TupleKey{
@@ -574,6 +564,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 			Relation: userRel,         //reader
 			User:     rc.tk.GetUser(), //anne
 		}
+
 		tracer := tracer.AppendString(tupleUtils.ToObjectRelationString(userObj, userRel))
 		nestedRC := rc.fork(tupleKey, tracer, false)
 
@@ -581,9 +572,9 @@ func (query *CheckQuery) resolveTupleToUserset(
 		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
-			userset, err := query.getTypeDefinitionRelationUsersets(ctx, nestedRC) // folder:budgets#reader
+			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys) // folder:budgets#reader
 			if err == nil {
-				err = query.resolveNode(ctx, nestedRC, userset, typesys)
+				err = query.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
 			select {

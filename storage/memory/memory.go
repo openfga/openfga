@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -17,8 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-var errObjectOrUserMustBeSpecified = errors.New("either object or user must be specified")
 
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
@@ -47,13 +44,18 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
-	if len(s.tuples) == 0 {
+func (s *staticIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
+	select {
+	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
+	default:
+		if len(s.tuples) == 0 {
+			return nil, storage.ErrIteratorDone
+		}
+		next, rest := s.tuples[0], s.tuples[1:]
+		s.tuples = rest
+		return next, nil
 	}
-	next, rest := s.tuples[0], s.tuples[1:]
-	s.tuples = rest
-	return next, nil
 }
 
 func (s *staticIterator) Stop() {}
@@ -219,22 +221,22 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.read")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	var matches []*openfgapb.Tuple
-	for _, t := range s.tuples[store] {
-		if match(key, t.Key) {
-			matches = append(matches, t)
+	if tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "" {
+		matches = make([]*openfgapb.Tuple, len(s.tuples[store]))
+		copy(matches, s.tuples[store])
+	} else {
+		for _, t := range s.tuples[store] {
+			if match(tk, t.Key) {
+				matches = append(matches, t)
+			}
 		}
 	}
 
@@ -331,42 +333,34 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
 			return t, nil
 		}
 	}
+
 	telemetry.TraceError(span, storage.ErrNotFound)
 	return nil, storage.ErrNotFound
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
-func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, err
-	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(&openfgapb.TupleKey{
-			Object:   key.GetObject(),
-			Relation: key.GetRelation(),
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
 			matches = append(matches, t)
 		}
 	}
+
 	return &staticIterator{tuples: matches}, nil
 }
 
@@ -404,45 +398,6 @@ func (s *MemoryBackend) ReadStartingWithUser(
 
 	}
 	return &staticIterator{tuples: matches}, nil
-}
-
-// ReadByStore See storage.TupleBackend.ReadByStore
-func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadByStore")
-	defer span.End()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	matches := make([]*openfgapb.Tuple, len(s.tuples[store]))
-	copy(matches, s.tuples[store])
-
-	var from int64 = 0
-	var err error
-
-	pageSize := storage.DefaultPageSize
-	if options.PageSize > 0 {
-		pageSize = options.PageSize
-	}
-
-	if options.From != "" {
-		from, err = strconv.ParseInt(options.From, 10, 32)
-		if err != nil {
-			return nil, make([]byte, 0), err
-		}
-	}
-	to := int(from) + pageSize
-	if len(matches) < to {
-		to = len(matches)
-	}
-
-	partition := matches[from:to]
-	continuationToken := ""
-	if to != len(matches) {
-		continuationToken = strconv.Itoa(to)
-	}
-
-	return partition, []byte(continuationToken), nil
 }
 
 func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgapb.AuthorizationModel, bool) {

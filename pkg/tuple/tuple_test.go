@@ -221,6 +221,47 @@ func TestIsValidRelation(t *testing.T) {
 	}
 }
 
+func TestBuildObject(t *testing.T) {
+	require.Equal(t, "document:1", BuildObject("document", "1"))
+	require.Equal(t, ":", BuildObject("", ""))
+}
+
+func TestGetType(t *testing.T) {
+	require.Equal(t, "document", GetType("document:1"))
+	require.Equal(t, "", GetType("doc"))
+	require.Equal(t, "", GetType(":"))
+	require.Equal(t, "", GetType(""))
+}
+
+func TestToObjectRelationString(t *testing.T) {
+	require.Equal(t, "document:1#viewer", ToObjectRelationString("document:1", "viewer"))
+	require.Equal(t, "#viewer", ToObjectRelationString("", "viewer"))
+	require.Equal(t, "#", ToObjectRelationString("", ""))
+}
+
+func TestTupleKeyToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@jon", TupleKeyToString(NewTupleKey("document:1", "viewer", "jon")))
+	require.Equal(t, "document:1#viewer@user:bob", TupleKeyToString(NewTupleKey("document:1", "viewer", "user:bob")))
+	require.Equal(t, "document:1#viewer@", TupleKeyToString(NewTupleKey("document:1", "viewer", "")))
+	require.Equal(t, "document:1#@jon", TupleKeyToString(NewTupleKey("document:1", "", "jon")))
+	require.Equal(t, "#viewer@jon", TupleKeyToString(NewTupleKey("", "viewer", "jon")))
+	require.Equal(t, "#@", TupleKeyToString(NewTupleKey("", "", "")))
+}
+
+func TestIsWildcard(t *testing.T) {
+	require.Equal(t, true, IsWildcard("*"))
+	require.Equal(t, true, IsWildcard("user:*"))
+	require.Equal(t, false, IsWildcard("user:jon"))
+	require.Equal(t, false, IsWildcard("jon"))
+}
+
+func TestIsTypedWildcard(t *testing.T) {
+	require.Equal(t, false, IsTypedWildcard("*"))
+	require.Equal(t, true, IsTypedWildcard("user:*"))
+	require.Equal(t, false, IsTypedWildcard("user:jon"))
+	require.Equal(t, false, IsTypedWildcard("jon"))
+}
+
 func TestIsValidUser(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

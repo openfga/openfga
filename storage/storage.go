@@ -33,7 +33,9 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 type Iterator[T any] interface {
-	Next() (T, error)
+	// Next will return the next available item. If the context is cancelled or times out, it should return ErrIteratorDone
+	Next(ctx context.Context) (T, error)
+	// Stop terminates iteration over the underlying iterator.
 	Stop()
 }
 
@@ -69,10 +71,10 @@ func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
 var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 
 // Next returns the next most unique object from the two underlying iterators.
-func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
-
+// If the context is cancelled or times out, it should return ErrIteratorDone
+func (u *uniqueObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 	for {
-		obj, err := u.iter1.Next()
+		obj, err := u.iter1.Next(ctx)
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
@@ -87,11 +89,12 @@ func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
 			return obj, nil
 		}
+
 	}
 
 	// assumption is that iter2 yields unique values to begin with
 	for {
-		obj, err := u.iter2.Next()
+		obj, err := u.iter2.Next(ctx)
 		if err != nil {
 			if err == ErrIteratorDone {
 				return nil, ErrIteratorDone
@@ -116,8 +119,8 @@ type combinedIterator[T any] struct {
 	iter1, iter2 Iterator[T]
 }
 
-func (c *combinedIterator[T]) Next() (T, error) {
-	val, err := c.iter1.Next()
+func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
+	val, err := c.iter1.Next(ctx)
 	if err != nil {
 		if !errors.Is(err, ErrIteratorDone) {
 			return val, err
@@ -126,7 +129,7 @@ func (c *combinedIterator[T]) Next() (T, error) {
 		return val, nil
 	}
 
-	val, err = c.iter2.Next()
+	val, err = c.iter2.Next(ctx)
 	if err != nil {
 		if !errors.Is(err, ErrIteratorDone) {
 			return val, err
@@ -147,6 +150,7 @@ func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iter1, iter2}
 }
 
+// NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
 func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
 	iter := &staticIterator[*openfgapb.Tuple]{
 		items: tuples,
@@ -170,8 +174,8 @@ type tupleKeyIterator struct {
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
-func (t *tupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
-	tuple, err := t.iter.Next()
+func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgapb.TupleKey, error) {
+	tuple, err := t.iter.Next(ctx)
 	return tuple.GetKey(), err
 }
 
@@ -187,7 +191,6 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 // NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
 // contained in the provided list of TupleKeys.
 func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
-
 	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
 	for _, tk := range tupleKeys {
 		objectType, objectID := tuple.SplitObject(tk.GetObject())
@@ -197,20 +200,49 @@ func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
 	return NewStaticObjectIterator(objects)
 }
 
+type tupleKeyObjectIterator struct {
+	iter TupleKeyIterator
+}
+
+var _ ObjectIterator = (*tupleKeyObjectIterator)(nil)
+
+func (t *tupleKeyObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
+	tk, err := t.iter.Next(ctx)
+	if err != nil {
+		return nil, err
+	}
+	objectType, objectID := tuple.SplitObject(tk.GetObject())
+	return &openfgapb.Object{Type: objectType, Id: objectID}, nil
+}
+
+func (t *tupleKeyObjectIterator) Stop() {
+	t.iter.Stop()
+}
+
+// NewObjectIteratorFromTupleKeyIterator takes a TupleKeyIterator and yields all the objects from it as a ObjectIterator.
+func NewObjectIteratorFromTupleKeyIterator(iter TupleKeyIterator) ObjectIterator {
+	return &tupleKeyObjectIterator{iter}
+}
+
 type staticIterator[T any] struct {
 	items []T
 }
 
-func (s *staticIterator[T]) Next() (T, error) {
+func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
-	if len(s.items) == 0 {
+	select {
+	case <-ctx.Done():
 		return val, ErrIteratorDone
+	default:
+		if len(s.items) == 0 {
+			return val, ErrIteratorDone
+		}
+
+		next, rest := s.items[0], s.items[1:]
+		s.items = rest
+
+		return next, nil
 	}
-
-	next, rest := s.items[0], s.items[1:]
-	s.items = rest
-
-	return next, nil
 }
 
 func (s *staticIterator[T]) Stop() {}
@@ -223,6 +255,48 @@ func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
 	}
 }
 
+// TupleKeyFilterFunc is a filter function that is used to filter out tuples from a TupleKey iterator
+// that don't meet some criteria. Implementations should return true if the tuple should be returned
+// and false if it should be filtered out.
+type TupleKeyFilterFunc func(tupleKey *openfgapb.TupleKey) bool
+
+type filteredTupleKeyIterator struct {
+	iter   TupleKeyIterator
+	filter TupleKeyFilterFunc
+}
+
+var _ TupleKeyIterator = &filteredTupleKeyIterator{}
+
+// Next returns the next most tuple in the underlying iterator that meets
+// the filter function this iterator was constructed with.
+func (f *filteredTupleKeyIterator) Next(ctx context.Context) (*openfgapb.TupleKey, error) {
+
+	for {
+		tuple, err := f.iter.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		if f.filter(tuple) {
+			return tuple, nil
+		}
+	}
+}
+
+func (f *filteredTupleKeyIterator) Stop() {
+	f.iter.Stop()
+}
+
+// NewFilteredTupleKeyIterator returns an iterator that filters out all tuples that don't
+// meet the conditions of the provided TupleFilterFunc.
+func NewFilteredTupleKeyIterator(iter TupleKeyIterator, filter TupleKeyFilterFunc) TupleKeyIterator {
+
+	return &filteredTupleKeyIterator{
+		iter,
+		filter,
+	}
+}
+
 // Typesafe aliases for Write arguments.
 
 type Writes = []*openfgapb.TupleKey
@@ -230,9 +304,12 @@ type Deletes = []*openfgapb.TupleKey
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
-	// Read the set of tuples associated with `store` and `key`, which may be partially filled. A key must specify at
-	// least one of `Object` or `User` (or both), and may also optionally constrain by relation. The caller must be
-	// careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
+	// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled. If nil,
+	// Read will return an iterator over all the `Tuple`s in the given store. If the `TupleKey` is partially filled,
+	// it will return an iterator over those `Tuple`s which match the `TupleKey`. Note that at least one of `Object`
+	// or `User` (or both), must be specified in this case.
+	//
+	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
 
 	// ListObjectsByType returns all the objects of a specific type.
@@ -287,13 +364,6 @@ type TupleBackend interface {
 		store string,
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
-
-	// ReadByStore reads the tuples associated with `store`.
-	ReadByStore(
-		ctx context.Context,
-		store string,
-		opts PaginationOptions,
-	) ([]*openfgapb.Tuple, []byte, error)
 
 	// MaxTuplesInWriteOperation returns the maximum number of items allowed in a single write transaction
 	MaxTuplesInWriteOperation() int

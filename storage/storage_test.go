@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -56,7 +57,7 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -83,7 +84,7 @@ func TestCombinedIterator(t *testing.T) {
 
 	var actual []*openfgapb.TupleKey
 	for {
-		tk, err := iter.Next()
+		tk, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -129,7 +130,7 @@ func TestUniqueObjectIterator(t *testing.T) {
 
 	var actual []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, ErrIteratorDone) {
 				break
@@ -174,7 +175,7 @@ func ExampleNewUniqueObjectIterator() {
 
 	var objects []string
 	for {
-		obj, err := iter.Next()
+		obj, err := iter.Next(context.Background())
 		if err != nil {
 			if err == ErrIteratorDone {
 				break
@@ -189,4 +190,38 @@ func ExampleNewUniqueObjectIterator() {
 
 	fmt.Println(objects)
 	// Output: [document:doc1 document:doc2]
+}
+
+func ExampleNewFilteredTupleKeyIterator() {
+
+	tuples := []*openfgapb.TupleKey{
+		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
+	}
+
+	iter := NewFilteredTupleKeyIterator(
+		NewStaticTupleKeyIterator(tuples),
+		func(tk *openfgapb.TupleKey) bool {
+			return tk.GetRelation() == "editor"
+		},
+	)
+	defer iter.Stop()
+
+	var filtered []string
+	for {
+		tuple, err := iter.Next(context.Background())
+		if err != nil {
+			if err == ErrIteratorDone {
+				break
+			}
+
+			// handle the error in some way
+			panic(err)
+		}
+
+		filtered = append(filtered, fmt.Sprintf("%s#%s@%s", tuple.GetObject(), tuple.GetRelation(), tuple.GetUser()))
+	}
+
+	fmt.Println(filtered)
+	// Output: [document:doc1#editor@user:elbuo]
 }

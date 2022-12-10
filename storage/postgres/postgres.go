@@ -143,7 +143,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	return &objectIterator{rows: rows}, nil
+	return NewPostgresObjectIterator(rows), nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -161,8 +161,9 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
-	return iter.toArray(opts)
+	return iter.toArray(ctx, opts)
 }
 
 func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*tupleIterator, error) {
@@ -179,7 +180,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -312,7 +313,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
@@ -334,19 +335,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		return nil, handlePostgresError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
-}
-
-func (p *Postgres) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadByStore")
-	defer span.End()
-
-	iter, err := p.read(ctx, store, nil, opts)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return iter.toArray(opts)
+	return NewPostgresTupleIterator(rows), nil
 }
 
 func (p *Postgres) MaxTuplesInWriteOperation() int {
@@ -362,6 +351,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	if err != nil {
 		return nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
@@ -419,6 +409,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var modelIDs []string
 	var modelID string
@@ -599,6 +590,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var stores []*openfgapb.Store
 	var id string
@@ -703,6 +695,7 @@ func (p *Postgres) ReadChanges(
 	if err != nil {
 		return nil, nil, handlePostgresError(err)
 	}
+	defer rows.Close()
 
 	var changes []*openfgapb.TupleChange
 	var ulid string

@@ -59,6 +59,10 @@ func NewInternalError(public string, internal error) InternalError {
 	}
 }
 
+func ValidationError(reason string) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_validation_error), reason)
+}
+
 func AssertionsNotForAuthorizationModelFound(modelID string) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_authorization_model_assertions_not_found), fmt.Sprintf("No assertions found for authorization model '%s'", modelID))
 }

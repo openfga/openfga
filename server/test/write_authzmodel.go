@@ -667,6 +667,24 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				errors.New("the 'document#parent' relation is referenced in at least one tupleset and thus must be a direct relation"),
 			),
 		},
+		{
+			name: "Fails if type info metadata is omitted in 1.1 model",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId:       storeID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": typesystem.This(),
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("the assignable relation 'reader' in object type 'document' must contain at least one relation type"),
+			),
+		},
 	}
 
 	ctx := context.Background()

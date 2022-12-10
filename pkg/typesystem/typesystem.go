@@ -37,8 +37,10 @@ func DirectRelationReference(objectType, relation string) *openfgapb.RelationRef
 
 func WildcardRelationReference(objectType string) *openfgapb.RelationReference {
 	return &openfgapb.RelationReference{
-		Type:               objectType,
-		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
+		Type: objectType,
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{
+			Wildcard: &openfgapb.Wildcard{},
+		},
 	}
 }
 
@@ -58,15 +60,15 @@ func ComputedUserset(relation string) *openfgapb.Userset {
 	}
 }
 
-func TupleToUserset(tuplesetRelation, targetRelation string) *openfgapb.Userset {
+func TupleToUserset(tupleset, computedUserset string) *openfgapb.Userset {
 	return &openfgapb.Userset{
 		Userset: &openfgapb.Userset_TupleToUserset{
 			TupleToUserset: &openfgapb.TupleToUserset{
 				Tupleset: &openfgapb.ObjectRelation{
-					Relation: tuplesetRelation,
+					Relation: tupleset,
 				},
 				ComputedUserset: &openfgapb.ObjectRelation{
-					Relation: targetRelation,
+					Relation: computedUserset,
 				},
 			},
 		},
@@ -105,6 +107,7 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
+	model           *openfgapb.AuthorizationModel
 	schemaVersion   string
 	typeDefinitions map[string]*openfgapb.TypeDefinition
 }
@@ -118,9 +121,22 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	}
 
 	return &TypeSystem{
+		model:           model,
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 	}
+}
+
+// GetAuthorizationModel returns the underlying AuthorizationModel this TypeSystem was
+// constructed from.
+func (t *TypeSystem) GetAuthorizationModel() *openfgapb.AuthorizationModel {
+	return t.model
+}
+
+// GetAuthorizationModelID returns the id for the authorization model this
+// TypeSystem was constructed for.
+func (t *TypeSystem) GetAuthorizationModelID() string {
+	return t.model.GetId()
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
@@ -203,8 +219,13 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, sour
 	}
 
 	for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == relationReference.GetType() && source.GetRelation() == relationReference.GetRelation() {
-			return true, nil
+		if source.GetType() == relationReference.GetType() {
+			// Either the relations are not wildcards and are the same
+			// or the relationReference is a wildcard type (e.g. user:*) and the source may or may not have a wildcard (but certainly no relation)
+			if relationReference.GetWildcard() == nil && source.GetWildcard() == nil && relationReference.GetRelation() == source.GetRelation() ||
+				(relationReference.GetWildcard() != nil && source.GetRelation() == "") {
+				return true, nil
+			}
 		}
 	}
 
@@ -556,18 +577,17 @@ func isUsersetRewriteValid(
 }
 
 func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
-	t := New(model)
-	allTupleToUsersetDefinitions := t.GetAllTupleToUsersetsDefinitions()
+	typesys := New(model)
 
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
+	for objectType := range typesys.typeDefinitions {
+		relations, err := typesys.GetRelations(objectType)
 		if err != nil {
 			return err
 		}
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			assignable := t.IsDirectlyAssignable(relation)
+			assignable := typesys.IsDirectlyAssignable(relation)
 
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
@@ -581,24 +601,23 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				relatedObjectType := related.GetType()
 				relatedRelation := related.GetRelation()
 
-				if _, err := t.GetRelations(relatedObjectType); err != nil {
+				if _, err := typesys.GetRelations(relatedObjectType); err != nil {
 					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 				}
 
-				if relatedRelation != "" {
-					if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
+				if related.GetRelationOrWildcard() != nil {
+					// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
+					if ok, _ := typesys.IsTuplesetRelation(objectType, name); ok {
 						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 					}
 
-					// you cannot specify a userset if the relation is being used in a `x from y` definition (in the `y` part)
-					for _, arrayOfTtus := range allTupleToUsersetDefinitions[objectType] {
-						for _, tupleToUserSetDef := range arrayOfTtus {
-							if tupleToUserSetDef.Tupleset.Relation == name {
-								return &InvalidRelationError{ObjectType: objectType, Relation: name}
-							}
+					if relatedRelation != "" {
+						if _, err := typesys.GetRelation(relatedObjectType, relatedRelation); err != nil {
+							return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 						}
 					}
 				}
+
 			}
 		}
 	}
@@ -748,37 +767,58 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
 }
 
-// GetAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
+// getAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
 // is another map where key=relationName, value=list of tuple to usersets declared in that relation
-func (t *TypeSystem) GetAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgapb.TupleToUserset {
+func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgapb.TupleToUserset {
 	response := make(map[string]map[string][]*openfgapb.TupleToUserset, 0)
 	for typeName, typeDef := range t.GetTypeDefinitions() {
 		response[typeName] = make(map[string][]*openfgapb.TupleToUserset, 0)
 		for relationName, relationDef := range typeDef.GetRelations() {
 			ttus := make([]*openfgapb.TupleToUserset, 0)
-			response[typeName][relationName] = t.getAllTupleToUsersetsDefinitions(relationDef, &ttus)
+			response[typeName][relationName] = t.tupleToUsersetsDefinitions(relationDef, &ttus)
 		}
 	}
+
 	return response
 }
 
-func (t *TypeSystem) getAllTupleToUsersetsDefinitions(relationDef *openfgapb.Userset, resp *[]*openfgapb.TupleToUserset) []*openfgapb.TupleToUserset {
+// IsTuplesetRelation returns a boolean indicating if the provided relation is defined under a
+// TupleToUserset rewrite as a tupleset relation (i.e. the right hand side of a `X from Y`).
+func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
+
+	_, err := t.GetRelation(objectType, relation)
+	if err != nil {
+		return false, err
+	}
+
+	for _, ttuDefinitions := range t.getAllTupleToUsersetsDefinitions()[objectType] {
+		for _, ttuDef := range ttuDefinitions {
+			if ttuDef.Tupleset.Relation == relation {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func (t *TypeSystem) tupleToUsersetsDefinitions(relationDef *openfgapb.Userset, resp *[]*openfgapb.TupleToUserset) []*openfgapb.TupleToUserset {
 	if relationDef.GetTupleToUserset() != nil {
 		*resp = append(*resp, relationDef.GetTupleToUserset())
 	}
 	if relationDef.GetUnion() != nil {
 		for _, child := range relationDef.GetUnion().GetChild() {
-			t.getAllTupleToUsersetsDefinitions(child, resp)
+			t.tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetIntersection() != nil {
 		for _, child := range relationDef.GetIntersection().GetChild() {
-			t.getAllTupleToUsersetsDefinitions(child, resp)
+			t.tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetDifference() != nil {
-		t.getAllTupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
-		t.getAllTupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
+		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
+		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
 	}
 	return *resp
 }
