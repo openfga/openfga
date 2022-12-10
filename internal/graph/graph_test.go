@@ -965,6 +965,54 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "indirect_typed_wildcard",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "group",
+						Relations: map[string]*openfgapb.Userset{
+							"member": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.WildcardRelationReference("user"),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("group", "member"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

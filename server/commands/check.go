@@ -75,12 +75,19 @@ func (query *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckReques
 
 	typesys := typesystem.New(model)
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
-
-	err = validation.ValidateTuple(typesys, tk)
-	if err != nil {
+	if err := validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
+
+	if err := validation.ValidateRelation(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	if err := validation.ValidateUser(typesys, tk); err != nil {
+		return nil, serverErrors.HandleTupleValidateError(err)
+	}
+
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
@@ -245,7 +252,7 @@ func (query *CheckQuery) resolveDirectUserSet(
 	}
 
 	for {
-		usersetTuple, err := iter.Next()
+		usersetTuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -528,7 +535,7 @@ func (query *CheckQuery) resolveTupleToUserset(
 	c := make(chan *chanResolveResult)
 
 	for {
-		tuple, err := iter.Next()
+		tuple, err := iter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

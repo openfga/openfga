@@ -162,6 +162,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		}
 	})
 }
+
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
