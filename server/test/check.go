@@ -135,35 +135,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfAllUsersTupleExists",
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{
-									This: &openfgapb.DirectUserset{},
-								}},
-							}},
-						},
-					},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "*"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).",
-			},
-		},
-		{
 			name:             "CheckUsersetAsUser_WithContextualTuples",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
