@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/openfga/openfga/internal/contextualtuples"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -65,6 +66,11 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	typesys := typesystem.New(model)
+
+	_, err = contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys())
+	if err != nil {
+		return err
+	}
 
 	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
 	if err != nil {
