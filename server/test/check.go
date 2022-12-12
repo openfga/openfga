@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -178,7 +179,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "john:albert:doe"),
 			},
-			err: serverErrors.InvalidTuple("the 'user' field is invalid", tuple.NewTupleKey("repo:openfga/openfga", "admin", "john:albert:doe")),
+			err: serverErrors.ValidationError(fmt.Errorf("the 'user' field is malformed")),
 		},
 		{
 			name:          "ExecuteReturnsErrorNotStackOverflowForInfinitelyRecursiveResolution",
