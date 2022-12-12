@@ -8,24 +8,49 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [0.2.6] - 2002-12-12
+## [0.3.0] - 2002-12-12
 
-### Added
-- Refactored validation code (#341)
-- Improved test coverage (#386, #347)
-- Improvements for ListObjects (#379)
-- Updating check for 1.1 models (#387)
-- Add support for typed wildcards in 1.1 models (#350, #370, #371, #348)
-- Read with nil tuple_key returns all tuples in the given store (#372)
+[Full changelog](https://github.com/openfga/openfga/compare/v0.2.5...v0.3.0)
 
-## Fixed
-- Goroutine leak in ListObjects (#368)
-- ListObjects with contextual tuples not returning correct IDs (#366)
-- Conflicting authorization models causing unexpected errors (#342)
-- Inconsistent response format for ListObjects (#379)
+This release comes with a few big changes:
 
-## Deprecated
-- ReadTuples. Please use Read with nil tuple_key instead. (#372)
+### Support for v1.1 JSON Schema
+
+- You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
+which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
+JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
+indicate cases such as “The folder's parent must be a folder" (and so not a user or a document).
+- This change also comes with breaking changes to how * and ${type}:* are treated:
+  - ${type}:* is no longer allowed as a user in the relationship tuple field when targeting schema v1.0, validation 
+    will throw an error when attempting to write or check against it and it will be ignored during evaluation.
+  - `*` is still supported in v1.0, but not supported in v1.1 . A validation error will be thrown when used in checks
+    or writes and it will be ignored when evaluating.
+- Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
+instead of when issuing checks.
+
+:warning: Note that with this release **models with schema version 1.0 are now considered deprecated**, with the plan to
+drop support for them over the next couple of months, please migrate to version 1.1 when you can. Read more about
+[migrating to the new syntax](https://openfga.dev/docs/modeling/migrating/migrating-schema-1-1).
+
+### ListObjects changes
+
+The response has changed from:
+```json
+{ "object_ids": [ "a", "b", "c" ] }
+```
+to
+```json
+{ "objects": [ "field:a", "field:b","field:c" ] }
+```
+
+We have also improved validation and fixed support for Contextual Tuples that were causing inaccurate responses to be
+returned.
+
+### ReadTuples deprecation
+
+:warning:This endpoint is now marked as deprecated, and support for it will be dropped shortly. Please use Read with
+no tuple key instead.
+
 
 ## [0.2.5] - 2022-11-07
 ### Security
