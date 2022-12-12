@@ -27,7 +27,7 @@ func NewExpandQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, log
 	return &ExpandQuery{logger: logger, tracer: tracer, datastore: datastore}
 }
 
-func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
+func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tupleKey := req.GetTupleKey()
@@ -40,7 +40,7 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := query.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
@@ -76,7 +76,7 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 
 	userset := rel.GetRewrite()
 
-	root, err := query.resolveUserset(ctx, store, userset, tk, typesys)
+	root, err := q.resolveUserset(ctx, store, userset, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -88,40 +88,40 @@ func (query *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequ
 	}, nil
 }
 
-func (query *ExpandQuery) resolveUserset(
+func (q *ExpandQuery) resolveUserset(
 	ctx context.Context,
 	store string,
 	userset *openfgapb.Userset,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveUserset")
+	ctx, span := q.tracer.Start(ctx, "resolveUserset")
 	defer span.End()
 
 	switch us := userset.Userset.(type) {
 	case nil, *openfgapb.Userset_This:
-		return query.resolveThis(ctx, store, tk, typesys)
+		return q.resolveThis(ctx, store, tk, typesys)
 	case *openfgapb.Userset_ComputedUserset:
-		return query.resolveComputedUserset(ctx, us.ComputedUserset, tk)
+		return q.resolveComputedUserset(ctx, us.ComputedUserset, tk)
 	case *openfgapb.Userset_TupleToUserset:
-		return query.resolveTupleToUserset(ctx, store, us.TupleToUserset, tk, typesys)
+		return q.resolveTupleToUserset(ctx, store, us.TupleToUserset, tk, typesys)
 	case *openfgapb.Userset_Union:
-		return query.resolveUnionUserset(ctx, store, us.Union, tk, typesys)
+		return q.resolveUnionUserset(ctx, store, us.Union, tk, typesys)
 	case *openfgapb.Userset_Difference:
-		return query.resolveDifferenceUserset(ctx, store, us.Difference, tk, typesys)
+		return q.resolveDifferenceUserset(ctx, store, us.Difference, tk, typesys)
 	case *openfgapb.Userset_Intersection:
-		return query.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys)
+		return q.resolveIntersectionUserset(ctx, store, us.Intersection, tk, typesys)
 	default:
 		return nil, serverErrors.UnsupportedUserSet
 	}
 }
 
 // resolveThis resolves a DirectUserset into a leaf node containing a distinct set of users with that relation.
-func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveThis")
+func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.UsersetTree_Node, error) {
+	ctx, span := q.tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
-	tupleIter, err := query.datastore.Read(ctx, store, tk)
+	tupleIter, err := q.datastore.Read(ctx, store, tk)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -164,10 +164,10 @@ func (query *ExpandQuery) resolveThis(ctx context.Context, store string, tk *ope
 }
 
 // resolveComputedUserset builds a leaf node containing the result of resolving a ComputedUserset rewrite.
-func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
+func (q *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
 
 	var span trace.Span
-	_, span = query.tracer.Start(ctx, "resolveComputedUserset")
+	_, span = q.tracer.Start(ctx, "resolveComputedUserset")
 	defer span.End()
 
 	computed := &openfgapb.TupleKey{
@@ -198,14 +198,14 @@ func (query *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *o
 }
 
 // resolveTupleToUserset creates a new leaf node containing the result of expanding a TupleToUserset rewrite.
-func (query *ExpandQuery) resolveTupleToUserset(
+func (q *ExpandQuery) resolveTupleToUserset(
 	ctx context.Context,
 	store string,
 	userset *openfgapb.TupleToUserset,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveTupleToUserset")
+	ctx, span := q.tracer.Start(ctx, "resolveTupleToUserset")
 	defer span.End()
 
 	targetObject := tk.GetObject()
@@ -233,7 +233,7 @@ func (query *ExpandQuery) resolveTupleToUserset(
 		tsKey.Relation = tk.GetRelation()
 	}
 
-	tupleIter, err := query.datastore.Read(ctx, store, tsKey)
+	tupleIter, err := q.datastore.Read(ctx, store, tsKey)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}
@@ -291,17 +291,17 @@ func (query *ExpandQuery) resolveTupleToUserset(
 }
 
 // resolveUnionUserset creates an intermediate Usertree node containing the union of its children.
-func (query *ExpandQuery) resolveUnionUserset(
+func (q *ExpandQuery) resolveUnionUserset(
 	ctx context.Context,
 	store string,
 	usersets *openfgapb.Usersets,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveUnionUserset")
+	ctx, span := q.tracer.Start(ctx, "resolveUnionUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -316,17 +316,17 @@ func (query *ExpandQuery) resolveUnionUserset(
 }
 
 // resolveIntersectionUserset create an intermediate Usertree node containing the intersection of its children
-func (query *ExpandQuery) resolveIntersectionUserset(
+func (q *ExpandQuery) resolveIntersectionUserset(
 	ctx context.Context,
 	store string,
 	usersets *openfgapb.Usersets,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveIntersectionUserset")
+	ctx, span := q.tracer.Start(ctx, "resolveIntersectionUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -341,17 +341,17 @@ func (query *ExpandQuery) resolveIntersectionUserset(
 }
 
 // resolveDifferenceUserset creates and intermediate Usertree node containing the difference of its children
-func (query *ExpandQuery) resolveDifferenceUserset(
+func (q *ExpandQuery) resolveDifferenceUserset(
 	ctx context.Context,
 	store string,
 	userset *openfgapb.Difference,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveDifferenceUserset")
+	ctx, span := q.tracer.Start(ctx, "resolveDifferenceUserset")
 	defer span.End()
 
-	nodes, err := query.resolveUsersets(ctx, store, []*openfgapb.Userset{userset.Base, userset.Subtract}, tk, typesys)
+	nodes, err := q.resolveUsersets(ctx, store, []*openfgapb.Userset{userset.Base, userset.Subtract}, tk, typesys)
 	if err != nil {
 		return nil, err
 	}
@@ -369,14 +369,14 @@ func (query *ExpandQuery) resolveDifferenceUserset(
 }
 
 // resolveUsersets creates Usertree nodes for multiple Usersets
-func (query *ExpandQuery) resolveUsersets(
+func (q *ExpandQuery) resolveUsersets(
 	ctx context.Context,
 	store string,
 	usersets []*openfgapb.Userset,
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) ([]*openfgapb.UsersetTree_Node, error) {
-	ctx, span := query.tracer.Start(ctx, "resolveUsersets")
+	ctx, span := q.tracer.Start(ctx, "resolveUsersets")
 	defer span.End()
 
 	out := make([]*openfgapb.UsersetTree_Node, len(usersets))
@@ -385,7 +385,7 @@ func (query *ExpandQuery) resolveUsersets(
 		// https://golang.org/doc/faq#closures_and_goroutines
 		i, us := i, us
 		grp.Go(func() error {
-			node, err := query.resolveUserset(ctx, store, us, tk, typesys)
+			node, err := q.resolveUserset(ctx, store, us, tk, typesys)
 			if err != nil {
 				return err
 			}
