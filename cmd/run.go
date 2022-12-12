@@ -332,12 +332,12 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	if err := runServer(context.Background(), config); err != nil {
+	if err := RunServer(context.Background(), config); err != nil {
 		panic(err)
 	}
 }
 
-func runServer(ctx context.Context, config *Config) error {
+func RunServer(ctx context.Context, config *Config) error {
 	if err := VerifyConfig(config); err != nil {
 		return err
 	}

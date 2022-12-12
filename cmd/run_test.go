@@ -274,7 +274,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
-	err := runServer(context.Background(), cfg)
+	err := RunServer(context.Background(), cfg)
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
@@ -284,7 +284,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -313,7 +313,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -437,7 +437,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -540,7 +540,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -600,7 +600,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -624,7 +624,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -659,7 +659,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -684,7 +684,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := runServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -705,7 +705,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -722,7 +722,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
