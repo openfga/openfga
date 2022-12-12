@@ -59,8 +59,8 @@ func NewInternalError(public string, internal error) InternalError {
 	}
 }
 
-func ValidationError(reason string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_validation_error), reason)
+func ValidationError(cause error) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_validation_error), cause.Error())
 }
 
 func AssertionsNotForAuthorizationModelFound(modelID string) error {
@@ -76,16 +76,16 @@ func LatestAuthorizationModelNotFound(store string) error {
 }
 
 func TypeNotFound(objectType string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", objectType))
+	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("type '%s' not found", objectType))
 }
 
-func RelationNotFound(relation string, objectType string, tuple *openfgapb.TupleKey) error {
-	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
-	if tuple != nil {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, objectType, tuple.String())
-	} else if objectType != "" {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, objectType)
+func RelationNotFound(relation string, objectType string, tk *openfgapb.TupleKey) error {
+
+	msg := fmt.Sprintf("relation '%s#%s' not found", objectType, relation)
+	if tk != nil {
+		msg += fmt.Sprintf(" for tuple '%s'", tuple.TupleKeyToString(tk))
 	}
+
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
@@ -154,7 +154,7 @@ func HandleError(public string, err error) error {
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:
-		return InvalidTuple(t.Reason, t.TupleKey)
+		return InvalidTuple(t.Cause.Error(), t.TupleKey)
 	case *tuple.InvalidObjectFormatError:
 		return InvalidObjectFormat(t.TupleKey)
 	case *tuple.TypeNotFoundError:

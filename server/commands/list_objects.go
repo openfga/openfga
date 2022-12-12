@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/internal/contextualtuples"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -67,9 +68,25 @@ func (q *ListObjectsQuery) handler(
 
 	typesys := typesystem.New(model)
 
-	_, err = contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys())
-	if err != nil {
+	if _, err = contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys()); err != nil {
 		return err
+	}
+
+	_, err = typesys.GetRelation(targetObjectType, targetRelation)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
+			return serverErrors.TypeNotFound(targetObjectType)
+		}
+
+		if errors.Is(err, typesystem.ErrRelationUndefined) {
+			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+		}
+
+		return serverErrors.NewInternalError("", err)
+	}
+
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
 	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
@@ -88,19 +105,6 @@ func (q *ListObjectsQuery) handler(
 		}
 
 		close(resultsChan)
-	}
-
-	_, err = typesys.GetRelation(targetObjectType, targetRelation)
-	if err != nil {
-		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return serverErrors.TypeNotFound(targetObjectType)
-		}
-
-		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
-		}
-
-		return serverErrors.HandleError("", err)
 	}
 
 	containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)

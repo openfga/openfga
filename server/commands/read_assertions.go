@@ -22,8 +22,8 @@ func NewReadAssertionsQuery(backend storage.AssertionsBackend, logger logger.Log
 	}
 }
 
-func (query *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgapb.ReadAssertionsResponse, error) {
-	assertions, err := query.backend.ReadAssertions(ctx, store, authorizationModelID)
+func (q *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgapb.ReadAssertionsResponse, error) {
+	assertions, err := q.backend.ReadAssertions(ctx, store, authorizationModelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AssertionsNotForAuthorizationModelFound(authorizationModelID)

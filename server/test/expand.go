@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -2035,10 +2036,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-				Object:   ":",
-				Relation: "bar",
-			}),
+			expected: serverErrors.ValidationError(
+				fmt.Errorf("invalid 'object' field format"),
+			),
 		},
 		{
 			name: "missing_object_id_in_request",
@@ -2055,10 +2055,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.InvalidObjectFormat(&openfgapb.TupleKey{
-				Object:   "github:",
-				Relation: "bar",
-			}),
+			expected: serverErrors.ValidationError(
+				fmt.Errorf("invalid 'object' field format"),
+			),
 		},
 		{
 			name: "missing_relation_in_request",
@@ -2091,7 +2090,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.TypeNotFound("foo"),
+			expected: serverErrors.ValidationError(
+				&tuple.TypeNotFoundError{TypeName: "foo"},
+			),
 		},
 		{
 			name: "1.1_object_type_not_found_in_model",
@@ -2108,7 +2109,9 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.TypeNotFound("foo"),
+			expected: serverErrors.ValidationError(
+				&tuple.TypeNotFoundError{TypeName: "foo"},
+			),
 		},
 		{
 			name: "1.0_relation_not_found_in_model",
@@ -2125,10 +2128,12 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "baz",
 				},
 			},
-			expected: serverErrors.RelationNotFound("baz", "repo", &openfgapb.TupleKey{
-				Object:   "repo:bar",
-				Relation: "baz",
-			}),
+			expected: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "baz",
+				},
+			),
 		},
 		{
 			name: "1.1_relation_not_found_in_model",
@@ -2145,10 +2150,12 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "baz",
 				},
 			},
-			expected: serverErrors.RelationNotFound("baz", "repo", &openfgapb.TupleKey{
-				Object:   "repo:bar",
-				Relation: "baz",
-			}),
+			expected: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "baz",
+				},
+			),
 		},
 	}
 

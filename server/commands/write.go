@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -73,7 +74,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 		for _, tk := range writes {
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
-				return serverErrors.HandleTupleValidateError(err)
+				return serverErrors.ValidationError(err)
 			}
 
 			objectType, _ := tupleUtils.SplitObject(tk.GetObject())
@@ -100,7 +101,12 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 	for _, tk := range deletes {
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
-			return serverErrors.InvalidTuple("the 'user' field is invalid", tk)
+			return serverErrors.ValidationError(
+				&tupleUtils.InvalidTupleError{
+					Cause:    fmt.Errorf("the 'user' field is malformed"),
+					TupleKey: tk,
+				},
+			)
 		}
 	}
 
