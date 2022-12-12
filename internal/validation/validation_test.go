@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/tuple"
@@ -20,42 +21,48 @@ func TestValidateTuple(t *testing.T) {
 		{
 			name:  "malformed_object_1",
 			tuple: tuple.NewTupleKey("group#group1:member", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey("group#group1:member", "relation", "user:jon"),
 			},
 		},
 		{
 			name:  "malformed_object_2",
 			tuple: tuple.NewTupleKey("repo:sand castle", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey("repo:sand castle", "relation", "user:jon"),
 			},
 		},
 		{
 			name:  "malformed_object_3",
 			tuple: tuple.NewTupleKey("fga", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey("fga", "relation", "user:jon"),
 			},
 		},
 		{
 			name:  "malformed_object_4",
 			tuple: tuple.NewTupleKey("github:org-iam#member", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey("github:org-iam#member", "relation", "user:jon"),
 			},
 		},
 		{
 			name:  "malformed_object_5",
 			tuple: tuple.NewTupleKey("group:group:group", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey("group:group:group", "relation", "user:jon"),
 			},
 		},
 		{
 			name:  "malformed_object_6",
 			tuple: tuple.NewTupleKey(":", "relation", "user:jon"),
-			expectedError: &tuple.InvalidObjectFormatError{
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("invalid 'object' field format"),
 				TupleKey: tuple.NewTupleKey(":", "relation", "user:jon"),
 			},
 		},
@@ -68,7 +75,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "invalid relation",
+				Cause:    fmt.Errorf("invalid relation"),
 				TupleKey: tuple.NewTupleKey("document:1", "group#group", "user:jon"),
 			},
 		},
@@ -81,7 +88,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "invalid relation",
+				Cause:    fmt.Errorf("invalid relation"),
 				TupleKey: tuple.NewTupleKey("document:1", "organization:openfga", "user:jon"),
 			},
 		},
@@ -94,7 +101,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "invalid relation",
+				Cause:    fmt.Errorf("invalid relation"),
 				TupleKey: tuple.NewTupleKey("document:1", "my relation", "user:jon"),
 			},
 		},
@@ -102,7 +109,7 @@ func TestValidateTuple(t *testing.T) {
 			name:  "malformed_user_1",
 			tuple: tuple.NewTupleKey("document:1", "relation", "john:albert:doe"),
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field is invalid",
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "relation", "john:albert:doe"),
 			},
 		},
@@ -110,7 +117,7 @@ func TestValidateTuple(t *testing.T) {
 			name:  "malformed_user_2",
 			tuple: tuple.NewTupleKey("document:1", "relation", "john#albert#doe"),
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field is invalid",
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "relation", "john#albert#doe"),
 			},
 		},
@@ -118,7 +125,7 @@ func TestValidateTuple(t *testing.T) {
 			name:  "malformed_user_3",
 			tuple: tuple.NewTupleKey("document:1", "relation", "invalid#test:go"),
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field is invalid",
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "relation", "invalid#test:go"),
 			},
 		},
@@ -126,7 +133,7 @@ func TestValidateTuple(t *testing.T) {
 			name:  "malformed_user_4",
 			tuple: tuple.NewTupleKey("document:1", "relation", "anne@openfga .com"),
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field is invalid",
+				Cause:    fmt.Errorf("the 'user' field is malformed"),
 				TupleKey: tuple.NewTupleKey("document:1", "relation", "anne@openfga .com"),
 			},
 		},
@@ -145,7 +152,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)",
+				Cause:    fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "anne"),
 			},
 		},
@@ -175,7 +182,10 @@ func TestValidateTuple(t *testing.T) {
 					},
 				},
 			},
-			expectedError: &tuple.TypeNotFoundError{TypeName: "employee"},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "employee"},
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "employee:anne"),
+			},
 		},
 		{
 			name:  "undefined_user_type_in_userset_value_(1.1_model)",
@@ -203,7 +213,10 @@ func TestValidateTuple(t *testing.T) {
 					},
 				},
 			},
-			expectedError: &tuple.TypeNotFoundError{TypeName: "group"},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "employee"},
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			},
 		},
 		{
 			name:  "undefined_userset_relation_in_userset_value_(1.1_model)",
@@ -234,9 +247,8 @@ func TestValidateTuple(t *testing.T) {
 					},
 				},
 			},
-			expectedError: &tuple.RelationNotFoundError{
-				TypeName: "group",
-				Relation: "member",
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("relation 'group#member' was not found"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
 		},
@@ -281,7 +293,10 @@ func TestValidateTuple(t *testing.T) {
 					},
 				},
 			},
-			expectedError: &tuple.TypeNotFoundError{TypeName: "employee"},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    &tuple.TypeNotFoundError{TypeName: "employee"},
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "employee:*"),
+			},
 		},
 		{
 			name:  "untyped_wildcard_in_1.1_model",
@@ -310,7 +325,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)",
+				Cause:    fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "*"),
 			},
 		},
@@ -358,7 +373,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "unexpected user 'someuser' with tupleset relation 'document#parent'",
+				Cause:    fmt.Errorf("unexpected user 'someuser' with tupleset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "someuser"),
 			},
 		},
@@ -378,7 +393,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "unexpected wildcard relationship with tupleset relation 'document#parent'",
+				Cause:    fmt.Errorf("unexpected wildcard relationship with tupleset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "*"),
 			},
 		},
@@ -404,7 +419,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "unexpected user 'folder:1#parent' with tupleset relation 'document#parent'",
+				Cause:    fmt.Errorf("unexpected user 'folder:1#parent' with tupleset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "ancestor", "folder:1#parent"),
 			},
 		},
@@ -448,7 +463,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "unexpected wildcard relationship with tupleset relation 'document#parent'",
+				Cause:    fmt.Errorf("unexpected wildcard relationship with tupleset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "folder:*"),
 			},
 		},
@@ -475,7 +490,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "unexpected rewrite encountered with tupelset relation 'document#parent'",
+				Cause:    fmt.Errorf("unexpected rewrite encountered with tupelset relation 'document#parent'"),
 				TupleKey: tuple.NewTupleKey("document:1", "parent", "folder:1"),
 			},
 		},
@@ -506,7 +521,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "the typed wildcard 'user:*' is not an allowed type restriction for 'document#viewer'",
+				Cause:    fmt.Errorf("the typed wildcard 'user:*' is not an allowed type restriction for 'document#viewer'"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:*"),
 			},
 		},
@@ -552,7 +567,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "'group#member' is not an allowed type restriction for 'document#viewer'",
+				Cause:    fmt.Errorf("'group#member' is not an allowed type restriction for 'document#viewer'"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
 		},
@@ -583,7 +598,7 @@ func TestValidateTuple(t *testing.T) {
 				},
 			},
 			expectedError: &tuple.InvalidTupleError{
-				Reason:   "type 'user' is not an allowed type restriction for 'document#viewer'",
+				Cause:    fmt.Errorf("type 'user' is not an allowed type restriction for 'document#viewer'"),
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			},
 		},

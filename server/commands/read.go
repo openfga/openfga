@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -44,7 +45,9 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	if tk != nil {
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		if objectType == "" || (objectID == "" && tk.GetUser() == "") {
-			return nil, serverErrors.ValidationError("the 'tuple_key' field was provided but the object type field is required and both the object id and user cannot be empty")
+			return nil, serverErrors.ValidationError(
+				fmt.Errorf("the 'tuple_key' field was provided but the object type field is required and both the object id and user cannot be empty"),
+			)
 		}
 	}
 
