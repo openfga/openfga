@@ -89,25 +89,13 @@ func RelationNotFound(relation string, objectType string, tk *openfgapb.TupleKey
 	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
-func EmptyRewrites(objectType, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("The definition of relation '%s' on type '%s' is invalid", relation, objectType))
-}
-
 func ExceededEntityLimit(entity string, limit int) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_exceeded_entity_limit),
 		fmt.Sprintf("The number of %s exceeds the allowed limit of %d", entity, limit))
 }
 
-func InvalidUser(user string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_user), fmt.Sprintf("User '%s' is invalid", user))
-}
-
 func InvalidTuple(reason string, tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
-}
-
-func InvalidContextualTuple(tk *openfgapb.TupleKey) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_contextual_tuple), fmt.Sprintf("Invalid contextual tuple: %s. Please provide a user, object and relation.", tk.String()))
 }
 
 func DuplicateContextualTuple(tk *openfgapb.TupleKey) error {
