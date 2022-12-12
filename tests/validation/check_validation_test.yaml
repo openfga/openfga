@@ -64,6 +64,8 @@ tests:
 
   - name: user_invalid
     model: |
+      type user
+      
       type document
         relations
           define viewer: [user] as self
