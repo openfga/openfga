@@ -561,11 +561,11 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("group:auth0", "member", "group:eng#member"),
+				tuple.NewTupleKey("group:opensource", "member", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
 				tuple.NewTupleKey("group:iam", "member", "user:jon"),
 			},
-			expectedObjects: []string{"group:auth0", "group:eng"},
+			expectedObjects: []string{"group:opensource", "group:eng"},
 		},
 	}
 

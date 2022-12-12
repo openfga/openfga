@@ -68,31 +68,32 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		return err
 	}
 
+	subg, subgctx := errgroup.WithContext(ctx)
+	subg.SetLimit(maximumConcurrentChecks)
+
 	for _, ingress := range ingresses {
+		innerLoopIngress := ingress
+		subg.Go(func() error {
+			r := &reverseExpandRequest{
+				storeID:          storeID,
+				ingress:          innerLoopIngress,
+				sourceObjectRef:  sourceObjRef,
+				targetUserRef:    req.User,
+				contextualTuples: req.ContextualTuples,
+			}
 
-		r := &reverseExpandRequest{
-			storeID:          storeID,
-			ingress:          ingress,
-			sourceObjectRef:  sourceObjRef,
-			targetUserRef:    req.User,
-			contextualTuples: req.ContextualTuples,
-		}
-
-		var err error
-		switch ingress.Type {
-		case graph.DirectIngress:
-			err = c.reverseExpandDirect(ctx, r, resultChan, foundObjectsMap, foundCount)
-		case graph.TupleToUsersetIngress:
-			err = c.reverseExpandTupleToUserset(ctx, r, resultChan, foundObjectsMap, foundCount)
-		default:
-			return fmt.Errorf("unsupported ingress type")
-		}
-		if err != nil {
-			return err
-		}
+			switch innerLoopIngress.Type {
+			case graph.DirectIngress:
+				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
+			case graph.TupleToUsersetIngress:
+				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
+			default:
+				return fmt.Errorf("unsupported ingress type")
+			}
+		})
 	}
 
-	return nil
+	return subg.Wait()
 }
 
 // StreamedConnectedObjects yields all of the objects of the provided objectType that
@@ -170,16 +171,18 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		},
 	})
 	if err != nil {
+		iter1.Stop()
 		return err
 	}
 
 	iter := storage.NewCombinedIterator(iter1, iter2)
+	defer iter.Stop()
 
-	g := errgroup.Group{}
-	g.SetLimit(100) // set some concurrency limit
+	subg, subgctx := errgroup.WithContext(ctx)
+	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -220,8 +223,8 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
-		g.Go(func() error {
-			return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+		subg.Go(func() error {
+			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       sourceObjectType,
 				Relation:         sourceObjectRel,
@@ -231,7 +234,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	return g.Wait()
+	return subg.Wait()
 }
 
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
@@ -282,16 +285,18 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		},
 	})
 	if err != nil {
+		iter1.Stop()
 		return err
 	}
 
 	iter := storage.NewCombinedIterator(iter1, iter2)
+	defer iter.Stop()
 
-	g := errgroup.Group{}
-	g.SetLimit(100) // set some concurrency limit
+	subg, subgctx := errgroup.WithContext(ctx)
+	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -327,8 +332,8 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			user.Relation = tk.GetRelation()
 		}
 
-		g.Go(func() error {
-			return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+		subg.Go(func() error {
+			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       sourceObjectType,
 				Relation:         sourceObjectRel,
@@ -338,5 +343,5 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		})
 	}
 
-	return g.Wait()
+	return subg.Wait()
 }

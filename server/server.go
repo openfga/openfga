@@ -84,14 +84,20 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID := req.GetAuthorizationModelId()
+
+	if modelID == "" {
+		var err error
+
+		modelID, err = s.resolveAuthorizationModelID(ctx, storeID, modelID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
-		return nil, serverErrors.HandleError("", err)
+		return nil, serverErrors.AuthorizationModelNotFound(modelID)
 	}
 
 	typesys := typesystem.New(model)
@@ -141,6 +147,9 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		}
 		return serverErrors.HandleError("", err)
 	}
 
@@ -179,31 +188,32 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-
 	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
-		StoreId:              store,
-		TupleKey:             tk,
-		AuthorizationModelId: modelID,
-		PageSize:             req.GetPageSize(),
-		ContinuationToken:    req.GetContinuationToken(),
+		StoreId:           store,
+		TupleKey:          tk,
+		PageSize:          req.GetPageSize(),
+		ContinuationToken: req.GetContinuationToken(),
 	})
 }
 
+// ReadTuples returns all tuples for a given store.
+//
+// Deprecated: Please use Read with a null tuple instead.
 func (s *Server) ReadTuples(ctx context.Context, req *openfgapb.ReadTuplesRequest) (*openfgapb.ReadTuplesResponse, error) {
+	resp, err := s.Read(ctx, &openfgapb.ReadRequest{
+		StoreId:           req.GetStoreId(),
+		PageSize:          req.GetPageSize(),
+		ContinuationToken: req.GetContinuationToken(),
+	})
+	if err != nil {
+		return nil, err
+	}
 
-	ctx, span := s.tracer.Start(ctx, "readTuples", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
-	defer span.End()
-
-	q := commands.NewReadTuplesQuery(s.datastore, s.logger, s.encoder)
-	return q.Execute(ctx, req)
+	return &openfgapb.ReadTuplesResponse{
+		Tuples:            resp.GetTuples(),
+		ContinuationToken: resp.GetContinuationToken(),
+	}, nil
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {

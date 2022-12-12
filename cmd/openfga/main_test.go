@@ -17,6 +17,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -206,7 +207,7 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
-	t.Run("TestExpand", func(t *testing.T) { GRPCExpandTest(t, tester) })
+	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
@@ -473,10 +474,8 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	type testData struct {
-		storeID         string
-		modelID         string
-		tuples          *openfgapb.TupleKeys
-		typeDefinitions []*openfgapb.TypeDefinition
+		tuples []*openfgapb.TupleKey
+		model  *openfgapb.AuthorizationModel
 	}
 
 	type output struct {
@@ -562,46 +561,6 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				errorCode: codes.InvalidArgument,
 			},
 		},
-		{
-			name: "blerb",
-			input: &openfgapb.CheckRequest{
-				StoreId: ulid.Make().String(),
-				// AuthorizationModelId is generated automatically during testData bootstrap
-				TupleKey: tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
-				Trace:    true,
-			},
-			output: output{
-				resp: &openfgapb.CheckResponse{
-					Allowed:    true,
-					Resolution: ".union.0(direct).",
-				},
-			},
-			testData: &testData{
-				typeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {
-								Userset: &openfgapb.Userset_Union{
-									Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-										{
-											Userset: &openfgapb.Userset_This{
-												This: &openfgapb.DirectUserset{},
-											},
-										},
-									}},
-								},
-							},
-						},
-					},
-				},
-				tuples: &openfgapb.TupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("repo:auth0/express-jwt", "admin", "github|bob@auth0.com"),
-					},
-				},
-			},
-		},
 	}
 
 	conn := connect(t, tester)
@@ -617,7 +576,8 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			if test.testData != nil {
 				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
-					TypeDefinitions: test.testData.typeDefinitions,
+					SchemaVersion:   test.testData.model.SchemaVersion,
+					TypeDefinitions: test.testData.model.TypeDefinitions,
 				})
 				require.NoError(t, err)
 
@@ -626,7 +586,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               test.testData.tuples,
+					Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
 				})
 				require.NoError(t, err)
 			}
@@ -645,8 +605,215 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 	}
 }
 
-func GRPCExpandTest(t *testing.T, tester OpenFGATester) {
+func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
+	type testData struct {
+		tuples []*openfgapb.TupleKey
+		model  *openfgapb.AuthorizationModel
+	}
 
+	type output struct {
+		resp      *openfgapb.ListObjectsResponse
+		errorCode codes.Code
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgapb.ListObjectsRequest
+		output   output
+		testData *testData
+	}{
+		{
+			name: "undefined_model_id_returns_error",
+			input: &openfgapb.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(), // generate random ulid so it doesn't match
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.Code(openfgapb.ErrorCode_authorization_model_not_found),
+			},
+			testData: &testData{
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("user", ""),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			storeID := test.input.StoreId
+
+			if test.testData != nil {
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   test.testData.model.SchemaVersion,
+					TypeDefinitions: test.testData.model.TypeDefinitions,
+				})
+				require.NoError(t, err)
+
+				modelID := resp.GetAuthorizationModelId()
+
+				if len(test.testData.tuples) > 0 {
+					_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+						StoreId:              storeID,
+						AuthorizationModelId: modelID,
+						Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
+					})
+					require.NoError(t, err)
+				}
+			}
+
+			response, err := client.ListObjects(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if test.output.errorCode == codes.OK {
+				require.Equal(t, test.output.resp.Objects, response.Objects)
+			}
+		})
+	}
+}
+
+// TestCheckWorkflows are tests that involve workflows that define assertions for
+// Checks against multi-model stores etc..
+func TestCheckWorkflows(t *testing.T) {
+
+	tester, err := newOpenFGATester(t)
+	require.NoError(t, err)
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	/*
+	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
+	 * from a prior model does not impact the Check outcome of a model that should not
+	 * involve it. For example,
+	 *
+	 * type user
+	 * type document
+	 *   relations
+	 *     define viewer: [user:*]
+	 *
+	 * write(document:1#viewer@user:*)
+	 *
+	 * type user
+	 * type document
+	 *	relations
+	 *	  define viewer: [user]
+	 *
+	 * check(document:1#viewer@user:jon) --> {allowed: false}
+	 */
+	t.Run("TypedWildcardsFromOtherModelsIgnored", func(t *testing.T) {
+		resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+			Name: "openfga-demo",
+		})
+		require.NoError(t, err)
+
+		storeID := resp1.GetId()
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.WildcardRelationReference("user"),
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "user"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		resp, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		})
+		require.NoError(t, err)
+		require.False(t, resp.Allowed)
+	})
 }
 
 func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
@@ -899,49 +1066,4 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			}
 		})
 	}
-}
-
-func TestFunctionalHTTP(t *testing.T) {
-
-	require := require.New(t)
-
-	tester, err := newOpenFGATester(t)
-	require.NoError(err)
-	defer tester.Cleanup()
-
-	t.Run("TestCreateStore", HTTPCreateStoreTest)
-	t.Run("TestListStores", HTTPListStoresTest)
-	t.Run("TestDeleteStore", HTTPDeleteStoreTest)
-	t.Run("TestWrite", HTTPWriteTest)
-	t.Run("TestRead", HTTPReadTest)
-	t.Run("TestCheck", HTTPCheckTest)
-	t.Run("TestExpand", HTTPExpandTest)
-}
-
-func HTTPCreateStoreTest(t *testing.T) {
-
-}
-
-func HTTPListStoresTest(t *testing.T) {
-
-}
-
-func HTTPDeleteStoreTest(t *testing.T) {
-
-}
-
-func HTTPWriteTest(t *testing.T) {
-
-}
-
-func HTTPReadTest(t *testing.T) {
-
-}
-
-func HTTPCheckTest(t *testing.T) {
-
-}
-
-func HTTPExpandTest(t *testing.T) {
-
 }
