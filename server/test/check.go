@@ -35,44 +35,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		response         *openfgapb.CheckResponse
 	}{
 		{
-			name: "Success when a tuple with an invalid objectType exists in the store",
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "document",
-				Relations: map[string]*openfgapb.Userset{
-					"viewer": typesystem.This(),
-				}},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("group:eng", "member", "jon"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
-			},
-			response: &openfgapb.CheckResponse{Allowed: false},
-		},
-		{
-			name: "Success when a tuple with an invalid relation exists in the store",
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "document",
-				Relations: map[string]*openfgapb.Userset{
-					"viewer": typesystem.This(),
-				},
-			}, {
-				Type: "group",
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("group:eng", "member", "jon"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
-			},
-			response: &openfgapb.CheckResponse{Allowed: false},
-		},
-		{
 			name: "ExecuteReturnsResolutionTooComplexErrorForComplexResolution",
 			// state
 			typeDefinitions: []*openfgapb.TypeDefinition{{
