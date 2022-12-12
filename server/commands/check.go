@@ -112,7 +112,7 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 		return nil, serverErrors.HandleTupleValidateError(err)
 	}
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
+	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, newStringResolutionTracer(), utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
