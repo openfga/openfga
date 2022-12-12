@@ -572,7 +572,7 @@ func TestValidateTuple(t *testing.T) {
 			},
 		},
 		{
-			name:  "type_without_allowed_typerestriction",
+			name:  "type_without_allowed_type_restriction",
 			tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: typesystem.SchemaVersion1_1,
