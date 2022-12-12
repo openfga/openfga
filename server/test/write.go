@@ -962,9 +962,6 @@ var writeCommandTests = []writeCommandTest{
 				TupleKey: tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			},
 		),
-		// err: serverErrors.InvalidTuple("type 'user' is not an allowed type restriction for 'document#reader'",
-		// 	tuple.NewTupleKey("document:budget", "reader", "user:abc"),
-		// ),
 	},
 	{
 		_name: "1.1_Execute_fails_if_relation_in_userset_value_was_not_found",
