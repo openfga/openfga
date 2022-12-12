@@ -143,7 +143,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				name: "returns error if duplicate contextual tuples",
+				name: "returns_error_if_duplicate_contextual_tuples",
 				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
@@ -276,7 +276,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				name: "returns error if contextual tuples don't follow type restrictions",
+				name: "returns_error_if_contextual_tuples_do_not_follow_type_restrictions",
 				request: newListObjectsRequest(store, "repo", "owner", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "user:*",
@@ -290,7 +290,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				),
 			},
 			{
-				name: "returns error if duplicate contextual tuples",
+				name: "returns_error_if_duplicate_contextual_tuples",
 				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "user:bob",
