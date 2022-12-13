@@ -10,12 +10,12 @@ import (
 
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
-	Reason   string
+	Cause    error
 	TupleKey *openfgapb.TupleKey
 }
 
 func (i *InvalidTupleError) Error() string {
-	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", TupleKeyToString(i.TupleKey), i.Cause)
 }
 
 func (i *InvalidTupleError) Is(target error) bool {
@@ -29,7 +29,7 @@ type InvalidObjectFormatError struct {
 }
 
 func (i *InvalidObjectFormatError) Error() string {
-	return fmt.Sprintf("Invalid object format '%s'.", i.TupleKey.String())
+	return fmt.Sprintf("Invalid object format '%s'.", TupleKeyToString(i.TupleKey))
 }
 
 func (i *InvalidObjectFormatError) Is(target error) bool {
@@ -43,7 +43,7 @@ type TypeNotFoundError struct {
 }
 
 func (i *TypeNotFoundError) Error() string {
-	return fmt.Sprintf("Type not found for %s", i.TypeName)
+	return fmt.Sprintf("type '%s' not found", i.TypeName)
 }
 
 func (i *TypeNotFoundError) Is(target error) bool {
@@ -59,7 +59,12 @@ type RelationNotFoundError struct {
 }
 
 func (i *RelationNotFoundError) Error() string {
-	return fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", i.Relation, i.TypeName, i.TupleKey.String())
+	msg := fmt.Sprintf("relation '%s#%s' not found", i.TypeName, i.Relation)
+	if i.TupleKey != nil {
+		msg += fmt.Sprintf(" for tuple '%s'", TupleKeyToString(i.TupleKey))
+	}
+
+	return msg
 }
 
 func (i *RelationNotFoundError) Is(target error) bool {
@@ -74,5 +79,5 @@ type IndirectWriteError struct {
 }
 
 func (i *IndirectWriteError) Error() string {
-	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", TupleKeyToString(i.TupleKey), i.Reason)
 }
