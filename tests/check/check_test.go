@@ -111,13 +111,13 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	ctx := context.Background()
 
 	for _, test := range tests.Tests {
-		for _, stage := range test.Stages {
-			t.Run(test.Name, func(t *testing.T) {
-				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-				require.NoError(t, err)
+		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+		require.NoError(t, err)
 
-				storeID := resp.GetId()
+		storeID := resp.GetId()
 
+		t.Run(test.Name, func(t *testing.T) {
+			for _, stage := range test.Stages {
 				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
 					SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -148,7 +148,7 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 						require.Equal(t, assertion.Trace, resp.GetResolution())
 					}
 				}
-			})
-		}
+			}
+		})
 	}
 }

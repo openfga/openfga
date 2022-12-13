@@ -1765,3 +1765,49 @@ tests:
                 user: user:*
             expectation: true
 
+  - name: wildcard_obeys_the_types_in_stages
+    stages:
+      - model: |
+          type user
+          
+          type employee
+          
+          type document
+            relations
+              define writer: [employee:*] as self
+              define viewer: [user] as self or writer
+        tuples:
+          - object: document:1
+            relation: writer
+            user: employee:*
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: employee:badger
+            expectation: true
+      - model: |
+          type user
+          
+          type employee
+
+          type document
+            relations
+              define writer: [user:*] as self
+              define viewer: [user] as self or writer
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: employee:badger
+            expectation: false
