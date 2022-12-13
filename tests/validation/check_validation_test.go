@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type checkValidationTests struct {
