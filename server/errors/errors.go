@@ -59,8 +59,8 @@ func NewInternalError(public string, internal error) InternalError {
 	}
 }
 
-func ValidationError(reason string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_validation_error), reason)
+func ValidationError(cause error) error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_validation_error), cause.Error())
 }
 
 func AssertionsNotForAuthorizationModelFound(modelID string) error {
@@ -76,21 +76,17 @@ func LatestAuthorizationModelNotFound(store string) error {
 }
 
 func TypeNotFound(objectType string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("Type '%s' not found", objectType))
+	return status.Error(codes.Code(openfgapb.ErrorCode_type_not_found), fmt.Sprintf("type '%s' not found", objectType))
 }
 
-func RelationNotFound(relation string, objectType string, tuple *openfgapb.TupleKey) error {
-	msg := fmt.Sprintf("Authorization model contains an unknown relation '%s'", relation)
-	if tuple != nil {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s' and tuple %s", relation, objectType, tuple.String())
-	} else if objectType != "" {
-		msg = fmt.Sprintf("Unknown relation '%s' for type '%s'", relation, objectType)
+func RelationNotFound(relation string, objectType string, tk *openfgapb.TupleKey) error {
+
+	msg := fmt.Sprintf("relation '%s#%s' not found", objectType, relation)
+	if tk != nil {
+		msg += fmt.Sprintf(" for tuple '%s'", tuple.TupleKeyToString(tk))
 	}
-	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
-}
 
-func EmptyRewrites(objectType, relation string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_empty_relation_definition), fmt.Sprintf("The definition of relation '%s' on type '%s' is invalid", relation, objectType))
+	return status.Error(codes.Code(openfgapb.ErrorCode_relation_not_found), msg)
 }
 
 func ExceededEntityLimit(entity string, limit int) error {
@@ -98,16 +94,8 @@ func ExceededEntityLimit(entity string, limit int) error {
 		fmt.Sprintf("The number of %s exceeds the allowed limit of %d", entity, limit))
 }
 
-func InvalidUser(user string) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_user), fmt.Sprintf("User '%s' is invalid", user))
-}
-
 func InvalidTuple(reason string, tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
-}
-
-func InvalidContextualTuple(tk *openfgapb.TupleKey) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_contextual_tuple), fmt.Sprintf("Invalid contextual tuple: %s. Please provide a user, object and relation.", tk.String()))
 }
 
 func DuplicateContextualTuple(tk *openfgapb.TupleKey) error {
@@ -154,7 +142,7 @@ func HandleError(public string, err error) error {
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:
-		return InvalidTuple(t.Reason, t.TupleKey)
+		return InvalidTuple(t.Cause.Error(), t.TupleKey)
 	case *tuple.InvalidObjectFormatError:
 		return InvalidObjectFormat(t.TupleKey)
 	case *tuple.TypeNotFoundError:

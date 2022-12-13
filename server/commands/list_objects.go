@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/openfga/openfga/internal/contextualtuples"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -18,7 +20,6 @@ import (
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -66,22 +67,8 @@ func (q *ListObjectsQuery) handler(
 
 	typesys := typesystem.New(model)
 
-	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
-	if err != nil {
-		q.Logger.WarnWithContext(
-			ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
-			zap.String("store_id", req.GetStoreId()),
-			zap.String("object_type", targetObjectType),
-		)
-	}
-
-	handler := func() {
-		err = q.performChecks(ctx, req, resultsChan)
-		if err != nil {
-			errChan <- err
-		}
-
-		close(resultsChan)
+	if _, err = contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys()); err != nil {
+		return err
 	}
 
 	_, err = typesys.GetRelation(targetObjectType, targetRelation)
@@ -94,32 +81,20 @@ func (q *ListObjectsQuery) handler(
 			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
 		}
 
-		return serverErrors.HandleError("", err)
+		return serverErrors.NewInternalError("", err)
 	}
 
-	containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-	containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
+	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+	}
 
-	// ConnectedObjects currently only supports models that do not include intersection and exclusion,
-	// and the model must include type info for ConnectedObjects to work.
-	if !containsIntersection && !containsExclusion && hasTypeInfo {
-
-		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
-
-		handler = func() {
-			err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
-				StoreID:          req.GetStoreId(),
-				ObjectType:       targetObjectType,
-				Relation:         targetRelation,
-				User:             &openfgapb.ObjectRelation{Object: userObj, Relation: userRel},
-				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, resultsChan)
-			if err != nil {
-				errChan <- err
-			}
-
-			close(resultsChan)
+	handler := func() {
+		err = q.performChecks(ctx, req, resultsChan)
+		if err != nil {
+			errChan <- err
 		}
+
+		close(resultsChan)
 	}
 
 	go handler()
