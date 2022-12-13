@@ -88,5 +88,3 @@ tests:
       relation: viewer
       user: user:aardvark
     code: 2002
-
-
