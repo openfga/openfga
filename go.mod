@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/MicahParks/keyfunc v1.7.0
 	github.com/cenkalti/backoff/v4 v4.2.0
-	github.com/craigpastro/openfga-dsl-parser v0.1.0
+	github.com/craigpastro/openfga-dsl-parser v1.0.0
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20221207214135-0a2953a7bf5f
 	github.com/docker/docker v20.10.21+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -28,11 +28,11 @@ require (
 	github.com/spf13/viper v1.14.0
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
-	go.buf.build/openfga/go/openfga/api v1.2.43
+	go.buf.build/openfga/go/openfga/api v1.2.44
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.36.4
-	go.opentelemetry.io/otel v1.11.1
-	go.opentelemetry.io/otel/metric v0.33.0
-	go.opentelemetry.io/otel/trace v1.11.1
+	go.opentelemetry.io/otel v1.11.2
+	go.opentelemetry.io/otel/metric v0.34.0
+	go.opentelemetry.io/otel/trace v1.11.2
 	go.uber.org/zap v1.24.0
 	golang.org/x/sync v0.1.0
 	google.golang.org/grpc v1.51.0

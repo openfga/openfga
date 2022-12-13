@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
+	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -27,6 +28,7 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -207,6 +209,7 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadChanges", func(t *testing.T) { GRPCReadChangesTest(t, tester) })
 
 	t.Run("TestCheck", func(t *testing.T) { GRPCCheckTest(t, tester) })
+	t.Run("TestListObjects", func(t *testing.T) { GRPCListObjectsTest(t, tester) })
 
 	t.Run("TestWriteAuthorizationModel", func(t *testing.T) { GRPCWriteAuthorizationModelTest(t, tester) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { GRPCReadAuthorizationModelTest(t, tester) })
@@ -604,6 +607,106 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 	}
 }
 
+func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
+	type testData struct {
+		tuples []*openfgapb.TupleKey
+		model  *openfgapb.AuthorizationModel
+	}
+
+	type output struct {
+		resp      *openfgapb.ListObjectsResponse
+		errorCode codes.Code
+	}
+
+	tests := []struct {
+		name     string
+		input    *openfgapb.ListObjectsRequest
+		output   output
+		testData *testData
+	}{
+		{
+			name: "undefined_model_id_returns_error",
+			input: &openfgapb.ListObjectsRequest{
+				StoreId:              ulid.Make().String(),
+				AuthorizationModelId: ulid.Make().String(), // generate random ulid so it doesn't match
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			},
+			output: output{
+				errorCode: codes.Code(openfgapb.ErrorCode_authorization_model_not_found),
+			},
+			testData: &testData{
+				model: &openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+					TypeDefinitions: []*openfgapb.TypeDefinition{
+						{
+							Type: "user",
+						},
+						{
+							Type: "document",
+							Relations: map[string]*openfgapb.Userset{
+								"viewer": typesystem.This(),
+							},
+							Metadata: &openfgapb.Metadata{
+								Relations: map[string]*openfgapb.RelationMetadata{
+									"viewer": {
+										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+											typesystem.DirectRelationReference("user", ""),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			storeID := test.input.StoreId
+
+			if test.testData != nil {
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   test.testData.model.SchemaVersion,
+					TypeDefinitions: test.testData.model.TypeDefinitions,
+				})
+				require.NoError(t, err)
+
+				modelID := resp.GetAuthorizationModelId()
+
+				if len(test.testData.tuples) > 0 {
+					_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+						StoreId:              storeID,
+						AuthorizationModelId: modelID,
+						Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
+					})
+					require.NoError(t, err)
+				}
+			}
+
+			response, err := client.ListObjects(context.Background(), test.input)
+
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, test.output.errorCode.String(), s.Code().String())
+
+			if test.output.errorCode == codes.OK {
+				require.Equal(t, test.output.resp.Objects, response.Objects)
+			}
+		})
+	}
+}
+
 // TestCheckWorkflows are tests that involve workflows that define assertions for
 // Checks against multi-model stores etc..
 func TestCheckWorkflows(t *testing.T) {
@@ -712,6 +815,275 @@ func TestCheckWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
+	})
+}
+
+// TestExpandWorkflows are tests that involve workflows that define assertions for
+// Expands against multi-model stores etc..
+func TestExpandWorkflows(t *testing.T) {
+
+	tester, err := newOpenFGATester(t)
+	require.NoError(t, err)
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgapb.NewOpenFGAServiceClient(conn)
+
+	/*
+	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
+	 * from a prior model does not impact the Expand outcome of a model that should not
+	 * involve it. For example,
+	 *
+	 * type user
+	 * type document
+	 *   relations
+	 *     define viewer: [user, user:*]
+	 *
+	 * write(document:1#viewer@user:*)
+	 * write(document:1#viewer@user:jon)
+	 * Expand(document:1#viewer) --> {tree: {root: {name: document:1#viewer, leaf: {users: [user:*, user:jon]}}}}
+	 *
+	 * type user
+	 * type document
+	 *	relations
+	 *	  define viewer: [user]
+	 *
+	 * Expand(document:1#viewer) --> {tree: {root: {name: document:1#viewer, leaf: {users: [user:jon]}}}}
+	 *
+	 * type employee
+	 * type document
+	 *   relations
+	 *     define viewer: [employee]
+	 *
+	 * type user
+	 * type employee
+	 * type document
+	 *   relations
+	 *     define viewer: [employee]
+	 * Expand(document:1#viewer) --> {tree: {root: {name: document:1#viewer, leaf: {users: []}}}}
+	 */
+	t.Run("TypedWildcardsFromOtherModelsIgnored", func(t *testing.T) {
+		resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+			Name: "openfga-demo",
+		})
+		require.NoError(t, err)
+
+		storeID := resp1.GetId()
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+									typesystem.WildcardRelationReference("user"),
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+			StoreId: storeID,
+			Writes: &openfgapb.TupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		expandResp, err := client.Expand(context.Background(), &openfgapb.ExpandRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+		})
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(&openfgapb.UsersetTree{
+			Root: &openfgapb.UsersetTree_Node{
+				Name: "document:1#viewer",
+				Value: &openfgapb.UsersetTree_Node_Leaf{
+					Leaf: &openfgapb.UsersetTree_Leaf{
+						Value: &openfgapb.UsersetTree_Leaf_Users{
+							Users: &openfgapb.UsersetTree_Users{
+								Users: []string{"user:*", "user:jon"},
+							},
+						},
+					},
+				},
+			},
+		}, expandResp.GetTree(), protocmp.Transform(), protocmp.SortRepeated(func(x, y string) bool {
+			return x <= y
+		})); diff != "" {
+			require.Fail(t, diff)
+		}
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+		})
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(&openfgapb.UsersetTree{
+			Root: &openfgapb.UsersetTree_Node{
+				Name: "document:1#viewer",
+				Value: &openfgapb.UsersetTree_Node_Leaf{
+					Leaf: &openfgapb.UsersetTree_Leaf{
+						Value: &openfgapb.UsersetTree_Leaf_Users{
+							Users: &openfgapb.UsersetTree_Users{
+								Users: []string{"user:jon"},
+							},
+						},
+					},
+				},
+			},
+		}, expandResp.GetTree(), protocmp.Transform()); diff != "" {
+			require.Fail(t, diff)
+		}
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "employee",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "employee"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+		})
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(&openfgapb.UsersetTree{
+			Root: &openfgapb.UsersetTree_Node{
+				Name: "document:1#viewer",
+				Value: &openfgapb.UsersetTree_Node_Leaf{
+					Leaf: &openfgapb.UsersetTree_Leaf{
+						Value: &openfgapb.UsersetTree_Leaf_Users{
+							Users: &openfgapb.UsersetTree_Users{
+								Users: []string{},
+							},
+						},
+					},
+				},
+			},
+		}, expandResp.GetTree(), protocmp.Transform()); diff != "" {
+			require.Fail(t, diff)
+		}
+
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "employee",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{Type: "employee"},
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+
+		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+		})
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(&openfgapb.UsersetTree{
+			Root: &openfgapb.UsersetTree_Node{
+				Name: "document:1#viewer",
+				Value: &openfgapb.UsersetTree_Node_Leaf{
+					Leaf: &openfgapb.UsersetTree_Leaf{
+						Value: &openfgapb.UsersetTree_Leaf_Users{
+							Users: &openfgapb.UsersetTree_Users{
+								Users: []string{},
+							},
+						},
+					},
+				},
+			},
+		}, expandResp.GetTree(), protocmp.Transform()); diff != "" {
+			require.Fail(t, diff)
+		}
 	})
 }
 
