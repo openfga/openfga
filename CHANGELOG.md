@@ -19,12 +19,12 @@ This release comes with a few big changes:
 - You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
 which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
 JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
-indicate cases such as “The folder's parent must be a folder" (and so not a user or a document).
-- This change also comes with breaking changes to how `*` and `<type>:*` are treated:
-  - `<type>:*` is no longer allowed as a user in the relationship tuple field when targeting schema v1.0, validation 
-    will throw an error when attempting to write or check against it and it will be ignored during evaluation.
-  - `*` is still supported in v1.0, but not supported in v1.1 . A validation error will be thrown when used in checks
-    or writes and it will be ignored when evaluating.
+indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
+  - This change also comes with breaking changes to how `*` and `<type>:*` are treated:
+  - `<type>:*` is interpreted differently according to the model version. v1.0 will interpret it as a object of type
+    `<type>` and id `*`, whereas v1.1 will interpret is as all objects of type `<type>`.
+  - `*` is still supported in v1.0 models, but not supported in v1.1 models. A validation error will be thrown when
+    used in checks or writes and it will be ignored when evaluating.
 - Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
 instead of when issuing checks.
 
