@@ -14,7 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 This release comes with a few big changes:
 
-### Support for v1.1 JSON Schema
+### Support for [v1.1 JSON Schema](https://github.com/openfga/rfcs/blob/feat/add-type-restrictions-to-json-syntax/20220831-add-type-restrictions-to-json-syntax.md)
 
 - You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
 which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
@@ -217,7 +217,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
 [0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
 [0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
 [0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
