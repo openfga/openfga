@@ -1440,6 +1440,26 @@ tests:
               user: user:*
             expectation: true
 
+  - name: wildcard_computed_userset
+    stages:
+      - model: |
+          type user
+
+          type document
+            relations
+              define writer: [user:*] as self
+              define viewer: [user] as self or writer
+        tuples:
+          - object: document:public
+            relation: writer
+            user: user:*
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:aardvark
+            expectation: true
+
   - name: check_with_invalid_tuple_in_store
     stages:
       - model: |
@@ -1478,3 +1498,270 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: false
+
+  - name: this_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define viewer: [user] as self
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+            expectation: true
+
+  - name: computed_userset_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user] as self
+              define viewer as writer
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: writer
+                user: user:aardvark
+            expectation: true
+
+  - name: tuple_to_userset_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type folder
+            relations
+              define viewer: [user] as self
+          
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as viewer from parent
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: parent
+                user: folder:x
+              - object: folder:x
+                relation: viewer
+                user: user:aardvark
+            expectation: true
+
+  - name: this_and_union_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user] as self
+              define viewer: [user] as self or writer
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+              - object: document:2
+                relation: writer
+                user: user:badger
+            expectation: true
+
+  - name: this_and_intersection_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user] as self
+              define viewer: [user] as self and writer
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: user:aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: writer
+                user: user:aardvark
+            expectation: true
+
+  - name: this_and_exclusion_base_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define banned: [user] as self
+              define viewer: [user] as self but not banned
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: user:aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: banned
+                user: user:aardvark
+            expectation: false
+
+  - name: union_and_intersection_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user] as self
+              define editor: [user] as self
+              define owner: [user] as self
+              define viewer as writer or (editor and owner)
+        tuples:
+          - object: document:1
+            relation: editor
+            user: user:aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: owner
+                user: user:aardvark
+            expectation: true
+
+  - name: exclusion_and_exclusion_in_base_with_contextual_tuples
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user] as self
+              define editor: [user] as self
+              define owner: [user] as self
+              define viewer as (writer but not editor) but not owner
+        tuples:
+          - object: document:1
+            relation: writer
+            user: user:aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: editor
+                user: user:aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:1
+                relation: owner
+                user: user:aardvark
+            expectation: false
+
+  - name: wildcard_direct_as_contextual_tuple
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define viewer: [user:*] as self
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:public
+                relation: viewer
+                user: user:*
+            expectation: true
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:*
+            contextual_tuples:
+              - object: document:public
+                relation: viewer
+                user: user:*
+            expectation: true
+
+  - name: wildcard_computed_userset_as_contextual_tuple
+    stages:
+      - model: |
+          type user
+          
+          type document
+            relations
+              define writer: [user:*] as self
+              define viewer: [user] as self or writer
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user:aardvark
+            contextual_tuples:
+              - object: document:public
+                relation: writer
+                user: user:*
+            expectation: true
+

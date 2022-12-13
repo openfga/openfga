@@ -37,9 +37,10 @@ type stage struct {
 }
 
 type assertion struct {
-	Tuple       *pb.TupleKey
-	Expectation bool
-	Trace       string
+	Tuple            *pb.TupleKey
+	ContextualTuples []*pb.TupleKey `yaml:"contextual_tuples"`
+	Expectation      bool
+	Trace            string
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -136,7 +137,10 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 					resp, err := client.Check(ctx, &pb.CheckRequest{
 						StoreId:  storeID,
 						TupleKey: assertion.Tuple,
-						Trace:    true,
+						ContextualTuples: &pb.ContextualTupleKeys{
+							TupleKeys: assertion.ContextualTuples,
+						},
+						Trace: true,
 					})
 					require.NoError(t, err)
 					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
