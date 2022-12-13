@@ -33,9 +33,10 @@ type checkTest struct {
 }
 
 type assertion struct {
-	Tuple       *pb.TupleKey
-	Expectation bool
-	Trace       string
+	Tuple            *pb.TupleKey
+	ContextualTuples []*pb.TupleKey
+	Expectation      bool
+	Trace            string
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -129,9 +130,10 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 
 			for _, assertion := range test.Assertions {
 				resp, err := client.Check(ctx, &pb.CheckRequest{
-					StoreId:  storeID,
-					TupleKey: assertion.Tuple,
-					Trace:    false,
+					StoreId:          storeID,
+					TupleKey:         assertion.Tuple,
+					ContextualTuples: &pb.ContextualTupleKeys{TupleKeys: assertion.ContextualTuples},
+					Trace:            false,
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)

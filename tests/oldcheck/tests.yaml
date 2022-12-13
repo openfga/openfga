@@ -1344,3 +1344,238 @@ tests:
           relation: viewer
           user: user:aardvark
         expectation: false
+  - name: concurrency_problem
+    model: |
+      type feature
+        relations
+          define access as subscriber_member from associated_plan
+          define associated_plan as self
+          define subscriber as subscriber from associated_plan
+      type feature_repo
+        relations
+          define feature as self
+      type integrity
+        relations
+          define member as self and member_in_context
+          define member_in_context as self
+      type org
+        relations
+          define admin as self and member
+          define member as self and member from user_repo and user_in_context
+          define user_in_context as self
+          define user_repo as self
+      type permission
+        relations
+          define access as access from associated_feature and member from associated_permission_group
+          define associated_feature as self
+          define associated_permission_group as self
+          define org_access as subscriber from associated_feature
+      type permission_group
+        relations
+          define member as self or admin from owner
+          define owner as self
+      type plan
+        relations
+          define associated_plan_group as self
+          define subscriber as subscriber from associated_plan_group
+          define subscriber_member as member from associated_plan_group
+      type plan_group
+        relations
+          define member as member from subscriber
+          define plan_access as plan from plan_provider
+          define plan_provider as self
+          define subscriber as self
+      type plan_provider
+        relations
+          define plan as self and plan from plan_repo
+          define plan_repo as self
+      type plan_repo
+        relations
+          define plan as self
+      type user
+        relations
+          define nil as self
+      type user_repo
+        relations
+          define integrity as self
+          define member as self and member from integrity
+
+    tuples:
+      - object: org:global
+        relation: user_repo
+        user: user_repo:global
+      - object: plan_repo:global
+        relation: plan
+        user: plan:*
+      - object: plan_repo:global
+        relation: plan
+        user: plan:free
+      - object: plan_repo:global
+        relation: plan
+        user: plan:basic
+      - object: plan_repo:global
+        relation: plan
+        user: plan:pro
+      - object: plan_provider:global
+        relation: plan_repo
+        user: plan_repo:global
+      - object: plan_provider:global
+        relation: plan
+        user: plan:*
+      - object: plan_provider:mapped
+        relation: plan_repo
+        user: plan_repo:global
+      - object: plan_provider:azure
+        relation: plan_repo
+        user: plan_repo:global
+      - object: plan_provider:mapped
+        relation: plan
+        user: plan:free
+      - object: plan_provider:mapped
+        relation: plan
+        user: plan:basic
+      - object: plan_provider:mapped
+        relation: plan
+        user: plan:pro
+      - object: plan_provider:azure
+        relation: plan
+        user: plan:pro
+      - object: permission:orgs_micro/status
+        relation: associated_feature
+        user: feature:status
+      - object: permission:orgs_micro/org/create
+        relation: associated_feature
+        user: feature:orgs_micro
+      - object: permission:orgs_micro/user/add
+        relation: associated_feature
+        user: feature:orgs_micro
+      - object: permission_group:*/all
+        relation: owner
+        user: org:global
+      - object: permission_group:*/all
+        relation: member
+        user: user_repo:*#member
+      - object: permission:orgs_micro/org/create
+        relation: associated_permission_group
+        user: permission_group:*/all
+      - object: permission:orgs_micro/status
+        relation: associated_permission_group
+        user: permission_group:*/all
+      - object: feature:orgs_micro/orgs/*
+        relation: associated_plan
+        user: plan:global
+      - object: feature_repo:*
+        relation: feature
+        user: feature:status
+      - object: feature_repo:*
+        relation: feature
+        user: feature:orgs_micro
+      - object: feature:status
+        relation: associated_plan
+        user: plan:global
+      - object: plan_group:*/*
+        relation: plan_provider
+        user: plan_provider:global
+      - object: plan_group:*/*
+        relation: subscriber
+        user: org:global
+      - object: plan:*
+        relation: associated_plan_group
+        user: plan_group:*/*
+      - object: user_repo:*
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: org:*
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: integrity:71ccb2aad9fb4c88a2926aafa4490cdc
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: user_repo:*
+        relation: integrity
+        user: integrity:71ccb2aad9fb4c88a2926aafa4490cdc
+      - object: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+        relation: user_repo
+        user: user_repo:global
+      - object: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/all
+        relation: owner
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/all
+        relation: member
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68#member
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/admins
+        relation: owner
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+      - object: permission:orgs_micro/users/add
+        relation: associated_permission_group
+        user: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/admins
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/admins
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/5f0ab6b678e2487db7da439f3a8e6b2a
+        relation: owner
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+      - object: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/5f0ab6b678e2487db7da439f3a8e6b2a
+        relation: member
+        user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+      - object: feature_repo:*
+        relation: feature
+        user: feature:16943b70c18247e5987e73950b37c935
+      - object: permission:cca3c218f84e4de79f0042b120611424
+        relation: associated_feature
+        user: feature:16943b70c18247e5987e73950b37c935
+      - object: plan_repo:*
+        relation: plan
+        user: plan:d7f09078edfc457fadf1b9c584b630e5
+      - object: feature:16943b70c18247e5987e73950b37c935
+        relation: associated_plan
+        user: plan:d7f09078edfc457fadf1b9c584b630e5
+      - object: plan_provider:6e8c2b6ac258431a8c62b569b3ad7d91
+        relation: plan_repo
+        user: plan_repo:global
+      - object: plan_provider:78502680eb5c43ccb1d51c8bc4917521
+        relation: plan_repo
+        user: plan_repo:global
+      - object: plan_provider:6e8c2b6ac258431a8c62b569b3ad7d91
+        relation: plan
+        user: plan:d7f09078edfc457fadf1b9c584b630e5
+      - object: plan_provider:78502680eb5c43ccb1d51c8bc4917521
+        relation: plan
+        user: plan:d7f09078edfc457fadf1b9c584b630e5
+      - object: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/6e8c2b6ac258431a8c62b569b3ad7d91
+        relation: subscriber
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+      - object: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/6e8c2b6ac258431a8c62b569b3ad7d91
+        relation: plan_provider
+        user: plan_provider:6e8c2b6ac258431a8c62b569b3ad7d91
+      - object: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/78502680eb5c43ccb1d51c8bc4917521
+        relation: subscriber
+        user: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+      - object: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/78502680eb5c43ccb1d51c8bc4917521
+        relation: plan_provider
+        user: plan_provider:78502680eb5c43ccb1d51c8bc4917521
+      - object: plan:d7f09078edfc457fadf1b9c584b630e5
+        relation: associated_plan_group
+        user: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/6e8c2b6ac258431a8c62b569b3ad7d91
+      - object: plan:d7f09078edfc457fadf1b9c584b630e5
+        relation: associated_plan_group
+        user: plan_group:32b0ea4c91b34c2a82fb5dba6e93ee68/78502680eb5c43ccb1d51c8bc4917521
+      - object: permission:cca3c218f84e4de79f0042b120611424
+        relation: associated_permission_group
+        user: permission_group:32b0ea4c91b34c2a82fb5dba6e93ee68/5f0ab6b678e2487db7da439f3a8e6b2a
+    assertions:
+      - tuple:
+          object: permission:cca3c218f84e4de79f0042b120611424
+          relation: access
+          user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+        contextualTuples:
+          - object: integrity:71ccb2aad9fb4c88a2926aafa4490cdc
+            relation: member_in_context
+            user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+          - object: org:32b0ea4c91b34c2a82fb5dba6e93ee68
+            relation: user_in_context
+            user: user:e2e6d1a72e9541dfa8bd5ae39b154751
+        expectation: true
