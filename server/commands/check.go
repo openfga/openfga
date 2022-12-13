@@ -10,6 +10,7 @@ import (
 
 	"github.com/karlseguin/ccache/v2"
 
+	"github.com/openfga/openfga/internal/contextualtuples"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -69,9 +70,8 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 	)
 
 	tk := req.GetTupleKey()
-	contextualTuples, err := validateAndPreprocessTuples(tk, req.GetContextualTuples().GetTupleKeys())
-	if err != nil {
-		return nil, err
+	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
+		return nil, serverErrors.InvalidCheckInput
 	}
 
 	cacheKey := tk.String()
@@ -99,17 +99,21 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 	}
 
 	typesys := typesystem.New(model)
+	contextualTuples, err := contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys())
+	if err != nil {
+		return nil, err
+	}
 
 	if err := validation.ValidateObject(typesys, tk); err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	if err := validation.ValidateRelation(typesys, tk); err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+		return nil, serverErrors.ValidationError(err)
 	}
 
-	if err := validation.ValidateUser(typesys, tk); err != nil {
-		return nil, serverErrors.HandleTupleValidateError(err)
+	if err := validation.ValidateUser(typesys, tk.GetUser()); err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, newStringResolutionTracer(), utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})

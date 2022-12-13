@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -72,11 +72,15 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			err: serverErrors.RelationNotFound("invalidrelation", "repo", &openfgapb.TupleKey{
-				Object:   "repo:test",
-				Relation: "invalidrelation",
-				User:     "elbuo",
-			}),
+			err: serverErrors.ValidationError(
+				&tuple.InvalidTupleError{
+					Cause: &tuple.RelationNotFoundError{
+						TypeName: "repo",
+						Relation: "invalidrelation",
+					},
+					TupleKey: tuple.NewTupleKey("repo:test", "invalidrelation", "elbuo"),
+				},
+			),
 		},
 	}
 
@@ -94,9 +98,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)
-			if diff := cmp.Diff(err, test.err, cmpopts.EquateErrors()); diff != "" {
-				t.Fatalf("mismatch (-got +want):\n%s", diff)
-			}
+			require.ErrorIs(t, test.err, err)
 		})
 	}
 }
