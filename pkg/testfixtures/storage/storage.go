@@ -18,7 +18,7 @@ func (m memoryTestContainer) GetConnectionURI() string {
 	return ""
 }
 
-// RunDatastoreTestContainer constructs and runs a specifc DatastoreTestContainer for the provided
+// RunDatastoreTestContainer constructs and runs a specific DatastoreTestContainer for the provided
 // datastore engine. The resources used by the test engine will be cleaned up after the test
 // has finished.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
