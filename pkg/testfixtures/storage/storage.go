@@ -2,6 +2,11 @@ package storage
 
 import (
 	"testing"
+	"time"
+)
+
+var (
+	expireTimeout = 5 * time.Minute
 )
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.

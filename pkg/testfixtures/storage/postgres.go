@@ -23,10 +23,6 @@ const (
 	postgresImage = "postgres:14"
 )
 
-var (
-	expireTimeout = 60 * time.Second
-)
-
 type postgresTestContainer struct {
 	addr  string
 	creds string
@@ -121,9 +117,10 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
+	backoffPolicy.MaxElapsedTime = time.Minute
 	err = backoff.Retry(
 		func() error {
 			return db.Ping()

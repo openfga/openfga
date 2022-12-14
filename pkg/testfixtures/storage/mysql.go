@@ -120,9 +120,10 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
+	defer db.Close()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
+	backoffPolicy.MaxElapsedTime = time.Minute
 	err = backoff.Retry(
 		func() error {
 			return db.Ping()
