@@ -132,7 +132,7 @@ func getTypeRelationRewrite(tk *openfgapb.TupleKey, typesys *typesystem.TypeSyst
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
 func (q *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset, typesys *typesystem.TypeSystem) error {
-	if rc.metadata.AddResolve() >= q.resolveNodeLimit {
+	if rc.metadata.GetResolve() > q.resolveNodeLimit { {
 		q.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}
@@ -305,6 +305,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 			Relation: relation,
 			User:     rc.tk.GetUser(),
 		}
+		rc.metadata.AddResolve()
 		nestedRC := rc.fork(tupleKey, tracer, false)
 
 		wg.Add(1)
