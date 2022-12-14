@@ -90,17 +90,17 @@
                     "default": "unlimited - database/sql default"
                 },
                 "maxIdleConns": {
-                    "description": "the maximum number of connections in the idle connection pool.",
+                    "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "2 - database/sql default"
                 },
                 "connMaxIdleTime": {
-                    "description": "the maximum amount of time a connection may be idle",
+                    "description": "the maximum amount of time a connection to the datastore may be idle",
                     "type": "duration",
                     "default": "connections are not closed due to idle time - database/sql default"
                 },
                 "connMaxLifetime": {
-                    "description": "the maximum amount of time a connection may be reused",
+                    "description": "the maximum amount of time a connection to the datastore may be reused",
                     "type": "duration",
                     "default": "connections are not closed due to connection's age - database/sql default"
                 }
