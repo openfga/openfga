@@ -62,6 +62,6 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	return model, nil
 }
 
-func (c *cachedOpenFGADatastore) Close(ctx context.Context) {
+func (c *cachedOpenFGADatastore) Close() {
 	c.cache.Stop()
 }

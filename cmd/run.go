@@ -389,6 +389,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
+	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
+
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
 	case "none":
@@ -459,7 +461,6 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
-	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
 	svr := server.New(&server.Dependencies{
 		Datastore:    cachedOpenFGADatastore,
 		Tracer:       tracer,
@@ -682,9 +683,9 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	authenticator.Close()
 
-	datastore.Close(ctx)
+	datastore.Close()
 
-	cachedOpenFGADatastore.Close(ctx)
+	cachedOpenFGADatastore.Close()
 
 	logger.Info("server exited. goodbye 👋")
 

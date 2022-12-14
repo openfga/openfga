@@ -17,7 +17,7 @@ func TestCache(t *testing.T) {
 	ctx := context.Background()
 	memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
-	defer cachingBackend.Close(ctx)
+	defer cachingBackend.Close()
 
 	storeID := ulid.Make().String()
 	objectType := "documents"

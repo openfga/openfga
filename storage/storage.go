@@ -442,5 +442,5 @@ type OpenFGADatastore interface {
 	IsReady(ctx context.Context) (bool, error)
 
 	// Close closes the datastore and cleans up any residual resources.
-	Close(ctx context.Context)
+	Close()
 }

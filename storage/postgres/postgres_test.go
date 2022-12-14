@@ -18,7 +18,7 @@ func TestPostgresDatastore(t *testing.T) {
 	uri := testDatastore.GetConnectionURI()
 	ds, err := NewPostgresDatastore(uri)
 	require.NoError(t, err)
-	defer ds.Close(context.Background())
+	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
 
@@ -30,7 +30,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	defer ds.Close(ctx)
+	defer ds.Close()
 	store := "store"
 	modelID := "foo"
 	schemaVersion := "7.8"
