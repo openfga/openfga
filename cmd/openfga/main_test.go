@@ -210,7 +210,6 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
 	t.Run("TestGetStore", func(t *testing.T) { GRPCGetStoreTest(t, tester) })
-	t.Run("TestListStores", GRPCListStoresTest) // run an isolated tester from the others so bootstrapped stores don't collide
 	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, tester) })
 
 	t.Run("TestWrite", func(t *testing.T) { GRPCWriteTest(t, tester) })
@@ -401,7 +400,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 	require.Nil(t, resp3)
 }
 
-func GRPCListStoresTest(t *testing.T) {
+func TestGRPCListStores(t *testing.T) {
 	tester, err := newOpenFGATester(t)
 	require.NoError(t, err)
 	defer tester.Cleanup()
