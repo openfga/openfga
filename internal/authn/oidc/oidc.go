@@ -14,7 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/server/authn"
+	"github.com/openfga/openfga/internal/authn"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

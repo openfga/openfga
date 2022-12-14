@@ -11,12 +11,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/test"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
