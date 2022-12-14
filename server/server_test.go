@@ -77,6 +77,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		test.RunAllBenchmarks(b, ds)
 	})
 
+	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(b, err)
+
+		test.RunAllBenchmarks(b, ds)
+	})
+
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
 		test.RunAllBenchmarks(b, ds)
