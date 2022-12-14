@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -27,6 +28,7 @@ const (
 func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []struct {
 		name             string
+		schemaVersion    string
 		typeDefinitions  []*openfgapb.TypeDefinition
 		tuples           []*openfgapb.TupleKey
 		resolveNodeLimit uint32
@@ -35,7 +37,8 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		response         *openfgapb.CheckResponse
 	}{
 		{
-			name: "Success when a tuple with an invalid objectType exists in the store",
+			name:          "Success when a tuple with an invalid objectType exists in the store",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
@@ -53,7 +56,8 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
-			name: "Success when a tuple with an invalid relation exists in the store",
+			name:          "Success when a tuple with an invalid relation exists in the store",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
@@ -72,83 +76,99 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			response: &openfgapb.CheckResponse{Allowed: false}},
 		{
-			name: "ExecuteWithEmptyTupleKey",
-			// state
+			name:          "ExecuteWithEmptyTupleKey",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: &openfgapb.TupleKey{},
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyObject",
-			// state
+			name:          "ExecuteWithEmptyObject",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("", "reader", "someUser"),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyRelation",
-			// state
+			name:          "ExecuteWithEmptyRelation",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "", "someUser"),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyUser",
-			// state
+			name:          "ExecuteWithEmptyUser",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", ""),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithRequestRelationInexistentInTypeDefinition",
-			// state
+			name:          "ExecuteWithDuplicateContextualTuples",
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				}},
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:budget", "viewer", "anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("document:budget", "viewer", "*"),
+						tuple.NewTupleKey("document:budget", "viewer", "*"),
+					},
+				},
+			},
+			err: serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("document:budget", "viewer", "*")),
+		},
+		{
+			name:          "ExecuteWithRequestRelationInexistentInTypeDefinition",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser"),
 			},
-			// output
-			err: serverErrors.RelationNotFound("inexistent", "repo", tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser")),
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "inexistent",
+				},
+			),
 		},
 		{
-			name: "ExecuteFailsWithInvalidUser",
-			// state
+			name:          "ExecuteFailsWithInvalidUser",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -156,16 +176,14 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "john:albert:doe"),
 			},
-			// output
-			err: serverErrors.InvalidUser("john:albert:doe"),
+			err: serverErrors.ValidationError(fmt.Errorf("the 'user' field is malformed")),
 		},
 		{
-			name: "ExecuteReturnsErrorNotStackOverflowForInfinitelyRecursiveResolution",
-			// state
+			name:          "ExecuteReturnsErrorNotStackOverflowForInfinitelyRecursiveResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -192,8 +210,8 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteReturnsResolutionTooComplexErrorForComplexResolution",
-			// state
+			name:          "ExecuteReturnsResolutionTooComplexErrorForComplexResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -217,8 +235,8 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteReturnsResolutionTooComplexErrorForComplexUnionResolution",
-			// state
+			name:          "ExecuteReturnsResolutionTooComplexErrorForComplexUnionResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -254,7 +272,8 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfAllUsersTupleExists",
+			name:          "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfAllUsersTupleExists",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -294,6 +313,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "team",
@@ -325,6 +345,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "team",
@@ -356,6 +377,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "team",
@@ -381,6 +403,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "abigail"),
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "user",
@@ -412,6 +435,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -463,6 +487,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -496,7 +521,9 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			response: &openfgapb.CheckResponse{Allowed: false},
+			err: serverErrors.InvalidTuple("unexpected wildcard relationship with tupleset relation 'document#parent'",
+				tuple.NewTupleKey("document:doc1", "parent", "*"),
+			),
 		},
 		{
 			name:             "Error if rewrite encountered in tupleset relation",
@@ -505,6 +532,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey:         tuple.NewTupleKey("document:doc1", "viewer", "anne"),
 				ContextualTuples: &openfgapb.ContextualTupleKeys{},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -531,6 +559,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//		define viewer as viewer from parent
 			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -570,6 +599,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//		define viewer as viewer from parent
 			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -595,6 +625,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name:             "CheckWithUsersetContainingUndefinedType",
 			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -606,11 +637,14 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
 			},
-			err: serverErrors.TypeNotFound("group"),
+			err: serverErrors.ValidationError(
+				&tuple.TypeNotFoundError{TypeName: "group"},
+			),
 		},
 		{
 			name:             "CheckWithUsersetContainingUndefinedRelation",
 			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
@@ -622,10 +656,57 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
 			},
-			err: serverErrors.RelationNotFound(
-				"editor",
-				"document",
-				tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "document",
+					Relation: "editor",
+				},
+			),
+		},
+		{
+			name:             "CheckWith1.1ModelFailsIfContextualTuplesAreInvalidAccordingToTypeRestrictions",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_1,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": typesystem.Union(
+							typesystem.This(),
+							typesystem.ComputedUserset("writer")),
+						"writer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+									typesystem.WildcardRelationReference("user"),
+								},
+							},
+							"writer": { // no wildcard allowed
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "user:anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("document:budget", "writer", "user:*")}},
+			},
+			err: serverErrors.InvalidTuple("the typed wildcard 'user:*' is not an allowed type restriction for 'document#writer'",
+				tuple.NewTupleKey("document:budget", "writer", "user:*"),
 			),
 		},
 	}
@@ -640,7 +721,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			store := ulid.Make().String()
 			model := &openfgapb.AuthorizationModel{
 				Id:              ulid.Make().String(),
-				SchemaVersion:   typesystem.SchemaVersion1_0,
+				SchemaVersion:   test.schemaVersion,
 				TypeDefinitions: test.typeDefinitions,
 			}
 

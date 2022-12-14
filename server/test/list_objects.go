@@ -143,6 +143,21 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
+				name: "returns_error_if_duplicate_contextual_tuples",
+				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}, {
+						User:     "bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}}}),
+				expectedResult: nil,
+				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "bob")),
+			},
+			{
 				name:           "returns error if unknown type",
 				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
 				expectedResult: nil,
@@ -210,7 +225,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				name: "respects max results",
 				request: newListObjectsRequest(store, "repo", "admin", "user:anna", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "anna",
+						User:     "user:anna",
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
@@ -227,11 +242,11 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				name: "includes contextual tuples in the checks",
 				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "bob",
+						User:     "user:bob",
 						Relation: "admin",
 						Object:   "repo:5",
 					}, {
-						User:     "bob",
+						User:     "user:bob",
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
@@ -242,7 +257,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				name: "ignores irrelevant contextual tuples in the checks",
 				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "bob",
+						User:     "user:bob",
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
@@ -253,12 +268,41 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				name: "ignores irrelevant contextual tuples in the checks because they are not of the same type",
 				request: newListObjectsRequest(store, "repo", "owner", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "bob",
+						User:     "user:bob",
 						Relation: "owner",
-						Object:   "org:abc",
+						Object:   "organization:abc",
 					}}}),
 				expectedResult: []string{},
 				expectedError:  nil,
+			},
+			{
+				name: "returns_error_if_contextual_tuples_do_not_follow_type_restrictions",
+				request: newListObjectsRequest(store, "repo", "owner", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "user:*",
+						Relation: "member",
+						Object:   "team:fga",
+					}}}),
+				expectedResult: nil,
+
+				expectedError: serverErrors.InvalidTuple("the typed wildcard 'user:*' is not an allowed type restriction for 'team#member'",
+					tuple.NewTupleKey("team:fga", "member", "user:*"),
+				),
+			},
+			{
+				name: "returns_error_if_duplicate_contextual_tuples",
+				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{{
+						User:     "user:bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}, {
+						User:     "user:bob",
+						Relation: "admin",
+						Object:   "repo:5",
+					}}}),
+				expectedResult: nil,
+				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "user:bob")),
 			},
 			{
 				name:           "returns error if unknown type",
