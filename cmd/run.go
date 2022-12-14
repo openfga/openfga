@@ -320,17 +320,18 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	if err := RunServer(context.Background(), config); err != nil {
+	if err := VerifyConfig(config); err != nil {
+		panic(err)
+	}
+
+	logger := buildLogger(config.Log.Format)
+
+	if err := RunServer(context.Background(), config, logger); err != nil {
 		panic(err)
 	}
 }
 
-func RunServer(ctx context.Context, config *Config) error {
-	if err := VerifyConfig(config); err != nil {
-		return err
-	}
-
-	logger := buildLogger(config.Log.Format)
+func RunServer(ctx context.Context, config *Config, logger logger.Logger) error {
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()

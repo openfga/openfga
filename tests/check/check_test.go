@@ -11,6 +11,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -71,7 +72,7 @@ func testCheck(t *testing.T, engine string) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		if err := cmd.RunServer(ctx, cfg); err != nil {
+		if err := cmd.RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()

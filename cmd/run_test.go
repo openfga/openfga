@@ -25,6 +25,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/server/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
@@ -274,7 +275,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
-	err := RunServer(context.Background(), cfg)
+	err := RunServer(context.Background(), cfg, logger.NewNoopLogger())
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
@@ -284,7 +285,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -313,7 +314,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -437,7 +438,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -540,7 +541,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -600,7 +601,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -624,7 +625,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -659,7 +660,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -684,7 +685,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -705,7 +706,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -722,7 +723,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg, logger.NewNoopLogger()); err != nil {
 			log.Fatal(err)
 		}
 	}()

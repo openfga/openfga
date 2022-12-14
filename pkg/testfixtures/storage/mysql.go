@@ -122,7 +122,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	require.NoError(t, err)
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = 30 * time.Second
+	backoffPolicy.MaxElapsedTime = time.Minute
 	err = backoff.Retry(
 		func() error {
 			return db.Ping()
