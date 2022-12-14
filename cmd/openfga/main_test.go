@@ -231,6 +231,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
+	defer conn.Close()
 
 	openfgaClient := openfgapb.NewOpenFGAServiceClient(conn)
 	healthClient := healthv1pb.NewHealthClient(conn)
