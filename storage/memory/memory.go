@@ -63,10 +63,10 @@ func (s *staticIterator) Stop() {}
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
-	tracer                    trace.Tracer
-	maxTuplesInWriteOperation int
-	maxTypesInTypeDefinition  int
-	mu                        sync.Mutex
+	tracer                        trace.Tracer
+	maxTuplesPerWrite             int
+	maxTypesPerAuthorizationModel int
+	mu                            sync.Mutex
 
 	// TupleBackend
 	// map: store => set of tuples
@@ -95,16 +95,16 @@ type AuthorizationModelEntry struct {
 var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
 // New creates a new empty MemoryBackend.
-func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationModel int) *MemoryBackend {
+func New(tracer trace.Tracer, maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
 	return &MemoryBackend{
-		tracer:                    tracer,
-		maxTuplesInWriteOperation: maxTuplesInOneWrite,
-		maxTypesInTypeDefinition:  maxTypesInAuthorizationModel,
-		tuples:                    make(map[string][]*openfgapb.Tuple, 0),
-		changes:                   make(map[string][]*openfgapb.TupleChange, 0),
-		authorizationModels:       make(map[string]map[string]*AuthorizationModelEntry),
-		stores:                    make(map[string]*openfgapb.Store, 0),
-		assertions:                make(map[string][]*openfgapb.Assertion, 0),
+		tracer:                        tracer,
+		maxTuplesPerWrite:             maxTuplesPerWrite,
+		maxTypesPerAuthorizationModel: maxTypesPerAuthorizationModel,
+		tuples:                        make(map[string][]*openfgapb.Tuple, 0),
+		changes:                       make(map[string][]*openfgapb.TupleChange, 0),
+		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
+		stores:                        make(map[string]*openfgapb.Store, 0),
+		assertions:                    make(map[string][]*openfgapb.Assertion, 0),
 	}
 }
 
@@ -639,14 +639,14 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
-// MaxTuplesInWriteOperation returns the maximum number of tuples allowed in one write operation
-func (s *MemoryBackend) MaxTuplesInWriteOperation() int {
-	return s.maxTuplesInWriteOperation
+// MaxTuplesPerWriteOperation returns the maximum number of tuples allowed in one write operation
+func (s *MemoryBackend) MaxTuplesPerWrite() int {
+	return s.maxTuplesPerWrite
 }
 
-// MaxTypesInTypeDefinition returns the maximum number of types allowed in a type definition
-func (s *MemoryBackend) MaxTypesInTypeDefinition() int {
-	return s.maxTypesInTypeDefinition
+// MaxTypesPerAuthorizationModel returns the maximum number of types allowed in a type definition
+func (s *MemoryBackend) MaxTypesPerAuthorizationModel() int {
+	return s.maxTypesPerAuthorizationModel
 }
 
 func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgapb.Store, error) {

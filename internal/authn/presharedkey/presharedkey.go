@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/openfga/openfga/server/authn"
+	"github.com/openfga/openfga/internal/authn"
 )
 
 type PresharedKeyAuthenticator struct {

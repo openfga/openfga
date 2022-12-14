@@ -19,8 +19,8 @@ import (
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID := ulid.Make().String()
 
-	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesInTypeDefinition()+1)
-	for i := 0; i < datastore.MaxTypesInTypeDefinition(); i++ {
+	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
+	for i := 0; i < datastore.MaxTypesPerAuthorizationModel(); i++ {
 		items[i] = &openfgapb.TypeDefinition{
 			Type: fmt.Sprintf("type%v", i),
 			Relations: map[string]*openfgapb.Userset{
@@ -109,7 +109,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				StoreId:         storeID,
 				TypeDefinitions: items,
 			},
-			err: serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesInTypeDefinition()),
+			err: serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesPerAuthorizationModel()),
 		},
 		{
 			name: "succeeds with empty relations",

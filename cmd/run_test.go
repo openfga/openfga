@@ -25,7 +25,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/server/authn/mocks"
+	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -747,6 +747,20 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.datastore.properties.maxCacheSize.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
+
+	val = res.Get("properties.datastore.properties.maxIdleConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
+
+	val = res.Get("properties.datastore.properties.maxOpenConns.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.Datastore.MaxOpenConns)
+
+	val = res.Get("properties.datastore.properties.connMaxIdleTime.default")
+	require.True(t, val.Exists())
+
+	val = res.Get("properties.datastore.properties.connMaxLifetime.default")
+	require.True(t, val.Exists())
 
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())

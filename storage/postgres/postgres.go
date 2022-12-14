@@ -26,31 +26,30 @@ import (
 )
 
 const (
-	defaultMaxTuplesInWrite     = 100
-	defaultMaxTypesInDefinition = 100
+	defaultMaxTuplesPerWrite             = 100
+	defaultMaxTypesPerAuthorizationModel = 100
 )
 
 type Postgres struct {
-	db                       *sql.DB
-	tracer                   trace.Tracer
-	logger                   logger.Logger
-	maxTuplesInWrite         int
-	maxTypesInTypeDefinition int
+	db                            *sql.DB
+	tracer                        trace.Tracer
+	logger                        logger.Logger
+	maxTuplesPerWrite             int
+	maxTypesPerAuthorizationModel int
+
+	maxOpenConns    int
+	maxIdleConns    int
+	connMaxIdleTime time.Duration
+	connMaxLifetime time.Duration
 }
 
 var _ storage.OpenFGADatastore = &Postgres{}
 
 type PostgresOption func(*Postgres)
 
-func WithMaxTuplesInWrite(maxTuples int) PostgresOption {
+func WithTracer(t trace.Tracer) PostgresOption {
 	return func(p *Postgres) {
-		p.maxTuplesInWrite = maxTuples
-	}
-}
-
-func WithMaxTypesInTypeDefinition(maxTypes int) PostgresOption {
-	return func(p *Postgres) {
-		p.maxTypesInTypeDefinition = maxTypes
+		p.tracer = t
 	}
 }
 
@@ -60,9 +59,39 @@ func WithLogger(l logger.Logger) PostgresOption {
 	}
 }
 
-func WithTracer(t trace.Tracer) PostgresOption {
+func WithMaxTuplesPerWrite(maxTuples int) PostgresOption {
 	return func(p *Postgres) {
-		p.tracer = t
+		p.maxTuplesPerWrite = maxTuples
+	}
+}
+
+func WithMaxTypesPerAuthorizationModel(maxTypes int) PostgresOption {
+	return func(p *Postgres) {
+		p.maxTypesPerAuthorizationModel = maxTypes
+	}
+}
+
+func WithMaxOpenConns(c int) PostgresOption {
+	return func(p *Postgres) {
+		p.maxOpenConns = c
+	}
+}
+
+func WithMaxIdleConns(c int) PostgresOption {
+	return func(p *Postgres) {
+		p.maxIdleConns = c
+	}
+}
+
+func WithConnMaxIdleTime(d time.Duration) PostgresOption {
+	return func(p *Postgres) {
+		p.connMaxIdleTime = d
+	}
+}
+
+func WithConnMaxLifetime(d time.Duration) PostgresOption {
+	return func(p *Postgres) {
+		p.connMaxLifetime = d
 	}
 }
 
@@ -81,17 +110,33 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 		p.tracer = telemetry.NewNoopTracer()
 	}
 
-	if p.maxTuplesInWrite == 0 {
-		p.maxTuplesInWrite = defaultMaxTuplesInWrite
+	if p.maxTuplesPerWrite == 0 {
+		p.maxTuplesPerWrite = defaultMaxTuplesPerWrite
 	}
 
-	if p.maxTypesInTypeDefinition == 0 {
-		p.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
+	if p.maxTypesPerAuthorizationModel == 0 {
+		p.maxTypesPerAuthorizationModel = defaultMaxTypesPerAuthorizationModel
 	}
 
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
+	}
+
+	if p.maxOpenConns != 0 {
+		db.SetMaxOpenConns(p.maxOpenConns)
+	}
+
+	if p.maxIdleConns != 0 {
+		db.SetMaxIdleConns(p.maxIdleConns)
+	}
+
+	if p.connMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(p.connMaxIdleTime)
+	}
+
+	if p.connMaxLifetime != 0 {
+		db.SetConnMaxLifetime(p.connMaxLifetime)
 	}
 
 	policy := backoff.NewExponentialBackOff()
@@ -187,7 +232,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	ctx, span := p.tracer.Start(ctx, "postgres.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > p.MaxTuplesInWriteOperation() {
+	if len(deletes)+len(writes) > p.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
@@ -338,8 +383,8 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return NewPostgresTupleIterator(rows), nil
 }
 
-func (p *Postgres) MaxTuplesInWriteOperation() int {
-	return p.maxTuplesInWrite
+func (p *Postgres) MaxTuplesPerWrite() int {
+	return p.maxTuplesPerWrite
 }
 
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
@@ -488,8 +533,8 @@ func (p *Postgres) ReadTypeDefinition(
 	return &typeDef, nil
 }
 
-func (p *Postgres) MaxTypesInTypeDefinition() int {
-	return p.maxTypesInTypeDefinition
+func (p *Postgres) MaxTypesPerAuthorizationModel() int {
+	return p.maxTypesPerAuthorizationModel
 }
 
 func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
@@ -499,8 +544,8 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
-	if len(typeDefinitions) > p.MaxTypesInTypeDefinition() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesInTypeDefinition)
+	if len(typeDefinitions) > p.MaxTypesPerAuthorizationModel() {
+		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerAuthorizationModel)
 	}
 
 	if len(typeDefinitions) < 1 {
