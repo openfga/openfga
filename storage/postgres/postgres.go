@@ -162,10 +162,8 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
-func (p *Postgres) Close(ctx context.Context) error {
+func (p *Postgres) Close() {
 	p.db.Close()
-
-	return nil
 }
 
 func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {

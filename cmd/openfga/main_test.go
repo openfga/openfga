@@ -21,6 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
@@ -105,12 +106,20 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop openfga container: %v", err)
 		}
+
+		dockerClient.Close()
 	}
 
 	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
 	require.NoError(t, err)
 
-	t.Cleanup(stopContainer)
+	t.Cleanup(func() {
+		stopContainer()
+		goleak.VerifyNone(t,
+			goleak.IgnoreTopFunction("testing.(*T).run1"),
+			goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler below
+		)
+	})
 
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
 	go func() {
@@ -201,7 +210,6 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
 	t.Run("TestGetStore", func(t *testing.T) { GRPCGetStoreTest(t, tester) })
-	t.Run("TestListStores", GRPCListStoresTest) // run an isolated tester from the others so bootstrapped stores don't collide
 	t.Run("TestDeleteStore", func(t *testing.T) { GRPCDeleteStoreTest(t, tester) })
 
 	t.Run("TestWrite", func(t *testing.T) { GRPCWriteTest(t, tester) })
@@ -222,6 +230,7 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
+	defer conn.Close()
 
 	openfgaClient := openfgapb.NewOpenFGAServiceClient(conn)
 	healthClient := healthv1pb.NewHealthClient(conn)
@@ -391,7 +400,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 	require.Nil(t, resp3)
 }
 
-func GRPCListStoresTest(t *testing.T) {
+func TestGRPCListStores(t *testing.T) {
 	tester, err := newOpenFGATester(t)
 	require.NoError(t, err)
 	defer tester.Cleanup()
