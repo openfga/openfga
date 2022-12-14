@@ -114,10 +114,10 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 	t.Cleanup(func() {
 		stopContainer()
-		//goleak.VerifyNone(t,
-		//	goleak.IgnoreTopFunction("testing.(*T).run1"),
-		//	goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler below
-		//)
+		goleak.VerifyNone(t,
+			goleak.IgnoreTopFunction("testing.(*T).run1"),
+			goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler below
+		)
 	})
 
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container

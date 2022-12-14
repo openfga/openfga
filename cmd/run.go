@@ -435,8 +435,9 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
+	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
 	svr := server.New(&server.Dependencies{
-		Datastore:    caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize),
+		Datastore:    cachedOpenFGADatastore,
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
@@ -658,6 +659,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	authenticator.Close()
 
 	datastore.Close(ctx)
+
+	cachedOpenFGADatastore.Close(ctx)
 
 	logger.Info("server exited. goodbye 👋")
 
