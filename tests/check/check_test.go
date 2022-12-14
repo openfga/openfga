@@ -38,7 +38,7 @@ type stage struct {
 
 type assertion struct {
 	Tuple            *pb.TupleKey
-	ContextualTuples []*pb.TupleKey `yaml:"contextual_tuples"`
+	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	Trace            string
 }

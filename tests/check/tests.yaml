@@ -1512,7 +1512,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: viewer
                 user: user:aardvark
@@ -1532,7 +1532,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: writer
                 user: user:aardvark
@@ -1556,7 +1556,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: parent
                 user: folder:x
@@ -1579,7 +1579,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: viewer
                 user: user:aardvark
@@ -1611,7 +1611,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: writer
                 user: user:aardvark
@@ -1640,7 +1640,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: banned
                 user: user:aardvark
@@ -1671,7 +1671,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: owner
                 user: user:aardvark
@@ -1702,7 +1702,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: editor
                 user: user:aardvark
@@ -1711,7 +1711,7 @@ tests:
               object: document:1
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:1
                 relation: owner
                 user: user:aardvark
@@ -1730,7 +1730,7 @@ tests:
               object: document:public
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:public
                 relation: viewer
                 user: user:*
@@ -1739,7 +1739,7 @@ tests:
               object: document:public
               relation: viewer
               user: user:*
-            contextual_tuples:
+            contextualTuples:
               - object: document:public
                 relation: viewer
                 user: user:*
@@ -1759,7 +1759,7 @@ tests:
               object: document:public
               relation: viewer
               user: user:aardvark
-            contextual_tuples:
+            contextualTuples:
               - object: document:public
                 relation: writer
                 user: user:*

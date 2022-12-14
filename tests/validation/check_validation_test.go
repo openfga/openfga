@@ -30,8 +30,13 @@ type checkValidationTest struct {
 	Name    string
 	Model   string
 	Tuples  []*pb.TupleKey
-	Request *pb.TupleKey
+	Request request
 	Code    int
+}
+
+type request struct {
+	Tuple            *pb.TupleKey
+	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
 }
 
 func TestCheckValidation(t *testing.T) {
@@ -112,7 +117,10 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkValidatio
 
 			_, err = client.Check(ctx, &pb.CheckRequest{
 				StoreId:  storeID,
-				TupleKey: test.Request,
+				TupleKey: test.Request.Tuple,
+				ContextualTuples: &pb.ContextualTupleKeys{
+					TupleKeys: test.Request.ContextualTuples,
+				},
 			})
 			require.Error(t, err)
 
