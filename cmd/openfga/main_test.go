@@ -105,6 +105,8 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop openfga container: %v", err)
 		}
+
+		dockerClient.Close()
 	}
 
 	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})

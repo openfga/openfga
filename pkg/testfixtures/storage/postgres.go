@@ -81,6 +81,8 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop postgres container: %v", err)
 		}
+
+		dockerClient.Close()
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
