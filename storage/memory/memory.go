@@ -110,8 +110,7 @@ func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationMo
 
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
-func (s *MemoryBackend) Close(ctx context.Context) error {
-	return nil
+func (s *MemoryBackend) Close(ctx context.Context) {
 }
 
 func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {

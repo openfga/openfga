@@ -657,9 +657,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	authenticator.Close()
 
-	if err := datastore.Close(ctx); err != nil {
-		logger.Info("failed to shutdown the datastore", zap.Error(err))
-	}
+	datastore.Close(ctx)
 
 	logger.Info("server exited. goodbye 👋")
 
