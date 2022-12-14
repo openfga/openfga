@@ -445,7 +445,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	for i := 0; i < 100; i++ {
 		var tuples []*openfgapb.TupleKey
 
-		for j := 0; j < ds.MaxTuplesInWriteOperation(); j++ {
+		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
 			obj := fmt.Sprintf("document:%s", strconv.Itoa(n))
 			user := fmt.Sprintf("user:%s", strconv.Itoa(n))
 
@@ -512,7 +512,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	for i := 0; i < 100; i++ {
 		var tuples []*openfgapb.TupleKey
 
-		for j := 0; j < ds.MaxTuplesInWriteOperation(); j++ {
+		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
 			obj := fmt.Sprintf("document:%s", strconv.Itoa(n))
 			user := fmt.Sprintf("user:%s", strconv.Itoa(n))
 
