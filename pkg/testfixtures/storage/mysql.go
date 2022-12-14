@@ -142,6 +142,8 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	err = goose.Up(db, assets.MySQLMigrationDir)
 	require.NoError(t, err)
+	err = db.Close()
+	require.NoError(t, err)
 
 	return mySQLTestContainer
 }

@@ -79,14 +79,16 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
 		require.NoError(b, err)
-		defer ds.Close(context.Background())
 		test.RunAllBenchmarks(b, ds)
+		err = ds.Close(context.Background())
+		require.NoError(b, err)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
-		defer ds.Close(context.Background())
 		test.RunAllBenchmarks(b, ds)
+		err := ds.Close(context.Background())
+		require.NoError(b, err)
 	})
 
 	b.Run("BenchmarkMysqlDatastore", func(b *testing.B) {
@@ -95,8 +97,9 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := mysql.NewMySQLDatastore(uri)
 		require.NoError(b, err)
-		defer ds.Close(context.Background())
 		test.RunAllBenchmarks(b, ds)
+		err = ds.Close(context.Background())
+		require.NoError(b, err)
 	})
 }
 

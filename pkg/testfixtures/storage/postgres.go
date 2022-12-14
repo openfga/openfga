@@ -144,6 +144,8 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
 	require.NoError(t, err)
+	err = db.Close()
+	require.NoError(t, err)
 
 	return pgTestContainer
 }
