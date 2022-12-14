@@ -21,18 +21,18 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/authn"
+	"github.com/openfga/openfga/internal/authn/oidc"
+	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/server"
-	"github.com/openfga/openfga/server/authn"
-	"github.com/openfga/openfga/server/authn/oidc"
-	"github.com/openfga/openfga/server/authn/presharedkey"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
@@ -82,13 +82,13 @@ type DatastoreConfig struct {
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
-	// MaxIdleConns is the maximum number of connections in the idle connection pool.
+	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection pool.
 	MaxIdleConns int
 
-	// ConnMaxIdleTime is the maximum amount of time a connection may be idle.
+	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
 	ConnMaxIdleTime time.Duration
 
-	// ConnMaxLifetime is the maximum amount of time a connection may be reused.
+	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
 }
 
@@ -767,11 +767,11 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
 	util.MustBindPFlag("datastore.maxOpenConns", cmd.Flags().Lookup("datastore-max-open-conns"))
-	cmd.Flags().Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections in the idle connection pool")
+	cmd.Flags().Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
 	util.MustBindPFlag("datastore.maxIdleConns", cmd.Flags().Lookup("datastore-max-idle-conns"))
-	cmd.Flags().Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection may be idle")
+	cmd.Flags().Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection to the datastore may be idle")
 	util.MustBindPFlag("datastore.connMaxIdleTime", cmd.Flags().Lookup("datastore-conn-max-idle-time"))
-	cmd.Flags().Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection may be reused")
+	cmd.Flags().Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 	util.MustBindPFlag("datastore.connMaxLifetime", cmd.Flags().Lookup("datastore-conn-max-lifetime"))
 
 	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")

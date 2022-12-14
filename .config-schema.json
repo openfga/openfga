@@ -68,7 +68,11 @@
                 "engine": {
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
-                    "enum": ["memory", "postgres", "mysql"],
+                    "enum": [
+                        "memory",
+                        "postgres",
+                        "mysql"
+                    ],
                     "default": "memory"
                 },
                 "uri": {
@@ -90,17 +94,17 @@
                     "default": "unlimited - database/sql default"
                 },
                 "maxIdleConns": {
-                    "description": "the maximum number of connections in the idle connection pool.",
+                    "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
                     "default": "2 - database/sql default"
                 },
                 "connMaxIdleTime": {
-                    "description": "the maximum amount of time a connection may be idle",
+                    "description": "the maximum amount of time a connection to the datastore may be idle",
                     "type": "duration",
                     "default": "connections are not closed due to idle time - database/sql default"
                 },
                 "connMaxLifetime": {
-                    "description": "the maximum amount of time a connection may be reused",
+                    "description": "the maximum amount of time a connection to the datastore may be reused",
                     "type": "duration",
                     "default": "connections are not closed due to connection's age - database/sql default"
                 }
@@ -112,7 +116,11 @@
                 "method": {
                     "description": "The authentication method to use.",
                     "type": "string",
-                    "enum": ["none", "preshared", "oidc"],
+                    "enum": [
+                        "none",
+                        "preshared",
+                        "oidc"
+                    ],
                     "default": "none"
                 },
                 "preshared": {
@@ -123,7 +131,6 @@
                     "description": "The OIDC provider specific settings. This must be set if 'authn.method=oidc'.",
                     "$ref": "#/definitions/oidc"
                 }
-
             }
         },
         "grpc": {
@@ -165,14 +172,18 @@
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"]
+                    "default": [
+                        "*"
+                    ]
                 },
                 "corsAllowedHeaders": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"]
+                    "default": [
+                        "*"
+                    ]
                 }
             }
         },
@@ -182,7 +193,10 @@
                 "format": {
                     "description": "The log format to output logs in. For production we recommend 'json' format.",
                     "type": "string",
-                    "enum": ["text", "json"],
+                    "enum": [
+                        "text",
+                        "json"
+                    ],
                     "default": "text"
                 }
             }
@@ -205,7 +219,11 @@
                     "description": "The (absolute) file path of the TLS key that should be used for the TLS connection."
                 }
             },
-            "required": ["enabled", "cert", "key"]
+            "required": [
+                "enabled",
+                "cert",
+                "key"
+            ]
         },
         "oidc": {
             "type": "object",
@@ -219,7 +237,10 @@
                     "type": "string"
                 }
             },
-            "required": ["issuer", "audience"]
+            "required": [
+                "issuer",
+                "audience"
+            ]
         },
         "preshared": {
             "type": "object",
@@ -232,7 +253,9 @@
                     "minItems": 1
                 }
             },
-            "required": ["keys"]
+            "required": [
+                "keys"
+            ]
         }
     }
 }
