@@ -2,11 +2,11 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
@@ -30,6 +30,12 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
 					"reader": {Userset: &openfgapb.Userset_This{}},
+					"can_read": {
+						Userset: &openfgapb.Userset_ComputedUserset{
+							ComputedUserset: &openfgapb.ObjectRelation{
+								Relation: "reader",
+							},
+						}},
 				},
 			},
 		},
@@ -44,6 +50,20 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 					TupleKey: &openfgapb.TupleKey{
 						Object:   "repo:test",
 						Relation: "reader",
+						User:     "elbuo",
+					},
+					Expectation: false,
+				}},
+			},
+		},
+		{
+			_name: "writing assertions succeeds when it is not directly assignable",
+			request: &openfgapb.WriteAssertionsRequest{
+				StoreId: store,
+				Assertions: []*openfgapb.Assertion{{
+					TupleKey: &openfgapb.TupleKey{
+						Object:   "repo:test",
+						Relation: "can_read",
 						User:     "elbuo",
 					},
 					Expectation: false,
@@ -72,15 +92,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			err: serverErrors.ValidationError(
-				&tuple.InvalidTupleError{
-					Cause: &tuple.RelationNotFoundError{
-						TypeName: "repo",
-						Relation: "invalidrelation",
-					},
-					TupleKey: tuple.NewTupleKey("repo:test", "invalidrelation", "elbuo"),
-				},
-			),
+			err: serverErrors.ValidationError(fmt.Errorf("relation 'repo#invalidrelation' not found")),
 		},
 	}
 
