@@ -319,7 +319,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type organization
 			  relations
 			    define viewer: [organization] as self
-				define can_view as viewer 
+				define can_view as viewer
 
 			type document
 			  relations
@@ -496,6 +496,41 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 
 			type group
 			  relations
+			    define member: [user, team#member] as self
+
+			type document
+			  relations
+			    define viewer: [user:*, group#member] as self
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("team", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_multiple_levels_deep_no_connectivity",
+			model: `
+			type user
+			type employee
+
+			type team
+			  relations
+			    define member: [employee] as self
+
+			type group
+			  relations
 			    define member: [team#member] as self
 
 			type document
@@ -504,12 +539,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
-			expected: []*RelationshipIngress{
-				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("team", "member"),
-				},
-			},
 		},
 	}
 
