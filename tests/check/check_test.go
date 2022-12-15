@@ -143,7 +143,10 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 					require.NoError(t, err)
 					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
 					if assertion.Resolution != nil {
-						require.Equal(t, assertion.Resolution, resp.ResolutionMetadata)
+						require.Equal(t, assertion.Resolution.Depth, resp.ResolutionMetadata.Depth)
+						if assertion.Resolution.GetResolution() != "" {
+							require.Equal(t, assertion.Resolution.Resolution, resp.ResolutionMetadata.Resolution)
+						}
 					}
 				}
 			})

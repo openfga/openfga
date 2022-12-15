@@ -1403,6 +1403,8 @@ tests:
           relation: employee
           user: anne
         expectation: true
+        resolution:
+          depth: 0
 
   - name: indirection
     model: |
@@ -1420,6 +1422,9 @@ tests:
           relation: manage
           object: feature:fga
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(computed-userset).feature:fga#employee.(direct).
 
   - name: ttu
     model: |
@@ -1444,6 +1449,9 @@ tests:
           relation: viewer
           object: feature:fga
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).feature:fga#parent.org:openfga#viewer.(computed-userset).org:openfga#editor.(direct).
   - name: concurrency_problem
     model: |
       type feature
