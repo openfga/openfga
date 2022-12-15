@@ -11,18 +11,28 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// ValidateTuple checks whether a tuple is welformed and valid according to the provided model.
-func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+// ValidateUserObjectRelation checks whether a tuple is well formed
+func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
 
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
-		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
+		return err
 	}
 
 	if err := ValidateObject(typesys, tk); err != nil {
-		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
+		return err
 	}
 
 	if err := ValidateRelation(typesys, tk); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ValidateTuple checks whether a tuple is well formed and valid according to the provided model.
+func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+
+	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
 
