@@ -15,6 +15,6 @@ func TestMySQLDatastore(t *testing.T) {
 	uri := testDatastore.GetConnectionURI()
 	ds, err := mysql.NewMySQLDatastore(uri)
 	require.NoError(t, err)
-
+	defer ds.Close()
 	test.RunAllTests(t, ds)
 }

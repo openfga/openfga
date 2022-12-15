@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -89,15 +88,6 @@ func (q *ListObjectsQuery) handler(
 		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
-	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
-	if err != nil {
-		q.Logger.WarnWithContext(
-			ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
-			zap.String("store_id", req.GetStoreId()),
-			zap.String("object_type", targetObjectType),
-		)
-	}
-
 	handler := func() {
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
@@ -105,31 +95,6 @@ func (q *ListObjectsQuery) handler(
 		}
 
 		close(resultsChan)
-	}
-
-	containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-	containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
-
-	// ConnectedObjects currently only supports models that do not include intersection and exclusion,
-	// and the model must include type info for ConnectedObjects to work.
-	if !containsIntersection && !containsExclusion && hasTypeInfo {
-
-		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
-
-		handler = func() {
-			err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
-				StoreID:          req.GetStoreId(),
-				ObjectType:       targetObjectType,
-				Relation:         targetRelation,
-				User:             &openfgapb.ObjectRelation{Object: userObj, Relation: userRel},
-				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, resultsChan)
-			if err != nil {
-				errChan <- err
-			}
-
-			close(resultsChan)
-		}
 	}
 
 	go handler()

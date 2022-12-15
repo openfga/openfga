@@ -11,13 +11,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/test"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
@@ -46,12 +45,14 @@ func TestOpenFGAServer(t *testing.T) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
 		require.NoError(t, err)
+		defer ds.Close()
 
 		test.RunAllTests(t, ds)
 	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		defer ds.Close()
 		test.RunAllTests(t, ds)
 	})
 
@@ -61,6 +62,7 @@ func TestOpenFGAServer(t *testing.T) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := mysql.NewMySQLDatastore(uri)
 		require.NoError(t, err)
+		defer ds.Close()
 
 		test.RunAllTests(t, ds)
 	})
@@ -74,12 +76,23 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
 		require.NoError(b, err)
-
+		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		defer ds.Close()
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(b, err)
+		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
 }
@@ -266,13 +279,7 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgapb.ObjectRelation{
-			{Object: "user:bob"},
-			{Object: tuple.Wildcard},
-		}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "document").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := Server{
 		datastore: mockDatastore,
