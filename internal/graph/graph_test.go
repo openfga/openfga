@@ -485,6 +485,32 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "indirect_relationship_multiple_levels_deep",
+			model: `
+			type user
+
+			type team
+			  relations
+			    define member: [user] as self
+
+			type group
+			  relations
+			    define member: [team#member] as self
+
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("team", "member"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
