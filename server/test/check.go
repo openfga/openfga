@@ -297,8 +297,11 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				Trace:    true,
 			},
 			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).",
+				Allowed: true,
+				ResolutionMetadata: &openfgapb.CheckResolutionMetadata{
+					Resolution: ".union.0(direct).",
+					Depth:      0,
+				},
 			},
 		},
 		{
@@ -736,6 +739,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = model.Id
+			test.request.Trace = true
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
 			require.ErrorIs(t, gotErr, test.err)
@@ -746,7 +750,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.Equal(t, test.response.Allowed, resp.Allowed)
 
 				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
+					require.Equal(t, test.response.ResolutionMetadata, resp.ResolutionMetadata)
 				}
 			}
 		})

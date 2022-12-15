@@ -113,8 +113,11 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 	}
 
 	return &openfgapb.CheckResponse{
-		Allowed:    ok,
-		Resolution: resolution,
+		Allowed: ok,
+		ResolutionMetadata: &openfgapb.CheckResolutionMetadata{
+			Resolution: resolution,
+			Depth:      rc.metadata.GetResolve(),
+		},
 	}, nil
 }
 
@@ -132,7 +135,7 @@ func getTypeRelationRewrite(tk *openfgapb.TupleKey, typesys *typesystem.TypeSyst
 
 // resolveNode recursively resolves userset starting from a supplied UserTree node.
 func (q *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsUS *openfgapb.Userset, typesys *typesystem.TypeSystem) error {
-	if rc.metadata.GetResolve() > q.resolveNodeLimit { {
+	if rc.metadata.GetResolve() > q.resolveNodeLimit {
 		q.logger.Warn("resolution too complex", zap.String("resolution", rc.tracer.GetResolution()))
 		return serverErrors.AuthorizationModelResolutionTooComplex
 	}

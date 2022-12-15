@@ -14,6 +14,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(direct).
       - tuple:
           object: document:2
           relation: viewer
@@ -24,7 +27,6 @@ tests:
           relation: viewer
           user: badger
         expectation: false
-
   - name: ComputedUserset
     model: |
       type document
@@ -41,6 +43,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(computed-userset).document:1#writer.(direct).
       - tuple:
           object: document:2
           relation: writer
@@ -74,6 +79,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).document:1#parent.folder:x#viewer.(direct).
 
   - name: ThisAndUnion
     model: |
@@ -94,11 +102,17 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .union.0(direct).
       - tuple:
           object: document:2
           relation: viewer
           user: badger
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .union.1(computed-userset).document:2#writer.(direct).
 
   - name: ThisAndIntersection
     model: |
@@ -125,6 +139,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .[.0(direct).,.1(computed-userset).document:1#writer.(direct).]
       - tuple:
           object: document:2
           relation: viewer
@@ -166,6 +183,9 @@ tests:
           relation: viewer
           user: badger
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .0(direct).
       - tuple:
           object: document:2
           relation: viewer
@@ -192,11 +212,17 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .union.0(computed-userset).document:1#writer.(direct).
       - tuple:
           object: document:2
           relation: viewer
           user: badger
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .union.1(computed-userset).document:2#editor.(direct).
 
   - name: ComputedUsersetAndIntersection
     model: |
@@ -224,6 +250,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .[.0(computed-userset).document:1#writer.(direct).,.1(computed-userset).document:1#editor.(direct).]
       - tuple:
           object: document:2
           relation: viewer
@@ -266,6 +295,9 @@ tests:
           relation: viewer
           user: badger
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .0(computed-userset).document:2#writer.(direct).
       - tuple:
           object: document:3
           relation: viewer
@@ -296,6 +328,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).document:1#parent.folder:X#viewer.(computed-userset).folder:X#writer.(direct).
 
   - name: TupleToUsersetAndTupleToUserset
     model: |
@@ -328,6 +363,9 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).document:1#parent.folder:X#viewer.(tuple-to-userset).folder:X#parent.group:G#member.(direct).
 
   - name: TupleToUsersetAndUnion
     model: |
@@ -357,11 +395,17 @@ tests:
           relation: viewer
           user: aardvark
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).document:1#parent.folder:X#viewer.union.0(computed-userset).folder:X#writer.(direct).
       - tuple:
           object: document:1
           relation: viewer
           user: badger
         expectation: true
+        resolution:
+          depth: 0
+          resolution: .(tuple-to-userset).document:1#parent.folder:X#viewer.union.1(computed-userset).folder:X#editor.(direct).
 
   - name: TupleToUsersetAndIntersection
     model: |
@@ -1344,6 +1388,62 @@ tests:
           relation: viewer
           user: user:aardvark
         expectation: false
+  - name: union
+    model: |
+      type feature
+        relations
+          define employee as self or self
+    tuples:
+      - user: anne
+        relation: employee
+        object: feature:fga
+    assertions:
+      - tuple:
+          object: feature:fga
+          relation: employee
+          user: anne
+        expectation: true
+
+  - name: indirection
+    model: |
+      type feature
+        relations
+          define manage as employee
+          define employee as self
+    tuples:
+      - user: anne
+        relation: employee
+        object: feature:fga
+    assertions:
+      - tuple:
+          user: anne
+          relation: manage
+          object: feature:fga
+        expectation: true
+
+  - name: ttu
+    model: |
+      type org
+        relations
+          define editor as self
+          define viewer as editor
+      type feature
+        relations
+          define parent as self
+          define viewer as viewer from parent
+    tuples:
+      - user: org:openfga
+        relation: parent
+        object: feature:fga
+      - user: anne
+        relation: editor
+        object: org:openfga
+    assertions:
+      - tuple:
+          user: anne
+          relation: viewer
+          object: feature:fga
+        expectation: true
   - name: concurrency_problem
     model: |
       type feature
@@ -1578,4 +1678,4 @@ tests:
           - object: org:32b0ea4c91b34c2a82fb5dba6e93ee68
             relation: user_in_context
             user: user:e2e6d1a72e9541dfa8bd5ae39b154751
-        expectation: true
+        expectation: false

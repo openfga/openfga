@@ -36,7 +36,7 @@ type assertion struct {
 	Tuple            *pb.TupleKey
 	ContextualTuples []*pb.TupleKey
 	Expectation      bool
-	Trace            string
+	Resolution       *pb.CheckResolutionMetadata
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -133,12 +133,13 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 					StoreId:          storeID,
 					TupleKey:         assertion.Tuple,
 					ContextualTuples: &pb.ContextualTupleKeys{TupleKeys: assertion.ContextualTuples},
-					Trace:            false,
+					Trace:            true,
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-				if assertion.Trace != "" {
-					require.Equal(t, assertion.Trace, resp.GetResolution())
+				if assertion.Resolution != nil {
+					require.Equal(t, assertion.Resolution.Depth, resp.ResolutionMetadata.Depth)
+					require.Equal(t, assertion.Resolution.Resolution, resp.ResolutionMetadata.Resolution)
 				}
 			}
 		})
