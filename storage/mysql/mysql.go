@@ -157,8 +157,8 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 }
 
 // Close closes the datastore and cleans up any residual resources.
-func (m *MySQL) Close(ctx context.Context) error {
-	return m.db.Close()
+func (m *MySQL) Close() {
+	m.db.Close()
 }
 
 func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {

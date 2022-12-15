@@ -84,5 +84,5 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 			./cmd/openfga/...
 
 .PHONY: bench
-bench: go-generate
+bench: go-generate ## Run benchmark test
 	go test ./... -bench=. -run=XXX -benchmem
