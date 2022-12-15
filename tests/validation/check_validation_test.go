@@ -29,7 +29,6 @@ type checkValidationTests struct {
 type checkValidationTest struct {
 	Name    string
 	Model   string
-	Tuples  []*pb.TupleKey
 	Request request
 	Code    int
 }
@@ -99,21 +98,12 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkValidatio
 
 			storeID := resp.GetId()
 
-			fmt.Println(parser.MustParse(test.Model))
 			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.Model),
 			})
 			require.NoError(t, err)
-
-			for _, tuple := range test.Tuples {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Writes:  &pb.TupleKeys{TupleKeys: []*pb.TupleKey{tuple}},
-				})
-				require.NoError(t, err)
-			}
 
 			_, err = client.Check(ctx, &pb.CheckRequest{
 				StoreId:  storeID,
