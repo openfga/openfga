@@ -29,7 +29,7 @@ const (
 	// ListObjectsOptimized is an experimental flag that enables support for an optimized
 	// openfga.v1.ListObjects API implementation which leverages type information and reverse
 	// expansion.
-	ListObjectsOptimized ExperimentalFeatureFlag = "list-objects-type-info-optimized"
+	ListObjectsOptimized ExperimentalFeatureFlag = "list-objects-optimized"
 )
 
 const (
