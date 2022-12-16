@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -176,6 +177,22 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	})
 }
 
+type mockStreamServer struct {
+	grpc.ServerStream
+}
+
+func NewMockStreamServer() *mockStreamServer {
+	return &mockStreamServer{}
+}
+
+func (m *mockStreamServer) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
+	return nil
+}
+
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
@@ -236,7 +253,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 			Type:                 "repo",
 			Relation:             "owner",
 			User:                 "bob",
-		}, nil)
+		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
@@ -314,7 +331,7 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 			Type:                 "document",
 			Relation:             "viewer",
 			User:                 "user:bob",
-		}, nil)
+		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
