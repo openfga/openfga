@@ -214,18 +214,20 @@ func (q *CheckQuery) resolveDirectUserSet(
 	rc *resolutionContext,
 	typesys *typesystem.TypeSystem,
 ) error {
+	done := make(chan struct{})
+	defer close(done)
+
 	var wg sync.WaitGroup
-	c := make(chan *chanResolveResult, 2)
+	errorChannel := make(chan error)
 
 	wg.Add(1)
-	go func(c chan<- *chanResolveResult) {
+	go func(errorChannel chan<- error) {
 		defer wg.Done()
 
 		if rc.shouldShortCircuit() {
 			return
 		}
 
-		found := false
 		tk, err := rc.readUserTuple(ctx, q.datastore)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -235,14 +237,16 @@ func (q *CheckQuery) resolveDirectUserSet(
 
 		if tk != nil && err == nil {
 			rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
-			found = true
 		}
 
-		c <- &chanResolveResult{err: err, found: found}
-	}(c)
+		select {
+		case errorChannel <- err:
+		case <-done:
+		}
+	}(errorChannel)
 
 	wg.Add(1)
-	go func(c chan<- *chanResolveResult) {
+	go func(errorChannel chan<- error) {
 		defer wg.Done()
 
 		if rc.shouldShortCircuit() {
@@ -251,21 +255,21 @@ func (q *CheckQuery) resolveDirectUserSet(
 
 		iter, err := rc.readUsersetTuples(ctx, q.datastore)
 		if err != nil {
-			c <- &chanResolveResult{err: serverErrors.HandleError("", err), found: false}
+			errorChannel <- serverErrors.HandleError("", err)
 			return
 		}
 		defer iter.Stop()
 
 		for {
 			if rc.shouldShortCircuit() {
-				break
+				return
 			}
 			usersetTuple, err := iter.Next(ctx)
 			if err != nil {
 				if !errors.Is(err, storage.ErrIteratorDone) {
-					c <- &chanResolveResult{err: serverErrors.HandleError("", err), found: false}
+					errorChannel <- serverErrors.HandleError("", err)
 				}
-				break
+				return
 			}
 
 			foundUser := usersetTuple.GetUser()
@@ -274,7 +278,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 
 			if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
 				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-				break
+				return
 			}
 
 			if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
@@ -286,7 +290,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 				}
 
 				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-				break
+				return
 			}
 
 			userset := usersetTuple.GetUser()
@@ -306,31 +310,40 @@ func (q *CheckQuery) resolveDirectUserSet(
 			nestedRC := rc.fork(tupleKey, tracer, false)
 
 			wg.Add(1)
-			go func(c chan<- *chanResolveResult) {
+			go func(errorChannel chan<- error) {
 				defer wg.Done()
 
 				rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
 				if err == nil {
 					err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
 				}
-				c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
-			}(c)
+				select {
+				case errorChannel <- err:
+				case <-done:
+				}
+			}(errorChannel)
 		}
-	}(c)
+	}(errorChannel)
 
-	go func(c chan *chanResolveResult) {
+	go func(errorChannel chan error) {
 		wg.Wait()
-		close(c)
-	}(c)
+		close(errorChannel)
+	}(errorChannel)
 
 	var err error
+	// if the user is found we swallow any errors that may have be thrown
+	// otherwise we return the last error we found (if any)
+	for potentialError := range errorChannel {
+		if rc.userFound() {
+			go func(errorChannel chan error) {
+				for _ = range errorChannel {
 
-	for res := range c {
-		if res.found {
+				}
+			}(errorChannel)
 			return nil
 		}
-		if res.err != nil {
-			err = res.err
+		if potentialError != nil {
+			err = potentialError
 		}
 	}
 
@@ -525,10 +538,12 @@ func (q *CheckQuery) resolveTupleToUserset(
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
-	defer iter.Stop()
+
+	done := make(chan struct{})
+	defer close(done)
 
 	var wg sync.WaitGroup
-	c := make(chan *chanResolveResult)
+	errorChannel := make(chan error)
 
 	for {
 		tuple, err := iter.Next(ctx)
@@ -565,7 +580,7 @@ func (q *CheckQuery) resolveTupleToUserset(
 		nestedRC := rc.fork(tupleKey, tracer, false)
 
 		wg.Add(1)
-		go func(c chan<- *chanResolveResult) {
+		go func(c chan<- error) {
 			defer wg.Done()
 
 			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys) // folder:budgets#reader
@@ -573,21 +588,29 @@ func (q *CheckQuery) resolveTupleToUserset(
 				err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
-			c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
-		}(c)
+			select {
+			case c <- err:
+			case <-done:
+			}
+		}(errorChannel)
 	}
 
-	go func(c chan *chanResolveResult) {
-		wg.Wait()
-		close(c)
-	}(c)
+	// If any `break` was triggered, immediately release any possible resources held by the iterator.
+	iter.Stop()
 
-	for res := range c {
-		if res.found {
+	go func(errorChannel chan error) {
+		wg.Wait()
+		close(errorChannel)
+	}(errorChannel)
+
+	// if the user is found we swallow any errors that may have be thrown
+	// otherwise we return the last error we found (if any)
+	for potentialError := range errorChannel {
+		if rc.userFound() {
 			return nil
 		}
-		if res.err != nil {
-			err = res.err
+		if potentialError != nil {
+			err = potentialError
 		}
 	}
 
