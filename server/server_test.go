@@ -97,6 +97,60 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 }
 
+func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	meter := telemetry.NewNoopMeter()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": typesystem.This(),
+				},
+			},
+		},
+	}, nil)
+
+	tupleKey := &openfgapb.TupleKey{
+		Object:   "repo:openfga",
+		Relation: "reader",
+		User:     "anne",
+	}
+	tuple := &openfgapb.Tuple{Key: tupleKey}
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).Return(tuple, nil)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).Return(nil, errors.New("ReadUsersetTuples failed"))
+
+	s := Server{
+		datastore: mockDatastore,
+		tracer:    tracer,
+		meter:     meter,
+		transport: transport,
+		logger:    logger,
+		config: &Config{
+			ResolveNodeLimit: 25,
+		},
+	}
+
+	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
+		StoreId:              store,
+		TupleKey:             tupleKey,
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, checkResponse.Allowed)
+}
+
 func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
