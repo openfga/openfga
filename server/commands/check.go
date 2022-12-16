@@ -335,11 +335,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 	// otherwise we return the last error we found (if any)
 	for potentialError := range errorChannel {
 		if rc.userFound() {
-			go func(errorChannel chan error) {
-				for _ = range errorChannel {
-
-				}
-			}(errorChannel)
+			go utils.DrainChannel(errorChannel)
 			return nil
 		}
 		if potentialError != nil {
@@ -607,6 +603,7 @@ func (q *CheckQuery) resolveTupleToUserset(
 	// otherwise we return the last error we found (if any)
 	for potentialError := range errorChannel {
 		if rc.userFound() {
+			go utils.DrainChannel(errorChannel)
 			return nil
 		}
 		if potentialError != nil {
