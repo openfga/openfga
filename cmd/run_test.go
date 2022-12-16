@@ -11,8 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/cenkalti/backoff/v4"
-	"github.com/hashicorp/go-retryablehttp"
 	"io"
 	"log"
 	"math/big"
@@ -24,6 +22,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-retryablehttp"
 
 	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"

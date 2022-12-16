@@ -2,8 +2,6 @@ package telemetry
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"os"
 	"path"
 	"runtime"
@@ -21,16 +19,6 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	os.Exit(m.Run())
-}
-
-func availableListeningAddress() string {
-	listener, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	defer listener.Close()
-	port := listener.Addr().(*net.TCPAddr).Port
-	return fmt.Sprintf("%s:%d", "0.0.0.0", port)
 }
 
 func TestNewOTLPMeterWithHttp(t *testing.T) {
