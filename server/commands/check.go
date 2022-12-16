@@ -214,15 +214,16 @@ func (q *CheckQuery) resolveDirectUserSet(
 	rc *resolutionContext,
 	typesys *typesystem.TypeSystem,
 ) error {
-	done := make(chan struct{})
-	defer close(done)
-
 	var wg sync.WaitGroup
-	c := make(chan *chanResolveResult)
+	c := make(chan *chanResolveResult, 2)
 
 	wg.Add(1)
 	go func(c chan<- *chanResolveResult) {
 		defer wg.Done()
+
+		if rc.shouldShortCircuit() {
+			return
+		}
 
 		found := false
 		tk, err := rc.readUserTuple(ctx, q.datastore)
@@ -236,92 +237,93 @@ func (q *CheckQuery) resolveDirectUserSet(
 			rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
 			found = true
 		}
-		select {
-		case c <- &chanResolveResult{err: err, found: found}:
-		case <-done:
-		}
+
+		c <- &chanResolveResult{err: err, found: found}
 	}(c)
 
-	iter, err := rc.readUsersetTuples(ctx, q.datastore)
-	if err != nil {
-		return serverErrors.HandleError("", err)
-	}
+	wg.Add(1)
+	go func(c chan<- *chanResolveResult) {
+		defer wg.Done()
 
-	for {
-		usersetTuple, err := iter.Next(ctx)
+		if rc.shouldShortCircuit() {
+			return
+		}
+
+		iter, err := rc.readUsersetTuples(ctx, q.datastore)
 		if err != nil {
-			if err == storage.ErrIteratorDone {
+			c <- &chanResolveResult{err: serverErrors.HandleError("", err), found: false}
+			return
+		}
+		defer iter.Stop()
+
+		for {
+			if rc.shouldShortCircuit() {
 				break
 			}
-			return serverErrors.HandleError("", err)
-		}
+			usersetTuple, err := iter.Next(ctx)
+			if err != nil {
+				if !errors.Is(err, storage.ErrIteratorDone) {
+					c <- &chanResolveResult{err: serverErrors.HandleError("", err), found: false}
+				}
+				break
+			}
 
-		foundUser := usersetTuple.GetUser()
+			foundUser := usersetTuple.GetUser()
 
-		schemaVersion := typesys.GetSchemaVersion()
+			schemaVersion := typesys.GetSchemaVersion()
 
-		if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
-			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-			break
-		}
+			if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
+				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+				break
+			}
 
-		if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
+			if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
 
-			wildcardType := tupleUtils.GetType(foundUser)
+				wildcardType := tupleUtils.GetType(foundUser)
 
-			if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
+				if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
+					continue
+				}
+
+				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+				break
+			}
+
+			userset := usersetTuple.GetUser()
+			object, relation := tupleUtils.SplitObjectRelation(userset)
+			objectType, _ := tupleUtils.SplitObject(object)
+			_, err = typesys.GetRelation(objectType, relation)
+			if err != nil {
+				// the tuple in the request context is invalid according to the model being used, so ignore it
 				continue
 			}
-
-			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-			break
-
-		}
-
-		// Avoid launching more goroutines by checking if the user has been found in another goroutine.
-		if rc.shouldShortCircuit() {
-			break
-		}
-
-		userset := usersetTuple.GetUser()
-		object, relation := tupleUtils.SplitObjectRelation(userset)
-		objectType, _ := tupleUtils.SplitObject(object)
-		_, err = typesys.GetRelation(objectType, relation)
-		if err != nil {
-			// the tuple in the request context is invalid according to the model being used, so ignore it
-			continue
-		}
-		tracer := rc.tracer.AppendDirect().AppendString(userset)
-		tupleKey := &openfgapb.TupleKey{
-			Object:   object,
-			Relation: relation,
-			User:     rc.tk.GetUser(),
-		}
-		nestedRC := rc.fork(tupleKey, tracer, false)
-
-		wg.Add(1)
-		go func(c chan<- *chanResolveResult) {
-			defer wg.Done()
-
-			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
-			if err == nil {
-				err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
+			tracer := rc.tracer.AppendDirect().AppendString(userset)
+			tupleKey := &openfgapb.TupleKey{
+				Object:   object,
+				Relation: relation,
+				User:     rc.tk.GetUser(),
 			}
+			nestedRC := rc.fork(tupleKey, tracer, false)
 
-			select {
-			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
-			case <-done:
-			}
-		}(c)
-	}
+			wg.Add(1)
+			go func(c chan<- *chanResolveResult) {
+				defer wg.Done()
 
-	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.Stop()
+				rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
+				if err == nil {
+					err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
+				}
+				c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
+			}(c)
+		}
+	}(c)
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
 		close(c)
 	}(c)
+
+	var err error
 
 	for res := range c {
 		if res.found {
@@ -523,9 +525,7 @@ func (q *CheckQuery) resolveTupleToUserset(
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
-
-	done := make(chan struct{})
-	defer close(done)
+	defer iter.Stop()
 
 	var wg sync.WaitGroup
 	c := make(chan *chanResolveResult)
@@ -573,15 +573,9 @@ func (q *CheckQuery) resolveTupleToUserset(
 				err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
 			}
 
-			select {
-			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
-			case <-done:
-			}
+			c <- &chanResolveResult{err: err, found: nestedRC.userFound()}
 		}(c)
 	}
-
-	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
