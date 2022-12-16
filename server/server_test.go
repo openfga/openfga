@@ -129,8 +129,11 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	}
 	tuple := &openfgapb.Tuple{Key: tupleKey}
 	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).Return(tuple, nil)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).Return(nil, errors.New("ReadUsersetTuples failed"))
-
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(50 * time.Millisecond)
+			return nil, errors.New("some error")
+		})
 	s := Server{
 		datastore: mockDatastore,
 		tracer:    tracer,
