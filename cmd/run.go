@@ -15,9 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
-
-	"github.com/cenkalti/backoff/v4"
+	backoff "github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -46,6 +44,7 @@ import (
 	"github.com/spf13/viper"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -255,7 +254,7 @@ func DefaultConfig() *Config {
 		Metrics: MetricsConfig{
 			Enabled:  false,
 			Protocol: "grpc",
-			Endpoint: "localhost:4317",
+			Endpoint: "0.0.0.0:4317",
 		},
 	}
 }
@@ -384,14 +383,12 @@ func RunServer(ctx context.Context, config *Config) error {
 	tokenEncoder := encoder.NewBase64Encoder()
 
 	var err error
-	var meter metric.Meter
+	meter := metric.NewNoopMeter()
 	if config.Metrics.Enabled {
 		meter, err = telemetry.NewOTLPMeter(logger, ctx, config.Metrics.Protocol, config.Metrics.Endpoint)
 		if err != nil {
-			return fmt.Errorf("failed to generate otlp meter: %w", err)
+			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
 		}
-	} else {
-		meter = metric.NewNoopMeter()
 	}
 
 	var datastore storage.OpenFGADatastore
@@ -856,8 +853,8 @@ func bindRunFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
 
-	cmd.Flags().Bool("metrics", defaultConfig.Metrics.Enabled, "toggle OTel metrics exporter")
-	util.MustBindPFlag("metrics.enabled", cmd.Flags().Lookup("metrics"))
+	cmd.Flags().Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable OTel metrics export")
+	util.MustBindPFlag("metrics.enabled", cmd.Flags().Lookup("metrics-enabled"))
 
 	cmd.Flags().String("metrics-endpoint", defaultConfig.Metrics.Endpoint, "OTel Collector endpoint to use")
 	util.MustBindPFlag("metrics.endpoint", cmd.Flags().Lookup("metrics-endpoint"))

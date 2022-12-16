@@ -18,8 +18,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -48,11 +46,6 @@ func NewCheckQuery(datastore storage.OpenFGADatastore, t trace.Tracer, m metric.
 
 // Execute the query in `checkRequest`, returning the response or an error.
 func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	statCheckResolutionDepth, _ := q.meter.AsyncInt64().Gauge(
-		"openfga.check.resolution.depth",
-		instrument.WithDescription("Number of recursive resolutions needed to execute check requests"),
-		instrument.WithUnit(unit.Dimensionless),
-	)
 	var resolutionTracer resolutionTracer = &noopResolutionTracer{}
 	if req.GetTrace() {
 		resolutionTracer = newStringResolutionTracer()
@@ -97,10 +90,6 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 	r, ok := rc.users.Get(rc.targetUser)
 	if ok && r != nil {
 		resolution = r.GetResolution()
-	}
-
-	if statCheckResolutionDepth != nil {
-		statCheckResolutionDepth.Add(ctx, int64(rc.metadata.GetResolve()))
 	}
 
 	return &openfgapb.CheckResponse{

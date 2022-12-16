@@ -25,9 +25,7 @@ func NewOTLPMeter(logger logger.Logger, ctx context.Context, protocol, endpoint 
 	switch protocol {
 	case "http":
 		var options []otlpmetrichttp.Option
-		if protocol == "http" {
-			options = append(options, otlpmetrichttp.WithInsecure())
-		}
+		options = append(options, otlpmetrichttp.WithInsecure())
 
 		if endpoint != "" {
 			options = append(options, otlpmetrichttp.WithEndpoint(endpoint))
@@ -42,10 +40,10 @@ func NewOTLPMeter(logger logger.Logger, ctx context.Context, protocol, endpoint 
 		}
 		exporter, err = otlpmetricgrpc.New(ctx, options...)
 	default:
-		return NewNoopMeter(), fmt.Errorf("unknown open telemetry protocol %q", protocol)
+		return nil, fmt.Errorf("unknown open telemetry protocol %q", protocol)
 	}
 	if err != nil {
-		return NewNoopMeter(), err
+		return nil, err
 	}
 	reader := sdkMetrics.NewPeriodicReader(exporter)
 	res, err := resource.New(ctx,

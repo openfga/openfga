@@ -159,7 +159,7 @@
                 "endpoint": {
                     "description": "Remote OTEL collector endpoint",
                     "type": "string",
-                    "default": "localhost:4317"
+                    "default": "0.0.0.0:4317"
                 },
                 "protocol": {
                     "description": "Protocol used to send metrics to the collector",

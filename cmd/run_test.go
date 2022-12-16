@@ -11,6 +11,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/cenkalti/backoff/v4"
+	"github.com/hashicorp/go-retryablehttp"
 	"io"
 	"log"
 	"math/big"
@@ -23,8 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
-	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
@@ -756,7 +756,7 @@ func TestNoopMetricExporter(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -770,20 +770,19 @@ func TestOTLPExporter(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = true
 	cfg.Metrics.Enabled = true
-	cfg.Metrics.Endpoint = "localhost:4317"
-	cfg.Metrics.Protocol = "grpc"
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		if err := runServer(ctx, cfg); err != nil {
+		if err := RunServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	_, err := retryablehttp.Get(fmt.Sprintf("http://%s", cfg.HTTP.Addr))
+	res, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr))
 	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
 }
 
 func TestDefaultConfig(t *testing.T) {
