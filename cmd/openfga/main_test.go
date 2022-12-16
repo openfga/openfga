@@ -314,14 +314,14 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 		output output
 	}{
 		{
-			name:  "empty request",
+			name:  "empty_request",
 			input: &openfgapb.CreateStoreRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
-			name: "invalid 'name' length",
+			name: "invalid_name_length",
 			input: &openfgapb.CreateStoreRequest{
 				Name: "a",
 			},
@@ -330,7 +330,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid 'name' characters",
+			name: "invalid_name_characters",
 			input: &openfgapb.CreateStoreRequest{
 				Name: "$openfga",
 			},
@@ -345,7 +345,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "duplicate store 'name' is allowed",
+			name: "duplicate_store_name_is_allowed",
 			input: &openfgapb.CreateStoreRequest{
 				Name: "openfga",
 			},
@@ -501,14 +501,14 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		testData *testData
 	}{
 		{
-			name:  "empty request",
+			name:  "empty_request",
 			input: &openfgapb.CheckRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
-			name: "invalid storeID (too short)",
+			name: "invalid_storeID_because_too_short",
 			input: &openfgapb.CheckRequest{
 				StoreId:              "1",
 				AuthorizationModelId: ulid.Make().String(),
@@ -519,7 +519,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid storeID (extra chars)",
+			name: "invalid_storeID_because_extra_chars",
 			input: &openfgapb.CheckRequest{
 				StoreId:              ulid.Make().String() + "A",
 				AuthorizationModelId: ulid.Make().String(),
@@ -530,7 +530,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid storeID (invalid chars)",
+			name: "invalid_storeID_because_invalid_chars",
 			input: &openfgapb.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				AuthorizationModelId: ulid.Make().String(),
@@ -541,7 +541,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid authorization model ID (extra chars)",
+			name: "invalid_authorization_model_ID_because_extra_chars",
 			input: &openfgapb.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String() + "A",
@@ -552,7 +552,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid authorization model ID (invalid chars)",
+			name: "invalid_authorization_model_ID_because_invalid_chars",
 			input: &openfgapb.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
@@ -563,7 +563,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "missing tuplekey field",
+			name: "missing_tuplekey_field",
 			input: &openfgapb.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String(),
@@ -1114,14 +1114,14 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		testData *testData
 	}{
 		{
-			name:  "empty request",
+			name:  "empty_request",
 			input: &openfgapb.ReadAuthorizationModelRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
-			name: "invalid storeID (too short)",
+			name: "invalid_storeID_because_too_short",
 			input: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: "1",
 				Id:      ulid.Make().String(),
@@ -1131,7 +1131,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid storeID (extra chars)",
+			name: "invalid_storeID_because_extra_chars",
 			input: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String() + "A",
 				Id:      ulid.Make().String(), // ulids aren't required at this time
@@ -1141,7 +1141,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid authorization model ID (extra chars)",
+			name: "invalid_authorization_model_ID_because_extra_chars",
 			input: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				Id:      ulid.Make().String() + "A",
@@ -1241,14 +1241,14 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		output output
 	}{
 		{
-			name:  "empty request",
+			name:  "empty_request",
 			input: &openfgapb.WriteAuthorizationModelRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
-			name: "invalid storeID (too short)",
+			name: "invalid_storeID_because_too_short",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: "1",
 			},
@@ -1257,7 +1257,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid storeID (extra chars)",
+			name: "invalid_storeID_because_extra_chars",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String() + "A",
 			},
@@ -1266,7 +1266,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "missing type definitions",
+			name: "missing_type_definitions",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 			},
@@ -1275,7 +1275,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid type definition (empty type name)",
+			name: "invalid_type_definition_because_empty_type_name",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -1292,7 +1292,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid type definition (too many chars in name)",
+			name: "invalid_type_definition_because_too_many_chars_in_name",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -1309,7 +1309,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 			},
 		},
 		{
-			name: "invalid type definition (invalid chars in name)",
+			name: "invalid_type_definition_because_invalid_chars_in_name",
 			input: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				TypeDefinitions: []*openfgapb.TypeDefinition{
