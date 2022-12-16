@@ -82,15 +82,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	modelID := req.GetAuthorizationModelId()
 
-	if modelID == "" {
-		var err error
-
-		modelID, err = s.resolveAuthorizationModelID(ctx, storeID, modelID)
-		if err != nil {
-			return nil, err
-		}
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	if err != nil {
+		return nil, err
 	}
-
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
 		return nil, serverErrors.AuthorizationModelNotFound(modelID)
@@ -128,7 +123,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	storeID := req.GetStoreId()
-	ctx := context.Background()
+	ctx := srv.Context()
 	ctx, span := s.tracer.Start(ctx, "streamedListObjects", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
@@ -440,7 +435,10 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
-// Util to find the latest authorization model ID to be used through all the request lifecycle.
+// resolveAuthorizationModelID takes a modelId. If it is empty, it will find and return the latest authorization model ID.
+//
+// If is not empty, it will validate it and return it.
+//
 // This allows caching of types. If the user inserts a new authorization model and doesn't
 // provide this field (which should be rate limited more aggressively) the in-flight requests won't be
 // affected and newer calls will use the updated authorization model.
