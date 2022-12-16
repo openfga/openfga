@@ -145,6 +145,9 @@ type AuthnPresharedKeyConfig struct {
 type LogConfig struct {
 	// Format is the log format to use in the log output (e.g. 'text' or 'json')
 	Format string
+
+	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
+	Level string
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -225,6 +228,7 @@ func DefaultConfig() *Config {
 		},
 		Log: LogConfig{
 			Format: "text",
+			Level:  "info",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -301,6 +305,14 @@ func VerifyConfig(cfg *Config) error {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}
 
+	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
+		return fmt.Errorf("log format must be either 'text' or 'json'")
+	}
+
+	if cfg.Log.Level != "none" && cfg.Log.Level != "debug" && cfg.Log.Level != "info" {
+		return fmt.Errorf("log level must be either 'none', 'debug', or 'info'")
+	}
+
 	if cfg.Playground.Enabled {
 		if !cfg.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
@@ -342,7 +354,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		return err
 	}
 
-	logger := buildLogger(config.Log.Format)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
@@ -692,19 +704,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	return nil
 }
 
-func buildLogger(logFormat string) logger.Logger {
-	openfgaLogger := logger.MustNewTextLogger()
-	if logFormat == "json" {
-		openfgaLogger = logger.MustNewJSONLogger()
-		openfgaLogger.With(
-			zap.String("build.version", build.Version),
-			zap.String("build.commit", build.Commit),
-		)
-	}
-
-	return openfgaLogger
-}
-
 // bindRunFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindRunFlags(cmd *cobra.Command) {
@@ -786,6 +785,9 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	util.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
+
+	cmd.Flags().String("log-level", defaultConfig.Log.Level, "the log level to use")
+	util.MustBindPFlag("log.level", cmd.Flags().Lookup("log-level"))
 
 	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
