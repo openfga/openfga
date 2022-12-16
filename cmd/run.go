@@ -306,11 +306,17 @@ func VerifyConfig(cfg *Config) error {
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
-		return fmt.Errorf("log format must be either 'text' or 'json'")
+		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
 	}
 
-	if cfg.Log.Level != "none" && cfg.Log.Level != "debug" && cfg.Log.Level != "info" {
-		return fmt.Errorf("log level must be either 'none', 'debug', or 'info'")
+	if cfg.Log.Level != "none" &&
+		cfg.Log.Level != "debug" &&
+		cfg.Log.Level != "info" &&
+		cfg.Log.Level != "warn" &&
+		cfg.Log.Level != "error" &&
+		cfg.Log.Level != "panic" &&
+		cfg.Log.Level != "fatal" {
+		return fmt.Errorf("config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
 	}
 
 	if cfg.Playground.Enabled {

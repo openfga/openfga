@@ -103,6 +103,14 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 		level = zap.DebugLevel
 	case "info":
 		level = zap.InfoLevel
+	case "warn":
+		level = zap.WarnLevel
+	case "error":
+		level = zap.ErrorLevel
+	case "panic":
+		level = zap.PanicLevel
+	case "fatal":
+		level = zap.FatalLevel
 	default:
 		return nil, fmt.Errorf("unknown log level: %s", logLevel)
 	}
