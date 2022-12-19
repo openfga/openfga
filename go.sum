@@ -365,6 +365,10 @@ go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50 h1:6DuFAivHGVH+fppCA
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50/go.mod h1:WfhNIqSEXCpV/mxdYvyo5KgLNYPsDEom6n2IFagP9PQ=
 go.buf.build/openfga/go/openfga/api v1.2.44 h1:r6T3lSuFEDBWa0sx1Z1W8isINsVfSUCVxJQj1boeLUc=
 go.buf.build/openfga/go/openfga/api v1.2.44/go.mod h1:gkcP+Zq/lLcXi2GOpjzqecB5hCjwiZSfVq44NLbjJz4=
+go.buf.build/openfga/go/openfga/api v1.2.47 h1:aF7vgQNF/o0xrMXPqtXL3r01RP/loHXKf5Hc7569WYY=
+go.buf.build/openfga/go/openfga/api v1.2.47/go.mod h1:gkcP+Zq/lLcXi2GOpjzqecB5hCjwiZSfVq44NLbjJz4=
+go.buf.build/openfga/go/openfga/api v1.2.48 h1:KSfQdBRP8GuLEyceDG0XKxIlIGR7Dev19Pg47Fh2f0g=
+go.buf.build/openfga/go/openfga/api v1.2.48/go.mod h1:gkcP+Zq/lLcXi2GOpjzqecB5hCjwiZSfVq44NLbjJz4=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
