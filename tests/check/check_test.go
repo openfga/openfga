@@ -111,12 +111,13 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	ctx := context.Background()
 
 	for _, test := range tests.Tests {
+		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+		require.NoError(t, err)
+
+		storeID := resp.GetId()
+
 		for _, stage := range test.Stages {
 			t.Run(test.Name, func(t *testing.T) {
-				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-				require.NoError(t, err)
-
-				storeID := resp.GetId()
 
 				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,

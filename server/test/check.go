@@ -37,7 +37,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		response         *openfgapb.CheckResponse
 	}{
 		{
-			name:          "Success when a tuple with an invalid objectType exists in the store",
+			name:          "Success_when_a_tuple_with_an_invalid_objectType_exists_in_the_store",
 			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "document",
@@ -56,7 +56,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
-			name:          "Success when a tuple with an invalid relation exists in the store",
+			name:          "Success_when_a_tuple_with_an_invalid_relation_exists_in_the_store",
 			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "document",
@@ -430,7 +430,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
-			name:             "Error if * encountered in TupleToUserset evaluation",
+			name:             "Error_if_*_encountered_in_TupleToUserset_evaluation",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
@@ -476,7 +476,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
-			name:             "Error if * encountered in TTU evaluation including ContextualTuples",
+			name:             "Error_if_*_encountered_in_TTU_evaluation_including_ContextualTuples",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
@@ -526,7 +526,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			),
 		},
 		{
-			name:             "Error if rewrite encountered in tupleset relation",
+			name:             "Error_if_rewrite_encountered_in_tupleset_relation",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
 				TupleKey:         tuple.NewTupleKey("document:doc1", "viewer", "anne"),
@@ -557,7 +557,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//	relations
 			//		define parent as self
 			//		define viewer as viewer from parent
-			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
@@ -597,7 +597,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//	relations
 			//		define parent as self
 			//		define viewer as viewer from parent
-			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
