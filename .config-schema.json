@@ -184,6 +184,12 @@
                     "type": "string",
                     "enum": ["text", "json"],
                     "default": "text"
+                },
+                "level": {
+                    "description": "The log level to set. For production we recommend 'info' format.",
+                    "type": "string",
+                    "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
+                    "default": "info"
                 }
             }
         }
