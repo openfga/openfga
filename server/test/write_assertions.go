@@ -43,7 +43,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	var tests = []writeAssertionsTestSettings{
 		{
-			_name: "writing assertions succeeds",
+			_name: "writing_assertions_succeeds",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
@@ -57,7 +57,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
-			_name: "writing assertions succeeds when it is not directly assignable",
+			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
@@ -71,14 +71,14 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
-			_name: "writing empty assertions succeeds",
+			_name: "writing_empty_assertions_succeeds",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId:    store,
 				Assertions: []*openfgapb.Assertion{},
 			},
 		},
 		{
-			_name: "writing assertion with invalid relation fails",
+			_name: "writing_assertion_with_invalid_relation_fails",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{

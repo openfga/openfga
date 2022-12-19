@@ -255,7 +255,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Circular reference",
+			name: "Circular_reference",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -305,7 +305,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Cyclical parent/child definition",
+			name: "Cyclical_parent/child_definition",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -347,7 +347,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "No graph relationship connectivity",
+			name: "No_graph_relationship_connectivity",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -575,7 +575,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Undefined relation on one type involved in a tuple to userset",
+			name: "Undefined_relation_on_one_type_involved_in_a_tuple_to_userset",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -628,7 +628,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Nested group membership returns only top-level ingress",
+			name: "Nested_group_membership_returns_only_top-level_ingress",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -662,7 +662,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Ingresses for non-assignable relation",
+			name: "Ingresses_for_non-assignable_relation",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
