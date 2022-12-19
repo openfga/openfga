@@ -18,22 +18,25 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
 
 type checkTests struct {
-	Tests []checkTest
+	Tests []*checkTest
 }
 
 type checkTest struct {
 	Name   string
-	Stages []stage
+	Stages []*stage
 }
 
+// stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
 	Model      string
 	Tuples     []*pb.TupleKey
-	Assertions []assertion
+	Assertions []*assertion
+	Validation *validation
 }
 
 type assertion struct {
@@ -41,6 +44,12 @@ type assertion struct {
 	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	Trace            string
+}
+
+type validation struct {
+	Tuple            *pb.TupleKey
+	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
+	Code             int
 }
 
 func TestCheckMemory(t *testing.T) {
@@ -147,6 +156,21 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 					if assertion.Trace != "" {
 						require.Equal(t, assertion.Trace, resp.GetResolution())
 					}
+				}
+
+				if stage.Validation != nil {
+					_, err = client.Check(ctx, &pb.CheckRequest{
+						StoreId:  storeID,
+						TupleKey: stage.Validation.Tuple,
+						ContextualTuples: &pb.ContextualTupleKeys{
+							TupleKeys: stage.Validation.ContextualTuples,
+						},
+					})
+					require.Error(t, err)
+
+					e, ok := status.FromError(err)
+					require.True(t, ok)
+					require.Equal(t, stage.Validation.Code, int(e.Code()))
 				}
 			}
 		})
