@@ -131,8 +131,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		User:     "anne",
 	}
 	tuple := &openfgapb.Tuple{Key: tupleKey}
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).Return(tuple, nil)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).DoAndReturn(
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).AnyTimes().Return(tuple, nil)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
 			time.Sleep(50 * time.Millisecond)
 			return nil, errors.New("some error")
@@ -188,12 +189,13 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		User:     "*",
 	}
 	tuple := &openfgapb.Tuple{Key: tupleKey}
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).DoAndReturn(
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
 			time.Sleep(500 * time.Millisecond)
 			return nil, storage.ErrNotFound
 		})
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).DoAndReturn(
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).AnyTimes().DoAndReturn(
 		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
 			time.Sleep(100 * time.Millisecond)
 			return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
@@ -216,6 +218,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		AuthorizationModelId: modelID,
 	})
 	end := time.Since(start)
+	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
 	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
 	require.Equal(t, true, checkResponse.Allowed)
