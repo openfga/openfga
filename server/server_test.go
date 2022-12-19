@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/test"
@@ -296,7 +297,13 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "document").AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
+		ObjectType: "document",
+		Relation:   "viewer",
+		UserFilter: []*openfgapb.ObjectRelation{
+			{Object: "user:bob"},
+			{Object: tuple.Wildcard},
+		}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := Server{
 		datastore: mockDatastore,
@@ -308,6 +315,7 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 			ResolveNodeLimit:      25,
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
+			Experimentals:         []ExperimentalFeatureFlag{ListObjectsOptimized},
 		},
 	}
 
