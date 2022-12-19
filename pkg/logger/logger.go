@@ -2,7 +2,9 @@ package logger
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/openfga/openfga/internal/build"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -90,44 +92,57 @@ func NewNoopLogger() *ZapLogger {
 	}
 }
 
-func NewTextLogger() (*ZapLogger, error) {
-	config := zap.NewDevelopmentConfig()
-	config.Level = zap.NewAtomicLevelAt(zap.InfoLevel)
-	config.Encoding = "console"
-	config.DisableCaller = true
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	development, err := config.Build(zap.AddStacktrace(zap.ErrorLevel))
+func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
+	if logLevel == "none" {
+		return NewNoopLogger(), nil
+	}
+
+	var level zapcore.Level
+	switch logLevel {
+	case "debug":
+		level = zap.DebugLevel
+	case "info":
+		level = zap.InfoLevel
+	case "warn":
+		level = zap.WarnLevel
+	case "error":
+		level = zap.ErrorLevel
+	case "panic":
+		level = zap.PanicLevel
+	case "fatal":
+		level = zap.FatalLevel
+	default:
+		return nil, fmt.Errorf("unknown log level: %s", logLevel)
+	}
+
+	cfg := zap.NewProductionConfig()
+	cfg.Level = zap.NewAtomicLevelAt(level)
+
+	if logFormat == "text" {
+		cfg.Encoding = "console"
+		cfg.DisableCaller = true
+		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	}
+
+	log, err := cfg.Build()
 	if err != nil {
 		return nil, err
 	}
-	return &ZapLogger{
-		development,
-	}, nil
+
+	if logFormat == "json" {
+		log = log.With(zap.String("build.version", build.Version), zap.String("build.commit", build.Commit))
+	}
+
+	return &ZapLogger{log}, nil
 }
 
-func MustNewTextLogger() *ZapLogger {
-	logger, err := NewTextLogger()
+func MustNewLogger(logFormat, logLevel string) *ZapLogger {
+	logger, err := NewLogger(logFormat, logLevel)
 	if err != nil {
 		panic(err)
 	}
-	return logger
-}
 
-func NewJSONLogger() (*ZapLogger, error) {
-	production, err := zap.NewProduction()
-	if err != nil {
-		return nil, err
-	}
-	return &ZapLogger{
-		production,
-	}, nil
-}
-
-func MustNewJSONLogger() *ZapLogger {
-	logger, err := NewJSONLogger()
-	if err != nil {
-		panic(err)
-	}
 	return logger
 }
 

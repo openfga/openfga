@@ -215,7 +215,7 @@ type authTest struct {
 }
 
 func TestVerifyConfig(t *testing.T) {
-	t.Run("UpstreamTimeout cannot be less than ListObjectsDeadline", func(t *testing.T) {
+	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute
 		cfg.HTTP.UpstreamTimeout = 2 * time.Second
@@ -224,7 +224,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
 	})
 
-	t.Run("failing to set http cert path will not allow server to start", func(t *testing.T) {
+	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{
 			Enabled: true,
@@ -235,7 +235,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
 	})
 
-	t.Run("failing to set grpc cert path will not allow server to start", func(t *testing.T) {
+	t.Run("failing_to_set_grpc_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled: true,
@@ -246,7 +246,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 	})
 
-	t.Run("failing to set http key path will not allow server to start", func(t *testing.T) {
+	t.Run("failing_to_set_http_key_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.HTTP.TLS = &TLSConfig{
 			Enabled:  true,
@@ -257,7 +257,7 @@ func TestVerifyConfig(t *testing.T) {
 		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
 	})
 
-	t.Run("failing to set grpc key path will not allow server to start", func(t *testing.T) {
+	t.Run("failing_to_set_grpc_key_path_will_not_allow_server_to_start", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
@@ -266,6 +266,22 @@ func TestVerifyConfig(t *testing.T) {
 
 		err := VerifyConfig(cfg)
 		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
+	})
+
+	t.Run("non_log_format", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Format = "notaformat"
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("non_log_level", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "notalevel"
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
 	})
 }
 
@@ -321,7 +337,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 
 	tests := []authTest{{
-		_name:      "Header with incorrect key fails",
+		_name:      "Header_with_incorrect_key_fails",
 		authHeader: "Bearer incorrectkey",
 		expectedErrorResponse: &serverErrors.ErrorResponse{
 			Code:    "unauthenticated",
@@ -329,7 +345,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		},
 		expectedStatusCode: 401,
 	}, {
-		_name:      "Missing header fails",
+		_name:      "Missing_header_fails",
 		authHeader: "",
 		expectedErrorResponse: &serverErrors.ErrorResponse{
 			Code:    "bearer_token_missing",
@@ -337,11 +353,11 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 		},
 		expectedStatusCode: 401,
 	}, {
-		_name:              "Correct key one succeeds",
+		_name:              "Correct_key_one_succeeds",
 		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[0]),
 		expectedStatusCode: 200,
 	}, {
-		_name:              "Correct key two succeeds",
+		_name:              "Correct_key_two_succeeds",
 		authHeader:         fmt.Sprintf("Bearer %s", cfg.Authn.AuthnPresharedKeyConfig.Keys[1]),
 		expectedStatusCode: 200,
 	}}
@@ -458,7 +474,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 		want want
 	}{
 		{
-			name: "Good Origin",
+			name: "Good_Origin",
 			args: args{
 				origin: "http://localhost",
 				header: "Authorization, X-Custom-Header",
@@ -469,7 +485,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad Origin",
+			name: "Bad_Origin",
 			args: args{
 				origin: "http://openfga.example",
 				header: "X-Custom-Header",
@@ -480,7 +496,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 			},
 		},
 		{
-			name: "Bad Header",
+			name: "Bad_Header",
 			args: args{
 				origin: "http://localhost",
 				header: "Bad-Custom-Header",
@@ -549,7 +565,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
 	tests := []authTest{
 		{
-			_name:      "Header with invalid token fails",
+			_name:      "Header_with_invalid_token_fails",
 			authHeader: "Bearer incorrecttoken",
 			expectedErrorResponse: &serverErrors.ErrorResponse{
 				Code:    "auth_failed_invalid_bearer_token",
@@ -558,7 +574,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			expectedStatusCode: 401,
 		},
 		{
-			_name:      "Missing header fails",
+			_name:      "Missing_header_fails",
 			authHeader: "",
 			expectedErrorResponse: &serverErrors.ErrorResponse{
 				Code:    "bearer_token_missing",
@@ -567,7 +583,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 			expectedStatusCode: 401,
 		},
 		{
-			_name:              "Correct token succeeds",
+			_name:              "Correct_token_succeeds",
 			authHeader:         "Bearer " + trustedToken,
 			expectedStatusCode: 200,
 		},
@@ -586,7 +602,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 }
 
 func TestHTTPServingTLS(t *testing.T) {
-	t.Run("enable HTTP TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
+	t.Run("enable_HTTP_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
@@ -608,7 +624,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
 	})
 
-	t.Run("enable HTTP TLS is true will serve HTTP TLS", func(t *testing.T) {
+	t.Run("enable_HTTP_TLS_is_true_will_serve_HTTP_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
@@ -644,7 +660,7 @@ func TestHTTPServingTLS(t *testing.T) {
 }
 
 func TestGRPCServingTLS(t *testing.T) {
-	t.Run("enable grpc TLS is false, even with keys set, will serve plaintext", func(t *testing.T) {
+	t.Run("enable_grpc_TLS_is_false,_even_with_keys_set,_will_serve_plaintext", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
@@ -667,7 +683,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
 	})
 
-	t.Run("enable grpc TLS is true will serve grpc TLS", func(t *testing.T) {
+	t.Run("enable_grpc_TLS_is_true_will_serve_grpc_TLS", func(t *testing.T) {
 		certsAndKeys := createCertsAndKeys(t)
 		defer certsAndKeys.Clean()
 
