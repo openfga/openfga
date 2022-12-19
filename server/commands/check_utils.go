@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/openfga/openfga/internal/contextualtuples"
+	"github.com/openfga/openfga/internal/utils"
+	"github.com/openfga/openfga/internal/validation"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/utils"
-	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -195,7 +197,7 @@ func (u *userSet) Get(value string) (resolutionTracer, bool) {
 	var found bool
 	var rt resolutionTracer
 	if rt, found = u.u[value]; !found {
-		if rt, found = u.u[AllUsers]; !found {
+		if rt, found = u.u[tupleUtils.Wildcard]; !found {
 			return nil, false
 		}
 	}
@@ -269,21 +271,21 @@ func (sc *circuitBreaker) IsOpen() bool {
 
 type resolutionContext struct {
 	store            string
-	modelID          string
+	model            *openfgapb.AuthorizationModel
 	users            *userSet
 	targetUser       string
 	tk               *openfgapb.TupleKey
-	contextualTuples *contextualTuples
+	contextualTuples *contextualtuples.ContextualTuples
 	tracer           resolutionTracer
 	metadata         *utils.ResolutionMetadata
 	internalCB       *circuitBreaker // Opens if the user is found, controlled internally. Primarily used for UNION.
 	externalCB       *circuitBreaker // Open is controlled from caller, Used for Difference and Intersection.
 }
 
-func newResolutionContext(store, modelID string, tk *openfgapb.TupleKey, contextualTuples *contextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
+func newResolutionContext(store string, model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey, contextualTuples *contextualtuples.ContextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
 	return &resolutionContext{
 		store:            store,
-		modelID:          modelID,
+		model:            model,
 		users:            newUserSet(),
 		targetUser:       tk.GetUser(),
 		tk:               tk,
@@ -322,7 +324,7 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 
 	return &resolutionContext{
 		store:            rc.store,
-		modelID:          rc.modelID,
+		model:            rc.model,
 		users:            rc.users,
 		targetUser:       rc.targetUser,
 		tk:               tk,
@@ -335,22 +337,33 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 }
 
 func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.TupleBackend) (*openfgapb.TupleKey, error) {
-	tk, ok := rc.contextualTuples.readUserTuple(rc.tk)
-	if ok {
-		return tk, nil
+
+	typesys := typesystem.New(rc.model)
+
+	tk, ok := rc.contextualTuples.ReadUserTuple(rc.tk)
+
+	if tk != nil {
+		err := validation.ValidateTuple(typesys, tk)
+		if err == nil && ok {
+			return tk, nil
+		}
 	}
 
-	rc.metadata.AddReadCall()
 	tuple, err := backend.ReadUserTuple(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
 	}
-	return tuple.GetKey(), nil
+
+	tk = tuple.GetKey()
+	if err := validation.ValidateTuple(typesys, tk); err != nil {
+		return nil, nil
+	}
+
+	return tk, nil
 }
 
 func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (storage.TupleKeyIterator, error) {
-	cUsersetTuples := rc.contextualTuples.readUsersetTuples(rc.tk)
-	rc.metadata.AddReadCall()
+	cUsersetTuples := rc.contextualTuples.ReadUsersetTuples(rc.tk)
 	usersetTuples, err := backend.ReadUsersetTuples(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
@@ -359,12 +372,14 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 	iter1 := storage.NewStaticTupleKeyIterator(cUsersetTuples)
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(usersetTuples)
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
+	return storage.NewFilteredTupleKeyIterator(
+		storage.NewCombinedIterator(iter1, iter2),
+		validation.FilterInvalidTuples(rc.model),
+	), nil
 }
 
 func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBackend, tk *openfgapb.TupleKey) (storage.TupleKeyIterator, error) {
-	cTuples := rc.contextualTuples.read(tk)
-	rc.metadata.AddReadCall()
+	cTuples := rc.contextualTuples.Read(tk)
 	tuples, err := backend.Read(ctx, rc.store, tk)
 	if err != nil {
 		return nil, err
@@ -373,65 +388,8 @@ func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBack
 	iter1 := storage.NewStaticTupleKeyIterator(cTuples)
 	iter2 := storage.NewTupleKeyIteratorFromTupleIterator(tuples)
 
-	return storage.NewCombinedIterator(iter1, iter2), nil
-}
-
-type contextualTuples struct {
-	usersets map[string][]*openfgapb.TupleKey
-}
-
-func (c *contextualTuples) read(tk *openfgapb.TupleKey) []*openfgapb.TupleKey {
-	return c.usersets[tupleUtils.ToObjectRelationString(tk.GetObject(), tk.GetRelation())]
-}
-
-func (c *contextualTuples) readUserTuple(tk *openfgapb.TupleKey) (*openfgapb.TupleKey, bool) {
-	tuples := c.usersets[tupleUtils.ToObjectRelationString(tk.GetObject(), tk.GetRelation())]
-	for _, t := range tuples {
-		if t.GetUser() == tk.GetUser() {
-			return t, true
-		}
-	}
-	return nil, false
-}
-
-func (c *contextualTuples) readUsersetTuples(tk *openfgapb.TupleKey) []*openfgapb.TupleKey {
-	tuples := c.usersets[tupleUtils.ToObjectRelationString(tk.GetObject(), tk.GetRelation())]
-
-	var res []*openfgapb.TupleKey
-	for _, t := range tuples {
-		if tupleUtils.GetUserTypeFromUser(t.GetUser()) == tupleUtils.UserSet {
-			res = append(res, t)
-		}
-	}
-	return res
-}
-
-func validateAndPreprocessTuples(keyToCheck *openfgapb.TupleKey, tupleKeys []*openfgapb.TupleKey) (*contextualTuples, error) {
-	if keyToCheck.GetUser() == "" || keyToCheck.GetRelation() == "" || keyToCheck.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
-	}
-	if !tupleUtils.IsValidUser(keyToCheck.GetUser()) {
-		return nil, serverErrors.InvalidUser(keyToCheck.GetUser())
-	}
-
-	tupleMap := map[string]struct{}{}
-	usersets := map[string][]*openfgapb.TupleKey{}
-	for _, tk := range tupleKeys {
-		if _, ok := tupleMap[tk.String()]; ok {
-			return nil, serverErrors.DuplicateContextualTuple(tk)
-		}
-		tupleMap[tk.String()] = struct{}{}
-
-		if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-			return nil, serverErrors.InvalidContextualTuple(tk)
-		}
-		if !tupleUtils.IsValidUser(tk.GetUser()) {
-			return nil, serverErrors.InvalidUser(tk.GetUser())
-		}
-
-		key := tupleUtils.ToObjectRelationString(tk.GetObject(), tk.GetRelation())
-		usersets[key] = append(usersets[key], tk)
-	}
-
-	return &contextualTuples{usersets: usersets}, nil
+	return storage.NewFilteredTupleKeyIterator(
+		storage.NewCombinedIterator(iter1, iter2),
+		validation.FilterInvalidTuples(rc.model),
+	), nil
 }

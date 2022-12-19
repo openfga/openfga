@@ -38,18 +38,18 @@ func (m *MockIterator[T]) EXPECT() *MockIteratorMockRecorder[T] {
 }
 
 // Next mocks base method.
-func (m *MockIterator[T]) Next() (T, error) {
+func (m *MockIterator[T]) Next(ctx context.Context) (T, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Next")
+	ret := m.ctrl.Call(m, "Next", ctx)
 	ret0, _ := ret[0].(T)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Next indicates an expected call of Next.
-func (mr *MockIteratorMockRecorder[T]) Next() *gomock.Call {
+func (mr *MockIteratorMockRecorder[T]) Next(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockIterator[T])(nil).Next))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockIterator[T])(nil).Next), ctx)
 }
 
 // Stop mocks base method.
@@ -102,18 +102,18 @@ func (mr *MockTupleBackendMockRecorder) ListObjectsByType(ctx, store, objectType
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockTupleBackend)(nil).ListObjectsByType), ctx, store, objectType)
 }
 
-// MaxTuplesInWriteOperation mocks base method.
-func (m *MockTupleBackend) MaxTuplesInWriteOperation() int {
+// MaxTuplesPerWrite mocks base method.
+func (m *MockTupleBackend) MaxTuplesPerWrite() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxTuplesInWriteOperation")
+	ret := m.ctrl.Call(m, "MaxTuplesPerWrite")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// MaxTuplesInWriteOperation indicates an expected call of MaxTuplesInWriteOperation.
-func (mr *MockTupleBackendMockRecorder) MaxTuplesInWriteOperation() *gomock.Call {
+// MaxTuplesPerWrite indicates an expected call of MaxTuplesPerWrite.
+func (mr *MockTupleBackendMockRecorder) MaxTuplesPerWrite() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesInWriteOperation", reflect.TypeOf((*MockTupleBackend)(nil).MaxTuplesInWriteOperation))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesPerWrite", reflect.TypeOf((*MockTupleBackend)(nil).MaxTuplesPerWrite))
 }
 
 // Read mocks base method.
@@ -129,22 +129,6 @@ func (m *MockTupleBackend) Read(arg0 context.Context, arg1 string, arg2 *openfga
 func (mr *MockTupleBackendMockRecorder) Read(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockTupleBackend)(nil).Read), arg0, arg1, arg2)
-}
-
-// ReadByStore mocks base method.
-func (m *MockTupleBackend) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadByStore", ctx, store, opts)
-	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadByStore indicates an expected call of ReadByStore.
-func (mr *MockTupleBackendMockRecorder) ReadByStore(ctx, store, opts interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadByStore", reflect.TypeOf((*MockTupleBackend)(nil).ReadByStore), ctx, store, opts)
 }
 
 // ReadPage mocks base method.
@@ -352,18 +336,18 @@ func (m *MockTypeDefinitionWriteBackend) EXPECT() *MockTypeDefinitionWriteBacken
 	return m.recorder
 }
 
-// MaxTypesInTypeDefinition mocks base method.
-func (m *MockTypeDefinitionWriteBackend) MaxTypesInTypeDefinition() int {
+// MaxTypesPerAuthorizationModel mocks base method.
+func (m *MockTypeDefinitionWriteBackend) MaxTypesPerAuthorizationModel() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxTypesInTypeDefinition")
+	ret := m.ctrl.Call(m, "MaxTypesPerAuthorizationModel")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// MaxTypesInTypeDefinition indicates an expected call of MaxTypesInTypeDefinition.
-func (mr *MockTypeDefinitionWriteBackendMockRecorder) MaxTypesInTypeDefinition() *gomock.Call {
+// MaxTypesPerAuthorizationModel indicates an expected call of MaxTypesPerAuthorizationModel.
+func (mr *MockTypeDefinitionWriteBackendMockRecorder) MaxTypesPerAuthorizationModel() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesInTypeDefinition", reflect.TypeOf((*MockTypeDefinitionWriteBackend)(nil).MaxTypesInTypeDefinition))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesPerAuthorizationModel", reflect.TypeOf((*MockTypeDefinitionWriteBackend)(nil).MaxTypesPerAuthorizationModel))
 }
 
 // WriteAuthorizationModel mocks base method.
@@ -418,18 +402,18 @@ func (mr *MockAuthorizationModelBackendMockRecorder) FindLatestAuthorizationMode
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindLatestAuthorizationModelID", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).FindLatestAuthorizationModelID), ctx, store)
 }
 
-// MaxTypesInTypeDefinition mocks base method.
-func (m *MockAuthorizationModelBackend) MaxTypesInTypeDefinition() int {
+// MaxTypesPerAuthorizationModel mocks base method.
+func (m *MockAuthorizationModelBackend) MaxTypesPerAuthorizationModel() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxTypesInTypeDefinition")
+	ret := m.ctrl.Call(m, "MaxTypesPerAuthorizationModel")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// MaxTypesInTypeDefinition indicates an expected call of MaxTypesInTypeDefinition.
-func (mr *MockAuthorizationModelBackendMockRecorder) MaxTypesInTypeDefinition() *gomock.Call {
+// MaxTypesPerAuthorizationModel indicates an expected call of MaxTypesPerAuthorizationModel.
+func (mr *MockAuthorizationModelBackendMockRecorder) MaxTypesPerAuthorizationModel() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesInTypeDefinition", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).MaxTypesInTypeDefinition))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesPerAuthorizationModel", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).MaxTypesPerAuthorizationModel))
 }
 
 // ReadAuthorizationModel mocks base method.
@@ -690,17 +674,15 @@ func (m *MockOpenFGADatastore) EXPECT() *MockOpenFGADatastoreMockRecorder {
 }
 
 // Close mocks base method.
-func (m *MockOpenFGADatastore) Close(ctx context.Context) error {
+func (m *MockOpenFGADatastore) Close() {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Close", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
+	m.ctrl.Call(m, "Close")
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockOpenFGADatastoreMockRecorder) Close(ctx interface{}) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockOpenFGADatastore)(nil).Close))
 }
 
 // CreateStore mocks base method.
@@ -808,32 +790,32 @@ func (mr *MockOpenFGADatastoreMockRecorder) ListStores(ctx, paginationOptions in
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockOpenFGADatastore)(nil).ListStores), ctx, paginationOptions)
 }
 
-// MaxTuplesInWriteOperation mocks base method.
-func (m *MockOpenFGADatastore) MaxTuplesInWriteOperation() int {
+// MaxTuplesPerWrite mocks base method.
+func (m *MockOpenFGADatastore) MaxTuplesPerWrite() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxTuplesInWriteOperation")
+	ret := m.ctrl.Call(m, "MaxTuplesPerWrite")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// MaxTuplesInWriteOperation indicates an expected call of MaxTuplesInWriteOperation.
-func (mr *MockOpenFGADatastoreMockRecorder) MaxTuplesInWriteOperation() *gomock.Call {
+// MaxTuplesPerWrite indicates an expected call of MaxTuplesPerWrite.
+func (mr *MockOpenFGADatastoreMockRecorder) MaxTuplesPerWrite() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesInWriteOperation", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTuplesInWriteOperation))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesPerWrite", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTuplesPerWrite))
 }
 
-// MaxTypesInTypeDefinition mocks base method.
-func (m *MockOpenFGADatastore) MaxTypesInTypeDefinition() int {
+// MaxTypesPerAuthorizationModel mocks base method.
+func (m *MockOpenFGADatastore) MaxTypesPerAuthorizationModel() int {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MaxTypesInTypeDefinition")
+	ret := m.ctrl.Call(m, "MaxTypesPerAuthorizationModel")
 	ret0, _ := ret[0].(int)
 	return ret0
 }
 
-// MaxTypesInTypeDefinition indicates an expected call of MaxTypesInTypeDefinition.
-func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesInTypeDefinition() *gomock.Call {
+// MaxTypesPerAuthorizationModel indicates an expected call of MaxTypesPerAuthorizationModel.
+func (mr *MockOpenFGADatastoreMockRecorder) MaxTypesPerAuthorizationModel() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesInTypeDefinition", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTypesInTypeDefinition))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTypesPerAuthorizationModel", reflect.TypeOf((*MockOpenFGADatastore)(nil).MaxTypesPerAuthorizationModel))
 }
 
 // Read mocks base method.
@@ -895,22 +877,6 @@ func (m *MockOpenFGADatastore) ReadAuthorizationModels(ctx context.Context, stor
 func (mr *MockOpenFGADatastoreMockRecorder) ReadAuthorizationModels(ctx, store, options interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadAuthorizationModels), ctx, store, options)
-}
-
-// ReadByStore mocks base method.
-func (m *MockOpenFGADatastore) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadByStore", ctx, store, opts)
-	ret0, _ := ret[0].([]*openfgav1.Tuple)
-	ret1, _ := ret[1].([]byte)
-	ret2, _ := ret[2].(error)
-	return ret0, ret1, ret2
-}
-
-// ReadByStore indicates an expected call of ReadByStore.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadByStore(ctx, store, opts interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadByStore", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadByStore), ctx, store, opts)
 }
 
 // ReadChanges mocks base method.

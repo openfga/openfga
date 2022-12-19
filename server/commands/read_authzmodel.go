@@ -2,10 +2,9 @@ package commands
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -21,10 +20,9 @@ func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBacken
 	return &ReadAuthorizationModelQuery{backend: backend, logger: logger}
 }
 
-func (query *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
-	utils.LogDBStats(ctx, query.logger, "ReadAuthzModel", 1, 0)
+func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	modelID := req.GetId()
-	azm, err := query.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
+	azm, err := q.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)

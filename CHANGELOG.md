@@ -7,7 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Try to keep listed changes to a concise bulleted list of simple explanations of changes. Aim for the amount of information needed so that readers can understand where they would look in the codebase to investigate the changes' implementation, or where they would look in the documentation to understand how to make use of the change in practice - better yet, link directly to the docs and provide detailed information there. Only elaborate if doing so is required to avoid breaking changes or experimental features from ruining someone's day.
 
 ## [Unreleased]
+
+## [0.3.0] - 2002-12-12
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.2.5...v0.3.0)
+
+This release comes with a few big changes:
+
+### Support for [v1.1 JSON Schema](https://github.com/openfga/rfcs/blob/feat/add-type-restrictions-to-json-syntax/20220831-add-type-restrictions-to-json-syntax.md)
+
+- You can now write your models in the [new DSL](https://github.com/openfga/rfcs/blob/type-restriction-dsl/20221012-add-type-restrictions-to-dsl-syntax.md)
+which the Playground and the [syntax transformer](https://github.com/openfga/syntax-transformer) can convert to the
+JSON syntax. Schema v1.1 allows for adding type restrictions to each assignable relation, and it can be used to
+indicate cases such as "The folder's parent must be a folder" (and so not a user or a document).
+  - This change also comes with breaking changes to how `*` and `<type>:*` are treated:
+  - `<type>:*` is interpreted differently according to the model version. v1.0 will interpret it as a object of type
+    `<type>` and id `*`, whereas v1.1 will interpret is as all objects of type `<type>`.
+  - `*` is still supported in v1.0 models, but not supported in v1.1 models. A validation error will be thrown when
+    used in checks or writes and it will be ignored when evaluating.
+- Additionally, the change to v1.1 models allows us to provide more consistent validation when writing the model
+instead of when issuing checks.
+
+:warning: Note that with this release **models with schema version 1.0 are now considered deprecated**, with the plan to
+drop support for them over the next couple of months, please migrate to version 1.1 when you can. Read more about
+[migrating to the new syntax](https://openfga.dev/docs/modeling/migrating/migrating-schema-1-1).
+
+### ListObjects changes
+
+The response has changed to include the object type, for example:
+```json
+{ "object_ids": [ "a", "b", "c" ] }
+```
+to
+```json
+{ "objects": [ "document:a", "document:b", "document:c" ] }
+```
+
+We have also improved validation and fixed support for Contextual Tuples that were causing inaccurate responses to be
+returned.
+
+### ReadTuples deprecation
+
+:warning:This endpoint is now marked as deprecated, and support for it will be dropped shortly. Please use Read with
+no tuple key instead.
+
+
+## [0.2.5] - 2022-11-07
+### Security
+* Patches [CVE-2022-39352](https://github.com/openfga/openfga/security/advisories/GHSA-3gfj-fxx4-f22w)
+
 ### Added
+* Multi-platform container build manifests to releases (#323)
+
+### Fixed
+* Read RPC returns correct error when authorization model id is not found (#312)
+* Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` (#315)
+
+## [0.2.4] - 2022-10-24
+### Security
+* Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
+
+### Fixed
+* TLS certificate config path mappings (#285)
+* Error message when a `user` field is invalid (#278)
+* host:port mapping with unspecified host (#275)
+* Wait for connection to postgres before starting (#270)
+
+
+### Added
+* Update Go to 1.19
 
 ## [0.2.3] - 2022-10-05
 ### Added
@@ -149,7 +217,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
+[0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
+[0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
 [0.2.3]: https://github.com/openfga/openfga/releases/tag/v0.2.3
 [0.2.2]: https://github.com/openfga/openfga/releases/tag/v0.2.2
 [0.2.1]: https://github.com/openfga/openfga/releases/tag/v0.2.1

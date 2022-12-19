@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -15,9 +15,9 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	ctx := context.Background()
 
-	t.Run("writing and reading assertions succeeds", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		modelID := id.Must(id.New()).String()
+	t.Run("writing_and_reading_assertions_succeeds", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 		assertions := []*openfgapb.Assertion{
 			{
 				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
@@ -40,9 +40,9 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("writing twice overwrites assertions", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		modelID := id.Must(id.New()).String()
+	t.Run("writing_twice_overwrites_assertions", func(t *testing.T) {
+		store := ulid.Make().String()
+		modelID := ulid.Make().String()
 		assertions := []*openfgapb.Assertion{{TupleKey: &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
 
 		err := datastore.WriteAssertions(ctx, store, modelID, []*openfgapb.Assertion{
@@ -64,10 +64,10 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("writing to one modelID and reading from other returns nothing", func(t *testing.T) {
-		store := id.Must(id.New()).String()
-		oldModelID := id.Must(id.New()).String()
-		newModelID := id.Must(id.New()).String()
+	t.Run("writing_to_one_modelID_and_reading_from_other_returns_nothing", func(t *testing.T) {
+		store := ulid.Make().String()
+		oldModelID := ulid.Make().String()
+		newModelID := ulid.Make().String()
 		assertions := []*openfgapb.Assertion{
 			{
 				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},

@@ -2,15 +2,15 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -30,6 +30,12 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
 					"reader": {Userset: &openfgapb.Userset_This{}},
+					"can_read": {
+						Userset: &openfgapb.Userset_ComputedUserset{
+							ComputedUserset: &openfgapb.ObjectRelation{
+								Relation: "reader",
+							},
+						}},
 				},
 			},
 		},
@@ -37,7 +43,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	var tests = []writeAssertionsTestSettings{
 		{
-			_name: "writing assertions succeeds",
+			_name: "writing_assertions_succeeds",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
@@ -51,14 +57,28 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 		{
-			_name: "writing empty assertions succeeds",
+			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
+			request: &openfgapb.WriteAssertionsRequest{
+				StoreId: store,
+				Assertions: []*openfgapb.Assertion{{
+					TupleKey: &openfgapb.TupleKey{
+						Object:   "repo:test",
+						Relation: "can_read",
+						User:     "elbuo",
+					},
+					Expectation: false,
+				}},
+			},
+		},
+		{
+			_name: "writing_empty_assertions_succeeds",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId:    store,
 				Assertions: []*openfgapb.Assertion{},
 			},
 		},
 		{
-			_name: "writing assertion with invalid relation fails",
+			_name: "writing_assertion_with_invalid_relation_fails",
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{
@@ -72,11 +92,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 					},
 				},
 			},
-			err: serverErrors.RelationNotFound("invalidrelation", "repo", &openfgapb.TupleKey{
-				Object:   "repo:test",
-				Relation: "invalidrelation",
-				User:     "elbuo",
-			}),
+			err: serverErrors.ValidationError(fmt.Errorf("relation 'repo#invalidrelation' not found")),
 		},
 	}
 
@@ -94,9 +110,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)
-			if diff := cmp.Diff(err, test.err, cmpopts.EquateErrors()); diff != "" {
-				t.Fatalf("mismatch (-got +want):\n%s", diff)
-			}
+			require.ErrorIs(t, test.err, err)
 		})
 	}
 }

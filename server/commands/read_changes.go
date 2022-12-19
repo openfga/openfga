@@ -7,7 +7,6 @@ import (
 
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -40,7 +39,6 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 		return nil, serverErrors.InvalidContinuationToken
 	}
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
-	utils.LogDBStats(ctx, q.logger, "ReadChanges", 1, 0)
 
 	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
 	if err != nil {

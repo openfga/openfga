@@ -18,29 +18,29 @@ func TestSplitObjectId(t *testing.T) {
 			name: "empty",
 		},
 		{
-			name:         "type only",
+			name:         "type_only",
 			objectID:     "foo:",
 			expectedType: "foo",
 		},
 		{
-			name:        "no separator",
+			name:        "no_separator",
 			objectID:    "foo",
 			expectedOID: "foo",
 		},
 		{
-			name:         "missing type",
+			name:         "missing_type",
 			objectID:     ":foo",
 			expectedType: "",
 			expectedOID:  "foo",
 		},
 		{
-			name:         "valid input",
+			name:         "valid_input",
 			objectID:     "foo:bar",
 			expectedType: "foo",
 			expectedOID:  "bar",
 		},
 		{
-			name:         "separator in OID",
+			name:         "separator_in_OID",
 			objectID:     "url:https://bar/baz",
 			expectedType: "url",
 			expectedOID:  "https://bar/baz",
@@ -78,23 +78,23 @@ func TestSplitObjectRelation(t *testing.T) {
 			name: "empty",
 		},
 		{
-			name:           "userset with no separator",
+			name:           "userset_with_no_separator",
 			objectRelation: "github|foo@bar.com",
 			expectedObject: "github|foo@bar.com",
 		},
 		{
-			name:             "valid input",
+			name:             "valid_input",
 			objectRelation:   "foo:bar#baz",
 			expectedObject:   "foo:bar",
 			expectedRelation: "baz",
 		},
 		{
-			name:           "trailing separator",
+			name:           "trailing_separator",
 			objectRelation: "foo:bar#",
 			expectedObject: "foo:bar",
 		},
 		{
-			name:             "# in objectid",
+			name:             "#_in_objectid",
 			objectRelation:   "foo:bar#baz#reader",
 			expectedObject:   "foo:bar#baz",
 			expectedRelation: "reader",
@@ -124,12 +124,12 @@ func TestIsObjectRelation(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:           "invalid object (missing type)",
+			name:           "invalid_object_(missing_type)",
 			objectRelation: "foo#bar",
 			expected:       false,
 		},
 		{
-			name:           "user literal",
+			name:           "user_literal",
 			objectRelation: "github|foo@bar.com",
 			expected:       false,
 		},
@@ -219,6 +219,47 @@ func TestIsValidRelation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildObject(t *testing.T) {
+	require.Equal(t, "document:1", BuildObject("document", "1"))
+	require.Equal(t, ":", BuildObject("", ""))
+}
+
+func TestGetType(t *testing.T) {
+	require.Equal(t, "document", GetType("document:1"))
+	require.Equal(t, "", GetType("doc"))
+	require.Equal(t, "", GetType(":"))
+	require.Equal(t, "", GetType(""))
+}
+
+func TestToObjectRelationString(t *testing.T) {
+	require.Equal(t, "document:1#viewer", ToObjectRelationString("document:1", "viewer"))
+	require.Equal(t, "#viewer", ToObjectRelationString("", "viewer"))
+	require.Equal(t, "#", ToObjectRelationString("", ""))
+}
+
+func TestTupleKeyToString(t *testing.T) {
+	require.Equal(t, "document:1#viewer@jon", TupleKeyToString(NewTupleKey("document:1", "viewer", "jon")))
+	require.Equal(t, "document:1#viewer@user:bob", TupleKeyToString(NewTupleKey("document:1", "viewer", "user:bob")))
+	require.Equal(t, "document:1#viewer@", TupleKeyToString(NewTupleKey("document:1", "viewer", "")))
+	require.Equal(t, "document:1#@jon", TupleKeyToString(NewTupleKey("document:1", "", "jon")))
+	require.Equal(t, "#viewer@jon", TupleKeyToString(NewTupleKey("", "viewer", "jon")))
+	require.Equal(t, "#@", TupleKeyToString(NewTupleKey("", "", "")))
+}
+
+func TestIsWildcard(t *testing.T) {
+	require.Equal(t, true, IsWildcard("*"))
+	require.Equal(t, true, IsWildcard("user:*"))
+	require.Equal(t, false, IsWildcard("user:jon"))
+	require.Equal(t, false, IsWildcard("jon"))
+}
+
+func TestIsTypedWildcard(t *testing.T) {
+	require.Equal(t, false, IsTypedWildcard("*"))
+	require.Equal(t, true, IsTypedWildcard("user:*"))
+	require.Equal(t, false, IsTypedWildcard("user:jon"))
+	require.Equal(t, false, IsTypedWildcard("jon"))
 }
 
 func TestIsValidUser(t *testing.T) {

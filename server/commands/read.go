@@ -2,12 +2,11 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -36,26 +35,29 @@ func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logge
 	}
 }
 
-// Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tupleset
+// Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tuple. Return all tuples if the tuple is
+// nil or empty.
 func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
 	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	tk := req.GetTupleKey()
+
+	// Restrict our reads due to some compatibility issues in one of our storage implementations.
+	if tk != nil {
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		if objectType == "" || (objectID == "" && tk.GetUser() == "") {
+			return nil, serverErrors.ValidationError(
+				fmt.Errorf("the 'tuple_key' field was provided but the object type field is required and both the object id and user cannot be empty"),
+			)
+		}
+	}
 
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
 	}
+
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
-	dbCallsCounter := utils.NewDBCallCounter()
-	if err := q.validateAndAuthenticateTupleset(ctx, store, modelID, tk, dbCallsCounter); err != nil {
-		utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
-		return nil, err
-	}
-
-	dbCallsCounter.AddReadCall()
-	utils.LogDBStats(ctx, q.logger, "Read", dbCallsCounter.GetReadCalls(), 0)
 	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
@@ -70,38 +72,4 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		Tuples:            tuples,
 		ContinuationToken: encodedContToken,
 	}, nil
-}
-
-func (q *ReadQuery) validateAndAuthenticateTupleset(ctx context.Context, store, authorizationModelID string, tupleKey *openfgapb.TupleKey, rwCounter utils.DBCallCounter) error {
-	ctx, span := q.tracer.Start(ctx, "validateAndAuthenticateTupleset")
-	defer span.End()
-
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	if objectType == "" {
-		return serverErrors.InvalidTupleSet
-	}
-
-	// at this point we "think" we have a type. before a backend query, we validate things we can check locally
-	if objectID == "" && tupleKey.GetUser() == "" {
-		return serverErrors.InvalidTuple("missing objectID and user", tupleKey)
-	}
-
-	rwCounter.AddReadCall()
-
-	ns, err := q.datastore.ReadTypeDefinition(ctx, store, authorizationModelID, objectType)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.TypeNotFound(objectType)
-		}
-		return serverErrors.HandleError("", err)
-	}
-
-	if tupleKey.GetRelation() != "" {
-		_, ok := ns.Relations[tupleKey.GetRelation()]
-		if !ok {
-			return serverErrors.RelationNotFound(tupleKey.GetRelation(), ns.GetType(), tupleKey)
-		}
-	}
-
-	return nil
 }

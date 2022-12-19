@@ -15,6 +15,8 @@ const (
 	UserSet UserType = "userset"
 )
 
+const Wildcard = "*"
+
 var (
 	userIDRegex   = regexp.MustCompile(`^[^:#\s]+$`)
 	objectRegex   = regexp.MustCompile(`^[^:#\s]+:[^#:\s]+$`)
@@ -73,8 +75,8 @@ func GetType(objectID string) string {
 	return t
 }
 
-// GetRelation returns the 'relation' portion of an object relation string, which may be empty if the input is malformed
-// (or does not contain a relation specifier).
+// GetRelation returns the 'relation' portion of an object relation string (e.g. `object#relation`), which may be empty if the input is malformed
+// (or does not contain a relation).
 func GetRelation(objectRelation string) string {
 	_, relation := SplitObjectRelation(objectRelation)
 	return relation
@@ -85,12 +87,6 @@ func IsObjectRelation(userset string) bool {
 	return GetType(userset) != "" && GetRelation(userset) != ""
 }
 
-// IsType returns true if the given string contains just a type.
-func IsType(object string) bool {
-	t, id := SplitObject(object)
-	return t != "" && id == ""
-}
-
 // ToObjectRelationString formats an object/relation pair as an object#relation string. This is the inverse of
 // SplitObjectRelation.
 func ToObjectRelationString(object, relation string) string {
@@ -99,7 +95,7 @@ func ToObjectRelationString(object, relation string) string {
 
 // GetUserTypeFromUser returns the type of user (userset or user).
 func GetUserTypeFromUser(user string) UserType {
-	if IsObjectRelation(user) || user == "*" {
+	if IsObjectRelation(user) || IsWildcard(user) {
 		return UserSet
 	}
 	return User
@@ -121,13 +117,31 @@ func IsValidRelation(s string) bool {
 	return relationRegex.MatchString(s)
 }
 
-// IsValidUser determines if a string s is a valid user. A valid user contains at most one `:` and no `#` or spaces.
+// IsValidUser determines if a string is a valid user. A valid user contains at most one `:`, at most one `#` and no spaces.
 func IsValidUser(user string) bool {
 	if strings.Count(user, ":") > 1 || strings.Count(user, "#") > 1 {
 		return false
 	}
 	if user == "*" || userIDRegex.MatchString(user) || objectRegex.MatchString(user) || userSetRegex.MatchString(user) {
 		return true
+	}
+
+	return false
+}
+
+// IsWildcard returns true if the string 's' could be interpreted as a typed or untyped wildcard (e.g. '*' or 'type:*')
+func IsWildcard(s string) bool {
+	return s == Wildcard || IsTypedWildcard(s)
+}
+
+// IsTypedWildcard returns true if the string 's' is a typed wildcard. A typed wildcard
+// has the form 'type:*'.
+func IsTypedWildcard(s string) bool {
+	if IsValidObject(s) {
+		_, id := SplitObject(s)
+		if id == Wildcard {
+			return true
+		}
 	}
 
 	return false

@@ -9,7 +9,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -24,29 +24,28 @@ import (
 )
 
 const (
-	defaultMaxTuplesInWrite     = 100
-	defaultMaxTypesInDefinition = 100
+	defaultMaxTuplesPerWrite             = 100
+	defaultMaxTypesPerAuthorizationModel = 100
 )
 
 type MySQL struct {
-	db                       *sql.DB
-	tracer                   trace.Tracer
-	logger                   logger.Logger
-	maxTuplesInWrite         int
-	maxTypesInTypeDefinition int
+	db                            *sql.DB
+	tracer                        trace.Tracer
+	logger                        logger.Logger
+	maxTuplesPerWrite             int
+	maxTypesPerAuthorizationModel int
+
+	maxOpenConns    int
+	maxIdleConns    int
+	connMaxIdleTime time.Duration
+	connMaxLifetime time.Duration
 }
 
 type MySQLOption func(*MySQL)
 
-func WithMaxTuplesInWrite(maxTuples int) MySQLOption {
+func WithTracer(t trace.Tracer) MySQLOption {
 	return func(m *MySQL) {
-		m.maxTuplesInWrite = maxTuples
-	}
-}
-
-func WithMaxTypesInTypeDefinition(maxTypes int) MySQLOption {
-	return func(m *MySQL) {
-		m.maxTypesInTypeDefinition = maxTypes
+		m.tracer = t
 	}
 }
 
@@ -56,9 +55,39 @@ func WithLogger(l logger.Logger) MySQLOption {
 	}
 }
 
-func WithTracer(t trace.Tracer) MySQLOption {
+func WithMaxTuplesPerWrite(maxTuples int) MySQLOption {
 	return func(m *MySQL) {
-		m.tracer = t
+		m.maxTuplesPerWrite = maxTuples
+	}
+}
+
+func WithMaxTypesPerAuthorizationModel(maxTypes int) MySQLOption {
+	return func(m *MySQL) {
+		m.maxTypesPerAuthorizationModel = maxTypes
+	}
+}
+
+func WithMaxOpenConns(c int) MySQLOption {
+	return func(m *MySQL) {
+		m.maxOpenConns = c
+	}
+}
+
+func WithMaxIdleConns(c int) MySQLOption {
+	return func(m *MySQL) {
+		m.maxIdleConns = c
+	}
+}
+
+func WithConnMaxIdleTime(d time.Duration) MySQLOption {
+	return func(m *MySQL) {
+		m.connMaxIdleTime = d
+	}
+}
+
+func WithConnMaxLifetime(d time.Duration) MySQLOption {
+	return func(m *MySQL) {
+		m.connMaxLifetime = d
 	}
 }
 
@@ -77,17 +106,33 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 		m.tracer = telemetry.NewNoopTracer()
 	}
 
-	if m.maxTuplesInWrite == 0 {
-		m.maxTuplesInWrite = defaultMaxTuplesInWrite
+	if m.maxTuplesPerWrite == 0 {
+		m.maxTuplesPerWrite = defaultMaxTuplesPerWrite
 	}
 
-	if m.maxTypesInTypeDefinition == 0 {
-		m.maxTypesInTypeDefinition = defaultMaxTypesInDefinition
+	if m.maxTypesPerAuthorizationModel == 0 {
+		m.maxTypesPerAuthorizationModel = defaultMaxTypesPerAuthorizationModel
 	}
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
 		return nil, errors.Errorf("failed to open MySQL connection: %v", err)
+	}
+
+	if m.maxOpenConns != 0 {
+		db.SetMaxOpenConns(m.maxOpenConns)
+	}
+
+	if m.maxIdleConns != 0 {
+		db.SetMaxIdleConns(m.maxIdleConns)
+	}
+
+	if m.connMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(m.connMaxIdleTime)
+	}
+
+	if m.connMaxLifetime != 0 {
+		db.SetConnMaxLifetime(m.connMaxLifetime)
 	}
 
 	policy := backoff.NewExponentialBackOff()
@@ -112,8 +157,8 @@ func NewMySQLDatastore(uri string, opts ...MySQLOption) (*MySQL, error) {
 }
 
 // Close closes the datastore and cleans up any residual resources.
-func (m *MySQL) Close(ctx context.Context) error {
-	return m.db.Close()
+func (m *MySQL) Close() {
+	m.db.Close()
 }
 
 func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
@@ -126,7 +171,7 @@ func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType 
 		return nil, err
 	}
 
-	return &objectIterator{rows: rows}, nil
+	return NewMysqlObjectIterator(rows), nil
 }
 
 func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -144,8 +189,9 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	if err != nil {
 		return nil, nil, err
 	}
+	defer iter.Stop()
 
-	return iter.toArray(opts)
+	return iter.toArray(ctx, opts)
 }
 
 func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*tupleIterator, error) {
@@ -162,14 +208,14 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
 	ctx, span := m.tracer.Start(ctx, "mysql.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > m.MaxTuplesInWriteOperation() {
+	if len(deletes)+len(writes) > m.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
@@ -181,10 +227,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	defer rollbackTx(ctx, tx, m.logger)
 
 	for _, tk := range deletes {
-		ulid, err := id.NewStringFromTime(now)
-		if err != nil {
-			return err
-		}
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 		r, err := tx.ExecContext(ctx, `DELETE FROM tuple WHERE store = ? AND object_type = ? AND object_id = ? AND relation = ? AND _user = ? AND user_type = ?`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()))
 		if err != nil {
@@ -200,20 +243,15 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, ulid)
+		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id)
 		if err != nil {
 			return handleMySQLError(err)
 		}
 	}
 
 	for _, tk := range writes {
-		ulid, err := id.NewStringFromTime(now)
-		if err != nil {
-			return err
-		}
-
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
 		relation := tk.GetRelation()
 		user := tk.GetUser()
 		userType := tupleUtils.GetUserTypeFromUser(user)
@@ -221,14 +259,14 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 		_, err = tx.ExecContext(
 			ctx,
 			`INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-			store, objectType, objectID, relation, user, userType, ulid,
+			store, objectType, objectID, relation, user, userType, id,
 		)
 
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
 
-		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, ulid)
+		_, err = tx.ExecContext(ctx, `INSERT INTO changelog (store, object_type, object_id, relation, _user, operation, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`, store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id)
 		if err != nil {
 			return handleMySQLError(err, tk)
 		}
@@ -273,7 +311,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, tupleKey *o
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
@@ -284,11 +322,12 @@ func (m *MySQL) ReadByStore(ctx context.Context, store string, opts storage.Pagi
 	if err != nil {
 		return nil, nil, err
 	}
-	return iter.toArray(opts)
+	defer iter.Stop()
+	return iter.toArray(ctx, opts)
 }
 
-func (m *MySQL) MaxTuplesInWriteOperation() int {
-	return m.maxTuplesInWrite
+func (m *MySQL) MaxTuplesPerWrite() int {
+	return m.maxTuplesPerWrite
 }
 
 func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
@@ -300,6 +339,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	if err != nil {
 		return nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var schemaVersion string
 	var typeDefs []*openfgapb.TypeDefinition
@@ -357,6 +397,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var modelIDs []string
 	var modelID string
@@ -435,8 +476,8 @@ func (m *MySQL) ReadTypeDefinition(
 	return &typeDef, nil
 }
 
-func (m *MySQL) MaxTypesInTypeDefinition() int {
-	return m.maxTypesInTypeDefinition
+func (m *MySQL) MaxTypesPerAuthorizationModel() int {
+	return m.maxTypesPerAuthorizationModel
 }
 
 func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
@@ -446,8 +487,8 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
-	if len(typeDefinitions) > m.MaxTypesInTypeDefinition() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesInTypeDefinition)
+	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
+		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerAuthorizationModel)
 	}
 
 	stmt := "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES (?, ?, ?, ?, ?)"
@@ -555,6 +596,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var stores []*openfgapb.Store
 	var id string
@@ -659,6 +701,7 @@ func (m *MySQL) ReadChanges(
 	if err != nil {
 		return nil, nil, handleMySQLError(err)
 	}
+	defer rows.Close()
 
 	var changes []*openfgapb.TupleChange
 	var ulid string
@@ -725,7 +768,7 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 		return nil, handleMySQLError(err)
 	}
 
-	return &tupleIterator{rows: rows}, nil
+	return NewMysqlTupleIterator(rows), nil
 }
 
 // IsReady reports whether this MySQL datastore instance is ready

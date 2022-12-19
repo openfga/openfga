@@ -10,12 +10,17 @@ import (
 
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
-	Reason   string
+	Cause    error
 	TupleKey *openfgapb.TupleKey
 }
 
 func (i *InvalidTupleError) Error() string {
-	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
+	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", TupleKeyToString(i.TupleKey), i.Cause)
+}
+
+func (i *InvalidTupleError) Is(target error) bool {
+	_, ok := target.(*InvalidTupleError)
+	return ok
 }
 
 // InvalidObjectFormatError is returned if the object is invalid
@@ -24,7 +29,12 @@ type InvalidObjectFormatError struct {
 }
 
 func (i *InvalidObjectFormatError) Error() string {
-	return fmt.Sprintf("Invalid object format '%s'.", i.TupleKey.String())
+	return fmt.Sprintf("Invalid object format '%s'.", TupleKeyToString(i.TupleKey))
+}
+
+func (i *InvalidObjectFormatError) Is(target error) bool {
+	_, ok := target.(*InvalidObjectFormatError)
+	return ok
 }
 
 // TypeNotFoundError is returned if type is not found
@@ -33,7 +43,12 @@ type TypeNotFoundError struct {
 }
 
 func (i *TypeNotFoundError) Error() string {
-	return fmt.Sprintf("Type not found for %s", i.TypeName)
+	return fmt.Sprintf("type '%s' not found", i.TypeName)
+}
+
+func (i *TypeNotFoundError) Is(target error) bool {
+	_, ok := target.(*TypeNotFoundError)
+	return ok
 }
 
 // RelationNotFoundError is returned if the relation is not found
@@ -44,7 +59,17 @@ type RelationNotFoundError struct {
 }
 
 func (i *RelationNotFoundError) Error() string {
-	return fmt.Sprintf("Relation '%s' not found in type definition '%s' for tuple (%s)", i.Relation, i.TypeName, i.TupleKey.String())
+	msg := fmt.Sprintf("relation '%s#%s' not found", i.TypeName, i.Relation)
+	if i.TupleKey != nil {
+		msg += fmt.Sprintf(" for tuple '%s'", TupleKeyToString(i.TupleKey))
+	}
+
+	return msg
+}
+
+func (i *RelationNotFoundError) Is(target error) bool {
+	_, ok := target.(*RelationNotFoundError)
+	return ok
 }
 
 // IndirectWriteError is used to categorize errors specific to write check logic
@@ -54,13 +79,5 @@ type IndirectWriteError struct {
 }
 
 func (i *IndirectWriteError) Error() string {
-	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", i.TupleKey, i.Reason)
-}
-
-// ValidateUser returns whether the user is valid.  If not, return error
-func ValidateUser(tk *openfgapb.TupleKey) error {
-	if !IsValidUser(tk.GetUser()) {
-		return &InvalidTupleError{Reason: "the 'user' field must be a non-empty string", TupleKey: tk}
-	}
-	return nil
+	return fmt.Sprintf("Cannot write tuple '%s'. Reason: %s", TupleKeyToString(i.TupleKey), i.Reason)
 }

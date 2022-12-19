@@ -2,11 +2,12 @@ package commands
 
 import (
 	"context"
+	"errors"
 
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/utils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/validation"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -31,16 +32,24 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
 
-	dbCallsCounter := utils.NewDBCallCounter()
+	model, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	typesys := typesystem.New(model)
+
 	for _, assertion := range assertions {
-		if _, err := validation.ValidateTuple(ctx, w.datastore, store, modelID, assertion.TupleKey, dbCallsCounter); err != nil {
-			return nil, serverErrors.HandleTupleValidateError(err)
+		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {
+			return nil, serverErrors.ValidationError(err)
 		}
 	}
-	dbCallsCounter.AddWriteCall()
-	utils.LogDBStats(ctx, w.logger, "WriteAssertions", dbCallsCounter.GetReadCalls(), dbCallsCounter.GetWriteCalls())
 
-	err := w.datastore.WriteAssertions(ctx, store, modelID, assertions)
+	err = w.datastore.WriteAssertions(ctx, store, modelID, assertions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

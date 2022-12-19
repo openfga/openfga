@@ -32,6 +32,15 @@
             "minimum": 0,
             "default": 1000
         },
+        "experimentals": {
+            "description": "a list of experimental features to enable",
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["list-objects-optimized"]
+            },
+            "default": []
+        },
         "playground": {
             "type": "object",
             "properties": {
@@ -83,6 +92,26 @@
                     "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
                     "type": "integer",
                     "default": 100000
+                },
+                "maxOpenConns": {
+                    "description": "The maximum number of open connections to the datastore.",
+                    "type": "integer",
+                    "default": "unlimited - database/sql default"
+                },
+                "maxIdleConns": {
+                    "description": "the maximum number of connections to the datastore in the idle connection pool.",
+                    "type": "integer",
+                    "default": "2 - database/sql default"
+                },
+                "connMaxIdleTime": {
+                    "description": "the maximum amount of time a connection to the datastore may be idle",
+                    "type": "duration",
+                    "default": "connections are not closed due to idle time - database/sql default"
+                },
+                "connMaxLifetime": {
+                    "description": "the maximum amount of time a connection to the datastore may be reused",
+                    "type": "duration",
+                    "default": "connections are not closed due to connection's age - database/sql default"
                 }
             }
         },
@@ -109,11 +138,6 @@
         "grpc": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "Enables or disables the OpenFGA grpc server. If 'http.enabled' is set to true, then this must be set to true.",
-                    "type": "boolean",
-                    "default": true
-                },
                 "addr": {
                     "description": "The host:port address to serve the grpc server on.",
                     "type": "string",
@@ -169,6 +193,12 @@
                     "type": "string",
                     "enum": ["text", "json"],
                     "default": "text"
+                },
+                "level": {
+                    "description": "The log level to set. For production we recommend 'info' format.",
+                    "type": "string",
+                    "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
+                    "default": "info"
                 }
             }
         }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage/memory"
@@ -17,13 +17,14 @@ func TestCache(t *testing.T) {
 	ctx := context.Background()
 	memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
+	defer cachingBackend.Close()
 
-	storeID := id.Must(id.New()).String()
+	storeID := ulid.Make().String()
 	objectType := "documents"
 	typeDefinition := &openfgapb.TypeDefinition{Type: objectType}
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{typeDefinition},
 	}

@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-errors/errors"
-	openfgaerrors "github.com/openfga/openfga/pkg/errors"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -18,8 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-var errObjectOrUserMustBeSpecified = errors.New("either object or user must be specified")
 
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
@@ -48,13 +44,18 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
-	if len(s.tuples) == 0 {
+func (s *staticIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
+	select {
+	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
+	default:
+		if len(s.tuples) == 0 {
+			return nil, storage.ErrIteratorDone
+		}
+		next, rest := s.tuples[0], s.tuples[1:]
+		s.tuples = rest
+		return next, nil
 	}
-	next, rest := s.tuples[0], s.tuples[1:]
-	s.tuples = rest
-	return next, nil
 }
 
 func (s *staticIterator) Stop() {}
@@ -62,10 +63,10 @@ func (s *staticIterator) Stop() {}
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
-	tracer                    trace.Tracer
-	maxTuplesInWriteOperation int
-	maxTypesInTypeDefinition  int
-	mu                        sync.Mutex
+	tracer                        trace.Tracer
+	maxTuplesPerWrite             int
+	maxTypesPerAuthorizationModel int
+	mu                            sync.Mutex
 
 	// TupleBackend
 	// map: store => set of tuples
@@ -94,23 +95,22 @@ type AuthorizationModelEntry struct {
 var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
 // New creates a new empty MemoryBackend.
-func New(tracer trace.Tracer, maxTuplesInOneWrite int, maxTypesInAuthorizationModel int) *MemoryBackend {
+func New(tracer trace.Tracer, maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
 	return &MemoryBackend{
-		tracer:                    tracer,
-		maxTuplesInWriteOperation: maxTuplesInOneWrite,
-		maxTypesInTypeDefinition:  maxTypesInAuthorizationModel,
-		tuples:                    make(map[string][]*openfgapb.Tuple, 0),
-		changes:                   make(map[string][]*openfgapb.TupleChange, 0),
-		authorizationModels:       make(map[string]map[string]*AuthorizationModelEntry),
-		stores:                    make(map[string]*openfgapb.Store, 0),
-		assertions:                make(map[string][]*openfgapb.Assertion, 0),
+		tracer:                        tracer,
+		maxTuplesPerWrite:             maxTuplesPerWrite,
+		maxTypesPerAuthorizationModel: maxTypesPerAuthorizationModel,
+		tuples:                        make(map[string][]*openfgapb.Tuple, 0),
+		changes:                       make(map[string][]*openfgapb.TupleChange, 0),
+		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
+		stores:                        make(map[string]*openfgapb.Store, 0),
+		assertions:                    make(map[string][]*openfgapb.Assertion, 0),
 	}
 }
 
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
-func (s *MemoryBackend) Close(ctx context.Context) error {
-	return nil
+func (s *MemoryBackend) Close() {
 }
 
 func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
@@ -151,7 +151,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 
 	it, err := s.read(ctx, store, key, paginationOptions)
 	if err != nil {
-		return nil, nil, openfgaerrors.ErrorWithStack(err)
+		return nil, nil, err
 	}
 
 	return it.tuples, it.continuationToken, nil
@@ -175,13 +175,13 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 			typeInToken = tokens[1]
 			from, err = strconv.ParseInt(concreteToken, 10, 32)
 			if err != nil {
-				return nil, nil, openfgaerrors.ErrorWithStack(err)
+				return nil, nil, err
 			}
 		}
 	}
 
 	if typeInToken != "" && typeInToken != objectType {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrMismatchObjectType)
+		return nil, nil, storage.ErrMismatchObjectType
 	}
 
 	var allChanges []*openfgapb.TupleChange
@@ -195,7 +195,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 		}
 	}
 	if len(allChanges) == 0 {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, nil, storage.ErrNotFound
 	}
 
 	pageSize := storage.DefaultPageSize
@@ -208,7 +208,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	}
 	res := allChanges[from:to]
 	if len(res) == 0 {
-		return nil, nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, nil, storage.ErrNotFound
 	}
 
 	continuationToken = strconv.Itoa(len(allChanges))
@@ -220,22 +220,22 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
+func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.read")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
-	}
 	var matches []*openfgapb.Tuple
-	for _, t := range s.tuples[store] {
-		if match(key, t.Key) {
-			matches = append(matches, t)
+	if tk.GetObject() == "" && tk.GetRelation() == "" && tk.GetUser() == "" {
+		matches = make([]*openfgapb.Tuple, len(s.tuples[store]))
+		copy(matches, s.tuples[store])
+	} else {
+		for _, t := range s.tuples[store] {
+			if match(tk, t.Key) {
+				matches = append(matches, t)
+			}
 		}
 	}
 
@@ -245,7 +245,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, key *openfgapb.T
 		from, err = strconv.Atoi(paginationOptions.From)
 		if err != nil {
 			telemetry.TraceError(span, err)
-			return nil, openfgaerrors.ErrorWithStack(err)
+			return nil, err
 		}
 	}
 
@@ -272,7 +272,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 	now := timestamppb.Now()
 
 	if err := validateTuples(s.tuples[store], deletes, writes); err != nil {
-		return openfgaerrors.ErrorWithStack(err)
+		return err
 	}
 
 	var tuples []*openfgapb.Tuple
@@ -304,12 +304,12 @@ Write:
 func validateTuples(tuples []*openfgapb.Tuple, deletes, writes []*openfgapb.TupleKey) error {
 	for _, tk := range deletes {
 		if !find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE))
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
 	for _, tk := range writes {
 		if find(tuples, tk) {
-			return openfgaerrors.ErrorWithStack(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE))
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 		}
 	}
 	return nil
@@ -332,42 +332,34 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
-	}
 	for _, t := range s.tuples[store] {
 		if match(key, t.Key) {
 			return t, nil
 		}
 	}
+
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
-func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	_, span := s.tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if key.Object == "" && key.User == "" {
-		err := errObjectOrUserMustBeSpecified
-		telemetry.TraceError(span, err)
-		return nil, openfgaerrors.ErrorWithStack(err)
-	}
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(&openfgapb.TupleKey{
-			Object:   key.GetObject(),
-			Relation: key.GetRelation(),
+			Object:   tk.GetObject(),
+			Relation: tk.GetRelation(),
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
 			matches = append(matches, t)
 		}
 	}
+
 	return &staticIterator{tuples: matches}, nil
 }
 
@@ -405,45 +397,6 @@ func (s *MemoryBackend) ReadStartingWithUser(
 
 	}
 	return &staticIterator{tuples: matches}, nil
-}
-
-// ReadByStore See storage.TupleBackend.ReadByStore
-func (s *MemoryBackend) ReadByStore(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadByStore")
-	defer span.End()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	matches := make([]*openfgapb.Tuple, len(s.tuples[store]))
-	copy(matches, s.tuples[store])
-
-	var from int64 = 0
-	var err error
-
-	pageSize := storage.DefaultPageSize
-	if options.PageSize > 0 {
-		pageSize = options.PageSize
-	}
-
-	if options.From != "" {
-		from, err = strconv.ParseInt(options.From, 10, 32)
-		if err != nil {
-			return nil, make([]byte, 0), openfgaerrors.ErrorWithStack(err)
-		}
-	}
-	to := int(from) + pageSize
-	if len(matches) < to {
-		to = len(matches)
-	}
-
-	partition := matches[from:to]
-	continuationToken := ""
-	if to != len(matches) {
-		continuationToken = strconv.Itoa(to)
-	}
-
-	return partition, []byte(continuationToken), nil
 }
 
 func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgapb.AuthorizationModel, bool) {
@@ -493,18 +446,18 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	if model, ok := findAuthorizationModelByID(id, tm); ok {
 		if model.GetTypeDefinitions() == nil || len(model.GetTypeDefinitions()) == 0 {
-			return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+			return nil, storage.ErrNotFound
 		}
 		return model, nil
 	}
 
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // ReadAuthorizationModels See storage.AuthorizationModelBackend.ReadAuthorizationModels
@@ -538,7 +491,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 	if options.From != "" {
 		from, err = strconv.ParseInt(options.From, 10, 32)
 		if err != nil {
-			return nil, nil, openfgaerrors.ErrorWithStack(err)
+			return nil, nil, err
 		}
 	}
 
@@ -566,13 +519,13 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return "", storage.ErrNotFound
 	}
 	// find latest model
 	nsc, ok := findAuthorizationModelByID("", tm)
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return "", openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return "", storage.ErrNotFound
 	}
 	return nsc.Id, nil
 }
@@ -588,7 +541,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 	tm, ok := s.authorizationModels[store]
 	if !ok {
 		telemetry.TraceError(span, storage.ErrNotFound)
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	if nsc, ok := findAuthorizationModelByID(id, tm); ok {
@@ -598,7 +551,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 	}
 
 	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+	return nil, storage.ErrNotFound
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
@@ -686,14 +639,14 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
-// MaxTuplesInWriteOperation returns the maximum number of tuples allowed in one write operation
-func (s *MemoryBackend) MaxTuplesInWriteOperation() int {
-	return s.maxTuplesInWriteOperation
+// MaxTuplesPerWriteOperation returns the maximum number of tuples allowed in one write operation
+func (s *MemoryBackend) MaxTuplesPerWrite() int {
+	return s.maxTuplesPerWrite
 }
 
-// MaxTypesInTypeDefinition returns the maximum number of types allowed in a type definition
-func (s *MemoryBackend) MaxTypesInTypeDefinition() int {
-	return s.maxTypesInTypeDefinition
+// MaxTypesPerAuthorizationModel returns the maximum number of types allowed in a type definition
+func (s *MemoryBackend) MaxTypesPerAuthorizationModel() int {
+	return s.maxTypesPerAuthorizationModel
 }
 
 func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgapb.Store, error) {
@@ -704,7 +657,7 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgap
 	defer s.mu.Unlock()
 
 	if s.stores[storeID] == nil {
-		return nil, openfgaerrors.ErrorWithStack(storage.ErrNotFound)
+		return nil, storage.ErrNotFound
 	}
 
 	return s.stores[storeID], nil
@@ -732,7 +685,7 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 	if paginationOptions.From != "" {
 		from, err = strconv.ParseInt(paginationOptions.From, 10, 32)
 		if err != nil {
-			return nil, nil, openfgaerrors.ErrorWithStack(err)
+			return nil, nil, err
 		}
 	}
 	pageSize := storage.DefaultPageSize

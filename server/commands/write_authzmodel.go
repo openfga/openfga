@@ -3,10 +3,9 @@ package commands
 import (
 	"context"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/pkg/utils"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -31,8 +30,8 @@ func NewWriteAuthorizationModelCommand(
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
-	if len(req.GetTypeDefinitions()) > w.backend.MaxTypesInTypeDefinition() {
-		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesInTypeDefinition())
+	if len(req.GetTypeDefinitions()) > w.backend.MaxTypesPerAuthorizationModel() {
+		return nil, serverErrors.ExceededEntityLimit("type definitions in an authorization model", w.backend.MaxTypesPerAuthorizationModel())
 	}
 
 	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
@@ -41,29 +40,23 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
-	id, err := id.NewString()
-	if err != nil {
-		return nil, err
-	}
-
 	model := &openfgapb.AuthorizationModel{
-		Id:              id,
+		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}
 
-	err = typesystem.Validate(model)
+	err := typesystem.Validate(model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
-	utils.LogDBStats(ctx, w.logger, "WriteAuthzModel", 0, 1)
 	err = w.backend.WriteAuthorizationModel(ctx, req.GetStoreId(), model)
 	if err != nil {
 		return nil, serverErrors.NewInternalError("Error writing authorization model configuration", err)
 	}
 
 	return &openfgapb.WriteAuthorizationModelResponse{
-		AuthorizationModelId: id,
+		AuthorizationModelId: model.Id,
 	}, nil
 }

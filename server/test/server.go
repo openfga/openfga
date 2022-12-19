@@ -12,9 +12,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestCheckQuery", func(t *testing.T) { TestCheckQuery(t, ds) })
-	t.Run("TestCheckQueryAgainstGitHubModel", func(t *testing.T) { TestCheckQueryAgainstGitHubModel(t, ds) })
-	t.Run("TestCheckQueryWithContextualTuplesAgainstGitHubModel", func(t *testing.T) { TestCheckQueryWithContextualTuplesAgainstGitHubModel(t, ds) })
+	t.Run("TestCheckQuery", func(t *testing.T) { CheckQueryTest(t, ds) })
 	t.Run("TestCheckQueryAuthorizationModelsVersioning", func(t *testing.T) { TestCheckQueryAuthorizationModelsVersioning(t, ds) })
 
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
@@ -30,12 +28,10 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 
 	t.Run("TestReadAssertionQuery", func(t *testing.T) { TestReadAssertionQuery(t, ds) })
 
-	t.Run("TestReadQuery", func(t *testing.T) { TestReadQuery(t, ds) })
-
-	t.Run("TestReadTuplesQuery", func(t *testing.T) { TestReadTuplesQuery(t, ds) })
-	t.Run("TestReadTuplesQueryInvalidContinuationToken",
-		func(t *testing.T) { TestReadTuplesQueryInvalidContinuationToken(t, ds) },
-	)
+	t.Run("TestReadQuerySuccess", func(t *testing.T) { ReadQuerySuccessTest(t, ds) })
+	t.Run("TestReadQueryError", func(t *testing.T) { ReadQueryErrorTest(t, ds) })
+	t.Run("TestReadAllTuples", func(t *testing.T) { ReadAllTuplesTest(t, ds) })
+	t.Run("TestReadAllTuplesInvalidContinuationToken", func(t *testing.T) { ReadAllTuplesInvalidContinuationTokenTest(t, ds) })
 
 	t.Run("TestReadAuthorizationModelsWithoutPaging",
 		func(t *testing.T) { TestReadAuthorizationModelsWithoutPaging(t, ds) },
@@ -53,7 +49,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
-	t.Run("TestListObjects", func(t *testing.T) { TestListObjects(t, ds) })
+
+	t.Run("TestListObjects", func(t *testing.T) { ListObjectsTest(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -62,13 +59,20 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAssertions", func(t *testing.T) { TestWriteAssertions(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
+	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 	RunCheckBenchmarks(b, ds)
+	RunListObjectsBenchmarks(b, ds)
 }
 
 func RunCheckBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { BenchmarkCheckWithoutTrace(b, ds) })
-	b.Run("BenchmarkWithTrace", func(b *testing.B) { BenchmarkWithTrace(b, ds) })
+	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { BenchmarkCheckWithTrace(b, ds) })
+}
+
+func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
+	b.Run("BenchmarkListObjectsWithReverseExpand", func(b *testing.B) { BenchmarkListObjectsWithReverseExpand(b, ds) })
+	b.Run("BenchmarkListObjectsWithConcurrentChecks", func(b *testing.B) { BenchmarkListObjectsWithConcurrentChecks(b, ds) })
 }

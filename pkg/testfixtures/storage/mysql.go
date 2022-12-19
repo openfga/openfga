@@ -13,10 +13,11 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/go-sql-driver/mysql"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/pkg/id"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -63,7 +64,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		PublishAllPorts: true,
 	}
 
-	name := fmt.Sprintf("mysql-%s", id.Must(id.New()).String())
+	name := fmt.Sprintf("mysql-%s", ulid.Make().String())
 
 	cont, err := dockerClient.ContainerCreate(context.Background(), &containerCfg, &hostCfg, nil, nil, name)
 	require.NoError(t, err, "failed to create mysql docker container")
@@ -76,6 +77,8 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop mysql container: %v", err)
 		}
+
+		dockerClient.Close()
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
@@ -104,6 +107,9 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	t.Cleanup(func() {
 		stopContainer()
+		goleak.VerifyNone(t,
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("time.Sleep")) // from the panic handler above
 	})
 
 	mySQLTestContainer := &mySQLTestContainer{
@@ -137,6 +143,8 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.MySQLMigrationDir)
+	require.NoError(t, err)
+	err = db.Close()
 	require.NoError(t, err)
 
 	return mySQLTestContainer

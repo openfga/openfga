@@ -2,8 +2,8 @@ package commands
 
 import (
 	"context"
+	"errors"
 
-	"github.com/go-errors/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"

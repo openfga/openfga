@@ -70,10 +70,10 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
-	t.Run("read changes without type", func(t *testing.T) {
+	t.Run("read_changes_without_type", func(t *testing.T) {
 		testCases := []testCase{
 			{
-				_name:   "request with pageSize=2 returns 2 tuple and a token",
+				_name:   "request_with_pageSize=2_returns_2_tuple_and_a_token",
 				request: newReadChangesRequest(store, "", "", 2),
 				expectedChanges: []*openfgapb.TupleChange{
 					{
@@ -90,7 +90,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				saveContinuationTokenForNextTest: true,
 			},
 			{
-				_name:   "request with previous token returns all remaining changes",
+				_name:   "request_with_previous_token_returns_all_remaining_changes",
 				request: newReadChangesRequest(store, "", "", storage.DefaultPageSize),
 				expectedChanges: []*openfgapb.TupleChange{
 					{
@@ -107,7 +107,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				saveContinuationTokenForNextTest: true,
 			},
 			{
-				_name:                            "request with previous token returns no more changes",
+				_name:                            "request_with_previous_token_returns_no_more_changes",
 				request:                          newReadChangesRequest(store, "", "", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
@@ -115,7 +115,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				saveContinuationTokenForNextTest: false,
 			},
 			{
-				_name:                            "request with invalid token returns invalid token error",
+				_name:                            "request_with_invalid_token_returns_invalid_token_error",
 				request:                          newReadChangesRequest(store, "", "foo", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
@@ -128,17 +128,17 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
-	t.Run("read changes with type", func(t *testing.T) {
+	t.Run("read_changes_with_type", func(t *testing.T) {
 		testCases := []testCase{
 			{
-				_name:                        "if no tuples with type, return empty changes and no token",
+				_name:                        "if_no_tuples_with_type,_return_empty_changes_and_no_token",
 				request:                      newReadChangesRequest(store, "type-not-found", "", 1),
 				expectedChanges:              nil,
 				expectEmptyContinuationToken: true,
 				expectedError:                nil,
 			},
 			{
-				_name:   "if 1 tuple with 'org type', read changes with 'org' filter returns 1 change and a token",
+				_name:   "if_1_tuple_with_'org type',_read_changes_with_'org'_filter_returns_1_change_and_a_token",
 				request: newReadChangesRequest(store, "org", "", storage.DefaultPageSize),
 				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkMariaOrg,
@@ -148,7 +148,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:                nil,
 			},
 			{
-				_name:   "if 2 tuples with 'repo' type, read changes with 'repo' filter and page size of 1 returns 1 change and a token",
+				_name:   "if_2_tuples_with_'repo'_type,_read_changes_with_'repo'_filter and page size of 1 returns 1 change and a token",
 				request: newReadChangesRequest(store, "repo", "", 1),
 				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkMaria,
@@ -158,7 +158,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
 			}, {
-				_name:   "using the token from the previous test yields 1 change and a token",
+				_name:   "using_the_token_from_the_previous_test_yields_1_change_and_a_token",
 				request: newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges: []*openfgapb.TupleChange{{
 					TupleKey:  tkCraig,
@@ -171,14 +171,14 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
 			}, {
-				_name:                            "using the token from the previous test yields 0 changes and a token",
+				_name:                            "using_the_token_from_the_previous_test_yields_0_changes_and_a_token",
 				request:                          newReadChangesRequest(store, "repo", "", storage.DefaultPageSize),
 				expectedChanges:                  nil,
 				expectEmptyContinuationToken:     false,
 				expectedError:                    nil,
 				saveContinuationTokenForNextTest: true,
 			}, {
-				_name:         "using the token from the previous test yields an error because the types in the token and the request don't match",
+				_name:         "using_the_token_from_the_previous_test_yields_an_error_because_the_types_in_the_token_and_the_request_don't_match",
 				request:       newReadChangesRequest(store, "does-not-match", "", storage.DefaultPageSize),
 				expectedError: serverErrors.MismatchObjectType,
 			},
@@ -188,10 +188,10 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
-	t.Run("read changes with horizon offset", func(t *testing.T) {
+	t.Run("read_changes_with_horizon_offset", func(t *testing.T) {
 		testCases := []testCase{
 			{
-				_name: "when the horizon offset is non-zero no tuples should be returned",
+				_name: "when_the_horizon_offset_is_non-zero_no_tuples_should_be_returned",
 				request: &openfgapb.ReadChangesRequest{
 					StoreId: store,
 				},

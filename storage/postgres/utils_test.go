@@ -1,17 +1,17 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
 	"testing"
 
-	"github.com/go-errors/errors"
-	"github.com/jackc/pgx/v5"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestHandlePostgresError(t *testing.T) {
-	t.Run("duplicate key value error with tuple key wraps ErrInvalidWriteInput", func(t *testing.T) {
+	t.Run("duplicate_key_value_error_with_tuple_key_wraps_ErrInvalidWriteInput", func(t *testing.T) {
 		err := handlePostgresError(errors.New("duplicate key value"), &openfgapb.TupleKey{
 			Object:   "object",
 			Relation: "relation",
@@ -20,14 +20,14 @@ func TestHandlePostgresError(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
-	t.Run("duplicate key value error without tuple key returns collision", func(t *testing.T) {
+	t.Run("duplicate_key_value_error_without_tuple_key_returns_collision", func(t *testing.T) {
 		duplicateKeyError := errors.New("duplicate key value")
 		err := handlePostgresError(duplicateKeyError)
 		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
-	t.Run("pgx.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
-		err := handlePostgresError(pgx.ErrNoRows)
+	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
+		err := handlePostgresError(sql.ErrNoRows)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

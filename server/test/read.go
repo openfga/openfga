@@ -4,250 +4,37 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/server/commands"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
-	type readQueryTest struct {
+func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
+	tests := []struct {
 		_name    string
 		model    *openfgapb.AuthorizationModel
 		tuples   []*openfgapb.TupleKey
 		request  *openfgapb.ReadRequest
-		err      error
 		response *openfgapb.ReadResponse
-	}
-
-	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
-	var tests = []readQueryTest{
-		{
-			_name: "ExecuteErrorsIfOneTupleKeyHasNeitherUserObjectNorRelation",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{},
-			},
-			// output
-			err: serverErrors.InvalidTupleSet,
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleKeyHasObjectWithoutType",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object: "openfga/iam",
-				},
-			},
-			// output
-			err: serverErrors.InvalidTupleSet,
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleKeyObjectIs':'",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object: ":",
-				},
-			},
-			// output
-			err: serverErrors.InvalidTupleSet,
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleSetHasNoObjectAndThusNoType",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Relation: "admin",
-					User:     "github|jon.allie@openfga",
-				},
-			},
-			// output
-			err: serverErrors.InvalidTupleSet,
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleKeyHasNoObjectIdAndNoUserSetButHasAType",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object:   "repo:",
-					Relation: "writer",
-				},
-			},
-			// output
-			err: serverErrors.InvalidTuple("missing objectID and user", &openfgapb.TupleKey{
-				Object:   "repo:",
-				Relation: "writer",
-			}),
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleKeyInTupleSetOnlyHasRelation",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Relation: "writer",
-				},
-			},
-			// output
-			err: serverErrors.InvalidTupleSet,
-		},
-		{
-			_name: "ExecuteErrorsIfTypeDoesNotExist",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"manages": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object:   "team:openfga/iam",
-					Relation: "member",
-					User:     "github|jose@openfga",
-				},
-			},
-			// output
-			err: serverErrors.TypeNotFound("team"),
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleHasRelationThatDoesNotExistInAuthorizationModel",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-					{
-						Type: "org",
-						Relations: map[string]*openfgapb.Userset{
-							"manages": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object:   "org:",
-					Relation: "owner",
-					User:     "github|jose@openfga",
-				},
-			},
-			// output
-			err: serverErrors.RelationNotFound("owner", "org", &openfgapb.TupleKey{
-				Object:   "org:",
-				Relation: "owner",
-				User:     "github|jose@openfga",
-			}),
-		},
+	}{
 		{
 			_name: "ExecuteReturnsExactMatchingTupleKey",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -262,7 +49,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga",
@@ -275,17 +62,19 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
-					{Key: &openfgapb.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "admin",
-						User:     "github|jose@openfga",
-					}},
+					{
+						Key: &openfgapb.TupleKey{
+							Object:   "repo:openfga/openfga",
+							Relation: "admin",
+							User:     "github|jose",
+						},
+					},
 				},
 			},
 		},
@@ -293,7 +82,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndObjectIdInAuthorizationModelRegardlessOfRelationIfNoRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -309,24 +98,24 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfgapb",
 					Relation: "owner",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:openfga/openfga",
-					User:   "github|jose@openfga",
+					User:   "github|jose",
 				},
 			},
 			// output
@@ -335,12 +124,12 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "owner",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 				},
 			},
@@ -349,7 +138,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserInAuthorizationModelRegardlessOfRelationAndObjectIdIfNoRelationAndNoObjectId",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -365,24 +154,24 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga-server",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:",
-					User:   "github|jose@openfga",
+					User:   "github|jose",
 				},
 			},
 			// output
@@ -391,12 +180,12 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga-server",
 						Relation: "writer",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 				},
 			},
@@ -405,7 +194,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedUserAndRelationInAuthorizationModelRegardlessOfObjectIdIfNoObjectId",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -421,22 +210,22 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga-server",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// input
@@ -444,7 +233,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// output
@@ -453,12 +242,12 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga-server",
 						Relation: "writer",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga-users",
 						Relation: "writer",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 				},
 			},
@@ -467,7 +256,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdAndRelationInAuthorizationModelRegardlessOfUser",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -483,22 +272,22 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|yenkel@openfga",
+					User:     "github|yenkel",
 				},
 				{
 					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// input
@@ -514,12 +303,12 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|yenkel@openfga",
+						User:     "github|yenkel",
 					}},
 				},
 			},
@@ -528,7 +317,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name: "ExecuteReturnsTuplesWithProvidedObjectIdInAuthorizationModelRegardlessOfUserAndRelation",
 			// state
 			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
+				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -544,22 +333,22 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "writer",
-					User:     "github|yenkel@openfga",
+					User:     "github|yenkel",
 				},
 				{
 					Object:   "repo:openfga/openfga-users",
 					Relation: "writer",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 				{
 					Object:   "org:openfga",
 					Relation: "member",
-					User:     "github|jose@openfga",
+					User:     "github|jose",
 				},
 			},
 			// input
@@ -574,41 +363,15 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "admin",
-						User:     "github|jose@openfga",
+						User:     "github|jose",
 					}},
 					{Key: &openfgapb.TupleKey{
 						Object:   "repo:openfga/openfga",
 						Relation: "writer",
-						User:     "github|yenkel@openfga",
+						User:     "github|yenkel",
 					}},
 				},
 			},
-		},
-		{
-			_name: "ExecuteErrorsIfOneTupleIsUnauthorized",
-			// state
-			model: &openfgapb.AuthorizationModel{
-				Id:            id.Must(id.New()).String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin":  {},
-							"writer": {},
-						},
-					},
-				},
-			},
-			// input
-			request: &openfgapb.ReadRequest{
-				TupleKey: &openfgapb.TupleKey{
-					Object: "repo:openfga/openfga",
-				},
-				ContinuationToken: "foo",
-			},
-			// output
-			err: serverErrors.InvalidContinuationToken,
 		},
 	}
 
@@ -620,7 +383,7 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			store := id.Must(id.New()).String()
+			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 
@@ -629,49 +392,281 @@ func TestReadQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewReadQuery(datastore, tracer, logger, encoder)
-			req := &openfgapb.ReadRequest{
-				StoreId:              store,
-				AuthorizationModelId: test.model.Id,
-				TupleKey:             test.request.TupleKey,
-			}
-			actualResponse, actualError := cmd.Execute(ctx, req)
+			test.request.StoreId = store
+			resp, err := commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, test.request)
+			require.NoError(err)
 
-			if test.err != nil && actualError != nil && test.err.Error() != actualError.Error() {
-				t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, actualError)
-			}
-
-			if test.err == nil && actualError != nil {
-				t.Errorf("[%s] Expected error to be nil, actual '%s'", test._name, actualError.Error())
-			}
-
-			if test.response != nil {
-				if actualError != nil {
-					t.Errorf("[%s] Expected no error but got '%s'", test._name, actualError)
+			if test.response.Tuples != nil {
+				if len(test.response.Tuples) != len(resp.Tuples) {
+					t.Errorf("[%s] Expected response tuples length to be %d, actual %d", test._name, len(test.response.Tuples), len(resp.Tuples))
 				}
 
-				if test.response.Tuples != nil {
-					if len(test.response.Tuples) != len(actualResponse.Tuples) {
-						t.Errorf("[%s] Expected response tuples length to be %d, actual %d", test._name, len(test.response.Tuples), len(actualResponse.Tuples))
+				for i, responseTuple := range test.response.Tuples {
+					responseTupleKey := responseTuple.Key
+					actualTupleKey := resp.Tuples[i].Key
+					if responseTupleKey.Object != actualTupleKey.Object {
+						t.Errorf("[%s] Expected response tuple object at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Object, actualTupleKey.Object)
 					}
 
-					for i, responseTuple := range test.response.Tuples {
-						responseTupleKey := responseTuple.Key
-						actualTupleKey := actualResponse.Tuples[i].Key
-						if responseTupleKey.Object != actualTupleKey.Object {
-							t.Errorf("[%s] Expected response tuple object at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Object, actualTupleKey.Object)
-						}
+					if responseTupleKey.Relation != actualTupleKey.Relation {
+						t.Errorf("[%s] Expected response tuple relation at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
+					}
 
-						if responseTupleKey.Relation != actualTupleKey.Relation {
-							t.Errorf("[%s] Expected response tuple relation at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
-						}
-
-						if responseTupleKey.User != actualTupleKey.User {
-							t.Errorf("[%s] Expected response tuple user at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
-						}
+					if responseTupleKey.User != actualTupleKey.User {
+						t.Errorf("[%s] Expected response tuple user at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
 					}
 				}
 			}
 		})
 	}
+}
+
+func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	// TODO: review which of these tests should be moved to validation/types in grpc rather than execution. e.g.: invalid relation in authorizationmodel is fine, but tuple without authorizationmodel is should be required before. see issue: https://github.com/openfga/sandcastle/issues/13
+	tests := []struct {
+		_name   string
+		model   *openfgapb.AuthorizationModel
+		request *openfgapb.ReadRequest
+	}{
+		{
+			_name: "ExecuteErrorsIfOneTupleKeyHasObjectWithoutType",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object: "openfga/iam",
+				},
+			},
+		},
+		{
+			_name: "ExecuteErrorsIfOneTupleKeyObjectIs':'",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object: ":",
+				},
+			},
+		},
+		{
+			_name: "ErrorIfRequestHasNoObjectAndThusNoType",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Relation: "admin",
+					User:     "github|jonallie",
+				},
+			},
+		},
+		{
+			_name: "ExecuteErrorsIfOneTupleKeyHasNoObjectIdAndNoUserSetButHasAType",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object:   "repo:",
+					Relation: "writer",
+				},
+			},
+		},
+		{
+			_name: "ExecuteErrorsIfOneTupleKeyInTupleSetOnlyHasRelation",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Relation: "writer",
+				},
+			},
+		},
+		{
+			_name: "ExecuteErrorsIfContinuationTokenIsBad",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin":  {},
+							"writer": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object: "repo:openfga/openfga",
+				},
+				ContinuationToken: "foo",
+			},
+		},
+	}
+
+	require := require.New(t)
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	encoder := encoder.NewBase64Encoder()
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			store := ulid.Make().String()
+			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
+			require.NoError(err)
+
+			test.request.StoreId = store
+			_, err = commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, test.request)
+			require.Error(err)
+		})
+	}
+}
+
+func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
+
+	writes := []*openfgapb.TupleKey{
+		{
+			Object:   "repo:openfga/foo",
+			Relation: "admin",
+			User:     "github|jon.allie",
+		},
+		{
+			Object:   "repo:openfga/bar",
+			Relation: "admin",
+			User:     "github|jon.allie",
+		},
+		{
+			Object:   "repo:openfga/baz",
+			Relation: "admin",
+			User:     "github|jon.allie",
+		},
+	}
+	err := datastore.Write(ctx, store, nil, writes)
+	require.NoError(t, err)
+
+	cmd := commands.NewReadQuery(datastore, tracer, logger, encoder.NewBase64Encoder())
+
+	firstRequest := &openfgapb.ReadRequest{
+		StoreId:           store,
+		PageSize:          wrapperspb.Int32(1),
+		ContinuationToken: "",
+	}
+	firstResponse, err := cmd.Execute(ctx, firstRequest)
+	require.NoError(t, err)
+
+	require.Len(t, firstResponse.Tuples, 1)
+	require.NotEmpty(t, firstResponse.ContinuationToken)
+
+	var receivedTuples []*openfgapb.TupleKey
+	for _, tuple := range firstResponse.Tuples {
+		receivedTuples = append(receivedTuples, tuple.Key)
+	}
+
+	secondRequest := &openfgapb.ReadRequest{StoreId: store, ContinuationToken: firstResponse.ContinuationToken}
+	secondResponse, err := cmd.Execute(ctx, secondRequest)
+	require.NoError(t, err)
+
+	require.Len(t, secondResponse.Tuples, 2)
+	require.Empty(t, secondResponse.ContinuationToken)
+
+	for _, tuple := range secondResponse.Tuples {
+		receivedTuples = append(receivedTuples, tuple.Key)
+	}
+
+	cmpOpts := []cmp.Option{
+		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}, openfgapb.Tuple{}, openfgapb.TupleChange{}, openfgapb.Assertion{}),
+		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
+		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
+		testutils.TupleKeyCmpTransformer,
+	}
+
+	if diff := cmp.Diff(writes, receivedTuples, cmpOpts...); diff != "" {
+		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
+	}
+}
+
+func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
+
+	encrypter, err := encrypter.NewGCMEncrypter("key")
+	require.NoError(t, err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
+	model := &openfgapb.AuthorizationModel{
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+			},
+		},
+	}
+
+	err = datastore.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(t, err)
+
+	_, err = commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, &openfgapb.ReadRequest{
+		StoreId:           store,
+		ContinuationToken: "foo",
+	})
+	require.ErrorIs(t, err, serverErrors.InvalidContinuationToken)
 }

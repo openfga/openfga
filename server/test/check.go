@@ -2,10 +2,12 @@ package test
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"testing"
 
-	"github.com/openfga/openfga/pkg/id"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -23,21 +25,10 @@ const (
 	gitHubTestDataFile      = "testdata/github.json" // relative to project root
 )
 
-var githubTuples = []*openfgapb.TupleKey{
-	tuple.NewTupleKey("org:openfga", "member", "erik"),
-	tuple.NewTupleKey("org:openfga", "repo_admin", "org:openfga#member"),
-	tuple.NewTupleKey("repo:openfga/openfga", "admin", "team:openfga/iam#member"),
-	tuple.NewTupleKey("repo:openfga/openfga", "owner", "org:openfga"),
-	tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-	tuple.NewTupleKey("repo:openfga/openfga", "writer", "beth"),
-	tuple.NewTupleKey("team:openfga/iam", "member", "charles"),
-	tuple.NewTupleKey("team:openfga/iam", "member", "team:openfga/protocols#member"),
-	tuple.NewTupleKey("team:openfga/protocols", "member", "diane"),
-}
-
-func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
+func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []struct {
 		name             string
+		schemaVersion    string
 		typeDefinitions  []*openfgapb.TypeDefinition
 		tuples           []*openfgapb.TupleKey
 		resolveNodeLimit uint32
@@ -46,83 +37,138 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		response         *openfgapb.CheckResponse
 	}{
 		{
-			name: "ExecuteWithEmptyTupleKey",
-			// state
+			name:          "Success_when_a_tuple_with_an_invalid_objectType_exists_in_the_store",
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				}},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "jon"),
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
+			},
+			response: &openfgapb.CheckResponse{Allowed: false},
+		},
+		{
+			name:          "Success_when_a_tuple_with_an_invalid_relation_exists_in_the_store",
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+			}, {
+				Type: "group",
+			}},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "jon"),
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "jon"),
+			},
+			response: &openfgapb.CheckResponse{Allowed: false}},
+		{
+			name:          "ExecuteWithEmptyTupleKey",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: &openfgapb.TupleKey{},
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyObject",
-			// state
+			name:          "ExecuteWithEmptyObject",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("", "reader", "someUser"),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyRelation",
-			// state
+			name:          "ExecuteWithEmptyRelation",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "", "someUser"),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithEmptyUser",
-			// state
+			name:          "ExecuteWithEmptyUser",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", ""),
 			},
-			// output
 			err: serverErrors.InvalidCheckInput,
 		},
 		{
-			name: "ExecuteWithRequestRelationInexistentInTypeDefinition",
-			// state
+			name:          "ExecuteWithDuplicateContextualTuples",
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				}},
+			},
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:budget", "viewer", "anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("document:budget", "viewer", "*"),
+						tuple.NewTupleKey("document:budget", "viewer", "*"),
+					},
+				},
+			},
+			err: serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("document:budget", "viewer", "*")),
+		},
+		{
+			name:          "ExecuteWithRequestRelationInexistentInTypeDefinition",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type:      "repo",
 				Relations: map[string]*openfgapb.Userset{},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser"),
 			},
-			// output
-			err: serverErrors.RelationNotFound("inexistent", "repo", tuple.NewTupleKey("repo:openfga/openfga", "inexistent", "someUser")),
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "repo",
+					Relation: "inexistent",
+				},
+			),
 		},
 		{
-			name: "ExecuteFailsWithInvalidUser",
-			// state
+			name:          "ExecuteFailsWithInvalidUser",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -130,16 +176,14 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			}},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "john:albert:doe"),
 			},
-			// output
-			err: serverErrors.InvalidUser("john:albert:doe"),
+			err: serverErrors.ValidationError(fmt.Errorf("the 'user' field is malformed")),
 		},
 		{
-			name: "ExecuteReturnsErrorNotStackOverflowForInfinitelyRecursiveResolution",
-			// state
+			name:          "ExecuteReturnsErrorNotStackOverflowForInfinitelyRecursiveResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -166,8 +210,8 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteReturnsResolutionTooComplexErrorForComplexResolution",
-			// state
+			name:          "ExecuteReturnsResolutionTooComplexErrorForComplexResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -191,8 +235,8 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteReturnsResolutionTooComplexErrorForComplexUnionResolution",
-			// state
+			name:          "ExecuteReturnsResolutionTooComplexErrorForComplexUnionResolution",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -228,120 +272,8 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "ExecuteWithExistingTupleKeyAndEmptyUserSetReturnsAllowed",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".(direct).",
-			},
-		},
-		{
-			name: "ExecuteWithAllowAllTupleKeyAndEmptyUserSetReturnsAllowed",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "*"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".(direct).",
-			},
-		},
-		{
-			name: "ExecuteWithNonExistingTupleKeyAndEmptyUserSetReturnsNotAllowed",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {},
-				},
-			}},
-			tuples:           []*openfgapb.TupleKey{},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name: "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfDirectTupleExists",
-			// state
-			//relation {
-			//	name: "admin"
-			//	userset_rewrite {
-			//		child { _this {  }}
-			//	}
-			//}
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{
-									This: &openfgapb.DirectUserset{},
-								}},
-							}},
-						},
-					},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).",
-			},
-		},
-		{
-			name: "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfAllUsersTupleExists",
-			// state
-			//relation {
-			//	name: "admin"
-			//	userset_rewrite {
-			//		child { _this {  }}
-			//	}
-			//}
+			name:          "ExecuteWithUnionAndDirectUserSetReturnsAllowedIfAllUsersTupleExists",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
@@ -360,750 +292,162 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "*"),
 			},
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
 				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
 				Trace:    true,
 			},
-			// output
 			response: &openfgapb.CheckResponse{
 				Allowed:    true,
 				Resolution: ".union.0(direct).",
 			},
 		},
 		{
-			name: "ExecuteWithUnionAndComputedUserSetReturnsNotAllowedIfComputedUsersetDoesNotIncludeUser",
-			// state
-			//relation {
-			//	name: "admin"
-			//	userset_rewrite {
-			//    child { computed_userset { relation: "owner" }}
-			//	}
-			//}
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "owner",
-									},
-								}},
-							}},
-						},
-					},
-					"owner": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				tuple.NewTupleKey("repo:openfga/openfga", "owner", "team/iam"),
-			},
+			name:             "CheckUsersetAsUser_WithContextualTuples",
 			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
 			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name: "ExecuteWithUnionAndComputedUserSetReturnsAllowedIfComputedUsersetIncludesUser",
-			// state
-			//relation {
-			//	name: "reader"
-			//	userset_rewrite {
-			//    child { _this {  }}
-			//    child { computed_userset { relation: "writer" }}
-			//	}
-			//}
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "writer",
-									},
-								}},
-							}},
-						},
-					},
-					"writer": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#writer.(direct).",
-			},
-		},
-		{
-			name: "ExecuteDirectSetReturnsAllowedIfUserHasRelationWithAnObjectThatHasUserAccessToTheTargetObject",
-			// state
-			//relation {
-			//	name: "reader"
-			//	userset_rewrite {
-			//    child { _this {  }}
-			//	}
-			//}
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"admin": {
-						Userset: &openfgapb.Userset_This{},
+				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
 					},
 				},
-			}, {
-				Type: "team",
-				Relations: map[string]*openfgapb.Userset{
-					"team_member": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("team:iam", "team_member", "github|jose@openfga"),
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "team:iam#team_member"),
 			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".(direct).team:iam#team_member.(direct).",
-			},
-		},
-		{
-			name: "ExecuteReturnsAllowedIfUserIsHasRelationToAnObjectThatIsInComputedUserSetForAnotherObject",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "writer",
-									},
-								}},
-							}},
-						},
-					},
-					"writer": {},
-				},
-			}, {
-				Type: "team",
-				Relations: map[string]*openfgapb.Userset{
-					"team_member": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("team:iam", "team_member", "github|jose@openfga"),
-				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:iam#team_member"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "github|jose@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#writer.(direct).team:iam#team_member.(direct).",
-			},
-		},
-		{
-			name: "ExecuteReturnsNotAllowedIfIntersectionIsRequiredAndUserIsInOneUserSetButNotTheOther",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "openfga-store",
-				// pretend you can only create an organization user in an openfga store if
-				// you can create a user AND write an organization in a store
-				Relations: map[string]*openfgapb.Userset{
-					"create_organization_user": {
-						Userset: &openfgapb.Userset_Intersection{
-							Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "create_user",
-									},
-								}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "write_organization",
-									},
-								}},
-							}},
-						},
-					},
-					"create_user":        {},
-					"write_organization": {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "create_user", "github|yenkel@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("openfga-store:yenkel-dev", "create_organization_user", "github|yenkel@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name: "ExecuteReturnsAllowedIfIntersectionIsRequiredAndUserIsInAllUserSets",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "openfga-store",
-				// pretend you can only create an organization user in an openfga store if
-				// you can create a user AND write an organization in a store
-				Relations: map[string]*openfgapb.Userset{
-					"create_organization_user": {
-						Userset: &openfgapb.Userset_Intersection{
-							Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "create_user",
-									},
-								}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "write_organization",
-									},
-								}},
-							}},
-						},
-					},
-					"write_organization": {},
-					"create_user":        {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "create_user", "github|yenkel@openfga"),
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "write_organization", "github|yenkel@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("openfga-store:yenkel-dev", "create_organization_user", "github|yenkel@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".[.0(computed-userset).openfga-store:yenkel-dev#create_user.(direct).,.1(computed-userset).openfga-store:yenkel-dev#write_organization.(direct).]",
-			},
-		},
-		{
-			name: "ExecuteSupportsNestedIntersectionAndCorrectlyTraces",
-			// state
-			typeDefinitions: []*openfgapb.TypeDefinition{{
-				Type: "openfga-store",
-				// pretend you can only create an organization user in an openfga store if
-				// you can create a user AND write an organization in a store
-				Relations: map[string]*openfgapb.Userset{
-					"create_organization_user": {
-						Userset: &openfgapb.Userset_Intersection{
-							Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "create_user",
-									},
-								}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "write_organization",
-									},
-								}},
-							}},
-						},
-					},
-					"create_user": {
-						Userset: &openfgapb.Userset_Intersection{
-							Intersection: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "create_user_a",
-									},
-								}},
-								{Userset: &openfgapb.Userset_ComputedUserset{
-									ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "create_user_b",
-									},
-								}},
-							}},
-						},
-					},
-					"write_organization": {},
-					"create_user_a":      {},
-					"create_user_b":      {},
-				},
-			}},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "create_user_a", "github|yenkel@openfga"),
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "create_user_b", "github|yenkel@openfga"),
-				tuple.NewTupleKey("openfga-store:yenkel-dev", "write_organization", "github|yenkel@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			// input
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("openfga-store:yenkel-dev", "create_organization_user", "github|yenkel@openfga"),
-				Trace:    true,
-			},
-			// output
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".[.0(computed-userset).openfga-store:yenkel-dev#create_user.[.0(computed-userset).openfga-store:yenkel-dev#create_user.0(computed-userset).openfga-store:yenkel-dev#create_user_a.(direct).,.0(computed-userset).openfga-store:yenkel-dev#create_user.1(computed-userset).openfga-store:yenkel-dev#create_user_b.(direct).],.1(computed-userset).openfga-store:yenkel-dev#write_organization.(direct).]",
-			},
-		},
-		{
-			name: "ExecuteReturnsAllowedForUserNotRemovedByDifference",
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
-					Type: "repo",
+					Type: "team",
 					Relations: map[string]*openfgapb.Userset{
-						"admin": {
-							Userset: &openfgapb.Userset_Difference{
-								Difference: &openfgapb.Difference{
-									Base: &openfgapb.Userset{
-										Userset: &openfgapb.Userset_This{},
-									},
-									Subtract: &openfgapb.Userset{
-										Userset: &openfgapb.Userset_ComputedUserset{
-											ComputedUserset: &openfgapb.ObjectRelation{
-												Relation: "banned",
-											},
-										},
-									},
-								},
-							},
-						},
-						"banned": {},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jon.allie@openfga"),
-				tuple.NewTupleKey("repo:openfga/canaveral", "banned", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jon.allie@openfga"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".0(direct).",
-			},
-		},
-		{
-			name: "ExecuteReturnsNotAllowedForUserRemovedByDifference",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"admin": {
-							Userset: &openfgapb.Userset_Difference{
-								Difference: &openfgapb.Difference{
-									Base: &openfgapb.Userset{
-										Userset: &openfgapb.Userset_This{},
-									},
-									Subtract: &openfgapb.Userset{
-										Userset: &openfgapb.Userset_ComputedUserset{
-											ComputedUserset: &openfgapb.ObjectRelation{
-												Relation: "banned",
-											},
-										},
-									},
-								},
-							},
-						},
-						"banned": {},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jon.allie@openfga"),
-				tuple.NewTupleKey("repo:openfga/canaveral", "banned", "github|jon.allie@openfga"),
-				tuple.NewTupleKey("repo:openfga/canaveral", "banned", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jon.allie@openfga"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name: "ExecuteReturnsAllowedForTupleToUserset",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"admin": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
-									}}},
-								}},
-							},
-						},
+						"member": {Userset: &openfgapb.Userset_This{}},
 					},
 				},
 				{
 					Type: "org",
 					Relations: map[string]*openfgapb.Userset{
-						// implicit direct?
-						"repo_admin": {},
+						"member": {Userset: &openfgapb.Userset_This{}},
 					},
 				},
 			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/canaveral", "manager", "org:openfga#repo_admin"),
-				tuple.NewTupleKey("org:openfga", "repo_admin", "github|jose@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/canaveral", "admin", "github|jose@openfga"),
-				Trace:    true,
-			},
+			tuples: []*openfgapb.TupleKey{},
 			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(tuple-to-userset).repo:openfga/canaveral#manager.org:openfga#repo_admin.(direct).",
+				Allowed: true,
 			},
 		},
 		{
-			name: "ExecuteCanResolveRecursiveComputedUserSets",
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"admin": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_admin",
-										},
-									}}},
-								}},
-							},
-						},
-						"maintainer": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "admin",
-									}}},
-								}},
-							},
-						},
-						"writer": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "maintainer",
-									}}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_writer",
-										},
-									}}},
-								}},
-							},
-						},
-						"triager": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "writer",
-									}}},
-								}},
-							},
-						},
-						"reader": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "triager",
-									}}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "manager",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "repo_reader",
-										},
-									}}},
-								}},
-							},
-						},
+			name:             "CheckUsersetAsUser_WithContextualTuples",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
 					},
 				},
+			},
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "team",
 					Relations: map[string]*openfgapb.Userset{
-						"member": {},
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{},
+			response: &openfgapb.CheckResponse{
+				Allowed: true,
+			},
+		},
+		{
+			name:             "CheckUsersetAsUser_WithContextualTuples",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
+						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
+					},
+				},
+			},
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "team",
+					Relations: map[string]*openfgapb.Userset{
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{},
+			response: &openfgapb.CheckResponse{
+				Allowed: true,
+			},
+		},
+		{
+			name:             "EdgeCase1",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "abigail"),
+			},
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "folder",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
 					},
 				},
 			},
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga#member"),
-				tuple.NewTupleKey("team:openfga", "member", "github|iaco@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "github|iaco@openfga"),
-				Trace:    true,
+				tuple.NewTupleKey("document:1", "parent", "user:beatrix"), // user is an object
 			},
 			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.0(direct).team:openfga#member.(direct).",
+				Allowed: false,
 			},
 		},
 		{
-			name: "ExecuteCanResolveRecursiveTupleToUserSets",
+			name:             "Error_if_*_encountered_in_TupleToUserset_evaluation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
+			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"parent": {Userset: &openfgapb.Userset_This{}},
-						"owner":  {Userset: &openfgapb.Userset_This{}},
-						"editor": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "owner",
-									}}},
-								}},
-							},
-						},
-						"viewer": {
-							Userset: &openfgapb.Userset_Union{
-								Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-									{Userset: &openfgapb.Userset_This{}},
-									{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{
-										Relation: "editor",
-									}}},
-									{Userset: &openfgapb.Userset_TupleToUserset{TupleToUserset: &openfgapb.TupleToUserset{
-										Tupleset: &openfgapb.ObjectRelation{
-											Relation: "parent",
-										},
-										ComputedUserset: &openfgapb.ObjectRelation{
-											Object:   "$TUPLE_USERSET_OBJECT",
-											Relation: "viewer",
-										},
-									}}},
-								}},
-							},
-						},
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
 					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:octo_v2_draft", "parent", "document:octo_folder"),
-				tuple.NewTupleKey("document:octo_folder", "editor", "google|iaco@openfga"),
-			},
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("document:octo_v2_draft", "viewer", "google|iaco@openfga"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.2(tuple-to-userset).document:octo_v2_draft#parent.document:octo_folder#viewer.union.1(computed-userset).document:octo_folder#editor.union.0(direct).",
-			},
-		},
-		{
-			name:             "CheckWithUsersetAsUser",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
-			},
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "team",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-				{
-					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
-				tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: true,
-			},
-		},
-		{
-			name:             "CheckUsersetAsUser_WithContextualTuples",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
-						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
-					},
-				},
-			},
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "team",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-				{
-					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{},
-			response: &openfgapb.CheckResponse{
-				Allowed: true,
-			},
-		},
-		{
-			name:             "CheckUsersetAsUser_WithContextualTuples",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
-						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
-					},
-				},
-			},
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "team",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-				{
-					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{},
-			response: &openfgapb.CheckResponse{
-				Allowed: true,
-			},
-		},
-		{
-			name:             "CheckUsersetAsUser_WithContextualTuples",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("team:iam", "member", "org:openfga#member"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("team:iam", "member", "team:engineering#member"),
-						tuple.NewTupleKey("team:engineering", "member", "org:openfga#member"),
-					},
-				},
-			},
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "team",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-				{
-					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{},
-			response: &openfgapb.CheckResponse{
-				Allowed: true,
-			},
-		},
-		{
-			name:             "Check with TupleToUserset involving no object or userset",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
-			},
-			typeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"parent": {
-							Userset: &openfgapb.Userset_This{},
-						},
-						"viewer": {
-							Userset: &openfgapb.Userset_TupleToUserset{
-								TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
-									ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"parent": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1112,38 +456,50 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "folder",
 					Relations: map[string]*openfgapb.Userset{
-						"viewer": {
-							Userset: &openfgapb.Userset_This{},
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+								},
+							},
 						},
 					},
 				},
 			},
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
-				tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
+				tuple.NewTupleKey("document:doc1", "parent", "*"), // wildcard not allowed on tupleset relations
+				tuple.NewTupleKey("folder:folder1", "viewer", "user:anne"),
 			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
+			response: &openfgapb.CheckResponse{Allowed: false},
 		},
 		{
-			name:             "TupleToUserset Check Passes when at least one tupleset relation resolves",
+			name:             "Error_if_*_encountered_in_TTU_evaluation_including_ContextualTuples",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "user:anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{
+						tuple.NewTupleKey("document:doc1", "parent", "*"), // wildcard not allowed on tupleset relations
+						tuple.NewTupleKey("folder:folder1", "viewer", "user:anne"),
+					},
+				},
 			},
+			schemaVersion: typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
 				{
 					Type: "document",
 					Relations: map[string]*openfgapb.Userset{
-						"parent": {
-							Userset: &openfgapb.Userset_This{},
-						},
-						"viewer": {
-							Userset: &openfgapb.Userset_TupleToUserset{
-								TupleToUserset: &openfgapb.TupleToUserset{
-									Tupleset:        &openfgapb.ObjectRelation{Relation: "parent"},
-									ComputedUserset: &openfgapb.ObjectRelation{Relation: "viewer"},
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"parent": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("folder", ""),
 								},
 							},
 						},
@@ -1152,20 +508,206 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				{
 					Type: "folder",
 					Relations: map[string]*openfgapb.Userset{
-						"viewer": {
-							Userset: &openfgapb.Userset_This{},
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+								},
+							},
 						},
 					},
 				},
 			},
+			err: serverErrors.InvalidTuple("unexpected wildcard relationship with tupleset relation 'document#parent'",
+				tuple.NewTupleKey("document:doc1", "parent", "*"),
+			),
+		},
+		{
+			name:             "Error_if_rewrite_encountered_in_tupleset_relation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			request: &openfgapb.CheckRequest{
+				TupleKey:         tuple.NewTupleKey("document:doc1", "viewer", "anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{},
+			},
+			schemaVersion: typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.ComputedUserset("editor"),
+						"editor": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				errors.New("unexpected rewrite on relation 'document#parent'"),
+			),
+		},
+		{
+			// NOTE: not a valid test from the API as cannot write the tuples
+			//type org
+			//	relations
+			//		define viewer as self
+			//		define can_view as viewer
+			//type document
+			//	relations
+			//		define parent as self
+			//		define viewer as viewer from parent
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.TupleToUserset("parent", "viewer"),
+					},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer":   typesystem.This(),
+						"can_view": typesystem.ComputedUserset("viewer"),
+					},
+				},
+			},
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:doc1", "parent", "folder1"), // folder1 isn't an object or userset
-				tuple.NewTupleKey("document:doc1", "parent", "folder:folder1"),
-				tuple.NewTupleKey("folder:folder1", "viewer", "anne"),
+				tuple.NewTupleKey("org:x", "viewer", "org:y"),
+				tuple.NewTupleKey("document:1", "parent", "org:y#can_view"),
+				tuple.NewTupleKey("document:1", "parent", "org:z#can_view"), //not relevant
 			},
-			response: &openfgapb.CheckResponse{
-				Allowed: true,
+			request: &openfgapb.CheckRequest{
+				TupleKey:         tuple.NewTupleKey("document:1", "viewer", "org:y"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{},
 			},
+			response: &openfgapb.CheckResponse{Allowed: false},
+		},
+		{
+			// NOTE: not a valid test from the API as cannot write the tuples
+			//type org
+			//	relations
+			//		define viewer as self
+			//		define can_view as viewer
+			//type document
+			//	relations
+			//		define parent as self
+			//		define viewer as viewer from parent
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"parent": typesystem.This(),
+						"viewer": typesystem.Union(
+							typesystem.This(),
+							typesystem.TupleToUserset("parent", "viewer"),
+						),
+					},
+				},
+			},
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
+				tuple.NewTupleKey("document:2", "viewer", "jon"),
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey:         tuple.NewTupleKey("document:1", "viewer", "org:y"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{},
+			},
+			response: &openfgapb.CheckResponse{Allowed: false},
+		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedType",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
+			},
+			err: serverErrors.ValidationError(
+				&tuple.TypeNotFoundError{TypeName: "group"},
+			),
+		},
+		{
+			name:             "CheckWithUsersetContainingUndefinedRelation",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_0,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": typesystem.This(),
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
+			},
+			err: serverErrors.ValidationError(
+				&tuple.RelationNotFoundError{
+					TypeName: "document",
+					Relation: "editor",
+				},
+			),
+		},
+		{
+			name:             "CheckWith1.1ModelFailsIfContextualTuplesAreInvalidAccordingToTypeRestrictions",
+			resolveNodeLimit: defaultResolveNodeLimit,
+			schemaVersion:    typesystem.SchemaVersion1_1,
+			typeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": typesystem.Union(
+							typesystem.This(),
+							typesystem.ComputedUserset("writer")),
+						"writer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"reader": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+									typesystem.WildcardRelationReference("user"),
+								},
+							},
+							"writer": { // no wildcard allowed
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			request: &openfgapb.CheckRequest{
+				TupleKey: tuple.NewTupleKey("document:budget", "reader", "user:anne"),
+				ContextualTuples: &openfgapb.ContextualTupleKeys{
+					TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("document:budget", "writer", "user:*")}},
+			},
+			err: serverErrors.InvalidTuple("the typed wildcard 'user:*' is not an allowed type restriction for 'document#writer'",
+				tuple.NewTupleKey("document:budget", "writer", "user:*"),
+			),
 		},
 	}
 
@@ -1176,10 +718,10 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			store := id.Must(id.New()).String()
+			store := ulid.Make().String()
 			model := &openfgapb.AuthorizationModel{
-				Id:              id.Must(id.New()).String(),
-				SchemaVersion:   typesystem.SchemaVersion1_0,
+				Id:              ulid.Make().String(),
+				SchemaVersion:   test.schemaVersion,
 				TypeDefinitions: test.typeDefinitions,
 			}
 
@@ -1196,13 +738,7 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
-			if test.err == nil {
-				require.NoError(t, gotErr)
-			}
-
-			if test.err != nil {
-				require.EqualError(t, test.err, gotErr.Error())
-			}
+			require.ErrorIs(t, gotErr, test.err)
 
 			if test.response != nil {
 				require.NoError(t, gotErr)
@@ -1217,355 +753,26 @@ func TestCheckQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 }
 
-func TestCheckQueryAgainstGitHubModel(t *testing.T, datastore storage.OpenFGADatastore) {
-	var tests = []struct {
-		name             string
-		resolveNodeLimit uint32
-		request          *openfgapb.CheckRequest
-		err              error
-		response         *openfgapb.CheckResponse
-	}{
-		{
-			name:             "GitHubAssertion1",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).",
-			},
-		},
-		{
-			name:             "GitHubAssertion2",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "triager", "anne"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name:             "GitHubAssertion3",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "diane"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).team:openfga/iam#member.(direct).team:openfga/protocols#member.(direct).",
-			},
-		},
-		{
-			name:             "GitHubAssertion4",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "erik"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.1(tuple-to-userset).repo:openfga/openfga#owner.org:openfga#repo_admin.(direct).org:openfga#member.union.0(direct).",
-			},
-		},
-		{
-			name:             "GitHubAssertion5",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "writer", "charles"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.0(direct).team:openfga/iam#member.(direct).",
-			},
-		},
-		{
-			name:             "GitHubAssertion6",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "beth"),
-				Trace:    true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-	}
-
-	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
-	meter := telemetry.NewNoopMeter()
-	logger := logger.NewNoopLogger()
-
-	data, err := os.ReadFile(gitHubTestDataFile)
-	require.NoError(t, err)
-
-	var gitHubDefinition openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubDefinition)
-	require.NoError(t, err)
-
-	store := id.Must(id.New()).String()
-	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
-	}
-
-	err = datastore.WriteAuthorizationModel(ctx, store, model)
-	require.NoError(t, err)
-
-	err = datastore.Write(ctx, store, nil, githubTuples)
-	require.NoError(t, err)
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
-			test.request.StoreId = store
-			test.request.AuthorizationModelId = model.Id
-			resp, gotErr := cmd.Execute(ctx, test.request)
-
-			if test.err == nil {
-				require.NoError(t, gotErr)
-			}
-
-			if test.err != nil {
-				require.EqualError(t, test.err, gotErr.Error())
-			}
-
-			if test.response != nil {
-				require.NoError(t, gotErr)
-
-				require.Equal(t, test.response.Allowed, resp.Allowed)
-
-				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
-				}
-			}
-		})
-	}
-}
-
-func TestCheckQueryWithContextualTuplesAgainstGitHubModel(t *testing.T, datastore storage.OpenFGADatastore) {
-	var tests = []struct {
-		name             string
-		resolveNodeLimit uint32
-		request          *openfgapb.CheckRequest
-		err              error
-		response         *openfgapb.CheckResponse
-	}{
-		{
-			name:             "ContextualTuplesGitHubAssertion1",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).",
-			},
-		},
-		{
-			name:             "ContextualTuplesGitHubAssertion2",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "triager", "anne"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name:             "ContextualTuplesGitHubAssertion3",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "admin", "diane"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.0(direct).team:openfga/iam#member.(direct).team:openfga/protocols#member.(direct).",
-			},
-		},
-		{
-			name:             "ContextualTuplesGitHubAssertion4",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "reader", "erik"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#triager.union.1(computed-userset).repo:openfga/openfga#writer.union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.1(tuple-to-userset).repo:openfga/openfga#owner.org:openfga#repo_admin.(direct).org:openfga#member.union.0(direct).",
-			},
-		},
-		{
-			name:             "ContextualTuplesGitHubAssertion5",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "writer", "charles"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed:    true,
-				Resolution: ".union.1(computed-userset).repo:openfga/openfga#maintainer.union.1(computed-userset).repo:openfga/openfga#admin.union.0(direct).team:openfga/iam#member.(direct).",
-			},
-		},
-		{
-			name:             "ContextualTuplesGitHubAssertion6",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey:         tuple.NewTupleKey("repo:openfga/openfga", "admin", "beth"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{TupleKeys: githubTuples},
-				Trace:            true,
-			},
-			response: &openfgapb.CheckResponse{
-				Allowed: false,
-			},
-		},
-		{
-			name:             "RepeatedContextualTuplesShouldError",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-						tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne"),
-					},
-				},
-				Trace: true,
-			},
-			err: serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:openfga/openfga", "reader", "anne")),
-		},
-		{
-			name:             "ContextualTuplesWithEmptyUserFails",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "beth"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("org:openfga", "member", ""),
-					},
-				},
-				Trace: true,
-			},
-			err: serverErrors.InvalidContextualTuple(tuple.NewTupleKey("org:openfga", "member", "")),
-		},
-		{
-			name:             "ContextualTuplesWithEmptyRelationFails",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "beth"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("org:openfga", "", "anne"),
-					},
-				},
-				Trace: true,
-			},
-			err: serverErrors.InvalidContextualTuple(tuple.NewTupleKey("org:openfga", "", "anne")),
-		},
-		{
-			name:             "ContextualTuplesWithEmptyObjectFails",
-			resolveNodeLimit: defaultResolveNodeLimit,
-			request: &openfgapb.CheckRequest{
-				TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "beth"),
-				ContextualTuples: &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("", "member", "anne"),
-					},
-				},
-				Trace: true,
-			},
-			err: serverErrors.InvalidContextualTuple(tuple.NewTupleKey("", "member", "anne")),
-		},
-	}
-
-	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
-	meter := telemetry.NewNoopMeter()
-	logger := logger.NewNoopLogger()
-
-	data, err := os.ReadFile(gitHubTestDataFile)
-	require.NoError(t, err)
-
-	var gitHubDefinition openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubDefinition)
-	require.NoError(t, err)
-
-	storeID := id.Must(id.New()).String()
-	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubDefinition.GetTypeDefinitions(),
-	}
-
-	err = datastore.WriteAuthorizationModel(ctx, storeID, model)
-	require.NoError(t, err)
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
-			test.request.StoreId = storeID
-			test.request.AuthorizationModelId = model.Id
-			resp, gotErr := cmd.Execute(ctx, test.request)
-
-			if test.err == nil {
-				require.NoError(t, gotErr)
-			}
-
-			if test.err != nil {
-				require.EqualError(t, test.err, gotErr.Error())
-			}
-
-			if test.response != nil {
-				require.NoError(t, gotErr)
-
-				require.Equal(t, test.response.Allowed, resp.Allowed)
-
-				if test.response.Allowed {
-					require.Equal(t, test.response.Resolution, resp.Resolution)
-				}
-			}
-		})
-	}
-}
-
+// TestCheckQueryAuthorizationModelsVersioning ensures that Check is using the "auth model id" passed in as parameter to expand the usersets
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	oldModel := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner": {Userset: &openfgapb.Userset_This{}},
-					"editor": {
-						Userset: &openfgapb.Userset_Union{
-							Union: &openfgapb.Usersets{Child: []*openfgapb.Userset{
-								{Userset: &openfgapb.Userset_This{}},
-								{Userset: &openfgapb.Userset_ComputedUserset{ComputedUserset: &openfgapb.ObjectRelation{Relation: "owner"}}},
-							}},
-						},
-					},
+					"owner": typesystem.This(),
+					"editor": typesystem.Union(
+						typesystem.This(),
+						typesystem.ComputedUserset("owner"),
+					),
 				},
 			},
 		},
@@ -1575,14 +782,14 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	require.NoError(t, err)
 
 	updatedModel := &openfgapb.AuthorizationModel{
-		Id:            id.Must(id.New()).String(),
+		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"owner":  {Userset: &openfgapb.Userset_This{}},
-					"editor": {Userset: &openfgapb.Userset_This{}},
+					"owner":  typesystem.This(),
+					"editor": typesystem.This(),
 				},
 			},
 		},
@@ -1625,14 +832,14 @@ var tuples = []*openfgapb.TupleKey{
 }
 
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var result *openfgapb.CheckResponse //nolint
+var checkResponse *openfgapb.CheckResponse //nolint
 
 func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
@@ -1642,7 +849,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	require.NoError(b, err)
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
@@ -1670,15 +877,15 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 		})
 	}
 
-	result = r
+	checkResponse = r
 }
 
-func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
+func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
-	store := id.Must(id.New()).String()
+	store := ulid.Make().String()
 
 	data, err := os.ReadFile(gitHubTestDataFile)
 	require.NoError(b, err)
@@ -1688,7 +895,7 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	require.NoError(b, err)
 
 	model := &openfgapb.AuthorizationModel{
-		Id:              id.Must(id.New()).String(),
+		Id:              ulid.Make().String(),
 		SchemaVersion:   typesystem.SchemaVersion1_0,
 		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
 	}
@@ -1717,5 +924,5 @@ func BenchmarkWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 		})
 	}
 
-	result = r
+	checkResponse = r
 }
