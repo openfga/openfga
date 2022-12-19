@@ -21,7 +21,7 @@ func TestEncodedError(t *testing.T) {
 	}
 	var tests = []encodedTests{
 		{
-			_name:                  "invalid error",
+			_name:                  "invalid_error",
 			errorCode:              20,
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusInternalServerError,
@@ -30,7 +30,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    false,
 		},
 		{
-			_name:                  "auth error: invalid subject",
+			_name:                  "auth_error:_invalid subject",
 			errorCode:              int32(openfgapb.AuthErrorCode_auth_failed_invalid_subject),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -39,7 +39,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: invalid audience",
+			_name:                  "auth_error:_invalid_audience",
 			errorCode:              int32(openfgapb.AuthErrorCode_auth_failed_invalid_audience),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -48,7 +48,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: invalid issuer",
+			_name:                  "auth_error:_invalid issuer",
 			errorCode:              int32(openfgapb.AuthErrorCode_auth_failed_invalid_issuer),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -57,7 +57,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: invalid claims",
+			_name:                  "auth_error:_invalid_claims",
 			errorCode:              int32(openfgapb.AuthErrorCode_invalid_claims),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -66,7 +66,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: invalid bearer token",
+			_name:                  "auth_error:_invalid_bearer_token",
 			errorCode:              int32(openfgapb.AuthErrorCode_auth_failed_invalid_bearer_token),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -75,7 +75,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: missing bearer token",
+			_name:                  "auth_error:_missing_bearer_token",
 			errorCode:              int32(openfgapb.AuthErrorCode_bearer_token_missing),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -84,7 +84,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "auth error: unauthorized",
+			_name:                  "auth_error:_unauthorized",
 			errorCode:              int32(openfgapb.AuthErrorCode_unauthenticated),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusUnauthorized,
@@ -93,7 +93,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "validation error",
+			_name:                  "validation_error",
 			errorCode:              int32(openfgapb.ErrorCode_validation_error),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusBadRequest,
@@ -102,7 +102,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "internal error",
+			_name:                  "internal_error",
 			errorCode:              int32(openfgapb.InternalErrorCode_internal_error),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusInternalServerError,
@@ -111,7 +111,7 @@ func TestEncodedError(t *testing.T) {
 			isValidEncodedError:    true,
 		},
 		{
-			_name:                  "undefined endpoint",
+			_name:                  "undefined_endpoint",
 			errorCode:              int32(openfgapb.NotFoundErrorCode_undefined_endpoint),
 			message:                "error message",
 			expectedHTTPStatusCode: http.StatusNotFound,
@@ -150,12 +150,12 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 	}
 	var tests = []encodedTests{
 		{
-			_name:             "normal code",
+			_name:             "normal_code",
 			status:            status.New(codes.Code(openfgapb.ErrorCode_validation_error), "other error"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "no error",
+			_name:             "no_error",
 			status:            status.New(codes.OK, "other error"),
 			expectedErrorCode: int32(codes.OK),
 		},
@@ -170,27 +170,27 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_internal_error),
 		},
 		{
-			_name:             "deadline exceeded",
+			_name:             "deadline_exceeded",
 			status:            status.New(codes.DeadlineExceeded, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_deadline_exceeded),
 		},
 		{
-			_name:             "not found",
+			_name:             "not_found",
 			status:            status.New(codes.NotFound, "other error"),
 			expectedErrorCode: int32(openfgapb.NotFoundErrorCode_undefined_endpoint),
 		},
 		{
-			_name:             "already exceed",
+			_name:             "already_exceed",
 			status:            status.New(codes.AlreadyExists, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_already_exists),
 		},
 		{
-			_name:             "resource exhausted",
+			_name:             "resource_exhausted",
 			status:            status.New(codes.ResourceExhausted, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_resource_exhausted),
 		},
 		{
-			_name:             "failed precondition",
+			_name:             "failed_precondition",
 			status:            status.New(codes.FailedPrecondition, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_failed_precondition),
 		},
@@ -200,7 +200,7 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_aborted),
 		},
 		{
-			_name:             "out of range",
+			_name:             "out_of_range",
 			status:            status.New(codes.OutOfRange, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_out_of_range),
 		},
@@ -220,137 +220,137 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_unavailable),
 		},
 		{
-			_name:             "data loss",
+			_name:             "data_loss",
 			status:            status.New(codes.DataLoss, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_data_loss),
 		},
 		{
-			_name:             "undefined error number",
+			_name:             "undefined_error_number",
 			status:            status.New(25, "other error"),
 			expectedErrorCode: int32(openfgapb.InternalErrorCode_internal_error),
 		},
 		{
-			_name:             "invalid argument - unknown format",
+			_name:             "invalid_argument_-_unknown_format",
 			status:            status.New(codes.InvalidArgument, "other error"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "invalid argument - unknown format (2)",
+			_name:             "invalid_argument_-_unknown_format_(2)",
 			status:            status.New(codes.InvalidArgument, "no dot | foo :other error"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "invalid argument - unknown format (3)",
+			_name:             "invalid_argument_-_unknown_format_(3)",
 			status:            status.New(codes.InvalidArgument, "| foo :other error"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "invalid argument - unknown type",
+			_name:             "invalid_argument_-_unknown_type",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.UnknowObject: value must be absolute"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "invalid argument - store id",
+			_name:             "invalid_argument_-_store_id",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.StoreId: value length must be less than 26 runes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_store_id_invalid_length),
 		},
 		{
-			_name:             "invalid argument - issuer url other error",
+			_name:             "invalid_argument_-_issuer_url_other_error",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.IssuerUrl: other error"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_validation_error),
 		},
 		{
-			_name:             "invalid argument - Assertions",
+			_name:             "invalid_argument_-_Assertions",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Assertions: value must contain no more than 40 runes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_assertions_too_many_items),
 		},
 		{
-			_name:             "invalid argument - AuthorizationModelId",
+			_name:             "invalid_argument_-_AuthorizationModelId",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.AuthorizationModelId: value length must be at most 40 runes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_authorization_model_id_too_long),
 		},
 		{
-			_name:             "invalid argument - Base",
+			_name:             "invalid_argument_-_Base",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Base: value is required"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_difference_base_missing_value),
 		},
 		{
-			_name:             "invalid argument - Id",
+			_name:             "invalid_argument_-_Id",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Id: value length must be at most 40 runes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_id_too_long),
 		},
 		{
-			_name:             "invalid argument - Object length",
+			_name:             "invalid_argument_-_Object_length",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Object: value length must be at most 256 bytes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_object_too_long),
 		},
 		{
-			_name:             "invalid argument - Object invalid pattern",
+			_name:             "invalid_argument_-_Object_invalid_pattern",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Object: value does not match regex pattern"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_object_invalid_pattern),
 		},
 		{
-			_name:             "invalid argument - PageSize",
+			_name:             "invalid_argument_-_PageSize",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.PageSize: value must be inside range 1 to 100"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_page_size_invalid),
 		},
 		{
-			_name:             "invalid argument - Params",
+			_name:             "invalid_argument_-_Params",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Params: value is required"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_param_missing_value),
 		},
 		{
-			_name:             "invalid argument - Relation",
+			_name:             "invalid_argument_-_Relation",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Relation: value length must be at most 50 bytes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_relation_too_long),
 		},
 		{
-			_name:             "invalid argument - Relations",
+			_name:             "invalid_argument_-_Relations",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Relations: value must contain at least 1 pair"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_relations_too_few_items),
 		},
 		{
-			_name:             "invalid argument - Relations[abc]",
+			_name:             "invalid_argument_-_Relations[abc]",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Relations[abc]: value length must be at most 50 bytes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_relations_too_long),
 		},
 		{
-			_name:             "invalid argument - Relations[abc]",
+			_name:             "invalid_argument_-_Relations[abc]",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Relations[abc]: value does not match regex pattern"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_relations_invalid_pattern),
 		},
 		{
-			_name:             "invalid argument - Subtract",
+			_name:             "invalid_argument_-_Subtract",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Subtract: value is required"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_subtract_base_missing_value),
 		},
 		{
-			_name:             "invalid argument - TupleKey",
+			_name:             "invalid_argument_-_TupleKey",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.TupleKey: value is required"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_tuple_key_value_not_specified),
 		},
 		{
-			_name:             "invalid argument - TupleKeys",
+			_name:             "invalid_argument_-_TupleKeys",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.TupleKeys: value must contain between 1 to 10 items"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_tuple_keys_too_many_or_too_few_items),
 		},
 		{
-			_name:             "invalid argument - Type length at least",
+			_name:             "invalid_argument_-_Type_length_at_least",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Type: value length must be at least 1"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_type_invalid_length),
 		},
 		{
-			_name:             "invalid argument - Type length at most",
+			_name:             "invalid_argument_-_Type_length_at_most",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Type: value length must be at most 254 bytes"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_type_invalid_length),
 		},
 		{
-			_name:             "invalid argument - Type regex",
+			_name:             "invalid_argument_-_Type_regex",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.Type: value does not match regex pattern \"^[^:#]*$\""),
 			expectedErrorCode: int32(openfgapb.ErrorCode_type_invalid_pattern),
 		},
 		{
-			_name:             "invalid argument - TypeDefinitions",
+			_name:             "invalid_argument_-_TypeDefinitions",
 			status:            status.New(codes.InvalidArgument, "invalid WriteTokenIssuersRequest.Params: embedded message failed validation | caused by: invalid WriteTokenIssuersRequestParams.TypeDefinitions: value must contain at least 1 item"),
 			expectedErrorCode: int32(openfgapb.ErrorCode_type_definitions_too_few_items),
 		},

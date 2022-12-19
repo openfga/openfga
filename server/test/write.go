@@ -835,7 +835,7 @@ var writeCommandTests = []writeCommandTest{
 	},
 	// Begin section with tests for schema version 1.1
 	{
-		_name: "Delete succeeds even if user field contains a type that is not allowed by the current authorization model",
+		_name: "Delete_succeeds_even_if_user_field_contains_a_type_that_is_not_allowed_by_the_current_authorization_model",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -878,7 +878,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write fails if user field contains a type that does not exist",
+		_name: "Write_fails_if_user_field_contains_a_type_that_does_not_exist",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -920,7 +920,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...)",
+		_name: "Write_fails_if_user_field_contains_a_type_that_is_not_allowed_by_the_authorization_model_(which_only_allows_group:...)",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1055,7 +1055,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows user:...)",
+		_name: "Write_succeeds_if_user_field_contains_a_type_that_is_allowed_by_the_authorization_model_(which_only_allows_user:...)",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1090,7 +1090,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write fails if user field contains a type that is not allowed by the authorization model (which only allows group:...#member)",
+		_name: "Write_fails_if_user_field_contains_a_type_that_is_not_allowed_by_the_authorization_model_(which_only_allows_group:...#member)",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1132,7 +1132,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write succeeds if user field contains a type that is allowed by the authorization model (which only allows group:...#member)",
+		_name: "Write_succeeds_if_user_field_contains_a_type_that_is_allowed_by_the_authorization_model_(which_only_allows_group:...#member)",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1183,7 +1183,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Multiple writes succeed if user fields contain a type that is allowed by the authorization model",
+		_name: "Multiple_writes_succeed_if_user_fields_contain_a_type_that_is_allowed_by_the_authorization_model",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1238,7 +1238,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write succeeds if user is wildcard and type references a specific type",
+		_name: "Write_succeeds_if_user_is_wildcard_and_type_references_a_specific_type",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1274,7 +1274,7 @@ var writeCommandTests = []writeCommandTest{
 		},
 	},
 	{
-		_name: "Write fails if user is a typed wildcard and the type restrictions don't permit it",
+		_name: "Write_fails_if_user_is_a_typed_wildcard_and_the_type_restrictions_do_not_permit_it",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -1316,7 +1316,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation",
+		_name: "Write_fails_if_a._schema_version_is_1.0_b._user_is_a_userset_c._relation_is_referenced_in_a_tupleset_of_a_tupleToUserset_relation",
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
@@ -1350,7 +1350,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as union)",
+		_name: "Write_fails_if_a._schema_version_is_1.0_b._user_is_a_userset_c._relation_is_referenced_in_a_tupleset_of_a_tupleToUserset_relation_(defined_as_union)",
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
@@ -1387,7 +1387,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as intersection)",
+		_name: "Write_fails_if_a._schema_version_is_1.0_b._user_is_a_userset_c._relation_is_referenced_in_a_tupleset_of_a_tupleToUserset_relation_(defined_as_intersection)",
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
@@ -1424,7 +1424,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write fails if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation (defined as difference)",
+		_name: "Write_fails_if_a._schema_version_is_1.0_b._user_is_a_userset_c._relation_is_referenced_in_a_tupleset_of_a_tupleToUserset_relation_(defined_as_difference)",
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
@@ -1461,7 +1461,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "Write succeeds if a. schema version is 1.0 b. user is a userset c. relation is referenced in a tupleset of a tupleToUserset relation of another type",
+		_name: "Write_succeeds_if_a._schema_version_is_1.0_b._user_is_a_userset_c._relation_is_referenced_in_a_tupleset_of_a_tupleToUserset_relation_of_another_type",
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,

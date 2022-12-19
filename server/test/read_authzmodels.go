@@ -34,7 +34,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			expectedNumModelsReturned: 0,
 		},
 		{
-			name: "non-empty type definitions",
+			name: "non-empty_type_definitions",
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,

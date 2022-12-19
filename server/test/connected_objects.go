@@ -84,7 +84,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			),
 		},
 		{
-			name: "restrict_results_based_on limit",
+			name: "restrict_results_based_on_limit",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:          ulid.Make().String(),
 				ObjectType:       "folder",
