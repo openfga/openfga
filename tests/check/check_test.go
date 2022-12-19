@@ -65,6 +65,7 @@ func testCheck(t *testing.T, engine string) {
 	container := storage.RunDatastoreTestContainer(t, engine)
 
 	cfg := cmd.MustDefaultConfigWithRandomPorts()
+	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 	cfg.Datastore.URI = container.GetConnectionURI()
 
