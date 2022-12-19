@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"runtime"
@@ -151,6 +152,70 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		TupleKey:             tupleKey,
 		AuthorizationModelId: modelID,
 	})
+	require.NoError(t, err)
+	require.Equal(t, true, checkResponse.Allowed)
+}
+
+func TestShortestPathToSolutionWins(t *testing.T) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	logger := logger.NewNoopLogger()
+	meter := telemetry.NewNoopMeter()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": typesystem.This(),
+				},
+			},
+		},
+	}, nil)
+
+	tupleKey := &openfgapb.TupleKey{
+		Object:   "repo:openfga",
+		Relation: "reader",
+		User:     "*",
+	}
+	tuple := &openfgapb.Tuple{Key: tupleKey}
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), store, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(500 * time.Millisecond)
+			return nil, storage.ErrNotFound
+		})
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), store, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(100 * time.Millisecond)
+			return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
+		})
+	s := Server{
+		datastore: mockDatastore,
+		tracer:    tracer,
+		meter:     meter,
+		transport: transport,
+		logger:    logger,
+		config: &Config{
+			ResolveNodeLimit: 25,
+		},
+	}
+
+	start := time.Now()
+	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
+		StoreId:              store,
+		TupleKey:             tupleKey,
+		AuthorizationModelId: modelID,
+	})
+	end := time.Since(start)
+	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
 	require.Equal(t, true, checkResponse.Allowed)
 }
