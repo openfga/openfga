@@ -34,13 +34,13 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		stores = append(stores, store)
 	}
 
-	t.Run("inserting store in twice fails", func(t *testing.T) {
+	t.Run("inserting_store_in_twice_fails", func(t *testing.T) {
 		if _, err := datastore.CreateStore(ctx, stores[0]); !errors.Is(err, storage.ErrCollision) {
 			t.Fatalf("got '%v', expected '%v'", err, storage.ErrCollision)
 		}
 	})
 
-	t.Run("list stores succeeds", func(t *testing.T) {
+	t.Run("list_stores_succeeds", func(t *testing.T) {
 		gotStores, ct, err := datastore.ListStores(ctx, storage.PaginationOptions{PageSize: 1})
 		if err != nil {
 			t.Fatal(err)
@@ -64,7 +64,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("get store succeeds", func(t *testing.T) {
+	t.Run("get_store_succeeds", func(t *testing.T) {
 		store := stores[0]
 		gotStore, err := datastore.GetStore(ctx, store.Id)
 		if err != nil {
@@ -76,14 +76,14 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("get non-existent store returns not found", func(t *testing.T) {
+	t.Run("get_non-existent_store_returns_not_found", func(t *testing.T) {
 		_, err := datastore.GetStore(ctx, "foo")
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Errorf("got '%v', expected '%v'", err, storage.ErrNotFound)
 		}
 	})
 
-	t.Run("delete store succeeds", func(t *testing.T) {
+	t.Run("delete_store_succeeds", func(t *testing.T) {
 		store := stores[1]
 		err := datastore.DeleteStore(ctx, store.Id)
 		if err != nil {
@@ -97,7 +97,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("deleted store does not appear in list", func(t *testing.T) {
+	t.Run("deleted_store_does_not_appear_in_list", func(t *testing.T) {
 		store := stores[2]
 		err := datastore.DeleteStore(ctx, store.Id)
 		if err != nil {
