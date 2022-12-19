@@ -341,9 +341,7 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 	typesys := typesystem.New(rc.model)
 
 	tk, ok := rc.contextualTuples.ReadUserTuple(rc.tk)
-	if ok {
-		return tk, nil
-	}
+
 	err := validation.ValidateTuple(typesys, tk)
 	if err == nil && ok {
 		return tk, nil
