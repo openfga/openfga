@@ -315,7 +315,7 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 			ResolveNodeLimit:      25,
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
-			ExperimentalsEnabled:  []ExperimentalFeatureFlag{ListObjectsOptimized},
+			Experimentals:         []ExperimentalFeatureFlag{ListObjectsOptimized},
 		},
 	}
 
