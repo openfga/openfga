@@ -134,10 +134,10 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 				})
 				require.NoError(t, err)
 
-				for _, tuple := range stage.Tuples {
+				if len(stage.Tuples) > 0 {
 					_, err = client.Write(ctx, &pb.WriteRequest{
 						StoreId: storeID,
-						Writes:  &pb.TupleKeys{TupleKeys: []*pb.TupleKey{tuple}},
+						Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
 					})
 					require.NoError(t, err)
 				}
