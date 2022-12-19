@@ -32,6 +32,15 @@
             "minimum": 0,
             "default": 1000
         },
+        "experimentals": {
+            "description": "a list of experimental features to enable",
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["list-objects-optimized"]
+            },
+            "default": []
+        },
         "playground": {
             "type": "object",
             "properties": {
