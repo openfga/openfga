@@ -8,7 +8,30 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [0.3.0] - 2002-12-12
+## [0.3.1] - 2022-12-19
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.0...v0.3.1)
+
+### Added
+* Datastore configuration flags to control connection pool settings
+  `--datastore-max-open-conns`
+  `--datastore-max-idle-conns`
+  `--datastore-conn-max-idle-time`
+  `--datastore-conn-max-lifetime`
+  These flags can be used to fine-tune database connections for your specific deployment of OpenFGA.
+
+* Log level configuration flags
+  `--log-level` (can be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal'])
+
+* Support for Experimental Feature flags
+  A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features).
+
+### Security
+* Direct relationship reads now respect type restrictions from prior models (#422). More information and CVE coming soon.
+
+
+
+## [0.3.0] - 2022-12-12
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.2.5...v0.3.0)
 
@@ -217,7 +240,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/openfga/openfga/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
 [0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
 [0.2.4]: https://github.com/openfga/openfga/releases/tag/v0.2.4
