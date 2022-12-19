@@ -64,7 +64,7 @@ type Config struct {
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
 	ListObjectsMaxResults  uint32
-	ExperimentalsEnabled   []ExperimentalFeatureFlag
+	Experimentals          []ExperimentalFeatureFlag
 }
 
 // New creates a new Server which uses the supplied backends
@@ -114,7 +114,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 	}
 
-	if slices.Contains(s.config.ExperimentalsEnabled, ListObjectsOptimized) {
+	if slices.Contains(s.config.Experimentals, ListObjectsOptimized) {
 		connectObjCmd := &commands.ConnectedObjectsCommand{
 			Datastore:        s.datastore,
 			Typesystem:       typesys,

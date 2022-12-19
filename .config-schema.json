@@ -32,12 +32,12 @@
             "minimum": 0,
             "default": 1000
         },
-        "enableExperimentals": {
+        "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["openfga.v1.list-objects-optimized"]
+                "enum": ["list-objects-optimized"]
             },
             "default": []
         },

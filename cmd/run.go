@@ -184,8 +184,8 @@ type Config struct {
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
 
-	// ExperimentalsEnabled is a list of the experimental features to enable in the OpenFGA server.
-	ExperimentalsEnabled []string `mapstructure:"enableExperimentals"`
+	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
+	Experimentals []string
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
@@ -206,7 +206,7 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
-		ExperimentalsEnabled:          []string{},
+		Experimentals:                 []string{},
 		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
 		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
@@ -483,10 +483,10 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
-	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.ExperimentalsEnabled))
+	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
 	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.ExperimentalsEnabled {
+	for _, feature := range config.Experimentals {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
@@ -502,7 +502,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		ListObjectsDeadline:    config.ListObjectsDeadline,
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
-		ExperimentalsEnabled:   experimentals,
+		Experimentals:          experimentals,
 	})
 
 	logger.Info(
@@ -728,8 +728,8 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	defaultConfig := DefaultConfig()
 
-	cmd.Flags().StringSlice("enable-experimentals", defaultConfig.ExperimentalsEnabled, "a list of experimental features to enable")
-	util.MustBindPFlag("enableExperimentals", cmd.Flags().Lookup("enable-experimentals"))
+	cmd.Flags().StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
+	util.MustBindPFlag("experimentals", cmd.Flags().Lookup("experimentals"))
 
 	cmd.Flags().String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 	util.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
