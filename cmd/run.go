@@ -527,7 +527,11 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal("failed to start grpc server", zap.Error(err))
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				logger.Fatal("failed to start grpc server", zap.Error(err))
+			}
+
+			logger.Info("grpc server shut down..")
 		}
 	}()
 	logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
