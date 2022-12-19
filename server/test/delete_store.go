@@ -30,13 +30,13 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 	var tests = []deleteStoreTest{
 		{
-			_name: "Execute Delete Store With Non Existent Store Succeeds",
+			_name: "Execute_Delete_Store_With_Non_Existent_Store_Succeeds",
 			request: &openfgapb.DeleteStoreRequest{
 				StoreId: "unknownstore",
 			},
 		},
 		{
-			_name: "Execute Succeeds",
+			_name: "Execute_Succeeds",
 			request: &openfgapb.DeleteStoreRequest{
 				StoreId: createStoreResponse.Id,
 			},

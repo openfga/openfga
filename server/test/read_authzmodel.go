@@ -21,7 +21,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 		model   *openfgapb.AuthorizationModel
 	}{
 		{
-			name:    "write and read a 1.0 model",
+			name:    "write_and_read_a_1.0_model",
 			storeID: ulid.Make().String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
@@ -42,7 +42,7 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			},
 		},
 		{
-			name:    "write and read an 1.1 model",
+			name:    "write_and_read_an_1.1_model",
 			storeID: ulid.Make().String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
@@ -129,7 +129,7 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	logger := logger.NewNoopLogger()
 	storeID := ulid.Make().String()
 
-	t.Run("writing without any type definitions doesn't write anything", func(t *testing.T) {
+	t.Run("writing_without_any_type_definitions_does_not_write_anything", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,

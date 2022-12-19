@@ -36,7 +36,7 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 		}
 	})
 
-	t.Run("trying to get a model which doesn't exist returns not found", func(t *testing.T) {
+	t.Run("trying_to_get_a_model_which_does_not_exist_returns_not_found", func(t *testing.T) {
 		_, err := datastore.ReadAuthorizationModel(ctx, storeID, ulid.Make().String())
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
@@ -113,13 +113,13 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("find latest authorization model should return not found when no models", func(t *testing.T) {
+	t.Run("find_latest_authorization_model_should_return_not_found_when_no_models", func(t *testing.T) {
 		store := testutils.CreateRandomString(10)
 		_, err := datastore.FindLatestAuthorizationModelID(ctx, store)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("find latest authorization model should succeed", func(t *testing.T) {
+	t.Run("find_latest_authorization_model_should_succeed", func(t *testing.T) {
 		store := ulid.Make().String()
 
 		oldModel := &openfgapb.AuthorizationModel{
@@ -165,7 +165,7 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("read type definition of nonexistent type should return not found", func(t *testing.T) {
+	t.Run("read_type_definition_of_nonexistent_type_should_return_not_found", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
 
@@ -173,7 +173,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("read type definition should succeed", func(t *testing.T) {
+	t.Run("read_type_definition_should_succeed", func(t *testing.T) {
 		store := ulid.Make().String()
 		model := &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
