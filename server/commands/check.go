@@ -215,9 +215,12 @@ func (q *CheckQuery) resolveDirectUserSet(
 	typesys *typesystem.TypeSystem,
 ) error {
 	done := make(chan struct{})
+	// this is the channel that forces sub goroutines to finish
 	defer close(done)
 
 	var wg sync.WaitGroup
+
+	// this is the channel that sub goroutines use to communicate completion, either in success or failure.
 	errorChannel := make(chan error)
 
 	wg.Add(1)
@@ -278,6 +281,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 
 			if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
 				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+				errorChannel <- nil
 				return
 			}
 
@@ -290,6 +294,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 				}
 
 				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+				errorChannel <- nil
 				return
 			}
 
@@ -335,6 +340,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 	// otherwise we return the last error we found (if any)
 	for potentialError := range errorChannel {
 		if rc.userFound() {
+			// prevent leak of goroutines https://www.ardanlabs.com/blog/2018/11/goroutine-leaks-the-forgotten-sender.html
 			go utils.DrainChannel(errorChannel)
 			return nil
 		}
@@ -535,10 +541,12 @@ func (q *CheckQuery) resolveTupleToUserset(
 		return serverErrors.HandleError("", err)
 	}
 
+	// this is the channel that forces sub goroutines to finish
 	done := make(chan struct{})
 	defer close(done)
 
 	var wg sync.WaitGroup
+	// this is the channel that sub goroutines use to communicate completion, either in success or failure.
 	errorChannel := make(chan error)
 
 	for {
@@ -603,6 +611,7 @@ func (q *CheckQuery) resolveTupleToUserset(
 	// otherwise we return the last error we found (if any)
 	for potentialError := range errorChannel {
 		if rc.userFound() {
+			// prevent leak of goroutines https://www.ardanlabs.com/blog/2018/11/goroutine-leaks-the-forgotten-sender.html
 			go utils.DrainChannel(errorChannel)
 			return nil
 		}
