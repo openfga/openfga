@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/assets"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 )
 
 var (
-	expireTimeout = 60 * time.Second
+	expireTimeout = 10 * time.Minute //benchmarks take a while to run
 )
 
 type postgresTestContainer struct {
@@ -80,6 +81,8 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop postgres container: %v", err)
 		}
+
+		dockerClient.Close()
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
@@ -108,6 +111,10 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	t.Cleanup(func() {
 		stopContainer()
+		goleak.VerifyNone(t,
+			goleak.IgnoreTopFunction("testing.(*B).run1"),
+			goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler above
+		)
 	})
 
 	pgTestContainer := &postgresTestContainer{
@@ -138,6 +145,8 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
+	require.NoError(t, err)
+	err = db.Close()
 	require.NoError(t, err)
 
 	return pgTestContainer

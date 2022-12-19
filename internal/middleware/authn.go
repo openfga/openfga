@@ -4,7 +4,7 @@ import (
 	"context"
 
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/openfga/openfga/server/authn"
+	"github.com/openfga/openfga/internal/authn"
 )
 
 func AuthFunc(authenticator authn.Authenticator) grpc_auth.AuthFunc {

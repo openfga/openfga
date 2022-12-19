@@ -13,7 +13,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 		model *openfgapb.AuthorizationModel
 	}{
 		{
-			name: "empty relations",
+			name: "empty_relations",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -24,7 +24,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "zero length relations is valid",
+			name: "zero_length_relations_is_valid",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -53,7 +53,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		err   error
 	}{
 		{
-			name: "empty rewrites",
+			name: "empty_rewrites",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -68,7 +68,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: self reference in computedUserset",
+			name: "invalid_relation:_self_reference_in_computedUserset",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -87,7 +87,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: self reference in union",
+			name: "invalid_relation:_self_reference_in_union",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -117,7 +117,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: self reference in intersection",
+			name: "invalid_relation:_self_reference_in_intersection",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -147,7 +147,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: self reference in difference base",
+			name: "invalid_relation:_self_reference_in_difference_base",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -175,7 +175,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: self reference in difference subtract",
+			name: "invalid_relation:_self_reference_in_difference_subtract",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -203,7 +203,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
-			name: "invalid relation: computedUserset to relation which does not exist",
+			name: "invalid_relation:_computedUserset_to_relation_which_does_not_exist",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -222,7 +222,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: computedUserset in a union",
+			name: "invalid_relation:_computedUserset_in_a_union",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -252,7 +252,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: computedUserset in a intersection",
+			name: "invalid_relation:_computedUserset_in_a_intersection",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -282,7 +282,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: computedUserset in a difference base",
+			name: "invalid_relation:_computedUserset_in_a_difference_base",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -310,7 +310,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: computedUserset in a difference subtract",
+			name: "invalid_relation:_computedUserset_in_a_difference_subtract",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -338,7 +338,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: tupleToUserset where tupleset is not valid",
+			name: "invalid_relation:_tupleToUserset_where_tupleset_is_not_valid",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -386,7 +386,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrRelationUndefined,
 		},
 		{
-			name: "invalid relation: tupleToUserset where computed userset is not valid",
+			name: "invalid_relation:_tupleToUserset_where_computed_userset_is_not_valid",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -448,7 +448,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 		model *openfgapb.AuthorizationModel
 	}{
 		{
-			name: "succeeds on a valid typeSystem with an objectType type",
+			name: "succeeds_on_a_valid_typeSystem_with_an_objectType_type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -476,7 +476,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 			},
 		},
 		{
-			name: "succeeds on a valid typeSystem with a type and type#relation type",
+			name: "succeeds_on_a_valid_typeSystem_with_a_type_and_type#relation_type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -551,7 +551,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 		err   error
 	}{
 		{
-			name: "relational type which does not exist",
+			name: "relational_type_which_does_not_exist",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -577,7 +577,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: InvalidRelationTypeError("document", "reader", "group", ""),
 		},
 		{
-			name: "relation type of form type#relation where relation doesn't exist",
+			name: "relation_type_of_form_type#relation_where_relation_doesn't_exist",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -607,7 +607,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: InvalidRelationTypeError("document", "reader", "group", "admin"),
 		},
 		{
-			name: "assignable relation with no type: this",
+			name: "assignable_relation_with_no_type:_this",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -624,7 +624,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: AssignableRelationError("document", "reader"),
 		},
 		{
-			name: "assignable relation with no type: union",
+			name: "assignable_relation_with_no_type:_union",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -673,7 +673,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: AssignableRelationError("document", "reader"),
 		},
 		{
-			name: "assignable relation with no type: intersection",
+			name: "assignable_relation_wit_no_type:_intersection",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -722,7 +722,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: AssignableRelationError("document", "reader"),
 		},
 		{
-			name: "assignable relation with no type: difference base",
+			name: "assignable_relation_with_no_type:_difference base",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -769,7 +769,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: AssignableRelationError("document", "reader"),
 		},
 		{
-			name: "assignable relation with no type: difference subtract",
+			name: "assignable_relation_with_no_type:_difference_subtract",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -816,7 +816,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: AssignableRelationError("document", "reader"),
 		},
 		{
-			name: "non-assignable relation with a type",
+			name: "non-assignable_relation_with_a_type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -859,7 +859,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: NonAssignableRelationError("document", "reader"),
 		},
 		{
-			name: "userset specified as allowed type, but the relation is used in a TTU rewrite",
+			name: "userset_specified_as_allowed_type_but_the_relation_is_used_in_a_TTU_rewrite",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -902,7 +902,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			err: InvalidRelationTypeError("document", "parent", "folder", "member"),
 		},
 		{
-			name: "userset specified as allowed type, but the relation is used in a TTU rewrite included in a union",
+			name: "userset_specified_as_allowed_type_but_the_relation_is_used_in_a_TTU_rewrite_included_in_a_union",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -1027,7 +1027,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name: "Indirect ComputedUserset through TTU Containing Intersection",
+			name: "Indirect_ComputedUserset_through_TTU_Containing_Intersection",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1077,7 +1077,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "TupleToUserset Relations Containing Intersection",
+			name: "TupleToUserset_Relations_Containing_Intersection",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1126,7 +1126,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Indirect Relations Containing Intersection",
+			name: "Indirect_Relations_Containing_Intersection",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1144,7 +1144,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Undefined type",
+			name: "Undefined_type",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1157,7 +1157,7 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			expectedErr: ErrObjectTypeUndefined,
 		},
 		{
-			name: "Undefined relation",
+			name: "Undefined_relation",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1195,7 +1195,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			name: "Indirect ComputedUserset through TTU Containing Exclusion",
+			name: "Indirect_ComputedUserset_through_TTU_Containing_Exclusion",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1245,7 +1245,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "TupleToUserset Relations Containing Exclusion",
+			name: "TupleToUserset_Relations_Containing_Exclusion",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1294,7 +1294,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Indirect Relations Containing Exclusion",
+			name: "Indirect_Relations_Containing_Exclusion",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1314,7 +1314,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "Undefined type",
+			name: "Undefined_type",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
@@ -1327,7 +1327,7 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 			expectedErr: ErrObjectTypeUndefined,
 		},
 		{
-			name: "Undefined relation",
+			name: "Undefined_relation",
 			model: &openfgapb.AuthorizationModel{
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{

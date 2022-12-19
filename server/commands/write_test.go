@@ -32,7 +32,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 
 	maxTuplesInWriteOp := 10
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
+	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 
 	items := make([]*openfgapb.TupleKey, maxTuplesInWriteOp+1)
 	for i := 0; i < maxTuplesInWriteOp+1; i++ {
@@ -47,35 +47,35 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 
 	tests := []test{
 		{
-			name:    "empty deletes and writes",
+			name:    "empty_deletes_and_writes",
 			deletes: []*openfgapb.TupleKey{},
 			writes:  []*openfgapb.TupleKey{},
 		},
 		{
-			name:    "good deletes and writes",
+			name:    "good_deletes_and_writes",
 			deletes: []*openfgapb.TupleKey{items[0], items[1]},
 			writes:  []*openfgapb.TupleKey{items[2], items[3]},
 		},
 		{
-			name:          "duplicate deletes",
+			name:          "duplicate_deletes",
 			deletes:       []*openfgapb.TupleKey{items[0], items[1], items[0]},
 			writes:        []*openfgapb.TupleKey{},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
-			name:          "duplicate writes",
+			name:          "duplicate_writes",
 			deletes:       []*openfgapb.TupleKey{},
 			writes:        []*openfgapb.TupleKey{items[0], items[1], items[0]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
-			name:          "same item appeared in writes and deletes",
+			name:          "same_item_appeared_in_writes_and_deletes",
 			deletes:       []*openfgapb.TupleKey{items[2], items[1]},
 			writes:        []*openfgapb.TupleKey{items[0], items[1]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[1]),
 		},
 		{
-			name:          "too many items writes and deletes",
+			name:          "too_many_items_writes_and_deletes",
 			deletes:       items[:5],
 			writes:        items[5:],
 			expectedError: serverErrors.ExceededEntityLimit("write operations", maxTuplesInWriteOp),
@@ -106,13 +106,13 @@ func TestValidateWriteRequest(t *testing.T) {
 
 	tests := []test{
 		{
-			name:          "nil for deletes and writes",
+			name:          "nil_for_deletes_and_writes",
 			deletes:       nil,
 			writes:        nil,
 			expectedError: serverErrors.InvalidWriteInput,
 		},
 		{
-			name:    "write failure with invalid user",
+			name:    "write_failure_with_invalid_user",
 			deletes: []*openfgapb.TupleKey{},
 			writes:  []*openfgapb.TupleKey{badItem},
 			expectedError: serverErrors.ValidationError(
@@ -123,7 +123,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			),
 		},
 		{
-			name:    "delete failure with invalid user",
+			name:    "delete_failure_with_invalid_user",
 			deletes: []*openfgapb.TupleKey{badItem},
 			writes:  []*openfgapb.TupleKey{},
 			expectedError: serverErrors.ValidationError(
@@ -144,7 +144,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-			mockDatastore.EXPECT().MaxTuplesInWriteOperation().AnyTimes().Return(maxTuplesInWriteOp)
+			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 			cmd := NewWriteCommand(mockDatastore, tracer, logger)
 
 			if len(test.writes) > 0 {

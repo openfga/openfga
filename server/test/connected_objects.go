@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -21,7 +22,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 	tests := []struct {
 		name             string
-		model            *openfgapb.AuthorizationModel
+		model            string
 		tuples           []*openfgapb.TupleKey
 		request          *commands.ConnectedObjectsRequest
 		resolveNodeLimit uint32
@@ -30,7 +31,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		expectedError    error
 	}{
 		{
-			name: "Direct relations and TTU relations with wildcard",
+			name: "direct_relations_and_ttu_relations_with_wildcard",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
@@ -40,43 +41,14 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("folder:folderX", "parent", "*"),
 				},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "folder",
-										},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define parent: [folder] as self
+				define viewer: [user] as self or viewer from parent
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 			},
@@ -86,7 +58,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			),
 		},
 		{
-			name: "Direct relations and TTU relations with strictly contextual tuples",
+			name: "direct_relations_and_ttu_relations_with_strictly_contextual_tuples",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
@@ -97,43 +69,14 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("folder:folderX", "parent", "*"),
 				},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "folder",
-										},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define parent: [folder] as self
+				define viewer: [user] as self or viewer from parent
+			`,
 			tuples: []*openfgapb.TupleKey{},
 			expectedError: serverErrors.InvalidTuple(
 				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", "folder", "parent"),
@@ -141,7 +84,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			),
 		},
 		{
-			name: "Restrict results based on limit",
+			name: "restrict_results_based_on_limit",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:          ulid.Make().String(),
 				ObjectType:       "folder",
@@ -150,32 +93,13 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ContextualTuples: []*openfgapb.TupleKey{},
 			},
 			limit: 2,
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type folder
+			  relations
+			    define viewer: [user] as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
@@ -184,7 +108,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"folder:folder1", "folder:folder2"},
 		},
 		{
-			name: "Resolve direct relationships with tuples and contextual tuples",
+			name: "resolve_direct_relationships_with_tuples_and_contextual_tuples",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
@@ -195,83 +119,37 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("document:doc3", "viewer", "user:jon"),
 				},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			},
 			expectedObjects: []string{"document:doc1", "document:doc3"},
 		},
 		{
-			name: "Direct relations involving relationships with users and usersets",
+			name: "direct_relations_involving_relationships_with_users_and_usersets",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("user", ""),
-										typesystem.DirectRelationReference("group", "member"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type group
+			  relations
+			    define member: [user] as self
+
+			type document
+			  relations
+			    define viewer: [user, group#member] as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
@@ -281,54 +159,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"document:doc1", "document:doc3"},
 		},
 		{
-			name: "Success with direct relationships and computed usersets",
+			name: "success_with_direct_relationships_and_computed_usersets",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"owner":  typesystem.This(),
-							"viewer": typesystem.ComputedUserset("owner"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"owner": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("user", ""),
-										typesystem.DirectRelationReference("group", "member"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type group
+			  relations
+			    define member: [user] as self
+
+			type document
+			  relations
+			    define owner: [user, group#member] as self
+				define viewer as owner
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:doc1", "owner", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "owner", "user:bob"),
@@ -338,7 +187,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"document:doc1", "document:doc3"},
 		},
 		{
-			name: "Success with many tuples",
+			name: "success_with_many_tuples",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
@@ -349,72 +198,23 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					tuple.NewTupleKey("folder:folder6", "viewer", "user:bob"),
 				},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("user", ""),
-										typesystem.DirectRelationReference("group", "member"),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("user", ""),
-										typesystem.DirectRelationReference("group", "member"),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.TupleToUserset("parent", "viewer"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type group
+			  relations
+			    define member: [user, group#member] as self
+
+			type folder
+			  relations
+			    define parent: [folder] as self
+				define viewer: [user, group#member] as self or viewer from parent
+
+			type document
+			  relations
+			    define parent: [folder] as self
+				define viewer as viewer from parent
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -431,46 +231,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"document:doc1", "document:doc2"},
 		},
 		{
-			name: "Resolve objects involved in recursive hierarchy",
+			name: "resolve_objects_involved_in_recursive_hierarchy",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type folder
+			  relations
+			    define parent: [folder] as self
+				define viewer: [user] as self or viewer from parent
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -479,7 +254,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"folder:folder1", "folder:folder2", "folder:folder3"},
 		},
 		{
-			name: "Resolution Depth Exceeded Failure",
+			name: "resolution_depth_exceeded_failure",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
@@ -487,39 +262,14 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User:       &openfgapb.ObjectRelation{Object: "user:jon"},
 			},
 			resolveNodeLimit: 2,
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "folder"},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type folder
+			  relations
+			    define parent: [folder] as self
+				define viewer: [user] as self or viewer from parent
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
@@ -528,38 +278,20 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
 		},
 		{
-			name: "Objects connected to a userset",
+			name: "objects_connected_to_a_userset",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "group",
 				Relation:   "member",
 				User:       &openfgapb.ObjectRelation{Object: "group:iam", Relation: "member"},
 			},
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("user", ""),
-										typesystem.DirectRelationReference("group", "member"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+			
+			type group
+			  relations
+			    define member: [user, group#member] as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("group:opensource", "member", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
@@ -577,7 +309,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			store := ulid.Make().String()
 			test.request.StoreID = store
 
-			err := ds.WriteAuthorizationModel(ctx, store, test.model)
+			model := &openfgapb.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
+			}
+			err := ds.WriteAuthorizationModel(ctx, store, model)
 			require.NoError(err)
 
 			err = ds.Write(ctx, store, nil, test.tuples)
@@ -589,7 +326,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 			connectedObjectsCmd := commands.ConnectedObjectsCommand{
 				Datastore:        ds,
-				Typesystem:       typesystem.New(test.model),
+				Typesystem:       typesystem.New(model),
 				ResolveNodeLimit: test.resolveNodeLimit,
 				Limit:            test.limit,
 			}

@@ -11,12 +11,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
-	"github.com/openfga/openfga/server/gateway"
 	"github.com/openfga/openfga/server/test"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/memory"
@@ -25,6 +25,7 @@ import (
 	"github.com/openfga/openfga/storage/postgres"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -45,12 +46,14 @@ func TestOpenFGAServer(t *testing.T) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
 		require.NoError(t, err)
+		defer ds.Close()
 
 		test.RunAllTests(t, ds)
 	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		defer ds.Close()
 		test.RunAllTests(t, ds)
 	})
 
@@ -60,6 +63,7 @@ func TestOpenFGAServer(t *testing.T) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := mysql.NewMySQLDatastore(uri)
 		require.NoError(t, err)
+		defer ds.Close()
 
 		test.RunAllTests(t, ds)
 	})
@@ -73,12 +77,23 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		uri := testDatastore.GetConnectionURI()
 		ds, err := postgres.NewPostgresDatastore(uri)
 		require.NoError(b, err)
-
+		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		defer ds.Close()
+		test.RunAllBenchmarks(b, ds)
+	})
+
+	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(b, err)
+		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
 }
@@ -89,7 +104,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 
-	t.Run("no latest authorization model id found", func(t *testing.T) {
+	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
 
 		store := ulid.Make().String()
 
@@ -113,7 +128,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		}
 	})
 
-	t.Run("read existing authorization model", func(t *testing.T) {
+	t.Run("read_existing_authorization_model", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
 
@@ -139,7 +154,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		}
 	})
 
-	t.Run("non-valid modelID returns error", func(t *testing.T) {
+	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := "foo"
 		want := serverErrors.AuthorizationModelNotFound(modelID)
@@ -160,6 +175,22 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			t.Fatalf("got '%v', want '%v'", err, want)
 		}
 	})
+}
+
+type mockStreamServer struct {
+	grpc.ServerStream
+}
+
+func NewMockStreamServer() *mockStreamServer {
+	return &mockStreamServer{}
+}
+
+func (m *mockStreamServer) Context() context.Context {
+	return context.Background()
+}
+
+func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
+	return nil
 }
 
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
@@ -202,7 +233,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		},
 	}
 
-	t.Run("error listing objects from storage in non-streaming version", func(t *testing.T) {
+	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -215,14 +246,14 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
 
-	t.Run("error listing objects from storage in streaming version", func(t *testing.T) {
+	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
 		err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
 			Relation:             "owner",
 			User:                 "bob",
-		}, nil)
+		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
@@ -280,7 +311,7 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 		},
 	}
 
-	t.Run("error listing objects from storage in non-streaming version", func(t *testing.T) {
+	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -293,14 +324,14 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
 
-	t.Run("error listing objects from storage in streaming version", func(t *testing.T) {
+	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
 		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "document",
 			Relation:             "viewer",
 			User:                 "user:bob",
-		}, nil)
+		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})

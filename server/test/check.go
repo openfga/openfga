@@ -106,7 +106,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//	relations
 			//		define parent as self
 			//		define viewer as viewer from parent
-			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
@@ -146,7 +146,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			//	relations
 			//		define parent as self
 			//		define viewer as viewer from parent
-			name:             "Fails if expanding the computed userset of a tupleToUserset rewrite",
+			name:             "Fails_if_expanding_the_computed_userset_of_a_tupleToUserset_rewrite",
 			resolveNodeLimit: defaultResolveNodeLimit,
 			schemaVersion:    typesystem.SchemaVersion1_0,
 			typeDefinitions: []*openfgapb.TypeDefinition{
