@@ -271,6 +271,8 @@ func (q *CheckQuery) resolveDirectUserSet(
 			if err != nil {
 				if !errors.Is(err, storage.ErrIteratorDone) {
 					errorChannel <- serverErrors.HandleError("", err)
+				} else {
+					errorChannel <- nil
 				}
 				return
 			}
