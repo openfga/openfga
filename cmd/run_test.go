@@ -25,7 +25,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
-
 	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/stretchr/testify/require"
@@ -745,45 +744,6 @@ func TestHTTPServerEnabled(t *testing.T) {
 	}()
 
 	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-}
-
-func TestNoopMetricExporter(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
-	cfg.HTTP.Enabled = false
-	cfg.Metrics.Enabled = false
-	cfg.Metrics.Endpoint = "0.0.0.0:9090"
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	_, err := retryablehttp.Get(fmt.Sprintf("http://%s", cfg.Metrics.Endpoint))
-	require.Error(t, err)
-	require.ErrorContains(t, err, "Get \"http://0.0.0.0:9090\": dial tcp 0.0.0.0:9090: connect: connection refused")
-}
-
-func TestOTLPExporter(t *testing.T) {
-	cfg := MustDefaultConfigWithRandomPorts()
-	cfg.HTTP.Enabled = true
-	cfg.Metrics.Enabled = true
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	res, err := retryablehttp.Get(fmt.Sprintf("http://%s/stores", cfg.HTTP.Addr))
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
 }
 
 func TestDefaultConfig(t *testing.T) {

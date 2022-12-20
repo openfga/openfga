@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	backoff "github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -385,7 +385,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	var err error
 	meter := metric.NewNoopMeter()
 	if config.Metrics.Enabled {
-		logger.Info(fmt.Sprintf("OTLP metrics send through protocol '%s'", config.Metrics.Protocol))
+		logger.Info(fmt.Sprintf("🕵 OTLP metrics send through protocol '%s'", config.Metrics.Protocol))
 		meter, err = telemetry.NewOTLPMeter(ctx, logger, config.Metrics.Protocol, config.Metrics.Endpoint)
 		if err != nil {
 			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)

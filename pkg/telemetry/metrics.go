@@ -3,8 +3,11 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"go.opentelemetry.io/contrib/instrumentation/host"
+	"go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
@@ -58,10 +61,15 @@ func NewOTLPMeter(ctx context.Context, logger logger.Logger, protocol, endpoint 
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize otlp resource: %w", err)
 	}
+
 	meterProvider := sdkMetrics.NewMeterProvider(sdkMetrics.WithReader(reader), sdkMetrics.WithResource(res))
+	global.SetMeterProvider(meterProvider)
 
-	defer global.SetMeterProvider(meterProvider)
-	meter := meterProvider.Meter(providerName)
+	runtime.WithMinimumReadMemStatsInterval(time.Second)
+	runtime.WithMeterProvider(meterProvider)
+	if err := host.Start(host.WithMeterProvider(meterProvider)); err != nil {
+		return nil, err
+	}
 
-	return meter, nil
+	return meterProvider.Meter(providerName), nil
 }
