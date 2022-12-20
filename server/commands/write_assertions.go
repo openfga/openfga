@@ -44,7 +44,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
-		if err := validation.ValidateTuple(typesys, assertion.TupleKey); err != nil {
+		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
 	}

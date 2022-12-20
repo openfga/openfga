@@ -11,7 +11,7 @@ import (
 )
 
 func TestHandleMySQLError(t *testing.T) {
-	t.Run("duplicate entry value error with tuple key wraps ErrInvalidWriteInput", func(t *testing.T) {
+	t.Run("duplicate_entry_value_error_with_tuple_key_wraps_ErrInvalidWriteInput", func(t *testing.T) {
 		duplicateKeyError := &mysql.MySQLError{
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
@@ -24,7 +24,7 @@ func TestHandleMySQLError(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
-	t.Run("duplicate entry value error without tuple key returns collision", func(t *testing.T) {
+	t.Run("duplicate_entry_value_error_without_tuple_key_returns_collision", func(t *testing.T) {
 		duplicateKeyError := &mysql.MySQLError{
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
@@ -34,7 +34,7 @@ func TestHandleMySQLError(t *testing.T) {
 		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
-	t.Run("sql.ErrNoRows is converted to storage.ErrNotFound error", func(t *testing.T) {
+	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
 		err := handleMySQLError(sql.ErrNoRows)
 
 		require.ErrorIs(t, err, storage.ErrNotFound)

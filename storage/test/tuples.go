@@ -17,7 +17,7 @@ import (
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("read changes with continuation token", func(t *testing.T) {
+	t.Run("read_changes_with_continuation_token", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		tk1 := &openfgapb.TupleKey{
@@ -69,14 +69,14 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 	})
 
-	t.Run("read changes with no changes should return not found", func(t *testing.T) {
+	t.Run("read_changes_with_no_changes_should_return_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		_, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("read changes with horizon offset should return not found (no changes)", func(t *testing.T) {
+	t.Run("read_changes_with_horizon_offset_should_return_not_found_(no_changes)", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		tk1 := &openfgapb.TupleKey{
@@ -97,7 +97,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("read changes with non-empty object type should only read that object type", func(t *testing.T) {
+	t.Run("read_changes_with_non-empty_object_type_should_only_read_that_object_type", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		tk1 := &openfgapb.TupleKey{
@@ -133,7 +133,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 
-	t.Run("deletes would succeed and write would fail, fails and introduces no changes", func(t *testing.T) {
+	t.Run("deletes_would_succeed_and_write_would_fail,_fails_and_introduces_no_changes", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tks := []*openfgapb.TupleKey{
 			{
@@ -167,7 +167,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Equal(t, len(tks), len(tuples))
 	})
 
-	t.Run("delete fails if the tuple does not exist", func(t *testing.T) {
+	t.Run("delete_fails_if_the_tuple_does_not_exist", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
@@ -176,7 +176,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
-	t.Run("deleting a tuple which exists succeeds", func(t *testing.T) {
+	t.Run("deleting_a_tuple_which_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
@@ -193,7 +193,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("inserting a tuple twice fails", func(t *testing.T) {
+	t.Run("inserting_a_tuple_twice_fails", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
@@ -238,7 +238,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("reading a tuple that does not exist returns not found", func(t *testing.T) {
+	t.Run("reading_a_tuple_that_does_not_exist_returns_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
@@ -246,7 +246,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
-	t.Run("reading userset tuples that exists succeeds", func(t *testing.T) {
+	t.Run("reading_userset_tuples_that_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tks := []*openfgapb.TupleKey{
 			{
@@ -305,7 +305,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("reading userset tuples that don't exist should an empty iterator", func(t *testing.T) {
+	t.Run("reading_userset_tuples_that_don't_exist_should_an_empty_iterator", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner"})
@@ -326,7 +326,7 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 	err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk0, tk1})
 	require.NoError(t, err)
 
-	t.Run("readPage pagination works properly", func(t *testing.T) {
+	t.Run("readPage_pagination_works_properly", func(t *testing.T) {
 		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples0, 1)
@@ -346,14 +346,14 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("reading a page completely does not return a continuation token", func(t *testing.T) {
+	t.Run("reading_a_page_completely_does_not_return_a_continuation_token", func(t *testing.T) {
 		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
-	t.Run("reading a page partially returns a continuation token", func(t *testing.T) {
+	t.Run("reading_a_page_partially_returns_a_continuation_token", func(t *testing.T) {
 		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
@@ -380,14 +380,14 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 	})
 
-	t.Run("reading by storeID completely does not return a continuation token", func(t *testing.T) {
+	t.Run("reading_by_storeID_completely_does_not_return_a_continuation_token", func(t *testing.T) {
 		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 2})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
-	t.Run("reading by storeID partially returns a continuation token", func(t *testing.T) {
+	t.Run("reading_by_storeID_partially_returns_a_continuation_token", func(t *testing.T) {
 		tuples, contToken, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
@@ -436,7 +436,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 	}
 
-	t.Run("returns results with two user filters", func(t *testing.T) {
+	t.Run("returns_results_with_two_user_filters", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -466,7 +466,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.ElementsMatch([]string{"document:doc1", "document:doc2"}, objects)
 	})
 
-	t.Run("returns no results if the input users do not match the tuples", func(t *testing.T) {
+	t.Run("returns_no_results_if_the_input_users_do_not_match_the_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -492,7 +492,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.Empty(objects)
 	})
 
-	t.Run("returns no results if the input relation does not match any tuples", func(t *testing.T) {
+	t.Run("returns_no_results_if_the_input_relation_does_not_match_any_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)
@@ -518,7 +518,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		require.Empty(objects)
 	})
 
-	t.Run("returns no results if the input object type does not match any tuples", func(t *testing.T) {
+	t.Run("returns_no_results_if_the_input_object_type_does_not_match_any_tuples", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
 		err := datastore.Write(ctx, storeID, nil, tuples)

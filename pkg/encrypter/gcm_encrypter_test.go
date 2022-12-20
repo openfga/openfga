@@ -25,7 +25,7 @@ func TestEmptyEncrypt(t *testing.T) {
 }
 
 func TestEncryptDecrypt(t *testing.T) {
-	t.Run("encrypt-decrypt returns original", func(t *testing.T) {
+	t.Run("encrypt-decrypt_returns_original", func(t *testing.T) {
 		encrypter, err := NewGCMEncrypter("baz")
 		require.NoError(t, err)
 
@@ -40,7 +40,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		require.Equal(t, want, got)
 	})
 
-	t.Run("two different encrypters don't work together", func(t *testing.T) {
+	t.Run("two_different_encrypters_do_not_work_together", func(t *testing.T) {
 		e1, err := NewGCMEncrypter("somekey")
 		require.NoError(t, err)
 

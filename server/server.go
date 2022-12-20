@@ -20,6 +20,16 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slices"
+)
+
+type ExperimentalFeatureFlag string
+
+const (
+	// ListObjectsOptimized is an experimental flag that enables support for an optimized
+	// openfga.v1.ListObjects API implementation which leverages type information and reverse
+	// expansion.
+	ListObjectsOptimized ExperimentalFeatureFlag = "list-objects-optimized"
 )
 
 const (
@@ -54,6 +64,7 @@ type Config struct {
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
 	ListObjectsMaxResults  uint32
+	Experimentals          []ExperimentalFeatureFlag
 }
 
 // New creates a new Server which uses the supplied backends
@@ -82,28 +93,16 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	modelID := req.GetAuthorizationModelId()
 
-	if modelID == "" {
-		var err error
-
-		modelID, err = s.resolveAuthorizationModelID(ctx, storeID, modelID)
-		if err != nil {
-			return nil, err
-		}
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	if err != nil {
+		return nil, err
 	}
-
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
 		return nil, serverErrors.AuthorizationModelNotFound(modelID)
 	}
 
 	typesys := typesystem.New(model)
-
-	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
@@ -113,7 +112,17 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
+	}
+
+	if slices.Contains(s.config.Experimentals, ListObjectsOptimized) {
+		connectObjCmd := &commands.ConnectedObjectsCommand{
+			Datastore:        s.datastore,
+			Typesystem:       typesys,
+			ResolveNodeLimit: s.config.ResolveNodeLimit,
+			Limit:            s.config.ListObjectsMaxResults,
+		}
+
+		q.ConnectedObjects = connectObjCmd.StreamedConnectedObjects
 	}
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
@@ -128,7 +137,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	storeID := req.GetStoreId()
-	ctx := context.Background()
+	ctx := srv.Context()
 	ctx, span := s.tracer.Start(ctx, "streamedListObjects", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
@@ -440,7 +449,10 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
-// Util to find the latest authorization model ID to be used through all the request lifecycle.
+// resolveAuthorizationModelID takes a modelId. If it is empty, it will find and return the latest authorization model ID.
+//
+// If is not empty, it will validate it and return it.
+//
 // This allows caching of types. If the user inserts a new authorization model and doesn't
 // provide this field (which should be rate limited more aggressively) the in-flight requests won't be
 // affected and newer calls will use the updated authorization model.

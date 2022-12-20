@@ -79,15 +79,7 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 		return nil, err
 	}
 
-	if err := validation.ValidateObject(typesys, tk); err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
-
-	if err := validation.ValidateRelation(typesys, tk); err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
-
-	if err := validation.ValidateUser(typesys, tk.GetUser()); err != nil {
+	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 

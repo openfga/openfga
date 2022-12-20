@@ -132,7 +132,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Circular reference",
+			name: "circular_reference",
 			model: `
 			type user
 
@@ -154,7 +154,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Cyclical parent/child definition",
+			name: "cyclical_parent/child_definition",
 			model: `
 			type user
 
@@ -173,7 +173,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "No graph relationship connectivity",
+			name: "no_graph_relationship_connectivity",
 			model: `
 			type user
 
@@ -186,7 +186,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			expected: []*RelationshipIngress{},
 		},
 		{
-			name: "Test1",
+			name: "test1",
 			model: `
 			type user
 
@@ -217,7 +217,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Test2",
+			name: "test2",
 			model: `
 			type user
 
@@ -244,7 +244,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Test3",
+			name: "test3",
 			model: `
 			type user
 
@@ -272,7 +272,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Undefined relation on one type involved in a tuple to userset",
+			name: "undefined_relation_on_one_type_involved_in_a_ttu",
 			model: `
 			type user
 			type organization
@@ -296,7 +296,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Nested group membership returns only top-level ingress",
+			name: "nested_group_membership_returns_only_top-level_ingress",
 			model: `
 			type user
 
@@ -314,7 +314,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "Ingresses for non-assignable relation",
+			name: "ingresses_for_non-assignable_relation",
 			model: `
 			type organization
 			  relations

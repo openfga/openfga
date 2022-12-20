@@ -145,6 +145,9 @@ type AuthnPresharedKeyConfig struct {
 type LogConfig struct {
 	// Format is the log format to use in the log output (e.g. 'text' or 'json')
 	Format string
+
+	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
+	Level string
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -181,6 +184,9 @@ type Config struct {
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
 
+	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
+	Experimentals []string
+
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
@@ -200,6 +206,7 @@ func DefaultConfig() *Config {
 		MaxTypesPerAuthorizationModel: 100,
 		ChangelogHorizonOffset:        0,
 		ResolveNodeLimit:              25,
+		Experimentals:                 []string{},
 		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
 		ListObjectsMaxResults:         1000,
 		Datastore: DatastoreConfig{
@@ -225,6 +232,7 @@ func DefaultConfig() *Config {
 		},
 		Log: LogConfig{
 			Format: "text",
+			Level:  "info",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -301,6 +309,20 @@ func VerifyConfig(cfg *Config) error {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}
 
+	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
+		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
+	}
+
+	if cfg.Log.Level != "none" &&
+		cfg.Log.Level != "debug" &&
+		cfg.Log.Level != "info" &&
+		cfg.Log.Level != "warn" &&
+		cfg.Log.Level != "error" &&
+		cfg.Log.Level != "panic" &&
+		cfg.Log.Level != "fatal" {
+		return fmt.Errorf("config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
+	}
+
 	if cfg.Playground.Enabled {
 		if !cfg.HTTP.Enabled {
 			return errors.New("the HTTP server must be enabled to run the openfga playground")
@@ -342,7 +364,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		return err
 	}
 
-	logger := buildLogger(config.Log.Format)
+	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
@@ -461,6 +483,13 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
+	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
+
 	svr := server.New(&server.Dependencies{
 		Datastore:    cachedOpenFGADatastore,
 		Tracer:       tracer,
@@ -473,6 +502,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		ListObjectsDeadline:    config.ListObjectsDeadline,
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
+		Experimentals:          experimentals,
 	})
 
 	logger.Info(
@@ -497,7 +527,11 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal("failed to start grpc server", zap.Error(err))
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				logger.Fatal("failed to start grpc server", zap.Error(err))
+			}
+
+			logger.Info("grpc server shut down..")
 		}
 	}()
 	logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
@@ -692,24 +726,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	return nil
 }
 
-func buildLogger(logFormat string) logger.Logger {
-	openfgaLogger := logger.MustNewTextLogger()
-	if logFormat == "json" {
-		openfgaLogger = logger.MustNewJSONLogger()
-		openfgaLogger.With(
-			zap.String("build.version", build.Version),
-			zap.String("build.commit", build.Commit),
-		)
-	}
-
-	return openfgaLogger
-}
-
 // bindRunFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindRunFlags(cmd *cobra.Command) {
 
 	defaultConfig := DefaultConfig()
+
+	cmd.Flags().StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
+	util.MustBindPFlag("experimentals", cmd.Flags().Lookup("experimentals"))
 
 	cmd.Flags().String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 	util.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
@@ -786,6 +810,9 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	util.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
+
+	cmd.Flags().String("log-level", defaultConfig.Log.Level, "the log level to use")
+	util.MustBindPFlag("log.level", cmd.Flags().Lookup("log-level"))
 
 	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))

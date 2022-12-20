@@ -9,6 +9,7 @@ import (
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -336,16 +337,29 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 }
 
 func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.TupleBackend) (*openfgapb.TupleKey, error) {
+
+	typesys := typesystem.New(rc.model)
+
 	tk, ok := rc.contextualTuples.ReadUserTuple(rc.tk)
-	if ok {
-		return tk, nil
+
+	if tk != nil {
+		err := validation.ValidateTuple(typesys, tk)
+		if err == nil && ok {
+			return tk, nil
+		}
 	}
 
 	tuple, err := backend.ReadUserTuple(ctx, rc.store, rc.tk)
 	if err != nil {
 		return nil, err
 	}
-	return tuple.GetKey(), nil
+
+	tk = tuple.GetKey()
+	if err := validation.ValidateTuple(typesys, tk); err != nil {
+		return nil, nil
+	}
+
+	return tk, nil
 }
 
 func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (storage.TupleKeyIterator, error) {
