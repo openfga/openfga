@@ -21,19 +21,19 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestNewOTLPMeterWithHttp(t *testing.T) {
-	meter, err := NewOTLPMeter(logger.NewNoopLogger(), context.Background(), "http", "localhost:4318")
+func TestNewOTLPMeterWithHTTP(t *testing.T) {
+	meter, err := NewOTLPMeter(context.Background(), logger.NewNoopLogger(), "http", "localhost:4318")
 	require.NoError(t, err)
 	require.NotNil(t, meter)
 }
 
-func TestNewOTLPMeterWithGrpc(t *testing.T) {
-	meter, err := NewOTLPMeter(logger.NewNoopLogger(), context.Background(), "grpc", "localhost:4317")
+func TestNewOTLPMeterWithGRGPC(t *testing.T) {
+	meter, err := NewOTLPMeter(context.Background(), logger.NewNoopLogger(), "grpc", "localhost:4317")
 	require.NoError(t, err)
 	require.NotNil(t, meter)
 }
 
 func TestNewOTLPMeterUnknownProtocol(t *testing.T) {
-	_, err := NewOTLPMeter(logger.NewNoopLogger(), context.Background(), "unknown", "localhost:4317")
+	_, err := NewOTLPMeter(context.Background(), logger.NewNoopLogger(), "unknown", "localhost:4317")
 	require.Error(t, err)
 }

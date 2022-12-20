@@ -385,7 +385,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	var err error
 	meter := metric.NewNoopMeter()
 	if config.Metrics.Enabled {
-		meter, err = telemetry.NewOTLPMeter(logger, ctx, config.Metrics.Protocol, config.Metrics.Endpoint)
+		logger.Info(fmt.Sprintf("OTLP metrics send through protocol '%s'", config.Metrics.Protocol))
+		meter, err = telemetry.NewOTLPMeter(ctx, logger, config.Metrics.Protocol, config.Metrics.Endpoint)
 		if err != nil {
 			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
 		}

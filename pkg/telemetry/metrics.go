@@ -20,7 +20,7 @@ func NewNoopMeter() metric.Meter {
 	return metric.NewNoopMeter()
 }
 
-func NewOTLPMeter(logger logger.Logger, ctx context.Context, protocol, endpoint string) (metric.Meter, error) {
+func NewOTLPMeter(ctx context.Context, logger logger.Logger, protocol, endpoint string) (metric.Meter, error) {
 	var exporter sdkMetrics.Exporter
 	var err error
 	switch protocol {
@@ -56,13 +56,12 @@ func NewOTLPMeter(logger logger.Logger, ctx context.Context, protocol, endpoint 
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
+		return nil, fmt.Errorf("failed to initialize otlp resource: %w", err)
 	}
 	meterProvider := sdkMetrics.NewMeterProvider(sdkMetrics.WithReader(reader), sdkMetrics.WithResource(res))
 
 	defer global.SetMeterProvider(meterProvider)
 	meter := meterProvider.Meter(providerName)
 
-	logger.Info(fmt.Sprintf("OTLP metrics send through protocol '%s'", protocol))
 	return meter, nil
 }
