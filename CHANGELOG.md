@@ -27,9 +27,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features).
 
 ### Security
-* Direct relationship reads now respect type restrictions from prior models (#422). More information and CVE coming soon.
-
-
+* Patches [CVE-2022-23542](https://github.com/openfga/openfga/security/advisories/GHSA-m3q4-7qmj-657m) - relationship reads now respect type restrictions from prior models (#422).
 
 ## [0.3.0] - 2022-12-12
 
