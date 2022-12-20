@@ -46,13 +46,13 @@ func TestCheckMemory(t *testing.T) {
 	testCheck(t, "memory")
 }
 
-//func TestCheckPostgres(t *testing.T) {
-//	testCheck(t, "postgres")
-//}
+func TestCheckPostgres(t *testing.T) {
+	testCheck(t, "postgres")
+}
 
-//func TestCheckMySQL(t *testing.T) {
-//	testCheck(t, "mysql")
-//}
+func TestCheckMySQL(t *testing.T) {
+	testCheck(t, "mysql")
+}
 
 func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")

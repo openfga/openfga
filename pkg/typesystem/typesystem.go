@@ -20,6 +20,8 @@ var (
 	ErrRelationUndefined     = errors.New("undefined relation")
 	ErrObjectTypeUndefined   = errors.New("undefined object type")
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
+	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
+	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
 
 func DirectRelationReference(objectType, relation string) *openfgapb.RelationReference {
@@ -453,6 +455,10 @@ func Validate(model *openfgapb.AuthorizationModel) error {
 		return err
 	}
 
+	if err := ensureNoCyclesInComputedRewrite(model); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -472,11 +478,11 @@ func validateNames(model *openfgapb.AuthorizationModel) error {
 	for _, td := range model.TypeDefinitions {
 		objectType := td.GetType()
 		if objectType == "self" || objectType == "this" {
-			return fmt.Errorf("object type '%s' is invalid", objectType)
+			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}
 		}
 		for relation := range td.GetRelations() {
 			if relation == "self" || relation == "this" {
-				return fmt.Errorf("the definition of relation '%s' in object type '%s' is invalid", relation, objectType)
+				return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrReservedKeywords}
 			}
 		}
 	}
@@ -570,10 +576,6 @@ func isUsersetRewriteValid(
 		if _, ok := allRelations[computedUserset]; !ok {
 			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 		}
-
-		if relation == tupleset && relation == computedUserset {
-			return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: nil}
-		}
 	case *openfgapb.Userset_Union:
 		for _, child := range t.Union.GetChild() {
 			err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, child)
@@ -646,14 +648,13 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				}
 
 			}
-
 		}
 	}
 
 	return nil
 }
 
-// ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following model because `viewer` is a cycle.
+// ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
 // type folder
 //
 //	 relations
@@ -671,31 +672,63 @@ func ensureNoCyclesInTupleToUsersetDefinitions(model *openfgapb.AuthorizationMod
 	typesys := New(model)
 	for objectType := range typesys.typeDefinitions {
 		relations, err := typesys.GetRelations(objectType)
-		if err != nil {
-			return err
-		}
-		for relationName, relation := range relations {
-			switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
-			case *openfgapb.Userset_TupleToUserset:
-				// define viewer as viewer from parent
-				if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
-					tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
-					tuplesetRelation, err := typesys.GetRelation(objectType, tuplesetRelationName)
-					// define parent: [folder] as self
-					if err == nil {
-						switch tuplesetRelation.GetRewrite().Userset.(type) {
-						case *openfgapb.Userset_This:
-							if typesys.schemaVersion == SchemaVersion1_0 && len(typesys.typeDefinitions) == 1 {
-								return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: nil}
-							}
-							if typesys.schemaVersion == SchemaVersion1_1 && tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
-								return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: nil}
+		if err == nil {
+			for relationName, relation := range relations {
+				switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
+				case *openfgapb.Userset_TupleToUserset:
+					// define viewer as viewer from parent
+					if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
+						tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
+						tuplesetRelation, err := typesys.GetRelation(objectType, tuplesetRelationName)
+						// define parent: [folder] as self
+						if err == nil {
+							switch tuplesetRelation.GetRewrite().Userset.(type) {
+							case *openfgapb.Userset_This:
+								if typesys.schemaVersion == SchemaVersion1_0 && len(typesys.typeDefinitions) == 1 {
+									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
+								}
+								if typesys.schemaVersion == SchemaVersion1_1 && len(tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
+									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
+								}
 							}
 						}
 					}
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+// ensureNoCyclesInComputedRewrite throws an error on the following model because `folder` type is a cycle.
+// type folder
+//
+//	 relations
+//		define parent: child
+//		define child: parent
+func ensureNoCyclesInComputedRewrite(model *openfgapb.AuthorizationModel) error {
+	typesys := New(model)
+	for objectType := range typesys.typeDefinitions {
+		relations, err := typesys.GetRelations(objectType)
+		if err == nil {
+			for sourceRelationName, relation := range relations {
+				switch source := relation.GetRewrite().Userset.(type) {
+				case *openfgapb.Userset_ComputedUserset:
+					target := source.ComputedUserset.GetRelation()
+					targetRelation, err := typesys.GetRelation(objectType, target)
+					if err == nil {
+						switch rewrite := targetRelation.GetRewrite().Userset.(type) {
+						case *openfgapb.Userset_ComputedUserset:
+							if rewrite.ComputedUserset.GetRelation() == sourceRelationName {
+								return &InvalidTypeError{ObjectType: objectType, Cause: ErrCycle}
+							}
+						}
+					}
+				}
+			}
+		}
+
 	}
 
 	return nil
@@ -778,6 +811,19 @@ func RewriteContainsExclusion(rewrite *openfgapb.Userset) bool {
 	}
 
 	return false
+}
+
+type InvalidTypeError struct {
+	ObjectType string
+	Cause      error
+}
+
+func (e *InvalidTypeError) Error() string {
+	return fmt.Sprintf("the definition of type '%s' is invalid", e.ObjectType)
+}
+
+func (e *InvalidTypeError) Unwrap() error {
+	return e.Cause
 }
 
 type InvalidRelationError struct {

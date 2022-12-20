@@ -433,6 +433,125 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			},
 			err: ErrRelationUndefined,
 		},
+		{
+			name: "Fails_If_Using_This_As_Relation_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"this": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_Self_As_Relation_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"self": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_This_As_Type_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "this",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_Self_As_Type_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "self",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Auth_Model_1.1_Has_A_Cycle",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"parent": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "folder",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			err: ErrCycle,
+		},
+		{
+			name: "Fails_If_Auth_Model_1.0_Has_A_Cycle",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: ErrCycle,
+		},
+		{
+			name: "Fails_If_Recursive_Definitions_For_A_Type",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": ComputedUserset("writer"),
+							"writer": ComputedUserset("reader"),
+						},
+					},
+				},
+			},
+			err: ErrCycle,
+		},
 	}
 
 	for _, test := range tests {

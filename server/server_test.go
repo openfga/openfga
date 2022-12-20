@@ -41,16 +41,16 @@ func init() {
 
 func TestOpenFGAServer(t *testing.T) {
 
-	//t.Run("TestPostgresDatastore", func(t *testing.T) {
-	//	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-	//
-	//	uri := testDatastore.GetConnectionURI()
-	//	ds, err := postgres.NewPostgresDatastore(uri)
-	//	require.NoError(t, err)
-	//	defer ds.Close()
-	//
-	//	test.RunAllTests(t, ds)
-	//})
+	t.Run("TestPostgresDatastore", func(t *testing.T) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := postgres.NewPostgresDatastore(uri)
+		require.NoError(t, err)
+		defer ds.Close()
+
+		test.RunAllTests(t, ds)
+	})
 
 	t.Run("TestMemoryDatastore", func(t *testing.T) {
 		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
@@ -58,16 +58,16 @@ func TestOpenFGAServer(t *testing.T) {
 		test.RunAllTests(t, ds)
 	})
 
-	//t.Run("TestMySQLDatastore", func(t *testing.T) {
-	//	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-	//
-	//	uri := testDatastore.GetConnectionURI()
-	//	ds, err := mysql.NewMySQLDatastore(uri)
-	//	require.NoError(t, err)
-	//	defer ds.Close()
-	//
-	//	test.RunAllTests(t, ds)
-	//})
+	t.Run("TestMySQLDatastore", func(t *testing.T) {
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+		uri := testDatastore.GetConnectionURI()
+		ds, err := mysql.NewMySQLDatastore(uri)
+		require.NoError(t, err)
+		defer ds.Close()
+
+		test.RunAllTests(t, ds)
+	})
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
