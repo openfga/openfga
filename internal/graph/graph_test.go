@@ -314,6 +314,28 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
+			name: "ingresses_for_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+				define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+				define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
+				},
+			},
+		},
+		{
 			name: "user_is_a_subset_of_user_*",
 			model: `
 			type user
@@ -517,6 +539,52 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
+		},
+		{
+			name: "ingress_through_ttu_on_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+				define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+				define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", "can_view"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "view"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
+		},
+		{
+			name: "indirect_relation_through_ttu_on_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+				define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+				define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "view"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
 		},
 	}
 
