@@ -3,6 +3,7 @@ package typesystem
 import (
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -1556,102 +1557,188 @@ func TestIsTuplesetRelation(t *testing.T) {
 func TestIsDirectlyRelated(t *testing.T) {
 	tests := []struct {
 		name   string
-		model  *openfgapb.AuthorizationModel
+		model  string
 		target *openfgapb.RelationReference
 		source *openfgapb.RelationReference
 		result bool
 	}{
 		{
 			name: "wildcard_and_wildcard",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										WildcardRelationReference("user"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user:*] as self
+			`,
 			target: DirectRelationReference("document", "viewer"),
 			source: WildcardRelationReference("user"),
 			result: true,
 		},
 		{
 			name: "wildcard_and_direct",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										WildcardRelationReference("user"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user:*] as self
+			`,
+			target: DirectRelationReference("document", "viewer"),
+			source: DirectRelationReference("user", ""),
+			result: false,
+		},
+		{
+			name: "direct_and_wildcard",
+			model: `
+			type user
+			
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
+			target: DirectRelationReference("document", "viewer"),
+			source: WildcardRelationReference("user"),
+			result: false,
+		},
+		{
+			name: "direct_type",
+			model: `
+			type user
+			
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
 			target: DirectRelationReference("document", "viewer"),
 			source: DirectRelationReference("user", ""),
 			result: true,
 		},
 		{
-			name: "direct_and_wildcard",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": This(),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "relation_not_related",
+			model: `
+			type user
+			  relations
+			    define manager: [user] as self
+			
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
 			target: DirectRelationReference("document", "viewer"),
-			source: WildcardRelationReference("user"),
+			source: DirectRelationReference("user", "manager"),
 			result: false,
+		},
+		{
+			name: "direct_and_userset",
+			model: `
+			type group
+			  relations
+			    define member: [group#member] as self
+			
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`,
+			target: DirectRelationReference("document", "viewer"),
+			source: DirectRelationReference("group", "member"),
+			result: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(test.model)
+
+			typedefs := parser.MustParse(test.model)
+			typesys := New(&openfgapb.AuthorizationModel{
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+			})
 
 			ok, err := typesys.IsDirectlyRelated(test.target, test.source)
+			require.NoError(t, err)
+			require.Equal(t, test.result, ok)
+		})
+	}
+}
+
+func TestIsPubliclyAssignable(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		target     *openfgapb.RelationReference
+		objectType string
+		result     bool
+	}{
+		{
+			name: "1",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user:*] as self
+			`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     true,
+		},
+		{
+			name: "2",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     false,
+		},
+		{
+			name: "3",
+			model: `
+			type user
+			type employee
+
+			type document
+			  relations
+			    define viewer: [employee:*] as self
+			`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     false,
+		},
+		{
+			name: "4",
+			model: `
+			type user
+
+			type group
+			  relations
+			    define member: [user:*] as self
+
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`,
+			target:     DirectRelationReference("document", "viewer"),
+			objectType: "user",
+			result:     false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			typedefs := parser.MustParse(test.model)
+			typesys := New(&openfgapb.AuthorizationModel{
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+			})
+
+			ok, err := typesys.IsPubliclyAssignable(test.target, test.objectType)
 			require.NoError(t, err)
 			require.Equal(t, ok, test.result)
 		})
