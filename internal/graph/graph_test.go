@@ -586,6 +586,35 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "multiple_indirect_non-assignable_relations_through_ttu",
+			model: `
+			type organization
+			  relations
+				define viewer: [organization] as self
+				define view as viewer
+
+			type folder
+			  relations
+				define parent: [organization] as self
+				define view as view from parent
+
+			type other
+
+			type document
+			  relations
+				define parent: [folder, other] as self
+				define view as view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

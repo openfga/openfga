@@ -160,35 +160,35 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 		var res []*RelationshipIngress
 
-		// We need to check if this is a tuple-to-userset rewrite
-		// parent: [folder#viewer] or parent: [folder]...
-		relationReference := typesystem.DirectRelationReference(target.GetType(), tupleset)
+		tuplesetTypeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
 
-		relatedToSourceRef, _ := g.typesystem.IsDirectlyRelated(relationReference, source)
+		for _, typeRestriction := range tuplesetTypeRestrictions {
 
-		relatedToSourceObjType, _ := g.typesystem.IsDirectlyRelated(relationReference, &openfgapb.RelationReference{Type: source.GetType()})
+			r, err := g.typesystem.GetRelation(typeRestriction.GetType(), computedUserset)
 
-		if relatedToSourceRef || relatedToSourceObjType {
-			res = append(res, &RelationshipIngress{
-				Type:             TupleToUsersetIngress,
-				Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-				TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
-			})
-		}
+			var directlyAssignable bool
+			if typeRestriction.GetType() == source.GetType() {
+				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
+			}
 
-		tuplesetDirectlyRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
+			if directlyAssignable {
+				res = append(res, &RelationshipIngress{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+				})
+			}
 
-		for _, relatedUserType := range tuplesetDirectlyRelatedTypes {
-			_, err := g.typesystem.GetRelation(relatedUserType.GetType(), computedUserset)
 			if err == nil {
 				subResults, err := g.findIngresses(
-					typesystem.DirectRelationReference(relatedUserType.GetType(), computedUserset),
+					typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
 					source,
 					visited,
 				)
 				if err != nil {
 					return nil, err
 				}
+
 				res = append(res, subResults...)
 			}
 		}
