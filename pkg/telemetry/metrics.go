@@ -65,8 +65,13 @@ func NewOTLPMeter(ctx context.Context, logger logger.Logger, protocol, endpoint 
 	meterProvider := sdkMetrics.NewMeterProvider(sdkMetrics.WithReader(reader), sdkMetrics.WithResource(res))
 	global.SetMeterProvider(meterProvider)
 
-	runtime.WithMinimumReadMemStatsInterval(time.Second)
-	runtime.WithMeterProvider(meterProvider)
+	if err := runtime.Start(
+		runtime.WithMinimumReadMemStatsInterval(time.Second),
+		runtime.WithMeterProvider(meterProvider),
+	); err != nil {
+		return nil, err
+	}
+
 	if err := host.Start(host.WithMeterProvider(meterProvider)); err != nil {
 		return nil, err
 	}
