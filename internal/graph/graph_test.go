@@ -314,28 +314,6 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			},
 		},
 		{
-			name: "ingresses_for_non-assignable_relation",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-				define can_view as viewer
-
-			type document
-			  relations
-			    define parent: [organization] as self
-				define view as can_view from parent
-			`,
-			target: typesystem.DirectRelationReference("document", "view"),
-			source: typesystem.DirectRelationReference("organization", ""),
-			expected: []*RelationshipIngress{
-				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
-				},
-			},
-		},
-		{
 			name: "user_is_a_subset_of_user_*",
 			model: `
 			type user
