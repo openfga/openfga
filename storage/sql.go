@@ -26,110 +26,120 @@ const (
 )
 
 type Datastore struct {
-	db                            *sql.DB
-	tracer                        trace.Tracer
-	logger                        logger.Logger
-	maxTuplesPerWrite             int
-	maxTypesPerAuthorizationModel int
+	DB                     *sql.DB
+	Tracer                 trace.Tracer
+	Logger                 logger.Logger
+	MaxTuplesPerWriteField int
+	MaxTypesPerModelField  int
 
-	maxOpenConns    int
-	maxIdleConns    int
-	connMaxIdleTime time.Duration
-	connMaxLifetime time.Duration
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxIdleTime time.Duration
+	ConnMaxLifetime time.Duration
 }
 
 type DatastoreOption func(*Datastore)
 
 func WithTracer(t trace.Tracer) DatastoreOption {
 	return func(p *Datastore) {
-		p.tracer = t
+		p.Tracer = t
 	}
 }
 
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(p *Datastore) {
-		p.logger = l
+		p.Logger = l
 	}
 }
 
 func WithMaxTuplesPerWrite(maxTuples int) DatastoreOption {
 	return func(p *Datastore) {
-		p.maxTuplesPerWrite = maxTuples
+		p.MaxTuplesPerWriteField = maxTuples
 	}
 }
 
 func WithMaxTypesPerAuthorizationModel(maxTypes int) DatastoreOption {
 	return func(p *Datastore) {
-		p.maxTypesPerAuthorizationModel = maxTypes
+		p.MaxTypesPerModelField = maxTypes
 	}
 }
 
 func WithMaxOpenConns(c int) DatastoreOption {
 	return func(p *Datastore) {
-		p.maxOpenConns = c
+		p.MaxOpenConns = c
 	}
 }
 
 func WithMaxIdleConns(c int) DatastoreOption {
 	return func(p *Datastore) {
-		p.maxIdleConns = c
+		p.MaxIdleConns = c
 	}
 }
 
 func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 	return func(p *Datastore) {
-		p.connMaxIdleTime = d
+		p.ConnMaxIdleTime = d
 	}
 }
 
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(p *Datastore) {
-		p.connMaxLifetime = d
+		p.ConnMaxLifetime = d
 	}
 }
 
-func NewDatastore(uri string, opts ...DatastoreOption) (*Datastore, error) {
+func NewDatastore(engine, uri string, opts ...DatastoreOption) (*Datastore, error) {
+	var driverName string
+	switch engine {
+	case "postgres":
+		driverName = "pgx"
+	case "mysql":
+		driverName = "mysql"
+	default:
+		return nil, fmt.Errorf("undefined datastore engine: '%s'", engine)
+	}
+
+	db, err := sql.Open(driverName, uri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize datastore connection: %w", err)
+	}
+
 	d := &Datastore{}
 
 	for _, opt := range opts {
 		opt(d)
 	}
 
-	if d.logger == nil {
-		d.logger = logger.NewNoopLogger()
+	if d.Logger == nil {
+		d.Logger = logger.NewNoopLogger()
 	}
 
-	if d.tracer == nil {
-		d.tracer = telemetry.NewNoopTracer()
+	if d.Tracer == nil {
+		d.Tracer = telemetry.NewNoopTracer()
 	}
 
-	if d.maxTuplesPerWrite == 0 {
-		d.maxTuplesPerWrite = DefaultMaxTuplesPerWrite
+	if d.MaxTuplesPerWriteField == 0 {
+		d.MaxTuplesPerWriteField = DefaultMaxTuplesPerWrite
 	}
 
-	if d.maxTypesPerAuthorizationModel == 0 {
-		d.maxTypesPerAuthorizationModel = DefaultMaxTypesPerAuthorizationModel
+	if d.MaxTypesPerModelField == 0 {
+		d.MaxTypesPerModelField = DefaultMaxTypesPerAuthorizationModel
 	}
 
-	db, err := sql.Open("pgx", uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
+	if d.MaxOpenConns != 0 {
+		db.SetMaxOpenConns(d.MaxOpenConns)
 	}
 
-	if d.maxOpenConns != 0 {
-		db.SetMaxOpenConns(d.maxOpenConns)
+	if d.MaxIdleConns != 0 {
+		db.SetMaxIdleConns(d.MaxIdleConns)
 	}
 
-	if d.maxIdleConns != 0 {
-		db.SetMaxIdleConns(d.maxIdleConns)
+	if d.ConnMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(d.ConnMaxIdleTime)
 	}
 
-	if d.connMaxIdleTime != 0 {
-		db.SetConnMaxIdleTime(d.connMaxIdleTime)
-	}
-
-	if d.connMaxLifetime != 0 {
-		db.SetConnMaxLifetime(d.connMaxLifetime)
+	if d.ConnMaxLifetime != 0 {
+		db.SetConnMaxLifetime(d.ConnMaxLifetime)
 	}
 
 	policy := backoff.NewExponentialBackOff()
@@ -138,17 +148,17 @@ func NewDatastore(uri string, opts ...DatastoreOption) (*Datastore, error) {
 	err = backoff.Retry(func() error {
 		err = db.PingContext(context.Background())
 		if err != nil {
-			d.logger.Info("waiting for Postgres", zap.Int("attempt", attempt))
+			d.Logger.Info("waiting for the datastore", zap.Int("attempt", attempt))
 			attempt++
 			return err
 		}
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Postgres connection: %w", err)
+		return nil, fmt.Errorf("failed to initialize datastore connection: %w", err)
 	}
 
-	d.db = db
+	d.DB = db
 
 	return d, nil
 }

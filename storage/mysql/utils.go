@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/go-sql-driver/mysql"
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
@@ -140,20 +139,4 @@ func rollbackTx(ctx context.Context, tx *sql.Tx, logger log.Logger) {
 	if err := tx.Rollback(); !errors.Is(err, sql.ErrTxDone) {
 		logger.ErrorWithContext(ctx, "failed to rollback transaction", log.Error(err))
 	}
-}
-
-func handleMySQLError(err error, args ...interface{}) error {
-	if errors.Is(err, sql.ErrNoRows) {
-		return storage.ErrNotFound
-	} else if errors.Is(err, storage.ErrIteratorDone) {
-		return storage.ErrIteratorDone
-	} else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
-		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
-			}
-		}
-		return storage.ErrCollision
-	}
-	return fmt.Errorf("mysql error: %w", err)
 }

@@ -397,15 +397,15 @@ func RunServer(ctx context.Context, config *Config) error {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
-		opts := []mysql.MySQLOption{
-			mysql.WithLogger(logger),
-			mysql.WithTracer(tracer),
-			mysql.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			mysql.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			mysql.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-			mysql.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-			mysql.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-			mysql.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		opts := []storage.DatastoreOption{
+			storage.WithLogger(logger),
+			storage.WithTracer(tracer),
+			storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+			storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+			storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+			storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+			storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+			storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 		}
 
 		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
@@ -413,15 +413,15 @@ func RunServer(ctx context.Context, config *Config) error {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		opts := []postgres.PostgresOption{
-			postgres.WithLogger(logger),
-			postgres.WithTracer(tracer),
-			postgres.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			postgres.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			postgres.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-			postgres.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-			postgres.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-			postgres.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		opts := []storage.DatastoreOption{
+			storage.WithLogger(logger),
+			storage.WithTracer(tracer),
+			storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+			storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+			storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+			storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+			storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+			storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 		}
 
 		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
