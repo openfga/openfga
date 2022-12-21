@@ -850,4 +850,16 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.metrics.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Metrics.Enabled)
+
+	val = res.Get("properties.metrics.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Endpoint)
+
+	val = res.Get("properties.metrics.properties.protocol.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Protocol)
 }

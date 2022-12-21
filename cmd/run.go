@@ -44,6 +44,7 @@ import (
 	"github.com/spf13/viper"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -162,6 +163,13 @@ type ProfilerConfig struct {
 	Addr    string
 }
 
+// MetricsConfig defines metrics configuration and exposure settings.
+type MetricsConfig struct {
+	Enabled  bool
+	Endpoint string
+	Protocol string
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -197,6 +205,7 @@ type Config struct {
 	Log        LogConfig
 	Playground PlaygroundConfig
 	Profiler   ProfilerConfig
+	Metrics    MetricsConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -241,6 +250,11 @@ func DefaultConfig() *Config {
 		Profiler: ProfilerConfig{
 			Enabled: false,
 			Addr:    ":3001",
+		},
+		Metrics: MetricsConfig{
+			Enabled:  false,
+			Protocol: "grpc",
+			Endpoint: "0.0.0.0:4317",
 		},
 	}
 }
@@ -366,11 +380,19 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 	tracer := telemetry.NewNoopTracer()
-	meter := telemetry.NewNoopMeter()
 	tokenEncoder := encoder.NewBase64Encoder()
 
-	var datastore storage.OpenFGADatastore
 	var err error
+	meter := metric.NewNoopMeter()
+	if config.Metrics.Enabled {
+		logger.Info(fmt.Sprintf("🕵 OTLP metrics send through protocol '%s'", config.Metrics.Protocol))
+		meter, err = telemetry.NewOTLPMeter(ctx, logger, config.Metrics.Protocol, config.Metrics.Endpoint)
+		if err != nil {
+			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
+		}
+	}
+
+	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
@@ -527,7 +549,11 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
-			logger.Fatal("failed to start grpc server", zap.Error(err))
+			if !errors.Is(err, grpc.ErrServerStopped) {
+				logger.Fatal("failed to start grpc server", zap.Error(err))
+			}
+
+			logger.Info("grpc server shut down..")
 		}
 	}()
 	logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
@@ -827,4 +853,13 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
+
+	cmd.Flags().Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable OTel metrics export")
+	util.MustBindPFlag("metrics.enabled", cmd.Flags().Lookup("metrics-enabled"))
+
+	cmd.Flags().String("metrics-endpoint", defaultConfig.Metrics.Endpoint, "OTel Collector endpoint to use")
+	util.MustBindPFlag("metrics.endpoint", cmd.Flags().Lookup("metrics-endpoint"))
+
+	cmd.Flags().String("metrics-protocol", defaultConfig.Metrics.Protocol, "the protocol to use to send OTLP metrics")
+	util.MustBindPFlag("metrics.protocol", cmd.Flags().Lookup("metrics-protocol"))
 }

@@ -220,12 +220,51 @@ func (t *TypeSystem) IsDirectlyRelated(target *openfgapb.RelationReference, sour
 		return false, err
 	}
 
-	for _, relationReference := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
-		if source.GetType() == relationReference.GetType() {
-			// Either the relations are not wildcards and are the same
-			// or the relationReference is a wildcard type (e.g. user:*) and the source may or may not have a wildcard (but certainly no relation)
-			if relationReference.GetWildcard() == nil && source.GetWildcard() == nil && relationReference.GetRelation() == source.GetRelation() ||
-				(relationReference.GetWildcard() != nil && source.GetRelation() == "") {
+	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		if source.GetType() == typeRestriction.GetType() {
+
+			// type with no relation or wildcard (e.g. 'user')
+			if typeRestriction.GetRelationOrWildcard() == nil && source.GetRelationOrWildcard() == nil {
+				return true, nil
+			}
+
+			// typed wildcard (e.g. 'user:*')
+			if typeRestriction.GetWildcard() != nil && source.GetWildcard() != nil {
+				return true, nil
+			}
+
+			if typeRestriction.GetRelation() != "" && source.GetRelation() != "" &&
+				typeRestriction.GetRelation() == source.GetRelation() {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+/*
+ * IsPubliclyAssignable returns true if the provided objectType is part of a typed wildcard type restriction
+ * on the target relation.
+ *
+ * type user
+ *
+ * type document
+ *   relations
+ *     define viewer: [user:*]
+ *
+ * In the example above, the 'user' objectType is publicly assignable to the 'document#viewer' relation.
+ */
+func (t *TypeSystem) IsPubliclyAssignable(target *openfgapb.RelationReference, objectType string) (bool, error) {
+
+	relation, err := t.GetRelation(target.GetType(), target.GetRelation())
+	if err != nil {
+		return false, err
+	}
+
+	for _, typeRestriction := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		if typeRestriction.GetType() == objectType {
+			if typeRestriction.GetWildcard() != nil {
 				return true, nil
 			}
 		}
