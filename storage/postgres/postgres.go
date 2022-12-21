@@ -25,11 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	defaultMaxTuplesPerWrite             = 100
-	defaultMaxTypesPerAuthorizationModel = 100
-)
-
 type Postgres struct {
 	db                            *sql.DB
 	tracer                        trace.Tracer
@@ -111,11 +106,11 @@ func NewPostgresDatastore(uri string, opts ...PostgresOption) (*Postgres, error)
 	}
 
 	if p.maxTuplesPerWrite == 0 {
-		p.maxTuplesPerWrite = defaultMaxTuplesPerWrite
+		p.maxTuplesPerWrite = storage.DefaultMaxTuplesPerWrite
 	}
 
 	if p.maxTypesPerAuthorizationModel == 0 {
-		p.maxTypesPerAuthorizationModel = defaultMaxTypesPerAuthorizationModel
+		p.maxTypesPerAuthorizationModel = storage.DefaultMaxTypesPerAuthorizationModel
 	}
 
 	db, err := sql.Open("pgx", uri)
@@ -180,15 +175,15 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 			"object_type": objectType,
 		}).ToSql()
 	if err != nil {
-		return nil, handlePostgresError(err)
+		return nil, err
 	}
 
 	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
-		return nil, err
+		return nil, storage.HandleSQLError(err)
 	}
 
-	return NewPostgresObjectIterator(rows), nil
+	return storage.NewSQLObjectIterator(rows), nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -208,10 +203,10 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	}
 	defer iter.Stop()
 
-	return iter.toArray(ctx, opts)
+	return iter.ToArray(ctx, opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*tupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*storage.SQLTupleIterator, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
@@ -225,7 +220,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		return nil, handlePostgresError(err)
 	}
 
-	return NewPostgresTupleIterator(rows), nil
+	return storage.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -296,12 +291,12 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 
 		stmt, args, err := tupleInsertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").ToSql()
 		if err != nil {
-			return handlePostgresError(err)
+			return storage.HandleSQLError(err)
 		}
 
 		_, err = txn.ExecContext(ctx, stmt, args...)
 		if err != nil {
-			return handlePostgresError(err, tk)
+			return storage.HandleSQLError(err, tk)
 		}
 
 		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, "NOW()")
@@ -310,17 +305,17 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	if len(writes) > 0 || len(deletes) > 0 {
 		stmt, args, err := changelogBuilder.ToSql()
 		if err != nil {
-			return handlePostgresError(err)
+			return storage.HandleSQLError(err)
 		}
 
 		_, err = txn.ExecContext(ctx, stmt, args...)
 		if err != nil {
-			return handlePostgresError(err)
+			return storage.HandleSQLError(err)
 		}
 	}
 
 	if err := txn.Commit(); err != nil {
-		return handlePostgresError(err)
+		return storage.HandleSQLError(err)
 	}
 
 	return nil
@@ -336,12 +331,12 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	row := p.db.QueryRowContext(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
 		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), userType)
 
-	var record tupleRecord
-	if err := row.Scan(&record.objectType, &record.objectID, &record.relation, &record.user); err != nil {
-		return nil, handlePostgresError(err)
+	var record storage.TupleRecord
+	if err := row.Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User); err != nil {
+		return nil, storage.HandleSQLError(err)
 	}
 
-	return record.asTuple(), nil
+	return record.AsTuple(), nil
 }
 
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -355,10 +350,10 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 
 	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
-		return nil, handlePostgresError(err)
+		return nil, storage.HandleSQLError(err)
 	}
 
-	return NewPostgresTupleIterator(rows), nil
+	return storage.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
@@ -377,10 +372,10 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 
 	rows, err := p.db.QueryContext(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
 	if err != nil {
-		return nil, handlePostgresError(err)
+		return nil, storage.HandleSQLError(err)
 	}
 
-	return NewPostgresTupleIterator(rows), nil
+	return storage.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) MaxTuplesPerWrite() int {
@@ -476,7 +471,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > opts.PageSize {
 		numModelIDs = opts.PageSize
-		token, err = json.Marshal(newContToken(modelID, ""))
+		token, err = json.Marshal(storage.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -660,7 +655,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	}
 
 	if len(stores) > opts.PageSize {
-		contToken, err := json.Marshal(newContToken(id, ""))
+		contToken, err := json.Marshal(storage.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -769,7 +764,7 @@ func (p *Postgres) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(newContToken(ulid, objectTypeFilter))
+	contToken, err := json.Marshal(storage.NewContToken(ulid, objectTypeFilter))
 	if err != nil {
 		return nil, nil, err
 	}

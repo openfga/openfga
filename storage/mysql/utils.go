@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,49 +13,7 @@ import (
 	"github.com/openfga/openfga/storage"
 	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
-
-type tupleRecord struct {
-	store      string
-	objectType string
-	objectID   string
-	relation   string
-	user       string
-	ulid       string
-	insertedAt time.Time
-}
-
-func (t *tupleRecord) asTuple() *openfgapb.Tuple {
-	return &openfgapb.Tuple{
-		Key: &openfgapb.TupleKey{
-			Object:   tupleUtils.BuildObject(t.objectType, t.objectID),
-			Relation: t.relation,
-			User:     t.user,
-		},
-		Timestamp: timestamppb.New(t.insertedAt),
-	}
-}
-
-type contToken struct {
-	Ulid       string `json:"ulid"`
-	ObjectType string `json:"objectType"`
-}
-
-func newContToken(ulid, objectType string) *contToken {
-	return &contToken{
-		Ulid:       ulid,
-		ObjectType: objectType,
-	}
-}
-
-func unmarshallContToken(from string) (*contToken, error) {
-	var token contToken
-	if err := json.Unmarshal([]byte(from), &token); err != nil {
-		return nil, storage.ErrInvalidContinuationToken
-	}
-	return &token, nil
-}
 
 func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (string, []any, error) {
 	sb := squirrel.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
@@ -78,7 +35,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 		sb = sb.Where(squirrel.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
-		token, err := unmarshallContToken(opts.From)
+		token, err := storage.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -119,7 +76,7 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error)
 		OrderBy("id")
 
 	if opts.From != "" {
-		token, err := unmarshallContToken(opts.From)
+		token, err := storage.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -143,7 +100,7 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 		sb = sb.Where(squirrel.Eq{"object_type": objectTypeFilter})
 	}
 	if opts.From != "" {
-		token, err := unmarshallContToken(opts.From)
+		token, err := storage.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -166,7 +123,7 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 		OrderBy("authorization_model_id DESC")
 
 	if opts.From != "" {
-		token, err := unmarshallContToken(opts.From)
+		token, err := storage.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
