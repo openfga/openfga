@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/Masterminds/squirrel v1.5.3
-	github.com/MicahParks/keyfunc v1.7.0
+	github.com/MicahParks/keyfunc v1.9.0
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/craigpastro/openfga-dsl-parser v1.0.0
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20221207214135-0a2953a7bf5f
