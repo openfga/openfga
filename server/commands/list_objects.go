@@ -118,8 +118,8 @@ func (q *ListObjectsQuery) handler(
 
 			userObjType, userObjID := tuple.SplitObject(userObj)
 
-			var targetUserRef isUser_Ref
-			targetUserRef = &UserRef_Object{
+			var targetUserRef isUserRef
+			targetUserRef = &UserRefObject{
 				Object: &openfgapb.Object{
 					Type: userObjType,
 					Id:   userObjID,
@@ -127,11 +127,11 @@ func (q *ListObjectsQuery) handler(
 			}
 
 			if tuple.IsTypedWildcard(userObj) {
-				targetUserRef = &UserRef_TypedWildcard{Type: tuple.GetType(userObj)}
+				targetUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
 			}
 
 			if userRel != "" {
-				targetUserRef = &UserRef_ObjectRelation{
+				targetUserRef = &UserRefObjectRelation{
 					ObjectRelation: &openfgapb.ObjectRelation{
 						Object:   userObj,
 						Relation: userRel,

@@ -35,7 +35,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		// 		StoreID:    ulid.Make().String(),
 		// 		ObjectType: "folder",
 		// 		Relation:   "viewer",
-		// 		User: &commands.UserRef_Object{
+		// 		User: &commands.UserRefObject{
 		// 			Object: &openfgapb.Object{
 		// 				Type: "user",
 		// 				Id:   "jon",
@@ -66,7 +66,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -95,7 +95,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{Object: &openfgapb.Object{
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -125,7 +125,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{Object: &openfgapb.Object{
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -156,7 +156,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -205,7 +205,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -233,7 +233,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -262,7 +262,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "group",
 				Relation:   "member",
-				User: &commands.UserRef_ObjectRelation{
+				User: &commands.UserRefObjectRelation{
 					ObjectRelation: &openfgapb.ObjectRelation{
 						Object:   "group:iam",
 						Relation: "member",
@@ -289,7 +289,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &commands.UserRef_TypedWildcard{Type: "user"},
+				User:       &commands.UserRefTypedWildcard{Type: "user"},
 			},
 			model: `
 			type user
@@ -311,7 +311,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &commands.UserRef_TypedWildcard{Type: "user"},
+				User:       &commands.UserRefTypedWildcard{Type: "user"},
 			},
 			model: `
 			type user
@@ -337,7 +337,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -372,7 +372,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -407,7 +407,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -435,7 +435,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{Type: "user", Id: "jon"},
 				},
 			},
@@ -458,7 +458,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "jon",
@@ -490,7 +490,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{
 						Type: "user",
 						Id:   "*",
@@ -523,7 +523,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{
+				User: &commands.UserRefObject{
 					Object: &openfgapb.Object{Type: "user", Id: "jon"},
 				},
 				ContextualTuples: []*openfgapb.TupleKey{
@@ -546,7 +546,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &commands.UserRef_TypedWildcard{Type: "user"},
+				User:       &commands.UserRefTypedWildcard{Type: "user"},
 				ContextualTuples: []*openfgapb.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "employee:*"),
 					tuple.NewTupleKey("document:2", "viewer", "user:*"),
@@ -568,7 +568,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_ObjectRelation{
+				User: &commands.UserRefObjectRelation{
 					ObjectRelation: &openfgapb.ObjectRelation{
 						Object:   "group:eng",
 						Relation: "member",
@@ -597,7 +597,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{Object: &openfgapb.Object{
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -628,7 +628,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{Object: &openfgapb.Object{
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -660,7 +660,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &commands.UserRef_Object{Object: &openfgapb.Object{
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
 					Type: "user",
 					Id:   "jon",
 				}},

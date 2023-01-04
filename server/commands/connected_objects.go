@@ -21,46 +21,46 @@ type ConnectedObjectsRequest struct {
 	StoreID          string
 	ObjectType       string
 	Relation         string
-	User             isUser_Ref
+	User             isUserRef
 	ContextualTuples []*openfgapb.TupleKey
 }
 
-type isUser_Ref interface {
-	isUser_Ref()
+type isUserRef interface {
+	isUserRef()
 	GetObjectType() string
 }
 
-type UserRef_Object struct {
+type UserRefObject struct {
 	Object *openfgapb.Object
 }
 
-var _ isUser_Ref = (*UserRef_Object)(nil)
+var _ isUserRef = (*UserRefObject)(nil)
 
-func (u *UserRef_Object) isUser_Ref() {}
+func (u *UserRefObject) isUserRef() {}
 
-func (u *UserRef_Object) GetObjectType() string {
+func (u *UserRefObject) GetObjectType() string {
 	return u.Object.Type
 }
 
-type UserRef_TypedWildcard struct {
+type UserRefTypedWildcard struct {
 	Type string
 }
 
-var _ isUser_Ref = (*UserRef_TypedWildcard)(nil)
+var _ isUserRef = (*UserRefTypedWildcard)(nil)
 
-func (*UserRef_TypedWildcard) isUser_Ref() {}
+func (*UserRefTypedWildcard) isUserRef() {}
 
-func (u *UserRef_TypedWildcard) GetObjectType() string {
+func (u *UserRefTypedWildcard) GetObjectType() string {
 	return u.Type
 }
 
-type UserRef_ObjectRelation struct {
+type UserRefObjectRelation struct {
 	ObjectRelation *openfgapb.ObjectRelation
 }
 
-func (*UserRef_ObjectRelation) isUser_Ref() {}
+func (*UserRefObjectRelation) isUserRef() {}
 
-func (u *UserRef_ObjectRelation) GetObjectType() string {
+func (u *UserRefObjectRelation) GetObjectType() string {
 	return tuple.GetType(u.ObjectRelation.Object)
 }
 
@@ -70,7 +70,7 @@ type UserRef struct {
 	//  *UserRef_Object
 	//  *UserRef_TypedWildcard
 	//  *UserRef_ObjectRelation
-	Ref isUser_Ref
+	Ref isUserRef
 }
 
 type ConnectedObjectsCommand struct {
@@ -107,19 +107,19 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	var targetUserType string
 
 	// e.g. 'user:bob'
-	if val, ok := req.User.(*UserRef_Object); ok {
+	if val, ok := req.User.(*UserRefObject); ok {
 		targetUserType = val.Object.GetType()
 		targetUserRef = typesystem.DirectRelationReference(targetUserType, "")
 	}
 
 	// e.g. 'user:*'
-	if val, ok := req.User.(*UserRef_TypedWildcard); ok {
+	if val, ok := req.User.(*UserRefTypedWildcard); ok {
 		targetUserType = val.Type
 		targetUserRef = typesystem.WildcardRelationReference(targetUserType)
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.User.(*UserRef_ObjectRelation); ok {
+	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		targetUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		targetUserRef = typesystem.DirectRelationReference(targetUserType, val.ObjectRelation.GetRelation())
 	}
@@ -186,7 +186,7 @@ type reverseExpandRequest struct {
 	storeID          string
 	ingress          *graph.RelationshipIngress
 	sourceObjectRef  *openfgapb.RelationReference
-	targetUserRef    isUser_Ref
+	targetUserRef    isUserRef
 	contextualTuples []*openfgapb.TupleKey
 }
 
@@ -223,15 +223,15 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		user := t.GetUser()
 
 		var targetUserStr string
-		if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+		if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
 			targetUserStr = fmt.Sprintf("%s:*", val.Type)
 		}
 
-		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
 			targetUserStr = val.ObjectRelation.Object
 		}
 
-		if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+		if val, ok := req.targetUserRef.(*UserRefObject); ok {
 			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
 		}
 
@@ -249,14 +249,14 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	var userFilter []*openfgapb.ObjectRelation
 
 	// e.g. 'user:bob'
-	if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+	if val, ok := req.targetUserRef.(*UserRefObject); ok {
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
 		})
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+	if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
 			Object: val.ObjectRelation.Object,
 		})
@@ -310,20 +310,20 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
-		var targetUserRef isUser_Ref
-		targetUserRef = &UserRef_Object{
+		var targetUserRef isUserRef
+		targetUserRef = &UserRefObject{
 			Object: &openfgapb.Object{
 				Type: foundObjectType,
 				Id:   foundObjectID,
 			},
 		}
 
-		if _, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
-			targetUserRef = &UserRef_TypedWildcard{Type: foundObjectType}
+		if _, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
+			targetUserRef = &UserRefTypedWildcard{Type: foundObjectType}
 		}
 
-		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
-			targetUserRef = &UserRef_ObjectRelation{
+		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
+			targetUserRef = &UserRefObjectRelation{
 				ObjectRelation: &openfgapb.ObjectRelation{
 					Object:   foundObject,
 					Relation: val.ObjectRelation.GetRelation(),
@@ -376,15 +376,15 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		user := t.GetUser()
 
 		var targetUserStr string
-		if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+		if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
 			targetUserStr = fmt.Sprintf("%s:*", val.Type)
 		}
 
-		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
 			targetUserStr = fmt.Sprintf("%s#%s", val.ObjectRelation.Object, val.ObjectRelation.Relation)
 		}
 
-		if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+		if val, ok := req.targetUserRef.(*UserRefObject); ok {
 			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
 		}
 
@@ -419,14 +419,14 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	}
 
 	// e.g. 'user:bob'
-	if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+	if val, ok := req.targetUserRef.(*UserRefObject); ok {
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
 		})
 	}
 
 	// e.g. 'user:*'
-	if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+	if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
 		targetRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Wildcard{}
 
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
@@ -435,7 +435,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+	if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
 		targetRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Relation{
 			Relation: val.ObjectRelation.Relation,
 		}
@@ -491,8 +491,8 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
-		var targetUserRef isUser_Ref
-		targetUserRef = &UserRef_Object{
+		var targetUserRef isUserRef
+		targetUserRef = &UserRefObject{
 			Object: &openfgapb.Object{
 				Type: foundObjectType,
 				Id:   foundObjectID,
@@ -500,11 +500,11 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		if tuple.IsTypedWildcard(foundObject) {
-			targetUserRef = &UserRef_TypedWildcard{Type: foundObjectType}
+			targetUserRef = &UserRefTypedWildcard{Type: foundObjectType}
 		}
 
 		if tk.GetRelation() != "" {
-			targetUserRef = &UserRef_ObjectRelation{
+			targetUserRef = &UserRefObjectRelation{
 				ObjectRelation: &openfgapb.ObjectRelation{
 					Object:   foundObject,
 					Relation: tk.GetRelation(),
