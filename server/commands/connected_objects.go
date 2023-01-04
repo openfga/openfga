@@ -21,8 +21,56 @@ type ConnectedObjectsRequest struct {
 	StoreID          string
 	ObjectType       string
 	Relation         string
-	User             *openfgapb.ObjectRelation
+	User             isUser_Ref
 	ContextualTuples []*openfgapb.TupleKey
+}
+
+type isUser_Ref interface {
+	isUser_Ref()
+	GetObjectType() string
+}
+
+type UserRef_Object struct {
+	Object *openfgapb.Object
+}
+
+var _ isUser_Ref = (*UserRef_Object)(nil)
+
+func (u *UserRef_Object) isUser_Ref() {}
+
+func (u *UserRef_Object) GetObjectType() string {
+	return u.Object.Type
+}
+
+type UserRef_TypedWildcard struct {
+	Type string
+}
+
+var _ isUser_Ref = (*UserRef_TypedWildcard)(nil)
+
+func (*UserRef_TypedWildcard) isUser_Ref() {}
+
+func (u *UserRef_TypedWildcard) GetObjectType() string {
+	return u.Type
+}
+
+type UserRef_ObjectRelation struct {
+	ObjectRelation *openfgapb.ObjectRelation
+}
+
+func (*UserRef_ObjectRelation) isUser_Ref() {}
+
+func (u *UserRef_ObjectRelation) GetObjectType() string {
+	return tuple.GetType(u.ObjectRelation.Object)
+}
+
+type UserRef struct {
+
+	// Types that are assignable to Ref
+	//  *UserRef_Object
+	//  *UserRef_TypedWildcard
+	//  *UserRef_ObjectRelation
+	Ref isUser_Ref
 }
 
 type ConnectedObjectsCommand struct {
@@ -55,8 +103,27 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 
 	storeID := req.StoreID
 
-	targetUserType, _ := tuple.SplitObject(req.User.GetObject())
-	targetUserRef := typesystem.DirectRelationReference(targetUserType, req.User.GetRelation())
+	var targetUserRef *openfgapb.RelationReference
+	var targetUserType string
+
+	// e.g. 'user:bob'
+	if val, ok := req.User.(*UserRef_Object); ok {
+		targetUserType = val.Object.GetType()
+		targetUserRef = typesystem.DirectRelationReference(targetUserType, "")
+	}
+
+	// e.g. 'user:*'
+	if val, ok := req.User.(*UserRef_TypedWildcard); ok {
+		targetUserType = val.Type
+		targetUserRef = typesystem.WildcardRelationReference(targetUserType)
+	}
+
+	// e.g. 'group:eng#member'
+	if val, ok := req.User.(*UserRef_ObjectRelation); ok {
+		targetUserType = tuple.GetType(val.ObjectRelation.GetObject())
+		targetUserRef = typesystem.DirectRelationReference(targetUserType, val.ObjectRelation.GetRelation())
+	}
+
 	sourceObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
@@ -119,7 +186,7 @@ type reverseExpandRequest struct {
 	storeID          string
 	ingress          *graph.RelationshipIngress
 	sourceObjectRef  *openfgapb.RelationReference
-	targetUserRef    *openfgapb.ObjectRelation
+	targetUserRef    isUser_Ref
 	contextualTuples []*openfgapb.TupleKey
 }
 
@@ -153,22 +220,52 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			continue
 		}
 
-		targetUserStr := req.targetUserRef.GetObject()
+		user := t.GetUser()
 
-		userObj, _ := tuple.SplitObjectRelation(t.GetUser())
-		if userObj == targetUserStr || userObj == tuple.Wildcard {
+		var targetUserStr string
+		if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+			targetUserStr = fmt.Sprintf("%s:*", val.Type)
+		}
+
+		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+			targetUserStr = val.ObjectRelation.Object
+		}
+
+		if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
+		}
+
+		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.targetUserRef.GetObjectType() {
+			tuples = append(tuples, &openfgapb.Tuple{Key: t})
+			continue
+		}
+
+		if t.GetUser() == targetUserStr {
 			tuples = append(tuples, &openfgapb.Tuple{Key: t})
 		}
 	}
 	iter1 := storage.NewStaticTupleIterator(tuples)
 
+	var userFilter []*openfgapb.ObjectRelation
+
+	// e.g. 'user:bob'
+	if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
+		})
+	}
+
+	// e.g. 'group:eng#member'
+	if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+			Object: val.ObjectRelation.Object,
+		})
+	}
+
 	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
 		Relation:   tuplesetRelation,
-		UserFilter: []*openfgapb.ObjectRelation{
-			{Object: req.targetUserRef.Object},
-			{Object: tuple.Wildcard},
-		},
+		UserFilter: userFilter,
 	})
 	if err != nil {
 		iter1.Stop()
@@ -194,17 +291,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
-
-		userObj, _ := tuple.SplitObjectRelation(tk.GetUser())
-
-		if userObj == tuple.Wildcard {
-
-			return serverErrors.InvalidTuple(
-				fmt.Sprintf("unexpected wildcard evaluated on relation '%s#%s'", foundObjectType, tuplesetRelation),
-				tuple.NewTupleKey(foundObject, tuplesetRelation, tuple.Wildcard),
-			)
-		}
+		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
 		if _, ok := foundObjectsMap.Load(foundObject); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
@@ -223,12 +310,33 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
+		var targetUserRef isUser_Ref
+		targetUserRef = &UserRef_Object{
+			Object: &openfgapb.Object{
+				Type: foundObjectType,
+				Id:   foundObjectID,
+			},
+		}
+
+		if _, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+			targetUserRef = &UserRef_TypedWildcard{Type: foundObjectType}
+		}
+
+		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+			targetUserRef = &UserRef_ObjectRelation{
+				ObjectRelation: &openfgapb.ObjectRelation{
+					Object:   foundObject,
+					Relation: val.ObjectRelation.GetRelation(),
+				},
+			}
+		}
+
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       sourceObjectType,
 				Relation:         sourceObjectRel,
-				User:             &openfgapb.ObjectRelation{Object: foundObject, Relation: req.targetUserRef.Relation},
+				User:             targetUserRef,
 				ContextualTuples: req.contextualTuples,
 			}, resultChan, foundObjectsMap, foundCount)
 		})
@@ -265,24 +373,80 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			continue
 		}
 
-		targetUserStr := req.targetUserRef.GetObject()
-		if req.targetUserRef.GetRelation() != "" {
-			targetUserStr = fmt.Sprintf("%s#%s", targetUserStr, req.targetUserRef.GetRelation())
+		user := t.GetUser()
+
+		var targetUserStr string
+		if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+			targetUserStr = fmt.Sprintf("%s:*", val.Type)
 		}
 
-		if t.GetUser() == targetUserStr || t.GetUser() == tuple.Wildcard {
+		if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+			targetUserStr = fmt.Sprintf("%s#%s", val.ObjectRelation.Object, val.ObjectRelation.Relation)
+		}
+
+		if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
+		}
+
+		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.targetUserRef.GetObjectType() {
+			tuples = append(tuples, &openfgapb.Tuple{Key: t})
+			continue
+		}
+
+		if t.GetUser() == targetUserStr {
 			tuples = append(tuples, &openfgapb.Tuple{Key: t})
 		}
 	}
 	iter1 := storage.NewStaticTupleIterator(tuples)
 
+	var userFilter []*openfgapb.ObjectRelation
+
+	targetUserObjectType := req.targetUserRef.GetObjectType()
+
+	publiclyAssignable, err := c.Typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
+	if err != nil {
+		return err
+	}
+
+	if publiclyAssignable {
+		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+			Object: fmt.Sprintf("%s:*", targetUserObjectType),
+		})
+	}
+
+	targetRelationRef := &openfgapb.RelationReference{
+		Type: req.targetUserRef.GetObjectType(),
+	}
+
+	// e.g. 'user:bob'
+	if val, ok := req.targetUserRef.(*UserRef_Object); ok {
+		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
+		})
+	}
+
+	// e.g. 'user:*'
+	if val, ok := req.targetUserRef.(*UserRef_TypedWildcard); ok {
+		targetRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Wildcard{}
+
+		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+			Object: tuple.BuildObject(val.Type, "*"),
+		})
+	}
+
+	// e.g. 'group:eng#member'
+	if val, ok := req.targetUserRef.(*UserRef_ObjectRelation); ok {
+		targetRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Relation{
+			Relation: val.ObjectRelation.Relation,
+		}
+
+		userFilter = append(userFilter, val.ObjectRelation)
+	}
+
 	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
-		UserFilter: []*openfgapb.ObjectRelation{
-			req.targetUserRef,
-			{Object: tuple.Wildcard},
-		},
+		UserFilter: userFilter,
 	})
 	if err != nil {
 		iter1.Stop()
@@ -308,7 +472,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
+		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
 		if _, ok := foundObjectsMap.Load(foundObject); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
@@ -327,9 +491,25 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
-		user := &openfgapb.ObjectRelation{Object: foundObject}
+		var targetUserRef isUser_Ref
+		targetUserRef = &UserRef_Object{
+			Object: &openfgapb.Object{
+				Type: foundObjectType,
+				Id:   foundObjectID,
+			},
+		}
+
+		if tuple.IsTypedWildcard(foundObject) {
+			targetUserRef = &UserRef_TypedWildcard{Type: foundObjectType}
+		}
+
 		if tk.GetRelation() != "" {
-			user.Relation = tk.GetRelation()
+			targetUserRef = &UserRef_ObjectRelation{
+				ObjectRelation: &openfgapb.ObjectRelation{
+					Object:   foundObject,
+					Relation: tk.GetRelation(),
+				},
+			}
 		}
 
 		subg.Go(func() error {
@@ -337,7 +517,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 				StoreID:          store,
 				ObjectType:       sourceObjectType,
 				Relation:         sourceObjectRel,
-				User:             user,
+				User:             targetUserRef,
 				ContextualTuples: req.contextualTuples,
 			}, resultChan, foundObjectsMap, foundCount)
 		})

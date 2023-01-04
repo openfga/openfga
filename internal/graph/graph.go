@@ -168,7 +168,14 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 		relatedToSourceObjType, _ := g.typesystem.IsDirectlyRelated(relationReference, &openfgapb.RelationReference{Type: source.GetType()})
 
-		if relatedToSourceRef || relatedToSourceObjType {
+		rel, _ := g.typesystem.GetRelation(source.GetType(), computedUserset)
+
+		directlyAssignable := false
+		if rel != nil {
+			directlyAssignable = g.typesystem.IsDirectlyAssignable(rel)
+		}
+
+		if directlyAssignable && (relatedToSourceRef || relatedToSourceObjType) {
 			res = append(res, &RelationshipIngress{
 				Type:             TupleToUsersetIngress,
 				Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
