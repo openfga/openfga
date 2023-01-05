@@ -127,6 +127,10 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
 
+	defer func() {
+		require.NoError(t, db.Close())
+	}()
+
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
 	err = backoff.Retry(
@@ -136,6 +140,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		backoffPolicy,
 	)
 	if err != nil {
+		db.Close()
 		stopContainer()
 		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
@@ -143,8 +148,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.MySQLMigrationDir)
-	require.NoError(t, err)
-	err = db.Close()
 	require.NoError(t, err)
 
 	return mySQLTestContainer

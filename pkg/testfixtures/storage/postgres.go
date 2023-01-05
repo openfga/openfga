@@ -129,6 +129,10 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
 
+	defer func() {
+		require.NoError(t, db.Close())
+	}()
+
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
 	err = backoff.Retry(
@@ -138,6 +142,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		backoffPolicy,
 	)
 	if err != nil {
+		db.Close()
 		stopContainer()
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}
@@ -145,8 +150,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	goose.SetBaseFS(assets.EmbedMigrations)
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
-	require.NoError(t, err)
-	err = db.Close()
 	require.NoError(t, err)
 
 	return pgTestContainer
