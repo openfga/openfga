@@ -127,9 +127,9 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
 
-	defer func() {
-		require.NoError(t, db.Close())
-	}()
+	// defer func() {
+	// 	require.NoError(t, db.Close())
+	// }()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -149,6 +149,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	err = goose.Up(db, assets.MySQLMigrationDir)
 	require.NoError(t, err)
+	require.NoError(t, db.Close())
 
 	return mySQLTestContainer
 }

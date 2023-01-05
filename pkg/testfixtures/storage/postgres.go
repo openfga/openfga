@@ -129,9 +129,9 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
 
-	defer func() {
-		require.NoError(t, db.Close())
-	}()
+	// defer func() {
+	// 	require.NoError(t, db.Close())
+	// }()
 
 	backoffPolicy := backoff.NewExponentialBackOff()
 	backoffPolicy.MaxElapsedTime = 30 * time.Second
@@ -151,6 +151,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
 	require.NoError(t, err)
+	require.NoError(t, db.Close())
 
 	return pgTestContainer
 }
