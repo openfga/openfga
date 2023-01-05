@@ -142,7 +142,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		backoffPolicy,
 	)
 	if err != nil {
-		db.Close()
+		//db.Close()
 		stopContainer()
 		t.Fatalf("failed to connect to postgres container: %v", err)
 	}

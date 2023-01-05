@@ -140,7 +140,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		backoffPolicy,
 	)
 	if err != nil {
-		db.Close()
+		//db.Close()
 		stopContainer()
 		t.Fatalf("failed to connect to mysql container: %v", err)
 	}
