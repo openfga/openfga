@@ -267,6 +267,22 @@ func TestVerifyConfig(t *testing.T) {
 		err := VerifyConfig(cfg)
 		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
 	})
+
+	t.Run("non_log_format", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Format = "notaformat"
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("non_log_level", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Log.Level = "notalevel"
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
@@ -834,4 +850,16 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.listObjectsMaxResults.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
+
+	val = res.Get("properties.metrics.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Metrics.Enabled)
+
+	val = res.Get("properties.metrics.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Endpoint)
+
+	val = res.Get("properties.metrics.properties.protocol.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Metrics.Protocol)
 }
