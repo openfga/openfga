@@ -392,39 +392,28 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 	}
 
+	datastoreOpts := []storage.DatastoreOption{
+		storage.WithLogger(logger),
+		storage.WithTracer(tracer),
+		storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+		storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+		storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+	}
+
 	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
-		opts := []storage.DatastoreOption{
-			storage.WithLogger(logger),
-			storage.WithTracer(tracer),
-			storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-			storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-			storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-			storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-		}
-
-		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, opts...)
+		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, datastoreOpts...)
 		if err != nil {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		opts := []storage.DatastoreOption{
-			storage.WithLogger(logger),
-			storage.WithTracer(tracer),
-			storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-			storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-			storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-			storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-			storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-			storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-		}
-
-		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, opts...)
+		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, datastoreOpts...)
 		if err != nil {
 			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
 		}
