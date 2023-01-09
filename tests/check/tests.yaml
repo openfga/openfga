@@ -1464,9 +1464,10 @@ tests:
     stages:
       - model: |
           type user
+          
           type document
-          relations
-          define viewer: [user] as self
+            relations
+              define viewer: [user] as self
         tuples:
           - object: document:1
             relation: viewer
@@ -1480,6 +1481,7 @@ tests:
       - model: |
           type user
           type employee
+          
           type document
             relations
               define viewer: [employee] as self
