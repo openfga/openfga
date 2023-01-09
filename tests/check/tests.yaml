@@ -1460,11 +1460,12 @@ tests:
               relation: viewer
               user: user:*
             expectation: true
+
   - name: prior_type_restrictions_ignored
     stages:
       - model: |
           type user
-          
+
           type document
             relations
               define viewer: [user] as self
@@ -1481,7 +1482,7 @@ tests:
       - model: |
           type user
           type employee
-          
+
           type document
             relations
               define viewer: [employee] as self
