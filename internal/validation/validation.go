@@ -195,6 +195,10 @@ func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) erro
 		return fmt.Errorf("invalid 'object' field format")
 	}
 
+	if tuple.IsTypedWildcard(object) {
+		return fmt.Errorf("the 'object' field cannot reference a typed wildcard")
+	}
+
 	objectType := tuple.GetType(object)
 	_, ok := typesys.GetTypeDefinition(objectType)
 	if !ok {
@@ -251,6 +255,14 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
+		}
+
+		if tuple.IsObjectRelation(user) {
+			userObj, _ := tuple.SplitObjectRelation(user)
+
+			if tuple.IsTypedWildcard(userObj) {
+				return fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value")
+			}
 		}
 	}
 

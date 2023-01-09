@@ -602,6 +602,74 @@ func TestValidateTuple(t *testing.T) {
 				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			},
 		},
+		{
+			name:  "typed_wildcard_in_object_value",
+			tuple: tuple.NewTupleKey("document:*", "viewer", "user:jon"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'object' field cannot reference a typed wildcard"),
+				TupleKey: tuple.NewTupleKey("document:*", "viewer", "user:jon"),
+			},
+		},
+		{
+			name:  "typed_wildcard_in_userset_value",
+			tuple: tuple.NewTupleKey("document:1", "viewer", "document:*#editor"),
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"editor": typesystem.This(),
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgapb.Metadata{
+							Relations: map[string]*openfgapb.RelationMetadata{
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedError: &tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value"),
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", "document:*#editor"),
+			},
+		},
 	}
 
 	for _, test := range tests {
