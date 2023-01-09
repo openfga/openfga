@@ -1460,8 +1460,37 @@ tests:
               relation: viewer
               user: user:*
             expectation: true
+  - name: prior_type_restrictions_ignored
+    stages:
+      - model: |
+          type user
+          type document
+          relations
+          define viewer: [user] as self
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: user:jon
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: true
+      - model: |
+          type user
+          type employee
+          type document
+            relations
+              define viewer: [employee] as self
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:jon
+            expectation: false
 
-- name: wildcard_computed_userset
+  - name: wildcard_computed_userset
     stages:
       - model: |
           type user
@@ -1479,6 +1508,7 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+
   - name: check_with_invalid_tuple_in_store
     stages:
       - model: |
@@ -1515,6 +1545,7 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: false
+
   - name: this_with_contextual_tuples
     stages:
       - model: |
@@ -1533,6 +1564,7 @@ tests:
                 relation: viewer
                 user: user:aardvark
             expectation: true
+
   - name: computed_userset_with_contextual_tuples
     stages:
       - model: |
@@ -1552,6 +1584,7 @@ tests:
                 relation: writer
                 user: user:aardvark
             expectation: true
+
   - name: tuple_to_userset_with_contextual_tuples
     stages:
       - model: |
@@ -1578,6 +1611,7 @@ tests:
                 relation: viewer
                 user: user:aardvark
             expectation: true
+
   - name: this_and_union_with_contextual_tuples
     stages:
       - model: |
@@ -1600,6 +1634,7 @@ tests:
                 relation: writer
                 user: user:badger
             expectation: true
+
   - name: this_and_intersection_with_contextual_tuples
     stages:
       - model: |
@@ -1628,6 +1663,7 @@ tests:
                 relation: writer
                 user: user:aardvark
             expectation: true
+
   - name: this_and_exclusion_base_with_contextual_tuples
     stages:
       - model: |
@@ -1656,6 +1692,7 @@ tests:
                 relation: banned
                 user: user:aardvark
             expectation: false
+
   - name: union_and_intersection_with_contextual_tuples
     stages:
       - model: |
@@ -1686,6 +1723,7 @@ tests:
                 relation: owner
                 user: user:aardvark
             expectation: true
+
   - name: exclusion_and_exclusion_in_base_with_contextual_tuples
     stages:
       - model: |
@@ -1725,6 +1763,7 @@ tests:
                 relation: owner
                 user: user:aardvark
             expectation: false
+
   - name: wildcard_direct_as_contextual_tuple
     stages:
       - model: |
@@ -1752,6 +1791,7 @@ tests:
                 relation: viewer
                 user: user:*
             expectation: true
+
   - name: wildcard_computed_userset_as_contextual_tuple
     stages:
       - model: |
@@ -1771,6 +1811,7 @@ tests:
                 relation: writer
                 user: user:*
             expectation: true
+
   - name: wildcard_obeys_the_types_in_stages
     stages:
       - model: |
@@ -1816,12 +1857,14 @@ tests:
               relation: viewer
               user: employee:badger
             expectation: false
+
   - name: validation_nil_tuple
     stages:
       - model: |
           type user
         validation:
           code: 3
+
   - name: validation_empty_tuple
     stages:
       - model: |
@@ -1832,6 +1875,7 @@ tests:
             relation:
             user:
           code: 2009
+
   - name: validation_empty_object
     stages:
       - model: |
@@ -1842,6 +1886,7 @@ tests:
             relation: viewer
             user: user:aardvark
           code: 2009
+
   - name: validation_empty_relation
     stages:
       - model: |
@@ -1852,6 +1897,7 @@ tests:
             relation:
             user: user:badger
           code: 2009
+
   - name: validation_empty_user
     stages:
       - model: |
@@ -1862,6 +1908,7 @@ tests:
             relation: viewer
             user:
           code: 2009
+
   - name: validation_relation_not_in_model
     stages:
       - model: |
@@ -1872,6 +1919,7 @@ tests:
             relation: viewer
             user: user:badger
           code: 2000
+
   - name: validation_user_type_not_in_model
     stages:
       - model: |
@@ -1885,6 +1933,7 @@ tests:
             relation: viewer
             user: folder:x
           code: 2000
+
   - name: validation_userset_type_not_in_model
     stages:
       - model: |
@@ -1898,6 +1947,7 @@ tests:
             relation: viewer
             user: folder:x#writer
           code: 2000
+
   - name: validation_userset_relation_not_in_model
     stages:
       - model: |
@@ -1911,6 +1961,7 @@ tests:
             relation: viewer
             user: document:x#writer
           code: 2000
+
   - name: validation_user_invalid
     stages:
       - model: |
@@ -1924,6 +1975,7 @@ tests:
             relation: viewer
             user: a:b:c
           code: 2000
+
   - name: validation_circular_model
     stages:
       - model: |
@@ -1938,6 +1990,7 @@ tests:
             relation: viewer
             user: user:aardvark
           code: 2002
+
   - name: validation_invalid_object_type_in_contextual_tuple
     stages:
       - model: |
@@ -1955,6 +2008,7 @@ tests:
               relation: viewer
               user: user:aardvark
           code: 2027
+
   - name: validation_invalid_relation_in_contextual_tuple
     stages:
       - model: |
@@ -1972,6 +2026,7 @@ tests:
               relation: writer
               user: user:aardvark
           code: 2027
+
   - name: validation_invalid_user_in_contextual_tuple
     stages:
       - model: |
@@ -1989,6 +2044,7 @@ tests:
               relation: viewer
               user: employee:aardvark
           code: 2027
+
   - name: validation_invalid_wildcard_in_contextual_tuple
     stages:
       - model: |
@@ -2006,6 +2062,7 @@ tests:
               relation: viewer
               user: user:*
           code: 2027
+
   - name: validation_contextual_tuples_and_wildcard_in_ttu_evaluation
     stages:
       - model: |
