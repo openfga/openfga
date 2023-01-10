@@ -104,11 +104,12 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	storeID := req.StoreID
 
 	var targetUserRef *openfgapb.RelationReference
-	var targetUserType string
+	var targetUserType, targetUserObj string
 
 	// e.g. 'user:bob'
 	if val, ok := req.User.(*UserRefObject); ok {
 		targetUserType = val.Object.GetType()
+		targetUserObj = tuple.BuildObject(targetUserType, val.Object.GetId())
 		targetUserRef = typesystem.DirectRelationReference(targetUserType, "")
 	}
 
@@ -121,6 +122,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	// e.g. 'group:eng#member'
 	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		targetUserType = tuple.GetType(val.ObjectRelation.GetObject())
+		targetUserObj = val.ObjectRelation.Object
 		targetUserRef = typesystem.DirectRelationReference(targetUserType, val.ObjectRelation.GetRelation())
 	}
 
@@ -152,6 +154,26 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 			switch innerLoopIngress.Type {
 			case graph.DirectIngress:
 				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
+			case graph.ComputedUsersetIngress:
+
+				// lookup the rewritten target relation on the computed_userset ingress
+				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+					StoreID:    storeID,
+					ObjectType: req.ObjectType,
+					Relation:   req.Relation,
+					User: &UserRefObjectRelation{
+						ObjectRelation: &openfgapb.ObjectRelation{
+							Object:   targetUserObj,
+							Relation: innerLoopIngress.Ingress.GetRelation(),
+						},
+					},
+					// User: &openfgapb.ObjectRelation{
+					// 	Object:   req.User.Object,
+					// 	Relation: innerLoopIngress.Ingress.GetRelation(),
+					// },
+					ContextualTuples: req.ContextualTuples,
+				}, resultChan, foundObjectsMap, foundCount)
+
 			case graph.TupleToUsersetIngress:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
 			default:
