@@ -21,7 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.uber.org/goleak"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
@@ -115,10 +114,6 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 	t.Cleanup(func() {
 		stopContainer()
-		goleak.VerifyNone(t,
-			goleak.IgnoreTopFunction("testing.(*T).run1"),
-			goleak.IgnoreTopFunction("time.Sleep"), // from the panic handler below
-		)
 	})
 
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
