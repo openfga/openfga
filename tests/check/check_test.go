@@ -36,7 +36,6 @@ type stage struct {
 	Model      string
 	Tuples     []*pb.TupleKey
 	Assertions []*assertion
-	Validation *validation
 }
 
 type assertion struct {
@@ -45,12 +44,6 @@ type assertion struct {
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
 	Trace            string
-}
-
-type validation struct {
-	Tuple            *pb.TupleKey
-	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
-	Code             int
 }
 
 func TestCheckMemory(t *testing.T) {
