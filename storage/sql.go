@@ -20,11 +20,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	DefaultMaxTuplesPerWrite             = 100
-	DefaultMaxTypesPerAuthorizationModel = 100
-)
-
 type Datastore struct {
 	DB                     *sql.DB
 	Tracer                 trace.Tracer
