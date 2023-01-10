@@ -43,6 +43,7 @@ type assertion struct {
 	Tuple            *pb.TupleKey
 	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
+	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
 	Trace            string
 }
 
@@ -152,26 +153,20 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 						},
 						Trace: true,
 					})
-					require.NoError(t, err)
-					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-					if assertion.Trace != "" {
-						require.Equal(t, assertion.Trace, resp.GetResolution())
+
+					if assertion.ErrorCode == 0 {
+						require.NoError(t, err)
+						require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+						if assertion.Trace != "" {
+							require.Equal(t, assertion.Trace, resp.GetResolution())
+						}
+					} else {
+						require.Error(t, err)
+						e, ok := status.FromError(err)
+						require.True(t, ok)
+						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
-				}
 
-				if stage.Validation != nil {
-					_, err = client.Check(ctx, &pb.CheckRequest{
-						StoreId:  storeID,
-						TupleKey: stage.Validation.Tuple,
-						ContextualTuples: &pb.ContextualTupleKeys{
-							TupleKeys: stage.Validation.ContextualTuples,
-						},
-					})
-					require.Error(t, err)
-
-					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, stage.Validation.Code, int(e.Code()))
 				}
 			}
 		})
