@@ -6,7 +6,7 @@ import (
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/storage/sql"
+	"github.com/openfga/openfga/storage/common"
 	"github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -17,7 +17,7 @@ func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := New(uri, sql.NewConfig())
+	ds, err := New(uri, common.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -27,7 +27,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := New(uri, sql.NewConfig())
+	ds, err := New(uri, common.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()

@@ -36,10 +36,10 @@ import (
 	"github.com/openfga/openfga/server/health"
 	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/caching"
+	"github.com/openfga/openfga/storage/common"
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
-	"github.com/openfga/openfga/storage/sql"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -393,15 +393,15 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 	}
 
-	datastoreCfg := sql.NewConfig(
-		sql.WithLogger(logger),
-		sql.WithTracer(tracer),
-		sql.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-		sql.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-		sql.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-		sql.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-		sql.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-		sql.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+	dsCfg := common.NewConfig(
+		common.WithLogger(logger),
+		common.WithTracer(tracer),
+		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		common.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+		common.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		common.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		common.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+		common.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	)
 
 	var datastore storage.OpenFGADatastore
@@ -409,12 +409,12 @@ func RunServer(ctx context.Context, config *Config) error {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
-		datastore, err = mysql.New(config.Datastore.URI, datastoreCfg)
+		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		datastore, err = postgres.New(config.Datastore.URI, datastoreCfg)
+		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
 		}
