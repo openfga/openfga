@@ -344,11 +344,11 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			targetUserRef = &UserRefTypedWildcard{Type: foundObjectType}
 		}
 
-		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
+		if _, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
 			targetUserRef = &UserRefObjectRelation{
 				ObjectRelation: &openfgapb.ObjectRelation{
 					Object:   foundObject,
-					Relation: val.ObjectRelation.GetRelation(),
+					Relation: ingress.GetRelation(),
 				},
 			}
 		}

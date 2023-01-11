@@ -760,7 +760,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedObjects: []string{"document:1"},
 		},
 		{
-			name: "non-assignable_ttu_relationship_through_indirection",
+			name: "non-assignable_ttu_relationship_through_indirection_1",
 			request: &commands.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
@@ -791,6 +791,75 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 			},
 			expectedObjects: []string{"document:1"},
+		},
+		{
+			name: "non-assignable_ttu_relationship_through_indirection_2",
+			request: &commands.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "resource",
+				Relation:   "writer",
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
+					Type: "user",
+					Id:   "anne",
+				}},
+			},
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
+				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
+				tuple.NewTupleKey("group:fga", "member", "user:anne"),
+			},
+			expectedObjects: []string{"resource:eng_handbook"},
+		},
+		{
+			name: "non-assignable_ttu_relationship_through_indirection_3",
+			request: &commands.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "resource",
+				Relation:   "reader",
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
+					Type: "user",
+					Id:   "anne",
+				}},
+			},
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			    define reader: [org#dept_member] as self or writer
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
+				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
+				tuple.NewTupleKey("group:fga", "member", "user:anne"),
+			},
+			expectedObjects: []string{"resource:eng_handbook"},
 		},
 	}
 
