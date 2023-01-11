@@ -285,7 +285,8 @@ func (t *TypeSystem) HasTypeInfo(objectType, relation string) (bool, error) {
 }
 
 // RelationInvolvesIntersection returns true if the provided relation's userset rewrite
-// is defined by one or more direct or indirect intersections.
+// is defined by one or more direct or indirect intersections or any of the types related to
+// the provided relation are defined by one or more direct or indirect intersections.
 func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (bool, error) {
 
 	rel, err := t.GetRelation(objectType, relation)
@@ -297,6 +298,20 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
+		for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if typeRestriction.GetRelation() != "" {
+
+				ok, err := t.RelationInvolvesIntersection(typeRestriction.GetType(), typeRestriction.GetRelation())
+				if err != nil {
+					return false, err
+				}
+
+				if ok {
+					return true, nil
+				}
+			}
+		}
+
 		return false, nil
 	case *openfgapb.Userset_ComputedUserset:
 		rewrittenRelation := rw.ComputedUserset.GetRelation()
@@ -367,7 +382,8 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 }
 
 // RelationInvolvesExclusion returns true if the provided relation's userset rewrite
-// is defined by one or more direct or indirect exclusions.
+// is defined by one or more direct or indirect exclusions or any of the types related to
+// the provided relation are defined by one or more direct or indirect exclusions.
 func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (bool, error) {
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
@@ -378,6 +394,20 @@ func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (boo
 
 	switch rw := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
+		for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if typeRestriction.GetRelation() != "" {
+
+				ok, err := t.RelationInvolvesExclusion(typeRestriction.GetType(), typeRestriction.GetRelation())
+				if err != nil {
+					return false, err
+				}
+
+				if ok {
+					return true, nil
+				}
+			}
+		}
+
 		return false, nil
 	case *openfgapb.Userset_ComputedUserset:
 		rewrittenRelation := rw.ComputedUserset.GetRelation()

@@ -1022,159 +1022,108 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 func TestRelationInvolvesIntersection(t *testing.T) {
 	tests := []struct {
 		name        string
-		model       *openfgapb.AuthorizationModel
+		model       string
 		rr          *openfgapb.RelationReference
 		expected    bool
 		expectedErr error
 	}{
 		{
-			name: "Indirect_ComputedUserset_through_TTU_Containing_Intersection",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"editor": TupleToUserset("parent", "editor"),
-							"viewer": ComputedUserset("editor"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("folder", ""),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"manage": This(),
-							"editor": Intersection(This(), ComputedUserset("manage")),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"manage": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-								"editor": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "indirect_computeduserset_through_ttu_containing_intersection",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define manage: [user] as self
+			    define editor: [user] as self and manage
+
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define editor as editor from parent
+			    define viewer as editor
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "TupleToUserset_Relations_Containing_Intersection",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"viewer": TupleToUserset("parent", "viewer"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("folder", ""),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"editor": This(),
-							"viewer": Intersection(This(), ComputedUserset("editor")),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"editor": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "ttu_relations_containing_intersection",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define editor: [user] as self
+			    define viewer: [user] as self and editor
+
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "Indirect_Relations_Containing_Intersection",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"editor": Intersection(
-								This(),
-							),
-							"viewer": ComputedUserset("editor"),
-						},
-					},
-				},
-			},
+			name: "indirect_relations_containing_intersection",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define editor: [user] as self
+			    define viewer: [user] as self and editor
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "Undefined_type",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
+			name: "undefined_type",
+			model: `
+			type user
+			`,
 			rr:          DirectRelationReference("document", "viewer"),
 			expected:    false,
 			expectedErr: ErrObjectTypeUndefined,
 		},
 		{
-			name: "Undefined_relation",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
+			name: "undefined_relation",
+			model: `
+			type user
+			`,
 			rr:          DirectRelationReference("user", "viewer"),
 			expected:    false,
 			expectedErr: ErrRelationUndefined,
+		},
+		{
+			name: "non-assignable_type_restriction",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define allowed: [user] as self
+			    define dept: [group] as self
+			    define dept_member as member from dept
+			    define dept_allowed_member as dept_member and allowed
+
+			type resource
+			  relations
+			    define writer: [org#dept_allowed_member] as self
+			`,
+			rr:       DirectRelationReference("resource", "writer"),
+			expected: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(test.model)
+
+			typedefs := parser.MustParse(test.model)
+
+			typesys := New(&openfgapb.AuthorizationModel{
+				TypeDefinitions: typedefs,
+			})
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
@@ -1190,161 +1139,109 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		model       *openfgapb.AuthorizationModel
+		model       string
 		rr          *openfgapb.RelationReference
 		expected    bool
 		expectedErr error
 	}{
 		{
-			name: "Indirect_ComputedUserset_through_TTU_Containing_Exclusion",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"editor": TupleToUserset("parent", "editor"),
-							"viewer": ComputedUserset("editor"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("folder", ""),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"restricted": This(),
-							"editor":     Difference(This(), ComputedUserset("restricted")),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"restricted": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-								"editor": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "indirect_computed_userset_through_ttu_containing_exclusion",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define restricted: [user] as self
+			    define editor: [user] as self but not restricted
+
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define editor as editor from parent
+			    define viewer as editor
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "TupleToUserset_Relations_Containing_Exclusion",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"viewer": TupleToUserset("parent", "viewer"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("folder", ""),
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"restricted": This(),
-							"viewer":     Difference(This(), ComputedUserset("restricted")),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"restricted": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name: "ttu_relations_containing_exclusion",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define restricted: [user] as self
+			    define viewer: [user] as self but not restricted
+
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "Indirect_Relations_Containing_Exclusion",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"restricted": This(),
-							"editor": Difference(
-								This(),
-								ComputedUserset("restricted"),
-							),
-							"viewer": ComputedUserset("editor"),
-						},
-					},
-				},
-			},
+			name: "indirect_relations_containing_exclusion",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define restricted: [user] as self
+			    define editor: [user] as self but not restricted
+			    define viewer as editor
+			`,
 			rr:       DirectRelationReference("document", "viewer"),
 			expected: true,
 		},
 		{
-			name: "Undefined_type",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
+			name: "undefined_type",
+			model: `
+			type user
+			`,
 			rr:          DirectRelationReference("document", "viewer"),
 			expected:    false,
 			expectedErr: ErrObjectTypeUndefined,
 		},
 		{
-			name: "Undefined_relation",
-			model: &openfgapb.AuthorizationModel{
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
+			name: "undefined_relation",
+			model: `
+			type user
+			`,
 			rr:          DirectRelationReference("user", "viewer"),
 			expected:    false,
 			expectedErr: ErrRelationUndefined,
+		},
+		{
+			name: "non-assignable_type_restriction_involving_exclusion",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define removed: [user] as self
+			    define dept: [group] as self
+			    define dept_member as member from dept
+			    define dept_allowed_member as dept_member but not removed
+
+			type resource
+			  relations
+			    define writer: [org#dept_allowed_member] as self
+			`,
+			rr:       DirectRelationReference("resource", "writer"),
+			expected: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typesys := New(test.model)
+
+			typedefs := parser.MustParse(test.model)
+
+			typesys := New(&openfgapb.AuthorizationModel{
+				TypeDefinitions: typedefs,
+			})
 
 			objectType := test.rr.GetType()
 			relationStr := test.rr.GetRelation()
