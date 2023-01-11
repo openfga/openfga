@@ -85,6 +85,20 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 			switch innerLoopIngress.Type {
 			case graph.DirectIngress:
 				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
+			case graph.ComputedUsersetIngress:
+
+				// lookup the rewritten target relation on the computed_userset ingress
+				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+					StoreID:    storeID,
+					ObjectType: req.ObjectType,
+					Relation:   req.Relation,
+					User: &openfgapb.ObjectRelation{
+						Object:   req.User.Object,
+						Relation: innerLoopIngress.Ingress.GetRelation(),
+					},
+					ContextualTuples: req.ContextualTuples,
+				}, resultChan, foundObjectsMap, foundCount)
+
 			case graph.TupleToUsersetIngress:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
 			default:
