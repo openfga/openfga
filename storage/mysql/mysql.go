@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	dbsql "database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -26,7 +25,7 @@ import (
 )
 
 type MySQL struct {
-	db                     *dbsql.DB
+	db                     *sql.DB
 	tracer                 trace.Tracer
 	logger                 logger.Logger
 	maxTuplesPerWriteField int
@@ -34,7 +33,7 @@ type MySQL struct {
 }
 
 func New(uri string, cfg *storage.Config) (*MySQL, error) {
-	db, err := dbsql.Open("mysql", uri)
+	db, err := sql.Open("mysql", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
 	}

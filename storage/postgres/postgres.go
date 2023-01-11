@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	dbsql "database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,7 +25,7 @@ import (
 )
 
 type Postgres struct {
-	db                     *dbsql.DB
+	db                     *sql.DB
 	tracer                 trace.Tracer
 	logger                 logger.Logger
 	maxTuplesPerWriteField int
@@ -34,7 +33,7 @@ type Postgres struct {
 }
 
 func New(uri string, cfg *storage.Config) (*Postgres, error) {
-	db, err := dbsql.Open("pgx", uri)
+	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
 	}
