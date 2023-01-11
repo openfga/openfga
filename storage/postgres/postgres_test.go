@@ -6,6 +6,7 @@ import (
 
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/storage"
 	"github.com/openfga/openfga/storage/test"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -16,7 +17,7 @@ func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := NewPostgresDatastore(uri)
+	ds, err := New(uri, storage.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -26,7 +27,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := NewPostgresDatastore(uri)
+	ds, err := New(uri, storage.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -38,7 +39,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	bytes, err := proto.Marshal(&openfgapb.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
-	_, err = ds.DB.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
 	require.NoError(t, err)
 
 	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)

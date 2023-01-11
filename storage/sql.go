@@ -9,19 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type Datastore struct {
-	DB                     *sql.DB
+type Config struct {
 	Tracer                 trace.Tracer
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
@@ -33,129 +30,80 @@ type Datastore struct {
 	ConnMaxLifetime time.Duration
 }
 
-type DatastoreOption func(*Datastore)
+type DatastoreOption func(*Config)
 
 func WithTracer(t trace.Tracer) DatastoreOption {
-	return func(p *Datastore) {
-		p.Tracer = t
+	return func(cfg *Config) {
+		cfg.Tracer = t
 	}
 }
 
 func WithLogger(l logger.Logger) DatastoreOption {
-	return func(p *Datastore) {
-		p.Logger = l
+	return func(cfg *Config) {
+		cfg.Logger = l
 	}
 }
 
 func WithMaxTuplesPerWrite(maxTuples int) DatastoreOption {
-	return func(p *Datastore) {
-		p.MaxTuplesPerWriteField = maxTuples
+	return func(cfg *Config) {
+		cfg.MaxTuplesPerWriteField = maxTuples
 	}
 }
 
 func WithMaxTypesPerAuthorizationModel(maxTypes int) DatastoreOption {
-	return func(p *Datastore) {
-		p.MaxTypesPerModelField = maxTypes
+	return func(cfg *Config) {
+		cfg.MaxTypesPerModelField = maxTypes
 	}
 }
 
 func WithMaxOpenConns(c int) DatastoreOption {
-	return func(p *Datastore) {
-		p.MaxOpenConns = c
+	return func(cfg *Config) {
+		cfg.MaxOpenConns = c
 	}
 }
 
 func WithMaxIdleConns(c int) DatastoreOption {
-	return func(p *Datastore) {
-		p.MaxIdleConns = c
+	return func(cfg *Config) {
+		cfg.MaxIdleConns = c
 	}
 }
 
 func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
-	return func(p *Datastore) {
-		p.ConnMaxIdleTime = d
+	return func(cfg *Config) {
+		cfg.ConnMaxIdleTime = d
 	}
 }
 
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
-	return func(p *Datastore) {
-		p.ConnMaxLifetime = d
+	return func(cfg *Config) {
+		cfg.ConnMaxLifetime = d
 	}
 }
 
-func NewDatastore(engine, uri string, opts ...DatastoreOption) (*Datastore, error) {
-	var driverName string
-	switch engine {
-	case "postgres":
-		driverName = "pgx"
-	case "mysql":
-		driverName = "mysql"
-	default:
-		return nil, fmt.Errorf("undefined datastore engine: '%s'", engine)
-	}
-
-	db, err := sql.Open(driverName, uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize datastore connection: %w", err)
-	}
-
-	d := &Datastore{}
+func NewConfig(opts ...DatastoreOption) *Config {
+	cfg := &Config{}
 
 	for _, opt := range opts {
-		opt(d)
+		opt(cfg)
 	}
 
-	if d.Logger == nil {
-		d.Logger = logger.NewNoopLogger()
+	if cfg.Logger == nil {
+		cfg.Logger = logger.NewNoopLogger()
 	}
 
-	if d.Tracer == nil {
-		d.Tracer = telemetry.NewNoopTracer()
+	if cfg.Tracer == nil {
+		cfg.Tracer = telemetry.NewNoopTracer()
 	}
 
-	if d.MaxTuplesPerWriteField == 0 {
-		d.MaxTuplesPerWriteField = DefaultMaxTuplesPerWrite
+	if cfg.MaxTuplesPerWriteField == 0 {
+		cfg.MaxTuplesPerWriteField = DefaultMaxTuplesPerWrite
 	}
 
-	if d.MaxTypesPerModelField == 0 {
-		d.MaxTypesPerModelField = DefaultMaxTypesPerAuthorizationModel
+	if cfg.MaxTypesPerModelField == 0 {
+		cfg.MaxTypesPerModelField = DefaultMaxTypesPerAuthorizationModel
 	}
 
-	if d.MaxOpenConns != 0 {
-		db.SetMaxOpenConns(d.MaxOpenConns)
-	}
-
-	if d.MaxIdleConns != 0 {
-		db.SetMaxIdleConns(d.MaxIdleConns)
-	}
-
-	if d.ConnMaxIdleTime != 0 {
-		db.SetConnMaxIdleTime(d.ConnMaxIdleTime)
-	}
-
-	if d.ConnMaxLifetime != 0 {
-		db.SetConnMaxLifetime(d.ConnMaxLifetime)
-	}
-
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 1 * time.Minute
-	attempt := 1
-	err = backoff.Retry(func() error {
-		err = db.PingContext(context.Background())
-		if err != nil {
-			d.Logger.Info("waiting for the datastore", zap.Int("attempt", attempt))
-			attempt++
-			return err
-		}
-		return nil
-	}, policy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize datastore connection: %w", err)
-	}
-
-	d.DB = db
-
-	return d, nil
+	return cfg
 }
 
 type TupleRecord struct {
@@ -352,7 +300,7 @@ func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	} else if errors.Is(err, ErrIteratorDone) {
-		return ErrIteratorDone
+		return err
 	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {

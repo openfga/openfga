@@ -392,7 +392,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 	}
 
-	datastoreOpts := []storage.DatastoreOption{
+	datastoreCfg := storage.NewConfig(
 		storage.WithLogger(logger),
 		storage.WithTracer(tracer),
 		storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
@@ -401,19 +401,19 @@ func RunServer(ctx context.Context, config *Config) error {
 		storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-	}
+	)
 
 	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
-		datastore, err = mysql.NewMySQLDatastore(config.Datastore.URI, datastoreOpts...)
+		datastore, err = mysql.New(config.Datastore.URI, datastoreCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
 	case "postgres":
-		datastore, err = postgres.NewPostgresDatastore(config.Datastore.URI, datastoreOpts...)
+		datastore, err = postgres.New(config.Datastore.URI, datastoreCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
 		}

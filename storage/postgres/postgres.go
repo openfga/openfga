@@ -3,44 +3,91 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	dbsql "database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Postgres struct {
-	*storage.Datastore
+	db                     *dbsql.DB
+	tracer                 trace.Tracer
+	logger                 logger.Logger
+	maxTuplesPerWriteField int
+	maxTypesPerModelField  int
 }
 
-func NewPostgresDatastore(uri string, opts ...storage.DatastoreOption) (*Postgres, error) {
-	datastore, err := storage.NewDatastore("postgres", uri, opts...)
+func New(uri string, cfg *storage.Config) (*Postgres, error) {
+	db, err := dbsql.Open("pgx", uri)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
 	}
 
-	return &Postgres{datastore}, nil
+	if cfg.MaxOpenConns != 0 {
+		db.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+
+	if cfg.MaxIdleConns != 0 {
+		db.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+
+	if cfg.ConnMaxIdleTime != 0 {
+		db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	}
+
+	if cfg.ConnMaxLifetime != 0 {
+		db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
+
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = 1 * time.Minute
+	attempt := 1
+	err = backoff.Retry(func() error {
+		err = db.PingContext(context.Background())
+		if err != nil {
+			cfg.Logger.Info("waiting for postgres", zap.Int("attempt", attempt))
+			attempt++
+			return err
+		}
+		return nil
+	}, policy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+	}
+
+	return &Postgres{
+		db:                     db,
+		tracer:                 cfg.Tracer,
+		logger:                 cfg.Logger,
+		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
+		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
+	}, nil
 }
 
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
 func (p *Postgres) Close() {
-	p.DB.Close()
+	p.db.Close()
 }
 
 func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ListObjectsByType")
+	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
 	stmt, args, err := squirrel.
@@ -56,7 +103,7 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		return nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -65,14 +112,14 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.Read")
+	ctx, span := p.tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
 	return p.read(ctx, store, tupleKey, storage.PaginationOptions{})
 }
 
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadPage")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
 
 	iter, err := p.read(ctx, store, tupleKey, opts)
@@ -85,7 +132,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 }
 
 func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*storage.SQLTupleIterator, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.read")
+	ctx, span := p.tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
 	stmt, args, err := buildReadQuery(store, tupleKey, opts)
@@ -93,7 +140,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		return nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -102,7 +149,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
-	ctx, span := p.Tracer.Start(ctx, "postgres.Write")
+	ctx, span := p.tracer.Start(ctx, "postgres.Write")
 	defer span.End()
 
 	if len(deletes)+len(writes) > p.MaxTuplesPerWrite() {
@@ -110,11 +157,11 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	txn, err := p.DB.BeginTx(ctx, nil)
+	txn, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return storage.HandleSQLError(err)
 	}
-	defer rollbackTx(ctx, txn, p.Logger)
+	defer rollbackTx(ctx, txn, p.logger)
 
 	changelogBuilder := squirrel.
 		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
@@ -200,13 +247,13 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 }
 
 func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadUserTuple")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadUserTuple")
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	row := p.DB.QueryRowContext(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
+	row := p.db.QueryRowContext(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
 		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), userType)
 
 	var record storage.TupleRecord
@@ -218,7 +265,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 }
 
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadUsersetTuples")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
 	stmt, args, err := buildReadUsersetTuplesQuery(store, tupleKey)
@@ -226,7 +273,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 		return nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -235,7 +282,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
 	defer span.End()
 
 	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
@@ -248,7 +295,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	rows, err := p.db.QueryContext(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -257,15 +304,15 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 }
 
 func (p *Postgres) MaxTuplesPerWrite() int {
-	return p.MaxTuplesPerWriteField
+	return p.maxTuplesPerWriteField
 }
 
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadAuthorizationModel")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
 	stmt := "SELECT schema_version, type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
-	rows, err := p.DB.QueryContext(ctx, stmt, store, modelID)
+	rows, err := p.db.QueryContext(ctx, stmt, store, modelID)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -300,10 +347,10 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
 	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
 		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = p.DB.ExecContext(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", schemaVersion, store, modelID)
+		_, err = p.db.ExecContext(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", schemaVersion, store, modelID)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			p.Logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
+			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
 		}
 	}
 
@@ -315,7 +362,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadAuthorizationModels")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
 	stmt, args, err := buildReadAuthorizationModelsQuery(store, opts)
@@ -323,7 +370,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		return nil, nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, storage.HandleSQLError(err)
 	}
@@ -371,12 +418,12 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 }
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+	ctx, span := p.tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
 	defer span.End()
 
 	var modelID string
 	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY authorization_model_id DESC LIMIT 1"
-	err := p.DB.QueryRowContext(ctx, stmt, store).Scan(&modelID)
+	err := p.db.QueryRowContext(ctx, stmt, store).Scan(&modelID)
 	if err != nil {
 		return "", storage.HandleSQLError(err)
 	}
@@ -388,12 +435,12 @@ func (p *Postgres) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
 ) (*openfgapb.TypeDefinition, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadTypeDefinition")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadTypeDefinition")
 	defer span.End()
 
 	var marshalledTypeDef []byte
 	stmt := "SELECT type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2 AND type = $3"
-	err := p.DB.QueryRowContext(ctx, stmt, store, modelID, objectType).Scan(&marshalledTypeDef)
+	err := p.db.QueryRowContext(ctx, stmt, store, modelID, objectType).Scan(&marshalledTypeDef)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -407,18 +454,18 @@ func (p *Postgres) ReadTypeDefinition(
 }
 
 func (p *Postgres) MaxTypesPerAuthorizationModel() int {
-	return p.MaxTypesPerModelField
+	return p.maxTypesPerModelField
 }
 
 func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
-	ctx, span := p.Tracer.Start(ctx, "postgres.WriteAuthorizationModel")
+	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > p.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(p.MaxTypesPerModelField)
+		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
 	}
 
 	if len(typeDefinitions) < 1 {
@@ -443,7 +490,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return storage.HandleSQLError(err)
 	}
 
-	_, err = p.DB.ExecContext(ctx, stmt, args...)
+	_, err = p.db.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		return storage.HandleSQLError(err)
 	}
@@ -452,13 +499,13 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 }
 
 func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.CreateStore")
+	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
 
 	var id, name string
 	var createdAt time.Time
 	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, name, created_at"
-	err := p.DB.QueryRowContext(ctx, stmt, store.Id, store.Name).Scan(&id, &name, &createdAt)
+	err := p.db.QueryRowContext(ctx, stmt, store.Id, store.Name).Scan(&id, &name, &createdAt)
 	if err != nil {
 		return nil, storage.HandleSQLError(err)
 	}
@@ -472,10 +519,10 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 }
 
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.GetStore")
+	ctx, span := p.tracer.Start(ctx, "postgres.GetStore")
 	defer span.End()
 
-	row := p.DB.QueryRowContext(ctx, "SELECT id, name, created_at, updated_at FROM store WHERE id = $1 AND deleted_at IS NULL", id)
+	row := p.db.QueryRowContext(ctx, "SELECT id, name, created_at, updated_at FROM store WHERE id = $1 AND deleted_at IS NULL", id)
 
 	var storeID, name string
 	var createdAt, updatedAt time.Time
@@ -496,7 +543,7 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, e
 }
 
 func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ListStores")
+	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
 	stmt, args, err := buildListStoresQuery(opts)
@@ -504,7 +551,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 		return nil, nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, storage.HandleSQLError(err)
 	}
@@ -544,10 +591,10 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 }
 
 func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
-	ctx, span := p.Tracer.Start(ctx, "postgres.DeleteStore")
+	ctx, span := p.tracer.Start(ctx, "postgres.DeleteStore")
 	defer span.End()
 
-	_, err := p.DB.ExecContext(ctx, "UPDATE store SET deleted_at = NOW() WHERE id = $1", id)
+	_, err := p.db.ExecContext(ctx, "UPDATE store SET deleted_at = NOW() WHERE id = $1", id)
 	if err != nil {
 		return storage.HandleSQLError(err)
 	}
@@ -556,7 +603,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 }
 
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
-	ctx, span := p.Tracer.Start(ctx, "postgres.WriteAssertions")
+	ctx, span := p.tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
 
 	marshalledAssertions, err := proto.Marshal(&openfgapb.Assertions{Assertions: assertions})
@@ -565,7 +612,7 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 	}
 
 	stmt := "INSERT INTO assertion (store, authorization_model_id, assertions) VALUES ($1, $2, $3) ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = $3"
-	_, err = p.DB.ExecContext(ctx, stmt, store, modelID, marshalledAssertions)
+	_, err = p.db.ExecContext(ctx, stmt, store, modelID, marshalledAssertions)
 	if err != nil {
 		return storage.HandleSQLError(err)
 	}
@@ -574,11 +621,11 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 }
 
 func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadAssertions")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadAssertions")
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := p.DB.QueryRowContext(ctx, `SELECT assertions FROM assertion WHERE store = $1 AND authorization_model_id = $2`, store, modelID).Scan(&marshalledAssertions)
+	err := p.db.QueryRowContext(ctx, `SELECT assertions FROM assertion WHERE store = $1 AND authorization_model_id = $2`, store, modelID).Scan(&marshalledAssertions)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgapb.Assertion{}, nil
@@ -601,7 +648,7 @@ func (p *Postgres) ReadChanges(
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
 ) ([]*openfgapb.TupleChange, []byte, error) {
-	ctx, span := p.Tracer.Start(ctx, "postgres.ReadChanges")
+	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
 	stmt, args, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
@@ -609,7 +656,7 @@ func (p *Postgres) ReadChanges(
 		return nil, nil, err
 	}
 
-	rows, err := p.DB.QueryContext(ctx, stmt, args...)
+	rows, err := p.db.QueryContext(ctx, stmt, args...)
 	if err != nil {
 		return nil, nil, storage.HandleSQLError(err)
 	}
@@ -656,7 +703,7 @@ func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	if err := p.DB.PingContext(ctx); err != nil {
+	if err := p.db.PingContext(ctx); err != nil {
 		return false, err
 	}
 
