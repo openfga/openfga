@@ -1,4 +1,4 @@
-package storage
+package sql
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -96,11 +97,11 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	}
 
 	if cfg.MaxTuplesPerWriteField == 0 {
-		cfg.MaxTuplesPerWriteField = DefaultMaxTuplesPerWrite
+		cfg.MaxTuplesPerWriteField = storage.DefaultMaxTuplesPerWrite
 	}
 
 	if cfg.MaxTypesPerModelField == 0 {
-		cfg.MaxTypesPerModelField = DefaultMaxTypesPerAuthorizationModel
+		cfg.MaxTypesPerModelField = storage.DefaultMaxTypesPerAuthorizationModel
 	}
 
 	return cfg
@@ -142,7 +143,7 @@ func NewContToken(ulid, objectType string) *ContToken {
 func UnmarshallContToken(from string) (*ContToken, error) {
 	var token ContToken
 	if err := json.Unmarshal([]byte(from), &token); err != nil {
-		return nil, ErrInvalidContinuationToken
+		return nil, storage.ErrInvalidContinuationToken
 	}
 	return &token, nil
 }
@@ -153,7 +154,7 @@ type SQLTupleIterator struct {
 	errCh    chan error
 }
 
-var _ TupleIterator = (*SQLTupleIterator)(nil)
+var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 
 // NewSQLTupleIterator returns a SQL tuple iterator
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
@@ -171,7 +172,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*TupleRecord, error) {
 				t.errCh <- err
 				return
 			}
-			t.errCh <- ErrIteratorDone
+			t.errCh <- storage.ErrIteratorDone
 			return
 		}
 		var record TupleRecord
@@ -185,7 +186,7 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*TupleRecord, error) {
 
 	select {
 	case <-ctx.Done():
-		return nil, ErrIteratorDone
+		return nil, storage.ErrIteratorDone
 	case err := <-t.errCh:
 		return nil, HandleSQLError(err)
 	case result := <-t.resultCh:
@@ -195,12 +196,12 @@ func (t *SQLTupleIterator) next(ctx context.Context) (*TupleRecord, error) {
 
 // ToArray converts the tupleIterator to an []*openfgapb.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(ctx context.Context, opts PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (t *SQLTupleIterator) ToArray(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	var res []*openfgapb.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next(ctx)
 		if err != nil {
-			if err == ErrIteratorDone {
+			if err == storage.ErrIteratorDone {
 				return res, nil, nil
 			}
 			return nil, nil, err
@@ -212,7 +213,7 @@ func (t *SQLTupleIterator) ToArray(ctx context.Context, opts PaginationOptions) 
 	// This is why we have LIMIT+1 in the query.
 	tupleRecord, err := t.next(ctx)
 	if err != nil {
-		if errors.Is(err, ErrIteratorDone) {
+		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, nil, nil
 		}
 		return nil, nil, err
@@ -253,7 +254,7 @@ func NewSQLObjectIterator(rows *sql.Rows) *SQLObjectIterator {
 	}
 }
 
-var _ ObjectIterator = (*SQLObjectIterator)(nil)
+var _ storage.ObjectIterator = (*SQLObjectIterator)(nil)
 
 func (o *SQLObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
 	go func() {
@@ -262,7 +263,7 @@ func (o *SQLObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error)
 				o.errCh <- err
 				return
 			}
-			o.errCh <- ErrIteratorDone
+			o.errCh <- storage.ErrIteratorDone
 			return
 		}
 
@@ -284,7 +285,7 @@ func (o *SQLObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error)
 	}()
 	select {
 	case <-ctx.Done():
-		return nil, ErrIteratorDone
+		return nil, storage.ErrIteratorDone
 	case err := <-o.errCh:
 		return nil, HandleSQLError(err)
 	case result := <-o.resultCh:
@@ -298,23 +299,23 @@ func (o *SQLObjectIterator) Stop() {
 
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	} else if errors.Is(err, ErrIteratorDone) {
+		return storage.ErrNotFound
+	} else if errors.Is(err, storage.ErrIteratorDone) {
 		return err
 	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 			}
 		}
-		return ErrCollision
+		return storage.ErrCollision
 	} else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
 		if len(args) > 0 {
 			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
 			}
 		}
-		return ErrCollision
+		return storage.ErrCollision
 	}
 
 	return fmt.Errorf("sql error: %w", err)

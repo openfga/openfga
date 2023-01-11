@@ -24,6 +24,7 @@ import (
 	mockstorage "github.com/openfga/openfga/storage/mocks"
 	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
+	"github.com/openfga/openfga/storage/sql"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -43,7 +44,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := postgres.New(uri, storage.NewConfig())
+	ds, err := postgres.New(uri, sql.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -60,7 +61,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := mysql.New(uri, storage.NewConfig())
+	ds, err := mysql.New(uri, sql.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -73,7 +74,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := postgres.New(uri, storage.NewConfig())
+		ds, err := postgres.New(uri, sql.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
@@ -89,7 +90,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := mysql.New(uri, storage.NewConfig())
+		ds, err := mysql.New(uri, sql.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)

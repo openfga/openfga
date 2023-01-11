@@ -1,4 +1,4 @@
-package storage
+package sql
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/openfga/openfga/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -17,7 +18,7 @@ func TestHandleSQLError(t *testing.T) {
 			Relation: "relation",
 			User:     "user",
 		})
-		require.ErrorIs(t, err, ErrInvalidWriteInput)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
 	t.Run("duplicate_entry_value_error_with_tuple_key_wraps_ErrInvalidWriteInput", func(t *testing.T) {
@@ -30,7 +31,7 @@ func TestHandleSQLError(t *testing.T) {
 			Relation: "relation",
 			User:     "user",
 		})
-		require.ErrorIs(t, err, ErrInvalidWriteInput)
+		require.ErrorIs(t, err, storage.ErrInvalidWriteInput)
 	})
 
 	t.Run("duplicate_entry_value_error_without_tuple_key_returns_collision", func(t *testing.T) {
@@ -40,17 +41,17 @@ func TestHandleSQLError(t *testing.T) {
 		}
 		err := HandleSQLError(duplicateKeyError)
 
-		require.ErrorIs(t, err, ErrCollision)
+		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
 	t.Run("duplicate_key_value_error_without_tuple_key_returns_collision", func(t *testing.T) {
 		duplicateKeyError := errors.New("duplicate key value")
 		err := HandleSQLError(duplicateKeyError)
-		require.ErrorIs(t, err, ErrCollision)
+		require.ErrorIs(t, err, storage.ErrCollision)
 	})
 
 	t.Run("sql.ErrNoRows_is_converted_to_storage.ErrNotFound_error", func(t *testing.T) {
 		err := HandleSQLError(sql.ErrNoRows)
-		require.ErrorIs(t, err, ErrNotFound)
+		require.ErrorIs(t, err, storage.ErrNotFound)
 	})
 }

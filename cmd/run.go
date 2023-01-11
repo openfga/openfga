@@ -39,6 +39,7 @@ import (
 	"github.com/openfga/openfga/storage/memory"
 	"github.com/openfga/openfga/storage/mysql"
 	"github.com/openfga/openfga/storage/postgres"
+	"github.com/openfga/openfga/storage/sql"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -392,15 +393,15 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 	}
 
-	datastoreCfg := storage.NewConfig(
-		storage.WithLogger(logger),
-		storage.WithTracer(tracer),
-		storage.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-		storage.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-		storage.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-		storage.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-		storage.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-		storage.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+	datastoreCfg := sql.NewConfig(
+		sql.WithLogger(logger),
+		sql.WithTracer(tracer),
+		sql.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		sql.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+		sql.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		sql.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		sql.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+		sql.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	)
 
 	var datastore storage.OpenFGADatastore

@@ -11,6 +11,7 @@ import (
 	log "github.com/openfga/openfga/pkg/logger"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/storage"
+	sql2 "github.com/openfga/openfga/storage/sql"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -35,7 +36,7 @@ func buildReadQuery(store string, tupleKey *openfgapb.TupleKey, opts storage.Pag
 		sb = sb.Where(squirrel.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
-		token, err := storage.UnmarshallContToken(opts.From)
+		token, err := sql2.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -78,7 +79,7 @@ func buildListStoresQuery(opts storage.PaginationOptions) (string, []any, error)
 		OrderBy("id")
 
 	if opts.From != "" {
-		token, err := storage.UnmarshallContToken(opts.From)
+		token, err := sql2.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -103,7 +104,7 @@ func buildReadChangesQuery(store, objectTypeFilter string, opts storage.Paginati
 		sb = sb.Where(squirrel.Eq{"object_type": objectTypeFilter})
 	}
 	if opts.From != "" {
-		token, err := storage.UnmarshallContToken(opts.From)
+		token, err := sql2.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
@@ -128,7 +129,7 @@ func buildReadAuthorizationModelsQuery(store string, opts storage.PaginationOpti
 		OrderBy("authorization_model_id DESC")
 
 	if opts.From != "" {
-		token, err := storage.UnmarshallContToken(opts.From)
+		token, err := sql2.UnmarshallContToken(opts.From)
 		if err != nil {
 			return "", nil, err
 		}
