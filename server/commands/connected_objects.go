@@ -167,10 +167,6 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 							Relation: innerLoopIngress.Ingress.GetRelation(),
 						},
 					},
-					// User: &openfgapb.ObjectRelation{
-					// 	Object:   req.User.Object,
-					// 	Relation: innerLoopIngress.Ingress.GetRelation(),
-					// },
 					ContextualTuples: req.ContextualTuples,
 				}, resultChan, foundObjectsMap, foundCount)
 
