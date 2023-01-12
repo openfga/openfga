@@ -579,7 +579,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
 		Values(store.Id, store.Name, "NOW()", "NOW()").
-		SuffixExpr(sq.Expr("returning id, name, created_at")).
+		Suffix("returning id, name, created_at").
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
 	if err != nil {
