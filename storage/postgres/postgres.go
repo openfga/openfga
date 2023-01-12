@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/squirrel"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/oklog/ulid/v2"
@@ -26,6 +26,7 @@ import (
 )
 
 type Postgres struct {
+	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	tracer                 trace.Tracer
 	logger                 logger.Logger
@@ -72,6 +73,7 @@ func New(uri string, cfg *common.Config) (*Postgres, error) {
 	}
 
 	return &Postgres{
+		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
 		db:                     db,
 		tracer:                 cfg.Tracer,
 		logger:                 cfg.Logger,
@@ -90,20 +92,15 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
-	stmt, args, err := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
+	rows, err := p.stbl.
 		Select("object_type", "object_id").
 		Distinct().
 		From("tuple").
-		Where(squirrel.Eq{
+		Where(sq.Eq{
 			"store":       store,
 			"object_type": objectType,
-		}).ToSql()
-	if err != nil {
-		return nil, err
-	}
-
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+		}).
+		QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -135,12 +132,37 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	ctx, span := p.tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
-	stmt, args, err := buildReadQuery(store, tupleKey, opts)
-	if err != nil {
-		return nil, err
+	sb := p.stbl.
+		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		From("tuple").
+		Where(sq.Eq{"store": store}).
+		OrderBy("ulid")
+
+	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	if objectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": objectType})
+	}
+	if objectID != "" {
+		sb = sb.Where(sq.Eq{"object_id": objectID})
+	}
+	if tupleKey.GetRelation() != "" {
+		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
+	}
+	if tupleKey.GetUser() != "" {
+		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
+	}
+	if opts.From != "" {
+		token, err := common.UnmarshallContToken(opts.From)
+		if err != nil {
+			return nil, err
+		}
+		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
+	}
+	if opts.PageSize != 0 {
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -161,34 +183,31 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	if err != nil {
 		return common.HandleSQLError(err)
 	}
-	defer rollbackTx(ctx, txn, p.logger)
+	defer func() {
+		_ = txn.Rollback()
+	}()
 
-	changelogBuilder := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
+	changelogBuilder := p.stbl.
 		Insert("changelog").
 		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
 
-	deletebuilder := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
-		Delete("tuple")
+	deleteBuilder := p.stbl.Delete("tuple")
 
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := deletebuilder.Where(squirrel.Eq{
-			"store":       store,
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tk.GetRelation(),
-			"_user":       tk.GetUser(),
-			"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-		}).ToSql()
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		res, err := txn.ExecContext(ctx, stmt, args...)
+		res, err := deleteBuilder.
+			Where(sq.Eq{
+				"store":       store,
+				"object_type": objectType,
+				"object_id":   objectID,
+				"relation":    tk.GetRelation(),
+				"_user":       tk.GetUser(),
+				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			}).
+			RunWith(txn). // Part of a txn
+			ExecContext(ctx)
 		if err != nil {
 			return common.HandleSQLError(err, tk)
 		}
@@ -205,8 +224,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()")
 	}
 
-	tupleInsertBuilder := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
+	insertBuilder := p.stbl.
 		Insert("tuple").
 		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
 
@@ -214,12 +232,10 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		stmt, args, err := tupleInsertBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").ToSql()
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		_, err = txn.ExecContext(ctx, stmt, args...)
+		_, err = insertBuilder.
+			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").
+			RunWith(txn). // Part of a txn
+			ExecContext(ctx)
 		if err != nil {
 			return common.HandleSQLError(err, tk)
 		}
@@ -228,12 +244,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
-		stmt, args, err := changelogBuilder.ToSql()
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		_, err = txn.ExecContext(ctx, stmt, args...)
+		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn
 		if err != nil {
 			return common.HandleSQLError(err)
 		}
@@ -253,11 +264,21 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	row := p.db.QueryRowContext(ctx, `SELECT object_type, object_id, relation, _user FROM tuple WHERE store = $1 AND object_type = $2 AND object_id = $3 AND relation = $4 AND _user = $5 AND user_type = $6`,
-		store, objectType, objectID, tupleKey.GetRelation(), tupleKey.GetUser(), userType)
-
 	var record common.TupleRecord
-	if err := row.Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User); err != nil {
+	err := p.stbl.
+		Select("object_type", "object_id", "relation", "_user").
+		From("tuple").
+		Where(sq.Eq{
+			"store":       store,
+			"object_type": objectType,
+			"object_id":   objectID,
+			"relation":    tupleKey.GetRelation(),
+			"_user":       tupleKey.GetUser(),
+			"user_type":   userType,
+		}).
+		QueryRowContext(ctx).
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
 
@@ -268,12 +289,24 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	stmt, args, err := buildReadUsersetTuplesQuery(store, tupleKey)
-	if err != nil {
-		return nil, err
+	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		From("tuple").
+		Where(sq.Eq{"store": store}).
+		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
+		OrderBy("ulid")
+
+	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	if objectType != "" {
+		sb = sb.Where(sq.Eq{"object_type": objectType})
+	}
+	if objectID != "" {
+		sb = sb.Where(sq.Eq{"object_id": objectID})
+	}
+	if tupleKey.GetRelation() != "" {
+		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -285,7 +318,6 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
 	defer span.End()
 
-	stmt := "SELECT store, object_type, object_id, relation, _user, ulid, inserted_at FROM tuple WHERE store = $1 AND object_type = $2 AND relation = $3 AND _user = any($4)"
 	var targetUsersArg []string
 	for _, u := range opts.UserFilter {
 		targetUser := u.GetObject()
@@ -295,7 +327,15 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, store, opts.ObjectType, opts.Relation, targetUsersArg)
+	rows, err := p.stbl.
+		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		From("tuple").
+		Where(sq.Eq{
+			"store":       store,
+			"object_type": opts.ObjectType,
+			"relation":    opts.Relation,
+			"_user":       targetUsersArg,
+		}).QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -311,8 +351,13 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	stmt := "SELECT schema_version, type, type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2"
-	rows, err := p.db.QueryContext(ctx, stmt, store, modelID)
+	rows, err := p.stbl.
+		Select("schema_version", "type", "type_definition").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -347,7 +392,11 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
 	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
 		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = p.db.ExecContext(ctx, "UPDATE authorization_model SET schema_version = $1 WHERE store = $2 AND authorization_model_id = $3", schemaVersion, store, modelID)
+		_, err = p.stbl.
+			Update("authorization_model").
+			Set("schema_version", schemaVersion).
+			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
+			ExecContext(ctx)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
 			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
@@ -365,12 +414,24 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	stmt, args, err := buildReadAuthorizationModelsQuery(store, opts)
-	if err != nil {
-		return nil, nil, err
+	sb := p.stbl.Select("authorization_model_id").
+		Distinct().
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		OrderBy("authorization_model_id desc")
+
+	if opts.From != "" {
+		token, err := common.UnmarshallContToken(opts.From)
+		if err != nil {
+			return nil, nil, err
+		}
+		sb = sb.Where(sq.LtOrEq{"authorization_model_id": token.Ulid})
+	}
+	if opts.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, nil, common.HandleSQLError(err)
 	}
@@ -380,7 +441,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	var modelID string
 
 	for rows.Next() {
-		err := rows.Scan(&modelID)
+		err = rows.Scan(&modelID)
 		if err != nil {
 			return nil, nil, common.HandleSQLError(err)
 		}
@@ -422,8 +483,14 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	defer span.End()
 
 	var modelID string
-	stmt := "SELECT authorization_model_id FROM authorization_model WHERE store = $1 ORDER BY authorization_model_id DESC LIMIT 1"
-	err := p.db.QueryRowContext(ctx, stmt, store).Scan(&modelID)
+	err := p.stbl.
+		Select("authorization_model_id").
+		From("authorization_model").
+		Where(sq.Eq{"store": store}).
+		OrderBy("authorization_model_id desc").
+		Limit(1).
+		QueryRowContext(ctx).
+		Scan(&modelID)
 	if err != nil {
 		return "", common.HandleSQLError(err)
 	}
@@ -439,8 +506,16 @@ func (p *Postgres) ReadTypeDefinition(
 	defer span.End()
 
 	var marshalledTypeDef []byte
-	stmt := "SELECT type_definition FROM authorization_model WHERE store = $1 AND authorization_model_id = $2 AND type = $3"
-	err := p.db.QueryRowContext(ctx, stmt, store, modelID, objectType).Scan(&marshalledTypeDef)
+	err := p.stbl.
+		Select("type_definition").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+			"type":                   objectType,
+		}).
+		QueryRowContext(ctx).
+		Scan(&marshalledTypeDef)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -472,9 +547,9 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return nil
 	}
 
-	sqlbuilder := squirrel.
-		StatementBuilder.PlaceholderFormat(squirrel.Dollar).
-		Insert("authorization_model").Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
+	sb := p.stbl.
+		Insert("authorization_model").
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
 
 	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
@@ -482,15 +557,10 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 			return err
 		}
 
-		sqlbuilder = sqlbuilder.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
+		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
 	}
 
-	stmt, args, err := sqlbuilder.ToSql()
-	if err != nil {
-		return common.HandleSQLError(err)
-	}
-
-	_, err = p.db.ExecContext(ctx, stmt, args...)
+	_, err := sb.ExecContext(ctx)
 	if err != nil {
 		return common.HandleSQLError(err)
 	}
@@ -498,14 +568,20 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	return nil
 }
 
+// CreateStore is slightly different between Postgres and MySQL
 func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
 	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
 
 	var id, name string
 	var createdAt time.Time
-	stmt := "INSERT INTO store (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) RETURNING id, name, created_at"
-	err := p.db.QueryRowContext(ctx, stmt, store.Id, store.Name).Scan(&id, &name, &createdAt)
+	err := p.stbl.
+		Insert("store").
+		Columns("id", "name", "created_at", "updated_at").
+		Values(store.Id, store.Name, "NOW()", "NOW()").
+		SuffixExpr(sq.Expr("returning id, name, created_at")).
+		QueryRowContext(ctx).
+		Scan(&id, &name, &createdAt)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -522,7 +598,14 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, e
 	ctx, span := p.tracer.Start(ctx, "postgres.GetStore")
 	defer span.End()
 
-	row := p.db.QueryRowContext(ctx, "SELECT id, name, created_at, updated_at FROM store WHERE id = $1 AND deleted_at IS NULL", id)
+	row := p.stbl.
+		Select("id", "name", "created_at", "updated_at").
+		From("store").
+		Where(sq.Eq{
+			"id":         id,
+			"deleted_at": nil,
+		}).
+		QueryRowContext(ctx)
 
 	var storeID, name string
 	var createdAt, updatedAt time.Time
@@ -546,12 +629,23 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
-	stmt, args, err := buildListStoresQuery(opts)
-	if err != nil {
-		return nil, nil, err
+	sb := p.stbl.Select("id", "name", "created_at", "updated_at").
+		From("store").
+		Where(sq.Eq{"deleted_at": nil}).
+		OrderBy("id")
+
+	if opts.From != "" {
+		token, err := common.UnmarshallContToken(opts.From)
+		if err != nil {
+			return nil, nil, err
+		}
+		sb = sb.Where(sq.GtOrEq{"id": token.Ulid})
+	}
+	if opts.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, nil, common.HandleSQLError(err)
 	}
@@ -594,7 +688,11 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.DeleteStore")
 	defer span.End()
 
-	_, err := p.db.ExecContext(ctx, "UPDATE store SET deleted_at = NOW() WHERE id = $1", id)
+	_, err := p.stbl.
+		Update("store").
+		Set("deleted_at", "NOW()").
+		Where(sq.Eq{"id": id}).
+		ExecContext(ctx)
 	if err != nil {
 		return common.HandleSQLError(err)
 	}
@@ -602,6 +700,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
+// WriteAssertions is slightly different between Postgres and MySQL
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
 	ctx, span := p.tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
@@ -611,8 +710,12 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 		return err
 	}
 
-	stmt := "INSERT INTO assertion (store, authorization_model_id, assertions) VALUES ($1, $2, $3) ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = $3"
-	_, err = p.db.ExecContext(ctx, stmt, store, modelID, marshalledAssertions)
+	_, err = p.stbl.
+		Insert("assertion").
+		Columns("store", "authorization_model_id", "assertions").
+		Values(store, modelID, marshalledAssertions).
+		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
+		ExecContext(ctx)
 	if err != nil {
 		return common.HandleSQLError(err)
 	}
@@ -625,7 +728,15 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := p.db.QueryRowContext(ctx, `SELECT assertions FROM assertion WHERE store = $1 AND authorization_model_id = $2`, store, modelID).Scan(&marshalledAssertions)
+	err := p.stbl.
+		Select("assertions").
+		From("assertion").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryRowContext(ctx).
+		Scan(&marshalledAssertions)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgapb.Assertion{}, nil
@@ -651,12 +762,31 @@ func (p *Postgres) ReadChanges(
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	stmt, args, err := buildReadChangesQuery(store, objectTypeFilter, opts, horizonOffset)
-	if err != nil {
-		return nil, nil, err
+	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+		From("changelog").
+		Where(sq.Eq{"store": store}).
+		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
+		OrderBy("inserted_at asc")
+
+	if objectTypeFilter != "" {
+		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
+	}
+	if opts.From != "" {
+		token, err := common.UnmarshallContToken(opts.From)
+		if err != nil {
+			return nil, nil, err
+		}
+		if token.ObjectType != objectTypeFilter {
+			return nil, nil, storage.ErrMismatchObjectType
+		}
+
+		sb = sb.Where(sq.Gt{"ulid": token.Ulid}) // > as we always return a continuation token
+	}
+	if opts.PageSize > 0 {
+		sb = sb.Limit(uint64(opts.PageSize)) // + 1 is NOT used here as we always return a continuation token
 	}
 
-	rows, err := p.db.QueryContext(ctx, stmt, args...)
+	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, nil, common.HandleSQLError(err)
 	}
