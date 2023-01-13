@@ -536,7 +536,7 @@ func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 		objectType := td.GetType()
 
 		for relation, rewrite := range td.GetRelations() {
-			err := isUsersetRewriteValid(relations, typerels[objectType], objectType, relation, rewrite)
+			err := isUsersetRewriteValid(New(model), relations, typerels[objectType], objectType, relation, rewrite)
 			if err != nil {
 				return err
 			}
@@ -546,9 +546,10 @@ func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 	return nil
 }
 
-// isUsersetRewriteValid checks if a particular userset rewrite is valid. The first argument is all the relations in
-// the typeSystem, the second argument is the subset of relations on the type where the rewrite occurs.
+// isUsersetRewriteValid checks if a particular userset rewrite is valid. The second argument is all the relations in
+// the typeSystem, the third argument is the subset of relations on the type where the rewrite occurs.
 func isUsersetRewriteValid(
+	typesys *TypeSystem,
 	allRelations map[string]*openfgapb.Relation,
 	relationsOnType map[string]*openfgapb.Relation,
 	objectType, relation string,
@@ -583,30 +584,39 @@ func isUsersetRewriteValid(
 		}
 
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
-		if _, ok := allRelations[computedUserset]; !ok {
-			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+
+		if typesys.GetSchemaVersion() == SchemaVersion1_1 {
+			for _, rr := range tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes {
+				if _, err := typesys.GetRelation(rr.GetType(), computedUserset); err != nil {
+					return fmt.Errorf("%s does not appear as a relation in %s", computedUserset, rr.GetType())
+				}
+			}
+		} else {
+			if _, ok := allRelations[computedUserset]; !ok {
+				return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+			}
 		}
 	case *openfgapb.Userset_Union:
 		for _, child := range t.Union.GetChild() {
-			err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, child)
+			err := isUsersetRewriteValid(typesys, allRelations, relationsOnType, objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Intersection:
 		for _, child := range t.Intersection.GetChild() {
-			err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, child)
+			err := isUsersetRewriteValid(typesys, allRelations, relationsOnType, objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Difference:
-		err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, t.Difference.Base)
+		err := isUsersetRewriteValid(typesys, allRelations, relationsOnType, objectType, relation, t.Difference.Base)
 		if err != nil {
 			return err
 		}
 
-		err = isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, t.Difference.Subtract)
+		err = isUsersetRewriteValid(typesys, allRelations, relationsOnType, objectType, relation, t.Difference.Subtract)
 		if err != nil {
 			return err
 		}
