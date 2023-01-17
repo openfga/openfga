@@ -116,12 +116,35 @@ func (q *ListObjectsQuery) handler(
 		if !containsIntersection && !containsExclusion && hasTypeInfo {
 			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
+			userObjType, userObjID := tuple.SplitObject(userObj)
+
+			var targetUserRef isUserRef
+			targetUserRef = &UserRefObject{
+				Object: &openfgapb.Object{
+					Type: userObjType,
+					Id:   userObjID,
+				},
+			}
+
+			if tuple.IsTypedWildcard(userObj) {
+				targetUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+			}
+
+			if userRel != "" {
+				targetUserRef = &UserRefObjectRelation{
+					ObjectRelation: &openfgapb.ObjectRelation{
+						Object:   userObj,
+						Relation: userRel,
+					},
+				}
+			}
+
 			handler = func() {
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
 					ObjectType:       targetObjectType,
 					Relation:         targetRelation,
-					User:             &openfgapb.ObjectRelation{Object: userObj, Relation: userRel},
+					User:             targetUserRef,
 					ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 				}, resultsChan)
 				if err != nil {

@@ -745,6 +745,88 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_1",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_2",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("group", "member"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("org", "dept_member"),
+					TuplesetRelation: typesystem.DirectRelationReference("org", "dept"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_3",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("org", "dept_member"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("resource", "writer"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
