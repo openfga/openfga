@@ -11,7 +11,11 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-const DefaultPageSize = 50
+const (
+	DefaultMaxTuplesPerWrite             = 100
+	DefaultMaxTypesPerAuthorizationModel = 100
+	DefaultPageSize                      = 50
+)
 
 var ErrIteratorDone = errors.New("iterator done")
 
