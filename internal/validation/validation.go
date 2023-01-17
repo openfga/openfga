@@ -162,7 +162,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 
 	// the user must be an object (case 1), so check directly against the objectType
 	for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-		if typeInformation.GetType() == userType && typeInformation.GetWildcard() == nil {
+		if typeInformation.GetType() == userType && typeInformation.GetWildcard() == nil && typeInformation.GetRelation() == "" {
 			return nil
 		}
 	}

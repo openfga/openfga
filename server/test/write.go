@@ -1490,6 +1490,59 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 	},
+	{
+		_name: "invalid_type_restriction_in_write_body",
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "group",
+					Relations: map[string]*openfgapb.Userset{
+						"member": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"member": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+								},
+							},
+						},
+					},
+				},
+				{
+					Type: "resource",
+					Relations: map[string]*openfgapb.Userset{
+						"writer": typesystem.This(),
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"writer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("group", "member"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("resource:bad", "writer", "group:fga"),
+			}},
+		},
+		err: serverErrors.ValidationError(
+			&tuple.InvalidTupleError{
+				Cause:    fmt.Errorf("type 'group' is not an allowed type restriction for 'resource#writer'"),
+				TupleKey: tuple.NewTupleKey("resource:bad", "writer", "group:fga"),
+			},
+		),
+	},
 }
 
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
