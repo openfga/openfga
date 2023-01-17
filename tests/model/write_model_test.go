@@ -16,15 +16,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 )
 
-var tests = []struct {
-	name  string
+var tests = map[string]struct {
 	model string
+	code  int
 }{
-	//	{
+	//	"case1": {
 	//		// Parse error
-	//		name: "Case1",
 	//		model: `
 	//type user
 	//type self
@@ -32,9 +32,8 @@ var tests = []struct {
 	//    define member: [user] as self
 	//`,
 	//	},
-	//	{
+	//	"case2": {
 	//		// Parse error
-	//		name: "Case2",
 	//		model: `
 	//type user
 	//type this
@@ -42,9 +41,8 @@ var tests = []struct {
 	//    define member: [user] as self
 	//`,
 	//	},
-	//	{
+	//	"case3": {
 	//		// Parse error
-	//		name: "Case3",
 	//		model: `
 	//type user
 	//type group
@@ -52,9 +50,8 @@ var tests = []struct {
 	//    define self: [user] as self
 	//`,
 	//	},
-	//	{
+	//	"case4": {
 	// 		// Parse error
-	//		name: "Case4",
 	//		model: `
 	//type user
 	//type group
@@ -62,9 +59,8 @@ var tests = []struct {
 	//   define this: [user] as self
 	//`,
 	//	},
-	//	{
+	//	"case5": {
 	//		// TODO: Can we validate this?
-	//		name: "Case5",
 	//		model: `
 	//type user
 	//type team
@@ -77,18 +73,17 @@ var tests = []struct {
 	//    define viewer as viewer from parent
 	//`,
 	//	},
-	{
-		name: "Case6",
+	"case6": {
 		model: `
 type user
 type group
   relations
     define group as group from group
 `,
+		code: 2056,
 	},
-	//	{
+	//	"case7": {
 	//		// TODO: something
-	//		name: "Case7",
 	//		model: `
 	//type user
 	//type group
@@ -97,17 +92,15 @@ type group
 	//    define viewer as viewer from parent
 	//`,
 	//	},
-	//	{
+	//	"case8": {
 	//		// TODO: something
-	//		name: "Case8",
 	//		model: `
 	//type group
 	//  relations
 	//    define viewer: [group#viewer] as self
 	//`,
 	//	},
-	{
-		name: "Case9",
+	"case9": {
 		model: `
 type user
 type org
@@ -118,9 +111,9 @@ type group
     define parent: [org] as self
     define viewer as viewer from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case10",
+	"case10": {
 		model: `
 type user
 type group
@@ -128,9 +121,9 @@ type group
     define parent: [group] as self
     define viewer as reader from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case11",
+	"case11": {
 		model: `
 type user
 type org
@@ -139,9 +132,9 @@ type group
     define parent: [group] as self
     define viewer as viewer from org
 `,
+		code: 2056,
 	},
-	{
-		name: "Case12",
+	"case12": {
 		model: `
 type user
 type org
@@ -150,9 +143,9 @@ type group
     define parent: [group] as self
     define viewer as org from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case13",
+	"case13": {
 		model: `
 type user
 type org
@@ -160,10 +153,10 @@ type group
   relations
     define parent: [group, group#org] as self
 `,
+		code: 2056,
 	},
-	//	{
+	//	"case14": {
 	//		// TODO: something
-	//		name: "Case14",
 	//		model: `
 	//type user
 	//type org
@@ -175,9 +168,8 @@ type group
 	//    define viewer as viewer from parent
 	//`,
 	//	},
-	//	{
+	//	"case16": {
 	//		// TODO: something
-	//		name: "Case16",
 	//		model: `
 	//type document
 	//  relations
@@ -185,8 +177,7 @@ type group
 	//    define writer as reader
 	//`,
 	//	},
-	{
-		name: "Case17",
+	"case17": {
 		model: `
 type user
 type folder
@@ -194,9 +185,9 @@ type folder
     define parent: [folder] as self or parent from parent
     define viewer: [user] as self or viewer from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case18",
+	"case18": {
 		model: `
 type user
 type folder
@@ -205,9 +196,9 @@ type folder
     define parent: [folder] as self or root
     define viewer: [user] as self or viewer from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case19",
+	"case19": {
 		model: `
 type user
 type folder
@@ -216,9 +207,9 @@ type folder
     define parent as root
     define viewer: [user] as self or viewer from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case20",
+	"case20": {
 		model: `
 type user
 type folder
@@ -227,9 +218,9 @@ type folder
     define parent: [folder, folder#parent] as self
     define viewer: [user] as self or viewer from parent
 `,
+		code: 2056,
 	},
-	{
-		name: "Case21",
+	"case21": {
 		model: `
 type user
 type group
@@ -237,9 +228,9 @@ type group
     define member: [user] as self
     define reader as member and allowed
 `,
+		code: 2056,
 	},
-	{
-		name: "Case22",
+	"case22": {
 		model: `
 type user
 type group
@@ -247,9 +238,9 @@ type group
     define member: [user] as self
     define reader as member or allowed
 `,
+		code: 2056,
 	},
-	{
-		name: "Case23",
+	"case23": {
 		model: `
 type user
 type group
@@ -257,9 +248,9 @@ type group
     define member: [user] as self
     define reader as allowed but not member
 `,
+		code: 2056,
 	},
-	{
-		name: "Case24",
+	"case24": {
 		model: `
 type user
 type group
@@ -267,25 +258,102 @@ type group
     define member: [user] as self
     define reader as member but not allowed
 `,
+		code: 2056,
 	},
-	{
-		name: "Case25",
+	"case25": {
 		model: `
 type user
 type org
   relations
     define member as self
 `,
+		code: 2056,
 	},
-	//	{   // Parse error
-	//		name: "Case26",
-	//		model: `
+	//"case26:": {
+	//	// Parse error
+	//	model: `
 	//type user
 	//type org
-	//  relations
-	//    define member: [ ]
+	// relations
+	//   define member: [ ]
 	//`,
-	//	},
+	//},
+	"same_type_fails": {
+		model: `
+type user
+type user
+`,
+		code: 2056,
+	},
+	"difference_includes_itself_in_subtract_fails": {
+		model: `
+type user
+type document
+  relations
+	define viewer: [user] as self but not viewer
+`,
+		code: 2056,
+	},
+	"union_includes_itself_fails": {
+		model: `
+type user
+type document
+  relations
+	define viewer: [user] as self or viewer
+`,
+		code: 2056,
+	},
+	"intersection_includes_itself_fails": {
+		model: `
+type user
+type document
+  relations
+	define viewer: [user] as self and viewer
+`,
+		code: 2056,
+	},
+	"simple_model_succeeds": {
+		model: `
+type user
+type folder
+  relations
+    define viewer: [user] as self
+type document
+  relations
+    define parent: [folder] as self
+    define viewer as viewer from parent
+`,
+	},
+	"no_relations_succeeds": {
+		model: `type user`,
+	},
+	"union_may_contain_repeated_relations": {
+		model: `
+type user
+type document
+  relations
+	define editor: [user] as self
+    define viewer as editor or editor
+`,
+	},
+	"intersection_may_contain_repeated_relations": {
+		model: `
+type user
+type document
+  relations
+	define editor: [user] as self
+    define viewer as editor and editor
+`,
+	},
+	"exclusion_may_contain_repeated_relations": {
+		model: `
+type user
+type document
+  relations
+	define editor: [user] as self
+    define viewer as editor but not editor
+`,
+	},
 }
 
 func TestWriteAuthorizationModel(t *testing.T) {
@@ -338,15 +406,22 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient) {
 
 	storeID := resp.GetId()
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.model),
 			})
-			require.Error(t, err)
 
+			if test.code == 0 {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				e, ok := status.FromError(err)
+				require.True(t, ok)
+				require.Equal(t, test.code, int(e.Code()), err)
+			}
 		})
 	}
 }
