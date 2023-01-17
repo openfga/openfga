@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	serverErrors "github.com/openfga/openfga/server/errors"
 	"github.com/openfga/openfga/server/test"
@@ -287,7 +286,8 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 					Relations: map[string]*openfgapb.RelationMetadata{
 						"viewer": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								{Type: "user"},
+								typesystem.DirectRelationReference("user", ""),
+								typesystem.WildcardRelationReference("user"),
 							},
 						},
 					},
@@ -299,8 +299,8 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 		ObjectType: "document",
 		Relation:   "viewer",
 		UserFilter: []*openfgapb.ObjectRelation{
+			{Object: "user:*"},
 			{Object: "user:bob"},
-			{Object: tuple.Wildcard},
 		}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := Server{
