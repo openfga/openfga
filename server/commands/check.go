@@ -235,7 +235,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 		return serverErrors.HandleError("", err)
 	}
 	defer iter.Stop()
-	
+
 	for {
 		usersetTuple, err := iter.Next(ctx)
 		if err != nil {
