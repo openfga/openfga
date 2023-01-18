@@ -234,6 +234,7 @@ func (q *CheckQuery) resolveDirectUserSet(
 	if err != nil {
 		return serverErrors.HandleError("", err)
 	}
+	defer iter.Stop()
 
 	for {
 		usersetTuple, err := iter.Next(ctx)
@@ -302,9 +303,6 @@ func (q *CheckQuery) resolveDirectUserSet(
 			}
 		}(c)
 	}
-
-	// If any `break` was triggered, immediately release any possible resources held by the iterator.
-	iter.Stop()
 
 	go func(c chan *chanResolveResult) {
 		wg.Wait()
