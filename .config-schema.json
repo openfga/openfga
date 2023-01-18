@@ -37,7 +37,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["list-objects-optimized"]
+                "enum": ["list-objects-optimized", "otel-metrics"]
             },
             "default": []
         },
@@ -148,24 +148,24 @@
                 }
             }
         },
-        "metrics": {
+        "otel": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "Toggle OTel Collector export of metrics",
-                    "type": "boolean",
-                    "default": false
-                },
-                "endpoint": {
-                    "description": "Remote OTEL collector endpoint",
-                    "type": "string",
-                    "default": "0.0.0.0:4317"
-                },
-                "protocol": {
-                    "description": "Protocol used to send metrics to the collector",
-                    "type": "string",
-                    "enum": ["grpc", "http"],
-                    "default": "grpc"
+                "metrics": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint": {
+                            "description": "Remote OTEL collector endpoint",
+                            "type": "string",
+                            "default": "0.0.0.0:4317"
+                        },
+                        "protocol": {
+                            "description": "Protocol used to send metrics to the collector",
+                            "type": "string",
+                            "enum": ["grpc", "http"],
+                            "default": "grpc"
+                        }
+                    }
                 }
             }
         },
