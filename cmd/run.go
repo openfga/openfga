@@ -403,7 +403,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		protocol := config.OpenTelemetry.Protocol
 		endpoint := config.OpenTelemetry.Endpoint
 
-		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics export to '%s' through protocol '%s'", endpoint, protocol))
+		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
 
 		meter, err = telemetry.NewOTLPMeter(ctx, logger, protocol, endpoint)
 		if err != nil {
