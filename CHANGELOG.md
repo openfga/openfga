@@ -14,7 +14,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 
 ### Added
-* OpenTelemetry metrics and tracing `otlp` exporter (#360) - thanks @AlexandreBrg!
+* OpenTelemetry metrics integration with an `otlp` exporter (#360) - thanks @AlexandreBrg!
+
+  To export OpenTelemetry metrics from an OpenFGA instance you can now provide the `otel-metrics` experimental flag along with the `--otel-telemetry-endpoint` and `--otel-telemetry-protocol` flags. For example,
+
+  ```
+  ./openfga run --experimentals=otel-metrics --otel-telemetry-endpoint=127.0.0.1:4317 --otel-telemetry-protocol=http
+  ```
+
+  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry).
+
 * Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) (#444)
 
 ### Fixed
