@@ -47,6 +47,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -164,11 +165,14 @@ type ProfilerConfig struct {
 	Addr    string
 }
 
-// MetricsConfig defines metrics configuration and exposure settings.
-type MetricsConfig struct {
-	Enabled  bool
+type OpenTelemetryMetricsConfig struct {
 	Endpoint string
 	Protocol string
+}
+
+// OpenTelemetryConfig defines configurations for OpenTelemetry telemetry settings.
+type OpenTelemetryConfig struct {
+	OpenTelemetryMetricsConfig `mapstructure:"metrics"`
 }
 
 type Config struct {
@@ -199,14 +203,14 @@ type Config struct {
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
-	Datastore  DatastoreConfig
-	GRPC       GRPCConfig
-	HTTP       HTTPConfig
-	Authn      AuthnConfig
-	Log        LogConfig
-	Playground PlaygroundConfig
-	Profiler   ProfilerConfig
-	Metrics    MetricsConfig
+	Datastore     DatastoreConfig
+	GRPC          GRPCConfig
+	HTTP          HTTPConfig
+	Authn         AuthnConfig
+	Log           LogConfig
+	Playground    PlaygroundConfig
+	Profiler      ProfilerConfig
+	OpenTelemetry OpenTelemetryConfig `mapstructure:"otel"`
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -252,10 +256,11 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			Addr:    ":3001",
 		},
-		Metrics: MetricsConfig{
-			Enabled:  false,
-			Protocol: "grpc",
-			Endpoint: "0.0.0.0:4317",
+		OpenTelemetry: OpenTelemetryConfig{
+			OpenTelemetryMetricsConfig: OpenTelemetryMetricsConfig{
+				Protocol: "grpc",
+				Endpoint: "0.0.0.0:4317",
+			},
 		},
 	}
 }
@@ -383,11 +388,24 @@ func RunServer(ctx context.Context, config *Config) error {
 	tracer := telemetry.NewNoopTracer()
 	tokenEncoder := encoder.NewBase64Encoder()
 
+	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
+
 	var err error
 	meter := metric.NewNoopMeter()
-	if config.Metrics.Enabled {
-		logger.Info(fmt.Sprintf("🕵 OTLP metrics send through protocol '%s'", config.Metrics.Protocol))
-		meter, err = telemetry.NewOTLPMeter(ctx, logger, config.Metrics.Protocol, config.Metrics.Endpoint)
+
+	if slices.Contains(config.Experimentals, "otel-metrics") {
+
+		protocol := config.OpenTelemetry.Protocol
+		endpoint := config.OpenTelemetry.Endpoint
+
+		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
+
+		meter, err = telemetry.NewOTLPMeter(ctx, logger, protocol, endpoint)
 		if err != nil {
 			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
 		}
@@ -493,13 +511,6 @@ func RunServer(ctx context.Context, config *Config) error {
 				}
 			}
 		}()
-	}
-
-	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
 	svr := server.New(&server.Dependencies{
@@ -844,12 +855,9 @@ func bindRunFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
 
-	cmd.Flags().Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable OTel metrics export")
-	util.MustBindPFlag("metrics.enabled", cmd.Flags().Lookup("metrics-enabled"))
+	cmd.Flags().String("otel-telemetry-endpoint", defaultConfig.OpenTelemetry.Endpoint, "OpenTelemetry collector endpoint to use")
+	util.MustBindPFlag("otel.metrics.endpoint", cmd.Flags().Lookup("otel-telemetry-endpoint"))
 
-	cmd.Flags().String("metrics-endpoint", defaultConfig.Metrics.Endpoint, "OTel Collector endpoint to use")
-	util.MustBindPFlag("metrics.endpoint", cmd.Flags().Lookup("metrics-endpoint"))
-
-	cmd.Flags().String("metrics-protocol", defaultConfig.Metrics.Protocol, "the protocol to use to send OTLP metrics")
-	util.MustBindPFlag("metrics.protocol", cmd.Flags().Lookup("metrics-protocol"))
+	cmd.Flags().String("otel-telemetry-protocol", defaultConfig.OpenTelemetry.Protocol, "OpenTelemetry protocol to use to send OTLP metrics")
+	util.MustBindPFlag("otel.metrics.protocol", cmd.Flags().Lookup("otel-telemetry-protocol"))
 }
