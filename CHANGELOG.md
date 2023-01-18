@@ -8,6 +8,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.2] - 2023-01-18
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.1...v0.3.2)
+
+
+### Added
+* OpenTelemetry metrics and tracing `otlp` exporter (#360) - thanks @AlexandreBrg!
+* Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) (#444)
+
+### Fixed
+* Tuple validations for models with schema version 1.1 (#446, #457)
+
 ## [0.3.1] - 2022-12-19
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.0...v0.3.1)
@@ -238,7 +250,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/openfga/openfga/releases/tag/v0.3.2
 [0.3.1]: https://github.com/openfga/openfga/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
 [0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
