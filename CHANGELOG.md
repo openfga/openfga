@@ -28,6 +28,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 * Tuple validations for models with schema version 1.1 (#446, #457)
+* Evaluate rewrites on nested usersets in the optimized ListObjects implementation (#432)
 
 ## [0.3.1] - 2022-12-19
 
