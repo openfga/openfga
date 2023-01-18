@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"

@@ -3,9 +3,9 @@ package mysql_test
 import (
 	"testing"
 
-	"github.com/openfga/openfga/internal/storage/common"
-	"github.com/openfga/openfga/internal/storage/mysql"
-	"github.com/openfga/openfga/internal/storage/test"
+	"github.com/openfga/openfga/pkg/storage/common"
+	"github.com/openfga/openfga/pkg/storage/mysql"
+	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
 )

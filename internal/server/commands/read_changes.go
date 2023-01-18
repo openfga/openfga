@@ -6,9 +6,9 @@ import (
 	"time"
 
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
-	"github.com/openfga/openfga/internal/storage"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )

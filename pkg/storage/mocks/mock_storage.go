@@ -10,7 +10,7 @@ import (
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
-	storage "github.com/openfga/openfga/internal/storage"
+	storage "github.com/openfga/openfga/pkg/storage"
 	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 

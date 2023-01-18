@@ -10,7 +10,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
-	"github.com/openfga/openfga/internal/storage"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"

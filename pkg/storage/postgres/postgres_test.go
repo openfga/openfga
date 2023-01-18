@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/openfga/openfga/internal/storage/common"
-	"github.com/openfga/openfga/internal/storage/test"
+	"github.com/openfga/openfga/pkg/storage/common"
+	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"

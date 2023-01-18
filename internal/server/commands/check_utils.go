@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	"github.com/openfga/openfga/internal/contextualtuples"
-	"github.com/openfga/openfga/internal/storage"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

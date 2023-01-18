@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/openfga/openfga/internal/storage"
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {

@@ -3,8 +3,8 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/openfga/openfga/internal/storage/memory"
-	"github.com/openfga/openfga/internal/storage/test"
+	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/telemetry"
 )
 

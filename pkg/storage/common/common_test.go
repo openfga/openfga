@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/openfga/openfga/internal/storage"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )

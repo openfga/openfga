@@ -6,8 +6,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/server/commands"
-	"github.com/openfga/openfga/internal/storage"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

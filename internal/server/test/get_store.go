@@ -8,8 +8,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	commands2 "github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
-	"github.com/openfga/openfga/internal/storage"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )

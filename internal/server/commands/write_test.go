@@ -7,8 +7,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
-	mockstorage "github.com/openfga/openfga/internal/storage/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"

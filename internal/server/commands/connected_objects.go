@@ -9,7 +9,7 @@ import (
 
 	"github.com/openfga/openfga/internal/graph"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
-	"github.com/openfga/openfga/internal/storage"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

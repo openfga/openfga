@@ -1,23 +1,23 @@
-package postgres
+package mysql
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/storage"
-	"github.com/openfga/openfga/internal/storage/common"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/common"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/pkg/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -25,7 +25,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type Postgres struct {
+type MySQL struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	tracer                 trace.Tracer
@@ -34,10 +34,10 @@ type Postgres struct {
 	maxTypesPerModelField  int
 }
 
-func New(uri string, cfg *common.Config) (*Postgres, error) {
-	db, err := sql.Open("pgx", uri)
+func New(uri string, cfg *common.Config) (*MySQL, error) {
+	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -62,18 +62,18 @@ func New(uri string, cfg *common.Config) (*Postgres, error) {
 	err = backoff.Retry(func() error {
 		err = db.PingContext(context.Background())
 		if err != nil {
-			cfg.Logger.Info("waiting for postgres", zap.Int("attempt", attempt))
+			cfg.Logger.Info("waiting for mysql", zap.Int("attempt", attempt))
 			attempt++
 			return err
 		}
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
 	}
 
-	return &Postgres{
-		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
+	return &MySQL{
+		stbl:                   sq.StatementBuilder.RunWith(db),
 		db:                     db,
 		tracer:                 cfg.Tracer,
 		logger:                 cfg.Logger,
@@ -82,17 +82,16 @@ func New(uri string, cfg *common.Config) (*Postgres, error) {
 	}, nil
 }
 
-// Close closes any open connections and cleans up residual resources
-// used by this storage adapter instance.
-func (p *Postgres) Close() {
-	p.db.Close()
+// Close closes the datastore and cleans up any residual resources.
+func (m *MySQL) Close() {
+	m.db.Close()
 }
 
-func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
+func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ListObjectsByType")
 	defer span.End()
 
-	rows, err := p.stbl.
+	rows, err := m.stbl.
 		Select("object_type", "object_id").
 		Distinct().
 		From("tuple").
@@ -108,18 +107,18 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 	return common.NewSQLObjectIterator(rows), nil
 }
 
-func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.Read")
+func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return p.read(ctx, store, tupleKey, storage.PaginationOptions{})
+	return m.read(ctx, store, tupleKey, storage.PaginationOptions{})
 }
 
-func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadPage")
+func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := p.read(ctx, store, tupleKey, opts)
+	iter, err := m.read(ctx, store, tupleKey, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -128,11 +127,11 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	return iter.ToArray(ctx, opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.read")
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
-	sb := p.stbl.
+	sb := m.stbl.
 		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
@@ -170,16 +169,16 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	return common.NewSQLTupleIterator(rows), nil
 }
 
-func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.Write")
+func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
+	ctx, span := m.tracer.Start(ctx, "mysql.Write")
 	defer span.End()
 
-	if len(deletes)+len(writes) > p.MaxTuplesPerWrite() {
+	if len(deletes)+len(writes) > m.MaxTuplesPerWrite() {
 		return storage.ErrExceededWriteBatchLimit
 	}
 
 	now := time.Now().UTC()
-	txn, err := p.db.BeginTx(ctx, nil)
+	txn, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return common.HandleSQLError(err)
 	}
@@ -187,11 +186,11 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		_ = txn.Rollback()
 	}()
 
-	changelogBuilder := p.stbl.
+	changelogBuilder := m.stbl.
 		Insert("changelog").
 		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
 
-	deleteBuilder := p.stbl.Delete("tuple")
+	deleteBuilder := m.stbl.Delete("tuple")
 
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -209,7 +208,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
-			return common.HandleSQLError(err, tk)
+			return common.HandleSQLError(err)
 		}
 
 		rowsAffected, err := res.RowsAffected()
@@ -221,10 +220,10 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()")
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, sq.Expr("NOW()"))
 	}
 
-	insertBuilder := p.stbl.
+	insertBuilder := m.stbl.
 		Insert("tuple").
 		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
 
@@ -233,14 +232,14 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").
+			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, sq.Expr("NOW()")).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return common.HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, "NOW()")
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, sq.Expr("NOW()"))
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -257,15 +256,15 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	return nil
 }
 
-func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadUserTuple")
+func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
 	var record common.TupleRecord
-	err := p.stbl.
+	err := m.stbl.
 		Select("object_type", "object_id", "relation", "_user").
 		From("tuple").
 		Where(sq.Eq{
@@ -285,11 +284,11 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	return record.AsTuple(), nil
 }
 
-func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
+func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
@@ -314,8 +313,8 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	return common.NewSQLTupleIterator(rows), nil
 }
 
-func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg []string
@@ -327,7 +326,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := p.stbl.
+	rows, err := m.stbl.
 		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{
@@ -343,15 +342,15 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	return common.NewSQLTupleIterator(rows), nil
 }
 
-func (p *Postgres) MaxTuplesPerWrite() int {
-	return p.maxTuplesPerWriteField
+func (m *MySQL) MaxTuplesPerWrite() int {
+	return m.maxTuplesPerWriteField
 }
 
-func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
+func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	rows, err := p.stbl.
+	rows, err := m.stbl.
 		Select("schema_version", "type", "type_definition").
 		From("authorization_model").
 		Where(sq.Eq{
@@ -392,14 +391,14 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
 	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
 		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = p.stbl.
+		_, err = m.stbl.
 			Update("authorization_model").
 			Set("schema_version", schemaVersion).
 			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
 			ExecContext(ctx)
 		if err != nil {
 			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
+			m.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
 		}
 	}
 
@@ -410,11 +409,11 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}, nil
 }
 
-func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
+func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadAuthorizationModels")
 	defer span.End()
 
-	sb := p.stbl.Select("authorization_model_id").
+	sb := m.stbl.Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -468,7 +467,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	models := make([]*openfgapb.AuthorizationModel, 0, numModelIDs)
 	// We use numModelIDs here to avoid retrieving possibly one extra model.
 	for i := 0; i < numModelIDs; i++ {
-		model, err := p.ReadAuthorizationModel(ctx, store, modelIDs[i])
+		model, err := m.ReadAuthorizationModel(ctx, store, modelIDs[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -478,12 +477,12 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	return models, token, nil
 }
 
-func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.FindLatestAuthorizationModelID")
 	defer span.End()
 
 	var modelID string
-	err := p.stbl.
+	err := m.stbl.
 		Select("authorization_model_id").
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -498,15 +497,15 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	return modelID, nil
 }
 
-func (p *Postgres) ReadTypeDefinition(
+func (m *MySQL) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
 ) (*openfgapb.TypeDefinition, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadTypeDefinition")
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadTypeDefinition")
 	defer span.End()
 
 	var marshalledTypeDef []byte
-	err := p.stbl.
+	err := m.stbl.
 		Select("type_definition").
 		From("authorization_model").
 		Where(sq.Eq{
@@ -528,26 +527,26 @@ func (p *Postgres) ReadTypeDefinition(
 	return &typeDef, nil
 }
 
-func (p *Postgres) MaxTypesPerAuthorizationModel() int {
-	return p.maxTypesPerModelField
+func (m *MySQL) MaxTypesPerAuthorizationModel() int {
+	return m.maxTypesPerModelField
 }
 
-func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
+func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
+	ctx, span := m.tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
-	if len(typeDefinitions) > p.MaxTypesPerAuthorizationModel() {
-		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
+	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
+		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
 	}
 
 	if len(typeDefinitions) < 1 {
 		return nil
 	}
 
-	sb := p.stbl.
+	sb := m.stbl.
 		Insert("authorization_model").
 		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
 
@@ -569,19 +568,42 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 }
 
 // CreateStore is slightly different between Postgres and MySQL
-func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
+func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.CreateStore")
 	defer span.End()
 
-	var id, name string
-	var createdAt time.Time
-	err := p.stbl.
+	txn, err := m.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, common.HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
+	_, err = m.stbl.
 		Insert("store").
 		Columns("id", "name", "created_at", "updated_at").
-		Values(store.Id, store.Name, "NOW()", "NOW()").
-		Suffix("returning id, name, created_at").
+		Values(store.Id, store.Name, sq.Expr("NOW()"), sq.Expr("NOW()")).
+		RunWith(txn).
+		ExecContext(ctx)
+	if err != nil {
+		return nil, common.HandleSQLError(err)
+	}
+
+	var createdAt time.Time
+	var id, name string
+	err = m.stbl.
+		Select("id", "name", "created_at").
+		From("store").
+		Where(sq.Eq{"id": store.Id}).
+		RunWith(txn).
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
+	if err != nil {
+		return nil, common.HandleSQLError(err)
+	}
+
+	err = txn.Commit()
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -594,11 +616,11 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 	}, nil
 }
 
-func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.GetStore")
+func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.GetStore")
 	defer span.End()
 
-	row := p.stbl.
+	row := m.stbl.
 		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{
@@ -625,11 +647,11 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, e
 	}, nil
 }
 
-func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
+func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
 
-	sb := p.stbl.Select("id", "name", "created_at", "updated_at").
+	sb := m.stbl.Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
@@ -684,13 +706,13 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	return stores, nil, nil
 }
 
-func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.DeleteStore")
+func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
+	ctx, span := m.tracer.Start(ctx, "mysql.DeleteStore")
 	defer span.End()
 
-	_, err := p.stbl.
+	_, err := m.stbl.
 		Update("store").
-		Set("deleted_at", "NOW()").
+		Set("deleted_at", sq.Expr("NOW()")).
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
@@ -701,8 +723,8 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 }
 
 // WriteAssertions is slightly different between Postgres and MySQL
-func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.WriteAssertions")
+func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
+	ctx, span := m.tracer.Start(ctx, "mysql.WriteAssertions")
 	defer span.End()
 
 	marshalledAssertions, err := proto.Marshal(&openfgapb.Assertions{Assertions: assertions})
@@ -710,11 +732,11 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 		return err
 	}
 
-	_, err = p.stbl.
+	_, err = m.stbl.
 		Insert("assertion").
 		Columns("store", "authorization_model_id", "assertions").
 		Values(store, modelID, marshalledAssertions).
-		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
+		Suffix("ON DUPLICATE KEY UPDATE assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
 		return common.HandleSQLError(err)
@@ -723,12 +745,12 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 	return nil
 }
 
-func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAssertions")
+func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadAssertions")
 	defer span.End()
 
 	var marshalledAssertions []byte
-	err := p.stbl.
+	err := m.stbl.
 		Select("assertions").
 		From("assertion").
 		Where(sq.Eq{
@@ -753,19 +775,19 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 	return assertions.Assertions, nil
 }
 
-func (p *Postgres) ReadChanges(
+func (m *MySQL) ReadChanges(
 	ctx context.Context,
 	store, objectTypeFilter string,
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
 ) ([]*openfgapb.TupleChange, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
+	ctx, span := m.tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 
-	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := m.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
 		From("changelog").
 		Where(sq.Eq{"store": store}).
-		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
+		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
 		OrderBy("inserted_at asc")
 
 	if objectTypeFilter != "" {
@@ -827,13 +849,13 @@ func (p *Postgres) ReadChanges(
 	return changes, contToken, nil
 }
 
-// IsReady reports whether this Postgres datastore instance is ready
+// IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
-func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
+func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	if err := p.db.PingContext(ctx); err != nil {
+	if err := m.db.PingContext(ctx); err != nil {
 		return false, err
 	}
 

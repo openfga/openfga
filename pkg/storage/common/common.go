@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
-	"github.com/openfga/openfga/internal/storage"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
