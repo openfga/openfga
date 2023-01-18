@@ -22,7 +22,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   ./openfga run --experimentals=otel-metrics --otel-telemetry-endpoint=127.0.0.1:4317 --otel-telemetry-protocol=http
   ```
 
-  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry).
+  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry-metrics-and-tracing).
 
 * Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) (#444)
 
