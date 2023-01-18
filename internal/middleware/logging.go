@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/server/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
