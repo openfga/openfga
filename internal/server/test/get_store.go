@@ -6,7 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	commands2 "github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -39,7 +39,7 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 
-			query := commands2.NewGetStoreQuery(datastore, logger)
+			query := commands.NewGetStoreQuery(datastore, logger)
 			actualResponse, actualError := query.Execute(ctx, test.request)
 
 			if test.err != nil {
@@ -73,13 +73,13 @@ func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	store := testutils.CreateRandomString(10)
-	createStoreQuery := commands2.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 
 	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
 	if err != nil {
 		t.Fatalf("Error creating store: %v", err)
 	}
-	query := commands2.NewGetStoreQuery(datastore, logger)
+	query := commands.NewGetStoreQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
 
 	if actualError != nil {

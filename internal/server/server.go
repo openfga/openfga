@@ -10,7 +10,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
-	commands2 "github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -104,7 +104,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	typesys := typesystem.New(model)
 
-	q := &commands2.ListObjectsQuery{
+	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
 		Tracer:                s.tracer,
@@ -115,7 +115,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	if slices.Contains(s.config.Experimentals, ListObjectsOptimized) {
-		connectObjCmd := &commands2.ConnectedObjectsCommand{
+		connectObjCmd := &commands.ConnectedObjectsCommand{
 			Datastore:        s.datastore,
 			Typesystem:       typesys,
 			ResolveNodeLimit: s.config.ResolveNodeLimit,
@@ -159,14 +159,14 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	typesys := typesystem.New(model)
 
-	connectObjCmd := &commands2.ConnectedObjectsCommand{
+	connectObjCmd := &commands.ConnectedObjectsCommand{
 		Datastore:        s.datastore,
 		Typesystem:       typesys,
 		ResolveNodeLimit: s.config.ResolveNodeLimit,
 		Limit:            s.config.ListObjectsMaxResults,
 	}
 
-	q := &commands2.ListObjectsQuery{
+	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
 		Tracer:                s.tracer,
@@ -192,7 +192,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	))
 	defer span.End()
 
-	q := commands2.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore, s.tracer, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:           store,
 		TupleKey:          tk,
@@ -232,7 +232,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands2.NewWriteCommand(s.datastore, s.tracer, s.logger)
+	cmd := commands.NewWriteCommand(s.datastore, s.tracer, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -258,7 +258,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := commands2.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
+	q := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
@@ -292,7 +292,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	q := commands2.NewExpandQuery(s.datastore, s.tracer, s.logger)
+	q := commands.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -307,7 +307,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
-	q := commands2.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -317,7 +317,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	))
 	defer span.End()
 
-	c := commands2.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -334,7 +334,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	))
 	defer span.End()
 
-	c := commands2.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
 
@@ -351,7 +351,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
-	c := commands2.NewWriteAssertionsCommand(s.datastore, s.logger)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              store,
 		AuthorizationModelId: modelID,
@@ -376,7 +376,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 		return nil, err
 	}
 	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
-	q := commands2.NewReadAssertionsQuery(s.datastore, s.logger)
+	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 }
 
@@ -387,7 +387,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := commands2.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.tracer, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 
@@ -395,7 +395,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 	ctx, span := s.tracer.Start(ctx, "createStore")
 	defer span.End()
 
-	c := commands2.NewCreateStoreCommand(s.datastore, s.logger)
+	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -410,7 +410,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 	ctx, span := s.tracer.Start(ctx, "deleteStore")
 	defer span.End()
 
-	cmd := commands2.NewDeleteStoreCommand(s.datastore, s.logger)
+	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -427,7 +427,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (
 	))
 	defer span.End()
 
-	q := commands2.NewGetStoreQuery(s.datastore, s.logger)
+	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
 
@@ -435,7 +435,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgapb.ListStoresReques
 	ctx, span := s.tracer.Start(ctx, "listStores")
 	defer span.End()
 
-	q := commands2.NewListStoresQuery(s.datastore, s.logger, s.encoder)
+	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
 }
 

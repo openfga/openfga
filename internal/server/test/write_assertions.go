@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	commands2 "github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -99,14 +99,14 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	modelID, err := commands2.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, githubModelReq)
+	modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, githubModelReq)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			cmd := commands2.NewWriteAssertionsCommand(datastore, logger)
+			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)

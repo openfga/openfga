@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	commands2 "github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -18,8 +18,8 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	// clean up all stores from other tests
-	getStoresQuery := commands2.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
-	deleteCmd := commands2.NewDeleteStoreCommand(datastore, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
+	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
 		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgapb.ListStoresRequest{
@@ -45,7 +45,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	// create two stores
-	createStoreQuery := commands2.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 	firstStoreName := testutils.CreateRandomString(10)
 	_, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: firstStoreName})
 	if err != nil {

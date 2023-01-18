@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	commands2 "github.com/openfga/openfga/internal/server/commands"
+	"github.com/openfga/openfga/internal/server/commands"
 	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
@@ -171,7 +171,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		}
 
-		listObjectsQuery := &commands2.ListObjectsQuery{
+		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
 			Tracer:                tracer,
@@ -318,14 +318,14 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		}
 
-		connectedObjectsCmd := commands2.ConnectedObjectsCommand{
+		connectedObjectsCmd := commands.ConnectedObjectsCommand{
 			Datastore:        ds,
 			Typesystem:       typesystem.New(model),
 			ResolveNodeLimit: defaultResolveNodeLimit,
 			Limit:            defaultListObjectsMaxResults,
 		}
 
-		listObjectsQuery := &commands2.ListObjectsQuery{
+		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
 			Tracer:                tracer,
@@ -356,7 +356,7 @@ func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error 
 	return nil
 }
 
-func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands2.ListObjectsQuery) {
+func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
 
 	for _, test := range testCases {
 		t.Run(test.name+"/streaming", func(t *testing.T) {
@@ -458,13 +458,13 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
-	connectedObjCmd := commands2.ConnectedObjectsCommand{
+	connectedObjCmd := commands.ConnectedObjectsCommand{
 		Datastore:        ds,
 		Typesystem:       typesystem.New(model),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 	}
 
-	listObjectsQuery := commands2.ListObjectsQuery{
+	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
 		Tracer:           telemetry.NewNoopTracer(),
@@ -525,7 +525,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		require.NoError(b, err)
 	}
 
-	listObjectsQuery := commands2.ListObjectsQuery{
+	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
 		Tracer:           telemetry.NewNoopTracer(),
