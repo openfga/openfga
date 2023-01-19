@@ -1,8 +1,8 @@
 package contextualtuples
 
 import (
-	serverErrors "github.com/openfga/openfga/internal/server/errors"
 	"github.com/openfga/openfga/internal/validation"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

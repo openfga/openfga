@@ -26,7 +26,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/internal/authn/mocks"
-	serverErrors "github.com/openfga/openfga/internal/server/errors"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

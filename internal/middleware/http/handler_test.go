@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/openfga/openfga/internal/server/errors"
+	"github.com/openfga/openfga/pkg/server/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/metadata"
 )
