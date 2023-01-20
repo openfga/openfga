@@ -26,7 +26,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/internal/authn/mocks"
-	serverErrors "github.com/openfga/openfga/server/errors"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -851,15 +851,15 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ListObjectsMaxResults)
 
-	val = res.Get("properties.metrics.properties.enabled.default")
+	val = res.Get("properties.experimentals.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.Metrics.Enabled)
+	require.Equal(t, len(val.Array()), len(cfg.Experimentals))
 
-	val = res.Get("properties.metrics.properties.endpoint.default")
+	val = res.Get("properties.otel.properties.metrics.properties.endpoint.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.Metrics.Endpoint)
+	require.Equal(t, val.String(), cfg.OpenTelemetry.Endpoint)
 
-	val = res.Get("properties.metrics.properties.protocol.default")
+	val = res.Get("properties.otel.properties.metrics.properties.protocol.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.Metrics.Protocol)
+	require.Equal(t, val.String(), cfg.OpenTelemetry.Protocol)
 }

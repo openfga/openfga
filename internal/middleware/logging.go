@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/pkg/logger"
-	serverErrors "github.com/openfga/openfga/server/errors"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
