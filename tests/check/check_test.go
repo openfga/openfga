@@ -2,22 +2,17 @@ package check
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
@@ -62,8 +57,8 @@ func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
-	var tests checkTests
-	err = yaml.Unmarshal(data, &tests)
+	var tt checkTests
+	err = yaml.Unmarshal(data, &tt)
 	require.NoError(t, err)
 
 	container := storage.RunDatastoreTestContainer(t, engine)
@@ -81,31 +76,10 @@ func testCheck(t *testing.T, engine string) {
 		}
 	}()
 
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
+	conn := tests.Connect(cfg.GRPC.Addr)
 	defer conn.Close()
 
-	// Ensure the service is up before continuing.
-	client := healthv1pb.NewHealthClient(conn)
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
-	err = backoff.Retry(func() error {
-		resp, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
-			Service: pb.OpenFGAService_ServiceDesc.ServiceName,
-		})
-		if err != nil {
-			return err
-		}
-
-		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return fmt.Errorf("not serving")
-		}
-
-		return nil
-	}, policy)
-	require.NoError(t, err)
-
-	runTests(t, pb.NewOpenFGAServiceClient(conn), tests)
+	runTests(t, pb.NewOpenFGAServiceClient(conn), tt)
 
 	// Shutdown the server.
 	cancel()
