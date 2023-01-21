@@ -548,24 +548,21 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 	relations := map[string]*openfgapb.Relation{}
 
 	for _, td := range t.typeDefinitions {
-		for relation, rewrite := range td.GetRelations() {
-			relationMetadata := td.GetMetadata().GetRelations()
-			md, ok := relationMetadata[relation]
+		relationMetadata := td.GetMetadata().GetRelations()
 
-			var typeinfo *openfgapb.RelationTypeInfo
-			if ok {
-				typeinfo = &openfgapb.RelationTypeInfo{
+		for relation, rewrite := range td.GetRelations() {
+			var typeInfo *openfgapb.RelationTypeInfo
+			if md, ok := relationMetadata[relation]; ok {
+				typeInfo = &openfgapb.RelationTypeInfo{
 					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
 				}
 			}
 
-			r := &openfgapb.Relation{
+			relations[relation] = &openfgapb.Relation{
 				Name:     relation,
 				Rewrite:  rewrite,
-				TypeInfo: typeinfo,
+				TypeInfo: typeInfo,
 			}
-
-			relations[relation] = r
 		}
 	}
 
