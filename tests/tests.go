@@ -19,7 +19,7 @@ import (
 func StartServer(t *testing.T, cfg *cmd.Config) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI()
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
