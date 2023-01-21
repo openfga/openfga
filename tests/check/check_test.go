@@ -2,13 +2,11 @@ package check
 
 import (
 	"context"
-	"log"
 	"os"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
@@ -61,22 +59,14 @@ func testCheck(t *testing.T, engine string) {
 	err = yaml.Unmarshal(data, &tt)
 	require.NoError(t, err)
 
-	container := storage.RunDatastoreTestContainer(t, engine)
-
 	cfg := cmd.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
-	cfg.Datastore.URI = container.GetConnectionURI()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := tests.StartServer(t, cfg)
+	defer cancel()
 
-	go func() {
-		if err := cmd.RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	conn := tests.Connect(cfg.GRPC.Addr)
+	conn := tests.Connect(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
 	runTests(t, pb.NewOpenFGAServiceClient(conn), tt)

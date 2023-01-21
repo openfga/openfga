@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"log"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -259,15 +258,10 @@ func TestWriteAuthorizationModel(t *testing.T) {
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = "memory"
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := tests.StartServer(t, cfg)
+	defer cancel()
 
-	go func() {
-		if err := cmd.RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	conn := tests.Connect(cfg.GRPC.Addr)
+	conn := tests.Connect(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
 	runTests(t, pb.NewOpenFGAServiceClient(conn))
