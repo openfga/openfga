@@ -117,6 +117,8 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.EncoderConfig.TimeKey = "timestamp"
+	cfg.EncoderConfig.CallerKey = "" // removes it
 
 	if logFormat == "text" {
 		cfg.Encoding = "console"
