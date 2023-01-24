@@ -155,11 +155,3 @@ func Error(err error) zap.Field {
 func String(k, v string) zap.Field {
 	return zap.String(k, v)
 }
-
-func Int(k string, v int) zap.Field {
-	return zap.Int(k, v)
-}
-
-func Uint32(k string, v uint32) zap.Field {
-	return zap.Uint32(k, v)
-}

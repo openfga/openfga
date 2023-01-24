@@ -385,17 +385,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
-	tracer := telemetry.NewNoopTracer()
-	tokenEncoder := encoder.NewBase64Encoder()
 
-	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	tp, err := telemetry.NewTracerProvider(true)
+	if err != nil {
+		return err
 	}
 
-	var err error
+	tracer := tp.Tracer("openfga")
+
 	meter := metric.NewNoopMeter()
 
 	if slices.Contains(config.Experimentals, "otel-metrics") {
@@ -409,6 +406,13 @@ func RunServer(ctx context.Context, config *Config) error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
 		}
+	}
+
+	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
 	dsCfg := common.NewConfig(
@@ -462,6 +466,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_validator.UnaryServerInterceptor(),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewLoggingInterceptor(logger),
@@ -512,6 +517,8 @@ func RunServer(ctx context.Context, config *Config) error {
 			}
 		}()
 	}
+
+	tokenEncoder := encoder.NewBase64Encoder()
 
 	svr := server.New(&server.Dependencies{
 		Datastore:    cachedOpenFGADatastore,
