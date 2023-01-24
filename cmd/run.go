@@ -386,7 +386,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 
-	tp, err := telemetry.NewTracerProvider(true)
+	tp, err := telemetry.NewTracerProvider()
 	if err != nil {
 		return err
 	}
