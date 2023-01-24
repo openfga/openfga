@@ -162,7 +162,14 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 
-	rows, err := sb.QueryContext(ctx)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		break
+	}
+
+	rows, err := sb.QueryContext(context.Background())
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -265,7 +272,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
 	var record common.TupleRecord
-	err := p.stbl.
+	sb := p.stbl.
 		Select("object_type", "object_id", "relation", "_user").
 		From("tuple").
 		Where(sq.Eq{
@@ -275,8 +282,17 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 			"relation":    tupleKey.GetRelation(),
 			"_user":       tupleKey.GetUser(),
 			"user_type":   userType,
-		}).
-		QueryRowContext(ctx).
+		})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		break
+	}
+
+	err := sb.
+		QueryRowContext(context.Background()).
 		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
 	if err != nil {
 		return nil, common.HandleSQLError(err)
@@ -289,7 +305,8 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := p.stbl.
+		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
@@ -306,7 +323,14 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
 	}
 
-	rows, err := sb.QueryContext(ctx)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		break
+	}
+
+	rows, err := sb.QueryContext(context.Background())
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -327,7 +351,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		targetUsersArg = append(targetUsersArg, targetUser)
 	}
 
-	rows, err := p.stbl.
+	sb := p.stbl.
 		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{
@@ -335,7 +359,16 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 			"object_type": opts.ObjectType,
 			"relation":    opts.Relation,
 			"_user":       targetUsersArg,
-		}).QueryContext(ctx)
+		})
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+		break
+	}
+
+	rows, err := sb.QueryContext(context.Background())
 	if err != nil {
 		return nil, common.HandleSQLError(err)
 	}
@@ -414,7 +447,8 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	sb := p.stbl.Select("authorization_model_id").
+	sb := p.stbl.
+		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
