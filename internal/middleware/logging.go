@@ -17,11 +17,8 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		resp, err := handler(ctx, req)
-
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
-			zap.Duration("took", time.Since(start)),
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
@@ -37,6 +34,10 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		if err == nil {
 			fields = append(fields, zap.Any("raw_request", json.RawMessage(jsonReq)))
 		}
+
+		resp, err := handler(ctx, req)
+
+		fields = append(fields, zap.Duration("took", time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
