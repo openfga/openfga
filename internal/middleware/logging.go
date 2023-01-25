@@ -2,9 +2,10 @@ package middleware
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
@@ -24,11 +25,18 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
-		if spanCtx.HasSpanID() {
-			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
+		if spanCtx.HasTraceID() {
+			traceID := spanCtx.TraceID().String()
+			fields = append(fields, zap.String("trace_id", traceID))
+			fields = append(fields, zap.String("request_id", traceID))
+		} else {
+			fields = append(fields, zap.String("request_id", ulid.Make().String()))
 		}
 
-		fields = append(fields, zap.String("raw_request", fmt.Sprintf("{%s}", req)))
+		jsonReq, err := json.Marshal(req)
+		if err == nil {
+			fields = append(fields, zap.Any("raw_request", json.RawMessage(jsonReq)))
+		}
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
@@ -41,7 +49,10 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			return nil, err
 		}
 
-		fields = append(fields, zap.String("raw_response", fmt.Sprintf("{%s}", resp)))
+		jsonResp, err := json.Marshal(resp)
+		if err == nil {
+			fields = append(fields, zap.Any("raw_response", json.RawMessage(jsonResp)))
+		}
 
 		logger.Info("grpc_complete", fields...)
 

@@ -3,13 +3,14 @@ package telemetry
 import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
 func NewTracerProvider() (trace.TracerProvider, error) {
-	// At some point this will be updated with a non-noop tracer provider.
+	// TODO: this still needs to be wired up and options set properly
 
-	tp := trace.NewNoopTracerProvider()
+	tp := sdktrace.NewTracerProvider()
 
 	otel.SetTracerProvider(tp)
 
