@@ -5,27 +5,35 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
+		requestID := ulid.Make().String()
+
+		ctx = metadata.AppendToOutgoingContext(ctx, "X-Request-Id", requestID)
+
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
-			zap.String("request_id", ulid.Make().String()),
+			zap.String("request_id", requestID),
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
 		}
+
+		fields = append(fields, ctxzap.TagsToFields(ctx)...)
 
 		jsonReq, err := json.Marshal(req)
 		if err == nil {
@@ -62,12 +70,23 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 
-		err := handler(srv, stream)
+		requestID := ulid.Make().String()
 
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
-			zap.Duration("took", time.Since(start)),
+			zap.String("request_id", requestID),
 		}
+
+		spanCtx := trace.SpanContextFromContext(stream.Context())
+		if spanCtx.HasTraceID() {
+			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
+		}
+
+		fields = append(fields, ctxzap.TagsToFields(stream.Context())...)
+
+		err := handler(srv, stream)
+
+		fields = append(fields, zap.Duration("took", time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {

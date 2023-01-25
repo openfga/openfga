@@ -17,6 +17,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
@@ -465,15 +466,23 @@ func RunServer(ctx context.Context, config *Config) error {
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
+	ctxtagsOpts := []grpc_ctxtags.Option{
+		grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.TagBasedRequestFieldExtractor("store_id")),
+		grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.TagBasedRequestFieldExtractor("authorization_model_id")),
+	}
+
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_validator.UnaryServerInterceptor(),
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		grpc_ctxtags.UnaryServerInterceptor(ctxtagsOpts...),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewLoggingInterceptor(logger),
 	}
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
+		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		grpc_ctxtags.StreamServerInterceptor(ctxtagsOpts...),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingLoggingInterceptor(logger),
 	}
