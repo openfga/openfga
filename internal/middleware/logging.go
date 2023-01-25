@@ -19,15 +19,12 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
+			zap.String("request_id", ulid.Make().String()),
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
-			traceID := spanCtx.TraceID().String()
-			fields = append(fields, zap.String("trace_id", traceID))
-			fields = append(fields, zap.String("request_id", traceID))
-		} else {
-			fields = append(fields, zap.String("request_id", ulid.Make().String()))
+			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
 		}
 
 		jsonReq, err := json.Marshal(req)
