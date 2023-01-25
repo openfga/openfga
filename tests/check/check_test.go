@@ -55,8 +55,8 @@ func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
-	var tt checkTests
-	err = yaml.Unmarshal(data, &tt)
+	var testCases checkTests
+	err = yaml.Unmarshal(data, &testCases)
 	require.NoError(t, err)
 
 	cfg := cmd.MustDefaultConfigWithRandomPorts()
@@ -69,7 +69,7 @@ func testCheck(t *testing.T, engine string) {
 	conn := tests.Connect(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
-	runTests(t, pb.NewOpenFGAServiceClient(conn), tt)
+	runTests(t, pb.NewOpenFGAServiceClient(conn), testCases)
 
 	// Shutdown the server.
 	cancel()

@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-var tt = map[string]struct {
+var testCases = map[string]struct {
 	model string
 	code  int
 }{
@@ -182,10 +182,10 @@ var tt = map[string]struct {
 	},
 	"difference_includes_itself_in_subtract_fails": {
 		model: `
-		type user
-		type document
-		  relations
-			define viewer: [user] as self but not viewer
+        type user
+        type document
+          relations
+            define viewer: [user] as self but not viewer
 		`,
 		code: 2056,
 	},
@@ -251,6 +251,18 @@ var tt = map[string]struct {
 			define viewer as editor but not editor
 		`,
 	},
+	"at_long_as_one_computed_userset_type_is_valid": {
+		model: `
+		type user
+		type group
+		  relations
+			define parent: [group, team] as self
+			define viewer as reader from parent
+		type team
+		  relations
+			define reader: [user] as self
+		`,
+	},
 }
 
 func TestWriteAuthorizationModel(t *testing.T) {
@@ -277,7 +289,7 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient) {
 
 	storeID := resp.GetId()
 
-	for name, test := range tt {
+	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
 			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
