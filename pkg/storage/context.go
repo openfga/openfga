@@ -31,11 +31,12 @@ func NewContextTracerWrapper(inner OpenFGADatastore) *ContextTracerWrapper {
 // the same span data as the supplied context.
 func queryContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	spanCtx := trace.SpanContextFromContext(ctx)
-	//return trace.ContextWithSpanContext(context.Background(), spanCtx), func() {}
-	return context.WithTimeout(trace.ContextWithSpanContext(context.Background(), spanCtx), queryTimeout)
+	return trace.ContextWithSpanContext(context.Background(), spanCtx), func() {}
+	//return context.WithTimeout(trace.ContextWithSpanContext(context.Background(), spanCtx), queryTimeout)
 }
 
 func (c *ContextTracerWrapper) Close() {
+	c.inner.Close()
 }
 
 func (c *ContextTracerWrapper) ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error) {

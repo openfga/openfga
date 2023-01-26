@@ -741,8 +741,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	datastore.Close()
 
-	datastore.Close()
-
 	logger.Info("server exited. goodbye 👋")
 
 	return nil
