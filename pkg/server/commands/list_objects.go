@@ -284,8 +284,8 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(maximumConcurrentChecks)
 
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
@@ -301,13 +301,13 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(subgctx, object, req, objectsFound, resultsChan)
+			return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
 		}
 
-		subg.Go(checkFunction)
+		g.Go(checkFunction)
 	}
 
-	return subg.Wait()
+	return g.Wait()
 }
 
 func (q *ListObjectsQuery) internalCheck(
