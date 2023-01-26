@@ -289,7 +289,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
-		object, err := iter.Next(ctx)
+		object, err := iter.Next()
 		if err != nil {
 			if !errors.Is(err, storage.ErrIteratorDone) {
 				return err

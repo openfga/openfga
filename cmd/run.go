@@ -438,7 +438,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextTracerWrapper(datastore, tracer), config.Datastore.MaxCacheSize)
+	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextTracerWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 

@@ -1,7 +1,6 @@
 package common
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -152,41 +151,30 @@ func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	}
 }
 
-func (t *SQLTupleIterator) next(ctx context.Context) (*TupleRecord, error) {
-	go func() {
-		if !t.rows.Next() {
-			if err := t.rows.Err(); err != nil {
-				t.errCh <- err
-				return
-			}
-			t.errCh <- storage.ErrIteratorDone
-			return
+func (t *SQLTupleIterator) next() (*TupleRecord, error) {
+	if !t.rows.Next() {
+		if err := t.rows.Err(); err != nil {
+			return nil, err
 		}
-		var record TupleRecord
-		if err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.Ulid, &record.InsertedAt); err != nil {
-			t.errCh <- err
-			return
-		}
-
-		t.resultCh <- &record
-	}()
-
-	select {
-	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
-	case err := <-t.errCh:
-		return nil, HandleSQLError(err)
-	case result := <-t.resultCh:
-		return result, nil
 	}
+
+	var record TupleRecord
+	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.Ulid, &record.InsertedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	return &record, nil
+
 }
 
 // ToArray converts the tupleIterator to an []*openfgapb.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	var res []*openfgapb.Tuple
 	for i := 0; i < opts.PageSize; i++ {
-		tupleRecord, err := t.next(ctx)
+		tupleRecord, err := t.next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				return res, nil, nil
@@ -198,7 +186,7 @@ func (t *SQLTupleIterator) ToArray(ctx context.Context, opts storage.PaginationO
 
 	// Check if we are at the end of the iterator. If we are then we do not need to return a continuation token.
 	// This is why we have LIMIT+1 in the query.
-	tupleRecord, err := t.next(ctx)
+	tupleRecord, err := t.next()
 	if err != nil {
 		if errors.Is(err, storage.ErrIteratorDone) {
 			return res, nil, nil
@@ -214,8 +202,8 @@ func (t *SQLTupleIterator) ToArray(ctx context.Context, opts storage.PaginationO
 	return res, contToken, nil
 }
 
-func (t *SQLTupleIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
-	record, err := t.next(ctx)
+func (t *SQLTupleIterator) Next() (*openfgapb.Tuple, error) {
+	record, err := t.next()
 	if err != nil {
 		return nil, err
 	}
@@ -243,41 +231,20 @@ func NewSQLObjectIterator(rows *sql.Rows) *SQLObjectIterator {
 
 var _ storage.ObjectIterator = (*SQLObjectIterator)(nil)
 
-func (o *SQLObjectIterator) Next(ctx context.Context) (*openfgapb.Object, error) {
-	go func() {
-		if !o.rows.Next() {
-			if err := o.rows.Err(); err != nil {
-				o.errCh <- err
-				return
-			}
-			o.errCh <- storage.ErrIteratorDone
-			return
-		}
-
-		var objectID, objectType string
-		if err := o.rows.Scan(&objectType, &objectID); err != nil {
-			o.errCh <- err
-			return
-		}
-
+func (o *SQLObjectIterator) Next() (*openfgapb.Object, error) {
+	if !o.rows.Next() {
 		if err := o.rows.Err(); err != nil {
-			o.errCh <- err
-			return
+			return nil, err
 		}
-
-		o.resultCh <- &openfgapb.Object{
-			Type: objectType,
-			Id:   objectID,
-		}
-	}()
-	select {
-	case <-ctx.Done():
 		return nil, storage.ErrIteratorDone
-	case err := <-o.errCh:
-		return nil, HandleSQLError(err)
-	case result := <-o.resultCh:
-		return result, nil
 	}
+
+	var object openfgapb.Object
+	if err := o.rows.Scan(&object.Type, &object.Id); err != nil {
+		return nil, err
+	}
+
+	return &object, nil
 }
 
 func (o *SQLObjectIterator) Stop() {

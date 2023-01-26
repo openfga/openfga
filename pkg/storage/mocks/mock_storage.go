@@ -38,18 +38,18 @@ func (m *MockIterator[T]) EXPECT() *MockIteratorMockRecorder[T] {
 }
 
 // Next mocks base method.
-func (m *MockIterator[T]) Next(ctx context.Context) (T, error) {
+func (m *MockIterator[T]) Next() (T, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Next", ctx)
+	ret := m.ctrl.Call(m, "Next")
 	ret0, _ := ret[0].(T)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Next indicates an expected call of Next.
-func (mr *MockIteratorMockRecorder[T]) Next(ctx interface{}) *gomock.Call {
+func (mr *MockIteratorMockRecorder[T]) Next() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockIterator[T])(nil).Next), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockIterator[T])(nil).Next))
 }
 
 // Stop mocks base method.
