@@ -2,14 +2,9 @@ package storage
 
 import (
 	"context"
-	"time"
 
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
-)
-
-var (
-	queryTimeout = 500 * time.Millisecond
 )
 
 // ContextTracerWrapper is a wrapper around a datastore that passes a new
