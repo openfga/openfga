@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
@@ -19,9 +20,16 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		requestID := ulid.Make().String()
+		id, err := uuid.NewRandom()
+		if err != nil {
+			logger.Error("failed to generate uuid", zap.Error(err))
+		}
+		requestID := id.String()
 
-		ctx = metadata.AppendToOutgoingContext(ctx, "X-Request-Id", requestID)
+		err = grpc.SetHeader(ctx, metadata.Pairs("X-Request-Id", requestID))
+		if err != nil {
+			logger.Error("failed to set header", zap.Error(err))
+		}
 
 		fields := []zap.Field{
 			zap.String("method", info.FullMethod),
