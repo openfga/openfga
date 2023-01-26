@@ -30,7 +30,6 @@ func NewContextWrapper(inner OpenFGADatastore) *ContextTracerWrapper {
 func queryContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	span := trace.SpanFromContext(ctx)
 	return trace.ContextWithSpan(context.Background(), span), func() {}
-	//return context.WithTimeout(trace.ContextWithSpan(context.Background(), span), queryTimeout)
 }
 
 func (c *ContextTracerWrapper) Close() {
