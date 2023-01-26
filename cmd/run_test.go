@@ -830,17 +830,12 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ResolveNodeLimit)
 
-	val = res.Get("properties.grpc.properties.tls.$ref")
-	require.True(t, val.Exists())
-	require.Equal(t, "#/definitions/tls", val.String())
-
-	val = res.Get("properties.http.properties.tls.$ref")
-	require.True(t, val.Exists())
-	require.Equal(t, "#/definitions/tls", val.String())
-
-	val = res.Get("definitions.tls.properties.enabled.default")
+	val = res.Get("properties.grpc.properties.tls.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.GRPC.TLS.Enabled)
+
+	val = res.Get("properties.http.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.HTTP.TLS.Enabled)
 
 	val = res.Get("properties.listObjectsDeadline.default")
