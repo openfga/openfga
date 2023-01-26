@@ -111,8 +111,8 @@ type HTTPConfig struct {
 	// to the grpc endpoint. It cannot be smaller than Config.ListObjectsDeadline.
 	UpstreamTimeout time.Duration
 
-	CORSAllowedOrigins []string `default:"*" split_words:"true"`
-	CORSAllowedHeaders []string `default:"*" split_words:"true"`
+	CORSAllowedOrigins []string
+	CORSAllowedHeaders []string
 }
 
 // TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
@@ -757,107 +757,153 @@ func bindRunFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
 	util.MustBindPFlag("experimentals", cmd.Flags().Lookup("experimentals"))
+	util.MustBindEnv("experimentals", "EXPERIMENTALS")
 
 	cmd.Flags().String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
 	util.MustBindPFlag("grpc.addr", cmd.Flags().Lookup("grpc-addr"))
+	util.MustBindEnv("grpc.addr", "GRPC_ADDR")
 
 	cmd.Flags().Bool("grpc-tls-enabled", defaultConfig.GRPC.TLS.Enabled, "enable/disable transport layer security (TLS)")
 	util.MustBindPFlag("grpc.tls.enabled", cmd.Flags().Lookup("grpc-tls-enabled"))
+	util.MustBindEnv("grpc.tls.enabled", "GRPC_TLS_ENABLED")
 
 	cmd.Flags().String("grpc-tls-cert", defaultConfig.GRPC.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
 	util.MustBindPFlag("grpc.tls.cert", cmd.Flags().Lookup("grpc-tls-cert"))
+	util.MustBindEnv("grpc.tls.cert", "GRPC_TLS_CERT")
 
 	cmd.Flags().String("grpc-tls-key", defaultConfig.GRPC.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 	util.MustBindPFlag("grpc.tls.key", cmd.Flags().Lookup("grpc-tls-key"))
+	util.MustBindEnv("grpc.tls.key", "GRPC_TLS_KEY")
 
 	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
 
 	cmd.Flags().Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
 	util.MustBindPFlag("http.enabled", cmd.Flags().Lookup("http-enabled"))
+	util.MustBindEnv("http.enabled", "HTTP_ENABLED")
 
 	cmd.Flags().String("http-addr", defaultConfig.HTTP.Addr, "the host:port address to serve the HTTP server on")
 	util.MustBindPFlag("http.addr", cmd.Flags().Lookup("http-addr"))
+	util.MustBindEnv("http.addr", "HTTP_ADDR")
 
 	cmd.Flags().Bool("http-tls-enabled", defaultConfig.HTTP.TLS.Enabled, "enable/disable transport layer security (TLS)")
 	util.MustBindPFlag("http.tls.enabled", cmd.Flags().Lookup("http-tls-enabled"))
+	util.MustBindEnv("http.tls.enabled", "HTTP_TLS_ENABLED")
 
 	cmd.Flags().String("http-tls-cert", defaultConfig.HTTP.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
 	util.MustBindPFlag("http.tls.cert", cmd.Flags().Lookup("http-tls-cert"))
+	util.MustBindEnv("http.tls.cert", "HTTP_TLS_CERT")
 
 	cmd.Flags().String("http-tls-key", defaultConfig.HTTP.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
 	util.MustBindPFlag("http.tls.key", cmd.Flags().Lookup("http-tls-key"))
+	util.MustBindEnv("http.tls.key", "HTTP_TLS_KEY")
 
 	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
 
 	cmd.Flags().Duration("http-upstream-timeout", defaultConfig.HTTP.UpstreamTimeout, "the timeout duration for proxying HTTP requests upstream to the grpc endpoint")
 	util.MustBindPFlag("http.upstreamTimeout", cmd.Flags().Lookup("http-upstream-timeout"))
+	util.MustBindEnv("http.upstreamTimeout", "HTTP_UPSTREAM_TIMEOUT", "HTTP_UPSTREAMTIMEOUT")
 
 	cmd.Flags().StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
 	util.MustBindPFlag("http.corsAllowedOrigins", cmd.Flags().Lookup("http-cors-allowed-origins"))
+	util.MustBindEnv("http.corsAllowedOrigins", "HTTP_CORS_ALLOWED_ORIGINS", "HTTP_CORSALLOWEDORIGINS")
 
 	cmd.Flags().StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
 	util.MustBindPFlag("http.corsAllowedHeaders", cmd.Flags().Lookup("http-cors-allowed-headers"))
+	util.MustBindEnv("http.corsAllowedHeaders", "HTTP_CORS_ALLOWED_HEADERS", "HTTP_CORSALLOWEDHEADERS")
 
 	cmd.Flags().String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
 	util.MustBindPFlag("authn.method", cmd.Flags().Lookup("authn-method"))
+	util.MustBindEnv("authn.method", "AUTHN_METHOD")
+
 	cmd.Flags().StringSlice("authn-preshared-keys", defaultConfig.Authn.Keys, "one or more preshared keys to use for authentication")
 	util.MustBindPFlag("authn.preshared.keys", cmd.Flags().Lookup("authn-preshared-keys"))
+	util.MustBindEnv("authn.preshared.keys", "AUTHN_PRESHARED_KEYS")
+
 	cmd.Flags().String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
 	util.MustBindPFlag("authn.oidc.audience", cmd.Flags().Lookup("authn-oidc-audience"))
+	util.MustBindEnv("authn.oidc.audience", "AUTHN_OIDC_AUDIENCE")
+
 	cmd.Flags().String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
 	util.MustBindPFlag("authn.oidc.issuer", cmd.Flags().Lookup("authn-oidc-issuer"))
+	util.MustBindEnv("authn.oidc.issuer", "AUTHN_OIDC_ISSUER")
 
 	cmd.Flags().String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
 	util.MustBindPFlag("datastore.engine", cmd.Flags().Lookup("datastore-engine"))
+	util.MustBindEnv("datastore.engine", "DATASTORE_ENGINE")
+
 	cmd.Flags().String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
 	util.MustBindPFlag("datastore.uri", cmd.Flags().Lookup("datastore-uri"))
+	util.MustBindEnv("datastore.uri", "DATASTORE_URI")
+
 	cmd.Flags().Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
 	util.MustBindPFlag("datastore.maxCacheSize", cmd.Flags().Lookup("datastore-max-cache-size"))
+	util.MustBindEnv("datastore.maxCacheSize", "DATASTORE_MAX_CACHE_SIZE", "DATASTORE_MAXCACHESIZE")
 
 	cmd.Flags().Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
 	util.MustBindPFlag("datastore.maxOpenConns", cmd.Flags().Lookup("datastore-max-open-conns"))
+	util.MustBindEnv("datastore.maxOpenConns", "DATASTORE_MAX_OPEN_CONNS", "DATASTORE_MAXOPENCONNS")
+
 	cmd.Flags().Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
 	util.MustBindPFlag("datastore.maxIdleConns", cmd.Flags().Lookup("datastore-max-idle-conns"))
+	util.MustBindEnv("datastore.maxIdleConns", "DATASTORE_MAX_IDLE_CONNS", "DATASTORE_MAXIDLECONNS")
+
 	cmd.Flags().Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection to the datastore may be idle")
 	util.MustBindPFlag("datastore.connMaxIdleTime", cmd.Flags().Lookup("datastore-conn-max-idle-time"))
+	util.MustBindEnv("datastore.connMaxIdleTime", "DATASTORE_CONN_MAX_IDLE_TIME", "DATASTORE_CONNMAXIDLETIME")
+
 	cmd.Flags().Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 	util.MustBindPFlag("datastore.connMaxLifetime", cmd.Flags().Lookup("datastore-conn-max-lifetime"))
+	util.MustBindEnv("datastore.connMaxLifetime", "DATASTORE_CONN_MAX_LIFETIME", "DATASTORE_CONNMAXLIFETIME")
 
 	cmd.Flags().Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 	util.MustBindPFlag("playground.enabled", cmd.Flags().Lookup("playground-enabled"))
+	util.MustBindEnv("playground.enabled", "PLAYGROUND_ENABLED")
+
 	cmd.Flags().Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
 	util.MustBindPFlag("playground.port", cmd.Flags().Lookup("playground-port"))
+	util.MustBindEnv("playground.port", "PLAYGROUND_PORT")
 
 	cmd.Flags().Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
 	util.MustBindPFlag("profiler.enabled", cmd.Flags().Lookup("profiler-enabled"))
+	util.MustBindEnv("profiler.enabled", "PROFILER_ENABLED")
 
 	cmd.Flags().String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	util.MustBindPFlag("log.format", cmd.Flags().Lookup("log-format"))
+	util.MustBindEnv("log.format", "LOG_FORMAT")
 
 	cmd.Flags().String("log-level", defaultConfig.Log.Level, "the log level to use")
 	util.MustBindPFlag("log.level", cmd.Flags().Lookup("log-level"))
+	util.MustBindEnv("log.level", "LOG_LEVEL")
 
 	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))
+	util.MustBindEnv("maxTuplesPerWrite", "MAX_TUPLES_PER_WRITE", "MAXTUPLESPERWRITE")
 
 	cmd.Flags().Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 	util.MustBindPFlag("maxTypesPerAuthorizationModel", cmd.Flags().Lookup("max-types-per-authorization-model"))
+	util.MustBindEnv("maxTypesPerAuthorizationModel", "MAX_TYPES_PER_AUTHORIZATION_MODEL", "MAXTYPESPERAUTHORIZATIONMODEL")
 
 	cmd.Flags().Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 	util.MustBindPFlag("changelogHorizonOffset", cmd.Flags().Lookup("changelog-horizon-offset"))
+	util.MustBindEnv("changelogHorizonOffset", "CHANGELOG_HORIZON_OFFSET", "CHANGELOGHORIZONOFFSET")
 
 	cmd.Flags().Int("resolve-node-limit", int(defaultConfig.ResolveNodeLimit), "defines how deeply nested an authorization model can be")
 	util.MustBindPFlag("resolveNodeLimit", cmd.Flags().Lookup("resolve-node-limit"))
+	util.MustBindEnv("resolveNodeLimit", "RESOLVE_NODE_LIMIT", "RESOLVENODELIMIT")
 
 	cmd.Flags().Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
 	util.MustBindPFlag("listObjectsDeadline", cmd.Flags().Lookup("listObjects-deadline"))
+	util.MustBindEnv("listObjectsDeadline", "LIST_OBJECTS_DEADLINE", "LISTOBJECTSDEADLINE")
 
 	cmd.Flags().Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", cmd.Flags().Lookup("listObjects-max-results"))
+	util.MustBindEnv("listObjectsMaxResults", "LIST_OBJECTS_MAX_RESULTS", "LISTOBJECTSMAXRESULTS")
 
-	cmd.Flags().String("otel-telemetry-endpoint", defaultConfig.OpenTelemetry.Endpoint, "OpenTelemetry collector endpoint to use")
-	util.MustBindPFlag("otel.metrics.endpoint", cmd.Flags().Lookup("otel-telemetry-endpoint"))
+	cmd.Flags().String("otel-metrics-endpoint", defaultConfig.OpenTelemetry.Endpoint, "OpenTelemetry collector endpoint to use")
+	util.MustBindPFlag("otel.metrics.endpoint", cmd.Flags().Lookup("otel-metrics-endpoint"))
+	util.MustBindEnv("otel.metrics.endpoint", "OTEL_METRICS_ENDPOINT")
 
-	cmd.Flags().String("otel-telemetry-protocol", defaultConfig.OpenTelemetry.Protocol, "OpenTelemetry protocol to use to send OTLP metrics")
-	util.MustBindPFlag("otel.metrics.protocol", cmd.Flags().Lookup("otel-telemetry-protocol"))
+	cmd.Flags().String("otel-metrics-protocol", defaultConfig.OpenTelemetry.Protocol, "OpenTelemetry protocol to use to send OTLP metrics")
+	util.MustBindPFlag("otel.metrics.protocol", cmd.Flags().Lookup("otel-metrics-protocol"))
+	util.MustBindEnv("otel.metrics.protocol", "OTEL_METRICS_PROTOCOL")
 }
