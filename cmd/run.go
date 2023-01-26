@@ -413,7 +413,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	dsCfg := common.NewConfig(
 		common.WithLogger(logger),
-		common.WithTracer(tracer),
 		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		common.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		common.WithMaxOpenConns(config.Datastore.MaxOpenConns),
@@ -439,9 +438,9 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextTracerWrapper(datastore, tracer), config.Datastore.MaxCacheSize)
 
-	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -514,7 +513,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	svr := server.New(&server.Dependencies{
-		Datastore:    cachedOpenFGADatastore,
+		Datastore:    datastore,
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
@@ -742,7 +741,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	datastore.Close()
 
-	cachedOpenFGADatastore.Close()
+	datastore.Close()
 
 	logger.Info("server exited. goodbye 👋")
 

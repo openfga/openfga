@@ -12,15 +12,12 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Config struct {
-	Tracer                 trace.Tracer
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
@@ -32,12 +29,6 @@ type Config struct {
 }
 
 type DatastoreOption func(*Config)
-
-func WithTracer(t trace.Tracer) DatastoreOption {
-	return func(cfg *Config) {
-		cfg.Tracer = t
-	}
-}
 
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
@@ -90,10 +81,6 @@ func NewConfig(opts ...DatastoreOption) *Config {
 
 	if cfg.Logger == nil {
 		cfg.Logger = logger.NewNoopLogger()
-	}
-
-	if cfg.Tracer == nil {
-		cfg.Tracer = telemetry.NewNoopTracer()
 	}
 
 	if cfg.MaxTuplesPerWriteField == 0 {
