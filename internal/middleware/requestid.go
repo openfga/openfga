@@ -11,7 +11,11 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-const requestIDCtxKey ctxKey = "request-id-context-key"
+const (
+	requestIDCtxKey ctxKey = "request-id-context-key"
+
+	requestIDHeader string = "X-Request-Id"
+)
 
 func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
@@ -24,7 +28,7 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		ctx = context.WithValue(ctx, requestIDCtxKey, requestID)
 
-		err = grpc.SetHeader(ctx, metadata.Pairs("X-Request-Id", requestID))
+		err = grpc.SetHeader(ctx, metadata.Pairs(requestIDHeader, requestID))
 		if err != nil {
 			logger.Error("failed to set header", zap.Error(err))
 		}
@@ -46,7 +50,7 @@ func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInt
 
 		ss.WrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
 
-		err = grpc.SetHeader(stream.Context(), metadata.Pairs("X-Request-Id", requestID))
+		err = grpc.SetHeader(stream.Context(), metadata.Pairs(requestIDHeader, requestID))
 		if err != nil {
 			logger.Error("failed to set header", zap.Error(err))
 		}
