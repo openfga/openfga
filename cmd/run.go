@@ -387,11 +387,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 
-	tp, err := telemetry.NewTracerProvider()
-	if err != nil {
-		return err
-	}
-
+	tp := telemetry.MustNewTracerProvider()
 	tracer := tp.Tracer("openfga")
 
 	meter := metric.NewNoopMeter()
@@ -464,11 +460,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 	if err != nil {
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
-	}
-
-	ctxtagsOpts := []grpc_ctxtags.Option{
-		grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.TagBasedRequestFieldExtractor("store_id")),
-		grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.TagBasedRequestFieldExtractor("authorization_model_id")),
 	}
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{

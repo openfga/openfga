@@ -7,14 +7,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func NewTracerProvider() (trace.TracerProvider, error) {
+func MustNewTracerProvider() trace.TracerProvider {
 	// TODO: this still needs to be wired up and options set properly
 
 	tp := sdktrace.NewTracerProvider()
 
 	otel.SetTracerProvider(tp)
 
-	return tp, nil
+	return tp
 }
 
 func NewNoopTracer() trace.Tracer {
