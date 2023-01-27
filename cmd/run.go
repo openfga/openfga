@@ -476,6 +476,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_ctxtags.UnaryServerInterceptor(ctxtagsOpts...),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
 	}
 
@@ -484,6 +485,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_ctxtags.StreamServerInterceptor(ctxtagsOpts...),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 
