@@ -17,7 +17,6 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
@@ -392,6 +391,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	meter := metric.NewNoopMeter()
 
+	var err error
 	if slices.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
@@ -465,7 +465,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		grpc_ctxtags.UnaryServerInterceptor(ctxtagsOpts...),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
@@ -474,7 +473,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		grpc_ctxtags.StreamServerInterceptor(ctxtagsOpts...),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
