@@ -257,9 +257,9 @@ func DefaultConfig() *Config {
 			Level:  "info",
 		},
 		Trace: TraceConfig{
-			Enabled:     true,
+			Enabled:     false,
 			Endpoint:    "0.0.0.0:4317",
-			SampleRatio: 1,
+			SampleRatio: 0.2,
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
