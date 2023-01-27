@@ -38,3 +38,22 @@ services:
     ports:
       - "8080:8080"
       - "3000:3000"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - "./otel-collector-config.yaml:/etc/otel-collector-config.yaml"
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "1234:1234"
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+    depends_on:
+      - otel-collector

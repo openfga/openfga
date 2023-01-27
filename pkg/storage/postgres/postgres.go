@@ -19,16 +19,17 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+var tracer = otel.Tracer("openfga/pkg/storage/postgres")
+
 type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
-	tracer                 trace.Tracer
 	logger                 logger.Logger
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
@@ -75,7 +76,6 @@ func New(uri string, cfg *common.Config) (*Postgres, error) {
 	return &Postgres{
 		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
 		db:                     db,
-		tracer:                 cfg.Tracer,
 		logger:                 cfg.Logger,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
@@ -89,7 +89,7 @@ func (p *Postgres) Close() {
 }
 
 func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ListObjectsByType")
+	ctx, span := tracer.Start(ctx, "postgres.ListObjectsByType")
 	defer span.End()
 
 	rows, err := p.stbl.
@@ -109,14 +109,14 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.Read")
+	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
 	return p.read(ctx, store, tupleKey, storage.PaginationOptions{})
 }
 
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadPage")
+	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
 
 	iter, err := p.read(ctx, store, tupleKey, opts)
@@ -129,7 +129,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 }
 
 func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.read")
+	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
 	sb := p.stbl.
@@ -171,7 +171,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.Write")
+	ctx, span := tracer.Start(ctx, "postgres.Write")
 	defer span.End()
 
 	if len(deletes)+len(writes) > p.MaxTuplesPerWrite() {
@@ -258,7 +258,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 }
 
 func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadUserTuple")
+	ctx, span := tracer.Start(ctx, "postgres.ReadUserTuple")
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -286,7 +286,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 }
 
 func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadUsersetTuples")
+	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
 	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
@@ -315,7 +315,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadStartingWithUser")
+	ctx, span := tracer.Start(ctx, "postgres.ReadStartingWithUser")
 	defer span.End()
 
 	var targetUsersArg []string
@@ -348,7 +348,7 @@ func (p *Postgres) MaxTuplesPerWrite() int {
 }
 
 func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModel")
+	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
 	rows, err := p.stbl.
@@ -411,7 +411,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAuthorizationModels")
+	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
 	sb := p.stbl.Select("authorization_model_id").
@@ -479,7 +479,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 }
 
 func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
+	ctx, span := tracer.Start(ctx, "postgres.FindLatestAuthorizationModelID")
 	defer span.End()
 
 	var modelID string
@@ -502,7 +502,7 @@ func (p *Postgres) ReadTypeDefinition(
 	ctx context.Context,
 	store, modelID, objectType string,
 ) (*openfgapb.TypeDefinition, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadTypeDefinition")
+	ctx, span := tracer.Start(ctx, "postgres.ReadTypeDefinition")
 	defer span.End()
 
 	var marshalledTypeDef []byte
@@ -533,7 +533,7 @@ func (p *Postgres) MaxTypesPerAuthorizationModel() int {
 }
 
 func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.WriteAuthorizationModel")
+	ctx, span := tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
 	schemaVersion := model.GetSchemaVersion()
@@ -570,7 +570,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 
 // CreateStore is slightly different between Postgres and MySQL
 func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.CreateStore")
+	ctx, span := tracer.Start(ctx, "postgres.CreateStore")
 	defer span.End()
 
 	var id, name string
@@ -595,7 +595,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 }
 
 func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.GetStore")
+	ctx, span := tracer.Start(ctx, "postgres.GetStore")
 	defer span.End()
 
 	row := p.stbl.
@@ -626,7 +626,7 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, e
 }
 
 func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ListStores")
+	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
 	sb := p.stbl.Select("id", "name", "created_at", "updated_at").
@@ -685,7 +685,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 }
 
 func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.DeleteStore")
+	ctx, span := tracer.Start(ctx, "postgres.DeleteStore")
 	defer span.End()
 
 	_, err := p.stbl.
@@ -702,7 +702,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 
 // WriteAssertions is slightly different between Postgres and MySQL
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
-	ctx, span := p.tracer.Start(ctx, "postgres.WriteAssertions")
+	ctx, span := tracer.Start(ctx, "postgres.WriteAssertions")
 	defer span.End()
 
 	marshalledAssertions, err := proto.Marshal(&openfgapb.Assertions{Assertions: assertions})
@@ -724,7 +724,7 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 }
 
 func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadAssertions")
+	ctx, span := tracer.Start(ctx, "postgres.ReadAssertions")
 	defer span.End()
 
 	var marshalledAssertions []byte
@@ -759,7 +759,7 @@ func (p *Postgres) ReadChanges(
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
 ) ([]*openfgapb.TupleChange, []byte, error) {
-	ctx, span := p.tracer.Start(ctx, "postgres.ReadChanges")
+	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
 	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").

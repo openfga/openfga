@@ -51,7 +51,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+	ds := memory.New(10, 24)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
@@ -80,7 +80,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
-		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		ds := memory.New(10, 24)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
@@ -98,7 +98,6 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 
 func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 
@@ -114,7 +113,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -138,7 +136,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -164,7 +161,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -193,7 +189,6 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
@@ -220,7 +215,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    tracer,
 		transport: transport,
 		logger:    logger,
 		meter:     meter,
@@ -259,7 +253,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
@@ -305,7 +298,6 @@ func TestListObjects_Optimized_UnhappyPaths(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    tracer,
 		transport: transport,
 		logger:    logger,
 		meter:     meter,

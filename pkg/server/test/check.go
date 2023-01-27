@@ -174,7 +174,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
@@ -195,7 +194,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(t, err)
 			}
 
-			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
+			cmd := commands.NewCheckQuery(datastore, meter, logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)
@@ -218,7 +217,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 // TestCheckQueryAuthorizationModelsVersioning ensures that Check is using the "auth model id" passed in as parameter to expand the usersets
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -263,7 +261,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{Object: "repo:openfgapb", Relation: "owner", User: "yenkel"}})
 	require.NoError(t, err)
 
-	oldResp, err := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
+	oldResp, err := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: oldModel.Id,
 		TupleKey: &openfgapb.TupleKey{
@@ -275,7 +273,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	require.NoError(t, err)
 	require.True(t, oldResp.Allowed)
 
-	updatedResp, err := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
+	updatedResp, err := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: updatedModel.Id,
 		TupleKey: &openfgapb.TupleKey{
@@ -298,7 +296,6 @@ var checkResponse *openfgapb.CheckResponse //nolint
 
 func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -322,7 +319,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
@@ -344,7 +341,6 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 
 func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -368,7 +364,7 @@ func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 

@@ -46,6 +46,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
@@ -153,6 +154,12 @@ type LogConfig struct {
 	Level string
 }
 
+type TraceConfig struct {
+	Enabled     bool
+	Endpoint    string
+	SampleRatio float64
+}
+
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
 type PlaygroundConfig struct {
 	Enabled bool
@@ -208,6 +215,7 @@ type Config struct {
 	HTTP          HTTPConfig
 	Authn         AuthnConfig
 	Log           LogConfig
+	Trace         TraceConfig
 	Playground    PlaygroundConfig
 	Profiler      ProfilerConfig
 	OpenTelemetry OpenTelemetryConfig `mapstructure:"otel"`
@@ -247,6 +255,11 @@ func DefaultConfig() *Config {
 		Log: LogConfig{
 			Format: "text",
 			Level:  "info",
+		},
+		Trace: TraceConfig{
+			Enabled:     true,
+			Endpoint:    "0.0.0.0:4317",
+			SampleRatio: 1,
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -385,8 +398,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
-	tracer := telemetry.NewNoopTracer()
 	tokenEncoder := encoder.NewBase64Encoder()
+
+	var tp *sdktrace.TracerProvider
+	if config.Trace.Enabled {
+		tp = telemetry.MustNewTracerProvider(config.Trace.Endpoint, config.Trace.SampleRatio)
+	}
+
+	meter := metric.NewNoopMeter()
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
@@ -396,8 +415,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	var err error
-	meter := metric.NewNoopMeter()
-
 	if slices.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
@@ -413,7 +430,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	dsCfg := common.NewConfig(
 		common.WithLogger(logger),
-		common.WithTracer(tracer),
 		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		common.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		common.WithMaxOpenConns(config.Datastore.MaxOpenConns),
@@ -425,7 +441,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
-		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+		datastore = memory.New(config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
@@ -439,9 +455,9 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	datastore = caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
 
-	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -514,8 +530,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	svr := server.New(&server.Dependencies{
-		Datastore:    cachedOpenFGADatastore,
-		Tracer:       tracer,
+		Datastore:    datastore,
 		Logger:       logger,
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
@@ -742,7 +757,9 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	datastore.Close()
 
-	cachedOpenFGADatastore.Close()
+	_ = tp.ForceFlush(ctx)
+
+	_ = tp.Shutdown(ctx)
 
 	logger.Info("server exited. goodbye 👋")
 
@@ -874,6 +891,18 @@ func bindRunFlags(cmd *cobra.Command) {
 	cmd.Flags().String("log-level", defaultConfig.Log.Level, "the log level to use")
 	util.MustBindPFlag("log.level", cmd.Flags().Lookup("log-level"))
 	util.MustBindEnv("log.level", "LOG_LEVEL")
+
+	cmd.Flags().Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
+	util.MustBindPFlag("trace.enabled", cmd.Flags().Lookup("trace-enabled"))
+	util.MustBindEnv("trace.enabled", "TRACE_ENABLED")
+
+	cmd.Flags().String("trace-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
+	util.MustBindPFlag("trace.endpoint", cmd.Flags().Lookup("trace-endpoint"))
+	util.MustBindEnv("trace.endpoint", "TRACE_ENDPOINT")
+
+	cmd.Flags().Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
+	util.MustBindPFlag("trace.sample.ratio", cmd.Flags().Lookup("trace-sample-ratio"))
+	util.MustBindEnv("trace.sample.ratio", "TRACE_SAMPLE_RATIO")
 
 	cmd.Flags().Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", cmd.Flags().Lookup("max-tuples-per-write"))

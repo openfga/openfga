@@ -287,6 +287,29 @@
                     "x-env-variable": "OPENFGA_LOG_LEVEL"
                 }
             }
+        },
+        "trace": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Enable tracing.",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_TRACE_ENABLED"
+                },
+                "endpoint": {
+                    "description": "The endpoint of the trace collector",
+                    "type": "string",
+                    "default": "0.0.0.0:4317",
+                    "x-env-variable": "OPENFGA_TRACE_ENDPOINT"
+                },
+                "sampleRatio": {
+                    "description": "The fraction of traces to sample. 1 means all, 0 means none.",
+                    "type": "float",
+                    "default": "0.2",
+                    "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
+                }
+            }
         }
     },
     "definitions": {
