@@ -203,22 +203,16 @@ func (q *CheckQuery) resolveDirectUserSet(
 	typesys *typesystem.TypeSystem,
 ) error {
 	done := make(chan struct{})
-	// this is the channel that forces sub goroutines to finish
 	defer close(done)
 
 	var wg sync.WaitGroup
-
-	// this is the channel that sub goroutines use to communicate completion, either in success or failure.
-	errorChannel := make(chan error)
+	c := make(chan *chanResolveResult)
 
 	wg.Add(1)
-	go func(errorChannel chan<- error) {
+	go func(c chan<- *chanResolveResult) {
 		defer wg.Done()
 
-		if rc.shouldShortCircuit() {
-			return
-		}
-
+		found := false
 		tk, err := rc.readUserTuple(ctx, q.datastore)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -228,114 +222,99 @@ func (q *CheckQuery) resolveDirectUserSet(
 
 		if tk != nil && err == nil {
 			rc.users.Add(rc.tracer.AppendDirect(), tk.GetUser())
+			found = true
 		}
-
 		select {
-		case errorChannel <- err:
+		case c <- &chanResolveResult{err: err, found: found}:
 		case <-done:
 		}
-	}(errorChannel)
+	}(c)
 
-	wg.Add(1)
-	go func(errorChannel chan<- error) {
-		defer wg.Done()
+	iter, err := rc.readUsersetTuples(ctx, q.datastore)
+	if err != nil {
+		return serverErrors.HandleError("", err)
+	}
+	defer iter.Stop()
 
-		if rc.shouldShortCircuit() {
-			return
-		}
-
-		iter, err := rc.readUsersetTuples(ctx, q.datastore)
+	for {
+		usersetTuple, err := iter.Next(ctx)
 		if err != nil {
-			errorChannel <- serverErrors.HandleError("", err)
-			return
+			if err == storage.ErrIteratorDone {
+				break
+			}
+			return serverErrors.HandleError("", err)
 		}
-		defer iter.Stop()
 
-		for {
-			if rc.shouldShortCircuit() {
-				return
-			}
-			usersetTuple, err := iter.Next(ctx)
-			if err != nil {
-				if !errors.Is(err, storage.ErrIteratorDone) {
-					errorChannel <- serverErrors.HandleError("", err)
-				} else {
-					errorChannel <- nil
-				}
-				return
-			}
+		foundUser := usersetTuple.GetUser()
 
-			foundUser := usersetTuple.GetUser()
+		schemaVersion := typesys.GetSchemaVersion()
 
-			schemaVersion := typesys.GetSchemaVersion()
+		if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
+			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+			break
+		}
 
-			if foundUser == tupleUtils.Wildcard && schemaVersion == typesystem.SchemaVersion1_0 {
-				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-				errorChannel <- nil
-				return
-			}
+		if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
 
-			if tupleUtils.IsTypedWildcard(foundUser) && schemaVersion == typesystem.SchemaVersion1_1 {
+			wildcardType := tupleUtils.GetType(foundUser)
 
-				wildcardType := tupleUtils.GetType(foundUser)
-
-				if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
-					continue
-				}
-
-				rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
-				errorChannel <- nil
-				return
-			}
-
-			userset := usersetTuple.GetUser()
-			object, relation := tupleUtils.SplitObjectRelation(userset)
-			objectType, _ := tupleUtils.SplitObject(object)
-			_, err = typesys.GetRelation(objectType, relation)
-			if err != nil {
-				// the tuple in the request context is invalid according to the model being used, so ignore it
+			if tupleUtils.GetType(rc.tk.GetUser()) != wildcardType {
 				continue
 			}
-			tracer := rc.tracer.AppendDirect().AppendString(userset)
-			tupleKey := &openfgapb.TupleKey{
-				Object:   object,
-				Relation: relation,
-				User:     rc.tk.GetUser(),
-			}
-			nestedRC := rc.fork(tupleKey, tracer, false)
 
-			wg.Add(1)
-			go func(errorChannel chan<- error) {
-				defer wg.Done()
+			rc.users.Add(rc.tracer.AppendDirect(), rc.targetUser)
+			break
 
-				rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
-				if err == nil {
-					err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
-				}
-				select {
-				case errorChannel <- err:
-				case <-done:
-				}
-			}(errorChannel)
 		}
-	}(errorChannel)
 
-	go func(errorChannel chan error) {
+		// Avoid launching more goroutines by checking if the user has been found in another goroutine.
+		if rc.shouldShortCircuit() {
+			break
+		}
+
+		userset := usersetTuple.GetUser()
+		object, relation := tupleUtils.SplitObjectRelation(userset)
+		objectType, _ := tupleUtils.SplitObject(object)
+		_, err = typesys.GetRelation(objectType, relation)
+		if err != nil {
+			// the tuple in the request context is invalid according to the model being used, so ignore it
+			continue
+		}
+		tracer := rc.tracer.AppendDirect().AppendString(userset)
+		tupleKey := &openfgapb.TupleKey{
+			Object:   object,
+			Relation: relation,
+			User:     rc.tk.GetUser(),
+		}
+		nestedRC := rc.fork(tupleKey, tracer, false)
+
+		wg.Add(1)
+		go func(c chan<- *chanResolveResult) {
+			defer wg.Done()
+
+			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys)
+			if err == nil {
+				err = q.resolveNode(ctx, nestedRC, rewrite, typesys)
+			}
+
+			select {
+			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
+			case <-done:
+			}
+		}(c)
+	}
+
+	go func(c chan *chanResolveResult) {
 		wg.Wait()
-		close(errorChannel)
-	}(errorChannel)
+		close(c)
+	}(c)
 
-	var err error
-	// if the user is found we swallow any errors that may have be thrown
-	// otherwise we return the last error we found (if any)
-	for potentialError := range errorChannel {
-		if rc.userFound() {
-			// prevent leak of goroutines https://www.ardanlabs.com/blog/2018/11/goroutine-leaks-the-forgotten-sender.html
-			go utils.DrainChannel(errorChannel)
+	for res := range c {
+		if res.found {
 			return nil
 		}
-		if potentialError != nil {
-			err = potentialError
+		if res.err != nil {
+			err = res.err
 		}
 	}
 
@@ -531,13 +510,11 @@ func (q *CheckQuery) resolveTupleToUserset(
 		return serverErrors.HandleError("", err)
 	}
 
-	// this is the channel that forces sub goroutines to finish
 	done := make(chan struct{})
 	defer close(done)
 
 	var wg sync.WaitGroup
-	// this is the channel that sub goroutines use to communicate completion, either in success or failure.
-	errorChannel := make(chan error)
+	c := make(chan *chanResolveResult)
 
 	for {
 		tuple, err := iter.Next(ctx)
@@ -574,7 +551,7 @@ func (q *CheckQuery) resolveTupleToUserset(
 		nestedRC := rc.fork(tupleKey, tracer, false)
 
 		wg.Add(1)
-		go func(c chan<- error) {
+		go func(c chan<- *chanResolveResult) {
 			defer wg.Done()
 
 			rewrite, err := getTypeRelationRewrite(nestedRC.tk, typesys) // folder:budgets#reader
@@ -583,30 +560,26 @@ func (q *CheckQuery) resolveTupleToUserset(
 			}
 
 			select {
-			case c <- err:
+			case c <- &chanResolveResult{err: err, found: nestedRC.userFound()}:
 			case <-done:
 			}
-		}(errorChannel)
+		}(c)
 	}
 
 	// If any `break` was triggered, immediately release any possible resources held by the iterator.
 	iter.Stop()
 
-	go func(errorChannel chan error) {
+	go func(c chan *chanResolveResult) {
 		wg.Wait()
-		close(errorChannel)
-	}(errorChannel)
+		close(c)
+	}(c)
 
-	// if the user is found we swallow any errors that may have be thrown
-	// otherwise we return the last error we found (if any)
-	for potentialError := range errorChannel {
-		if rc.userFound() {
-			// prevent leak of goroutines https://www.ardanlabs.com/blog/2018/11/goroutine-leaks-the-forgotten-sender.html
-			go utils.DrainChannel(errorChannel)
+	for res := range c {
+		if res.found {
 			return nil
 		}
-		if potentialError != nil {
-			err = potentialError
+		if res.err != nil {
+			err = res.err
 		}
 	}
 

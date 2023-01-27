@@ -40,9 +40,3 @@ func (r *ResolutionMetadata) Fork() *ResolutionMetadata {
 
 	return &ResolutionMetadata{resolveCalls: r.resolveCalls}
 }
-
-func DrainChannel[T any](c chan T) {
-	for range c {
-
-	}
-}
