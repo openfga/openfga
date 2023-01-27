@@ -5,70 +5,69 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
-	"github.com/oklog/ulid/v2"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
+)
+
+const (
+	methodKey          = "method"
+	requestIDKey       = "request_id"
+	traceIDKey         = "trace_id"
+	requestDurationKey = "request_duration"
+	rawRequestKey      = "raw_request"
+	rawResponseKey     = "raw_response"
+	publicErrorKey     = "public_error"
+	grpcErrorKey       = "grpc_error"
+	grpcCompleteKey    = "grpc_complete"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		id, err := uuid.NewRandom()
-		if err != nil {
-			logger.Error("failed to generate uuid", zap.Error(err))
-		}
-		requestID := id.String()
-
-		err = grpc.SetHeader(ctx, metadata.Pairs("X-Request-Id", requestID))
-		if err != nil {
-			logger.Error("failed to set header", zap.Error(err))
-		}
-
 		fields := []zap.Field{
-			zap.String("method", info.FullMethod),
-			zap.String("request_id", requestID),
+			zap.String(methodKey, info.FullMethod),
+		}
+
+		if requestID, ok := RequestIDFromContext(ctx); ok {
+			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
-			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
+			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
-
-		fields = append(fields, ctxzap.TagsToFields(ctx)...)
 
 		jsonReq, err := json.Marshal(req)
 		if err == nil {
-			fields = append(fields, zap.Any("raw_request", json.RawMessage(jsonReq)))
+			fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonReq)))
 		}
 
 		resp, err := handler(ctx, req)
 
-		fields = append(fields, zap.Duration("took", time.Since(start)))
+		fields = append(fields, zap.Duration(requestDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
 				fields = append(fields, zap.Error(internalError.Internal()))
 			}
 
-			fields = append(fields, zap.String("public_error", err.Error()))
-			logger.Error("grpc_error", fields...)
+			fields = append(fields, zap.String(publicErrorKey, err.Error()))
+			logger.Error(grpcErrorKey, fields...)
 
 			return nil, err
 		}
 
 		jsonResp, err := json.Marshal(resp)
 		if err == nil {
-			fields = append(fields, zap.Any("raw_response", json.RawMessage(jsonResp)))
+			fields = append(fields, zap.Any(rawResponseKey, json.RawMessage(jsonResp)))
 		}
 
-		logger.Info("grpc_complete", fields...)
+		logger.Info(grpcCompleteKey, fields...)
 
 		return resp, nil
 	}
@@ -78,36 +77,36 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 
-		requestID := ulid.Make().String()
-
 		fields := []zap.Field{
-			zap.String("method", info.FullMethod),
-			zap.String("request_id", requestID),
+			zap.String(methodKey, info.FullMethod),
 		}
 
-		spanCtx := trace.SpanContextFromContext(stream.Context())
+		ss := grpc_middleware.WrapServerStream(stream)
+		if requestID, ok := RequestIDFromContext(ss.Context()); ok {
+			fields = append(fields, zap.String(requestIDKey, requestID))
+		}
+
+		spanCtx := trace.SpanContextFromContext(ss.Context())
 		if spanCtx.HasTraceID() {
-			fields = append(fields, zap.String("trace_id", spanCtx.TraceID().String()))
+			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
-		fields = append(fields, ctxzap.TagsToFields(stream.Context())...)
+		err := handler(srv, ss)
 
-		err := handler(srv, stream)
-
-		fields = append(fields, zap.Duration("took", time.Since(start)))
+		fields = append(fields, zap.Duration(requestDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
 				fields = append(fields, zap.Error(internalError.Internal()))
 			}
 
-			fields = append(fields, zap.String("public_error", err.Error()))
-			logger.Error("grpc_error", fields...)
+			fields = append(fields, zap.String(publicErrorKey, err.Error()))
+			logger.Error(grpcErrorKey, fields...)
 
 			return err
 		}
 
-		logger.Info("grpc_complete", fields...)
+		logger.Info(grpcCompleteKey, fields...)
 
 		return nil
 	}
