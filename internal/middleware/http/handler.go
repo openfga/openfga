@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 )

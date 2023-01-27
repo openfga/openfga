@@ -3,43 +3,50 @@
         "maxTuplesPerWrite": {
             "description": "The maximum allowed number of tuples per Write transaction.",
             "type": "integer",
-            "default": 100
+            "default": 100,
+            "x-env-variable": "OPENFGA_MAX_TUPLES_PER_WRITE"
         },
         "maxTypesPerAuthorizationModel": {
             "description": "The maximum allowed number of type definitions per authorization model.",
             "type": "integer",
-            "default": 100
+            "default": 100,
+            "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
-            "default": 0
+            "default": 0,
+            "x-env-variable": "OPENFGA_CHANGELOG_HORIZON_OFFSET"
         },
         "resolveNodeLimit": {
             "description": "Defines how deeply nested an authorization model can be.",
             "type": "integer",
-            "default": 25
+            "default": 25,
+            "x-env-variable": "OPENFGA_RESOLVE_NODE_LIMIT"
         },
         "listObjectsDeadline": {
             "description": "The timeout deadline for serving ListObjects requests",
             "type": "string",
             "format": "duration",
-            "default": "3s"
+            "default": "3s",
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_DEADLINE"
         },
         "listObjectsMaxResults": {
             "description": "The maximum results to return in ListObjects responses",
             "type": "integer",
             "minimum": 0,
-            "default": 1000
+            "default": 1000,
+            "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["list-objects-optimized"]
+                "enum": ["list-objects-optimized", "otel-metrics"]
             },
-            "default": []
+            "default": [],
+            "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "playground": {
             "type": "object",
@@ -47,12 +54,14 @@
                 "enabled": {
                     "description": "Enable/disable the OpenFGA Playground.",
                     "type": "boolean",
-                    "default": true
+                    "default": true,
+                    "x-env-variable": "OPENFGA_PLAYGROUND_ENABLED"
                 },
                 "port": {
                     "description": "The port to serve the local OpenFGA Playground on.",
                     "type": "integer",
-                    "default": 3000
+                    "default": 3000,
+                    "x-env-variable": "OPENFGA_PLAYGROUND_PORT"
                 }
             }
         },
@@ -62,12 +71,14 @@
                 "enabled": {
                     "description": "Enabled/disable pprof profiling.",
                     "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "x-env-variable": "OPENFGA_PROFILER_ENABLED"
                 },
                 "addr": {
                     "description": "The host:port address to serve the pprof profiler server on.",
                     "type": "string",
-                    "default": ":3001"
+                    "default": ":3001",
+                    "x-env-variable": "OPENFGA_PROFILER_ADDR"
                 }
             }
         },
@@ -78,7 +89,8 @@
                     "description": "The datastore engine that will be used for persistence.",
                     "type": "string",
                     "enum": ["memory", "postgres", "mysql"],
-                    "default": "memory"
+                    "default": "memory",
+                    "x-env-variable": "OPENFGA_DATASTORE_ENGINE"
                 },
                 "uri": {
                     "description": "The connection uri to use to connect to the datastore (for any engine other than 'memory').",
@@ -86,32 +98,38 @@
                     "examples": [
                         "postgres://user:pass@host:port/datastore?opts",
                         "user:pass@tcp(mysql-host:port)/datastore?parseTime=true&other-opts"
-                    ]
+                    ],
+                    "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
                 "maxCacheSize": {
                     "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
                     "type": "integer",
-                    "default": 100000
+                    "default": 100000,
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
                 },
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
                     "type": "integer",
-                    "default": "unlimited - database/sql default"
+                    "default": "unlimited - database/sql default",
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
-                    "default": "2 - database/sql default"
+                    "default": "2 - database/sql default",
+                    "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {
                     "description": "the maximum amount of time a connection to the datastore may be idle",
                     "type": "duration",
-                    "default": "connections are not closed due to idle time - database/sql default"
+                    "default": "connections are not closed due to idle time - database/sql default",
+                    "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME"
                 },
                 "connMaxLifetime": {
                     "description": "the maximum amount of time a connection to the datastore may be reused",
                     "type": "duration",
-                    "default": "connections are not closed due to connection's age - database/sql default"
+                    "default": "connections are not closed due to connection's age - database/sql default",
+                    "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
                 }
             }
         },
@@ -122,7 +140,8 @@
                     "description": "The authentication method to use.",
                     "type": "string",
                     "enum": ["none", "preshared", "oidc"],
-                    "default": "none"
+                    "default": "none",
+                    "x-env-variable": "OPENFGA_AUTHN_METHOD"
                 },
                 "preshared": {
                     "description": "One or more preshared keys to use for authentication. This must be set if `authn.method=preshared'.",
@@ -141,31 +160,52 @@
                 "addr": {
                     "description": "The host:port address to serve the grpc server on.",
                     "type": "string",
-                    "default": "0.0.0.0:8081"
+                    "default": "0.0.0.0:8081",
+                    "x-env-variable": "OPENFGA_GRPC_ADDR"
                 },
                 "tls": {
-                    "$ref": "#/definitions/tls"
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Enables or disables transport layer security (TLS).",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_GRPC_TLS_ENABLED"
+                        },
+                        "cert": {
+                            "description": "The (absolute) file path of the certificate to use for the TLS connection.",
+                            "type": "string",
+                            "x-env-variable": "OPENFGA_GRPC_TLS_CERT"
+                        },
+                        "key": {
+                            "description": "The (absolute) file path of the TLS key that should be used for the TLS connection.",
+                            "x-env-variable": "OPENFGA_GRPC_TLS_KEY"
+                        }
+                    },
+                    "required": ["enabled", "cert", "key"]
                 }
             }
         },
-        "metrics": {
+        "otel": {
             "type": "object",
             "properties": {
-                "enabled": {
-                    "description": "Toggle OTel Collector export of metrics",
-                    "type": "boolean",
-                    "default": false
-                },
-                "endpoint": {
-                    "description": "Remote OTEL collector endpoint",
-                    "type": "string",
-                    "default": "0.0.0.0:4317"
-                },
-                "protocol": {
-                    "description": "Protocol used to send metrics to the collector",
-                    "type": "string",
-                    "enum": ["grpc", "http"],
-                    "default": "grpc"
+                "metrics": {
+                    "type": "object",
+                    "properties": {
+                        "endpoint": {
+                            "description": "Remote OTEL collector endpoint",
+                            "type": "string",
+                            "default": "0.0.0.0:4317",
+                            "x-env-variable": "OPENFGA_OTEL_METRICS_ENDPOINT"
+                        },
+                        "protocol": {
+                            "description": "Protocol used to send metrics to the collector",
+                            "type": "string",
+                            "enum": ["grpc", "http"],
+                            "default": "grpc",
+                            "x-env-variable": "OPENFGA_OTEL_METRICS_PROTOCOL"
+                        }
+                    }
                 }
             }
         },
@@ -175,34 +215,57 @@
                 "enabled": {
                     "description": "Enables or disables the OpenFGA HTTP server. If this is set to true then 'grpc.enabled' must be set to true.",
                     "type": "boolean",
-                    "default": true
+                    "default": true,
+                    "x-env-variable": "OPENFGA_HTTP_ENABLED"
                 },
                 "addr": {
                     "description": "The host:port address to serve the HTTP server on.",
                     "type": "string",
-                    "default": "0.0.0.0:8080"
+                    "default": "0.0.0.0:8080",
+                    "x-env-variable": "OPENFGA_HTTP_ADDR"
                 },
                 "tls": {
-                    "$ref": "#/definitions/tls"
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Enables or disables transport layer security (TLS).",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_HTTP_TLS_ENABLED"
+                        },
+                        "cert": {
+                            "description": "The (absolute) file path of the certificate to use for the TLS connection.",
+                            "type": "string",
+                            "x-env-variable": "OPENFGA_HTTP_TLS_CERT"
+                        },
+                        "key": {
+                            "description": "The (absolute) file path of the TLS key that should be used for the TLS connection.",
+                            "x-env-variable": "OPENFGA_HTTP_TLS_KEY"
+                        }
+                    },
+                    "required": ["enabled", "cert", "key"]
                 },
                 "upstreamTimeout": {
                     "description": "The timeout duration for proxying HTTP requests upstream to the grpc endpoint.",
                     "type": "string",
-                    "default": "3s"
+                    "default": "3s",
+                    "x-env-variable": "OPENFGA_HTTP_UPSTREAM_TIMEOUT"
                 },
                 "corsAllowedOrigins": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"]
+                    "default": ["*"],
+                    "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_ORIGINS"
                 },
                 "corsAllowedHeaders": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     },
-                    "default": ["*"]
+                    "default": ["*"],
+                    "x-env-variable": "OPENFGA_HTTP_CORS_ALLOWED_HEADERS"
                 }
             }
         },
@@ -213,46 +276,32 @@
                     "description": "The log format to output logs in. For production we recommend 'json' format.",
                     "type": "string",
                     "enum": ["text", "json"],
-                    "default": "text"
+                    "default": "text",
+                    "x-env-variable": "OPENFGA_LOG_FORMAT"
                 },
                 "level": {
                     "description": "The log level to set. For production we recommend 'info' format.",
                     "type": "string",
                     "enum": ["none", "debug", "info", "warn", "error", "panic", "fatal"],
-                    "default": "info"
+                    "default": "info",
+                    "x-env-variable": "OPENFGA_LOG_LEVEL"
                 }
             }
         }
     },
     "definitions": {
-        "tls": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "description": "Enables or disables transport layer security (TLS).",
-                    "type": "boolean",
-                    "default": false
-                },
-                "cert": {
-                    "description": "The (absolute) file path of the certificate to use for the TLS connection.",
-                    "type": "string"
-                },
-                "key": {
-                    "description": "The (absolute) file path of the TLS key that should be used for the TLS connection."
-                }
-            },
-            "required": ["enabled", "cert", "key"]
-        },
         "oidc": {
             "type": "object",
             "properties": {
                 "issuer": {
                     "description": "The OIDC issuer (authorization server) signing the tokens.",
-                    "type": "string"
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_ISSUER"
                 },
                 "audience": {
                     "description": "The OIDC audience of the tokens being signed by the authorization server.",
-                    "type": "string"
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_AUTHN_OIDC_AUDIENCE"
                 }
             },
             "required": ["issuer", "audience"]
@@ -265,7 +314,8 @@
                     "items": {
                         "type": "string"
                     },
-                    "minItems": 1
+                    "minItems": 1,
+                    "x-env-variable": "OPENFGA_AUTHN_PRESHARED_KEYS"
                 }
             },
             "required": ["keys"]

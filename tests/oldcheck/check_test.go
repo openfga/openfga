@@ -2,23 +2,16 @@ package oldcheck
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/cenkalti/backoff/v4"
 	parser "github.com/craigpastro/openfga-dsl-parser"
 	"github.com/openfga/openfga/cmd"
-	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type checkTests struct {
@@ -54,50 +47,21 @@ func testCheck(t *testing.T, engine string) {
 	data, err := os.ReadFile("tests.yaml")
 	require.NoError(t, err)
 
-	var tests checkTests
-	err = yaml.Unmarshal(data, &tests)
+	var testCases checkTests
+	err = yaml.Unmarshal(data, &testCases)
 	require.NoError(t, err)
-
-	container := storage.RunDatastoreTestContainer(t, engine)
 
 	cfg := cmd.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
-	cfg.Datastore.URI = container.GetConnectionURI()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	cancel := tests.StartServer(t, cfg)
+	defer cancel()
 
-	go func() {
-		if err := cmd.RunServer(ctx, cfg); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
+	conn := tests.Connect(t, cfg.GRPC.Addr)
 	defer conn.Close()
 
-	// Ensure the service is up before continuing.
-	client := healthv1pb.NewHealthClient(conn)
-	policy := backoff.NewExponentialBackOff()
-	policy.MaxElapsedTime = 10 * time.Second
-	err = backoff.Retry(func() error {
-		resp, err := client.Check(ctx, &healthv1pb.HealthCheckRequest{
-			Service: pb.OpenFGAService_ServiceDesc.ServiceName,
-		})
-		if err != nil {
-			return err
-		}
-
-		if resp.GetStatus() != healthv1pb.HealthCheckResponse_SERVING {
-			return fmt.Errorf("not serving")
-		}
-
-		return nil
-	}, policy)
-	require.NoError(t, err)
-
-	runTest(t, pb.NewOpenFGAServiceClient(conn), tests)
+	runTest(t, pb.NewOpenFGAServiceClient(conn), testCases)
 
 	// Shutdown the server.
 	cancel()
