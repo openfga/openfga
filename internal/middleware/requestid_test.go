@@ -20,14 +20,14 @@ type pingService struct {
 }
 
 func (s *pingService) Ping(ctx context.Context, req *pb_testproto.PingRequest) (*pb_testproto.PingResponse, error) {
-	_, ok := ctx.Value(requestIDCtxKey).(string)
+	_, ok := RequestIDFromContext(ctx)
 	require.True(s.T, ok)
 
 	return s.TestServiceServer.Ping(ctx, req)
 }
 
 func (s *pingService) PingStream(ss pb_testproto.TestService_PingStreamServer) error {
-	_, ok := ss.Context().Value(requestIDCtxKey).(string)
+	_, ok := RequestIDFromContext(ss.Context())
 	require.True(s.T, ok)
 
 	return s.TestServiceServer.PingStream(ss)

@@ -17,6 +17,11 @@ const (
 	requestIDHeader string = "X-Request-Id"
 )
 
+func RequestIDFromContext(ctx context.Context) (string, bool) {
+	requestID, ok := ctx.Value(requestIDCtxKey).(string)
+	return requestID, ok
+}
+
 func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		id, err := uuid.NewRandom()
