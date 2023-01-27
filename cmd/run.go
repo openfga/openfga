@@ -757,9 +757,10 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	datastore.Close()
 
-	_ = tp.ForceFlush(ctx)
-
-	_ = tp.Shutdown(ctx)
+	if tp != nil {
+		_ = tp.ForceFlush(ctx)
+		_ = tp.Shutdown(ctx)
+	}
 
 	logger.Info("server exited. goodbye 👋")
 
