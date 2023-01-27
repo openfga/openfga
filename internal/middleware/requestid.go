@@ -50,7 +50,7 @@ func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInt
 
 		ss.WrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
 
-		err = grpc.SetHeader(stream.Context(), metadata.Pairs(requestIDHeader, requestID))
+		err = ss.SetHeader(metadata.Pairs(requestIDHeader, requestID))
 		if err != nil {
 			logger.Error("failed to set header", zap.Error(err))
 		}
