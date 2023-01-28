@@ -272,6 +272,7 @@ func (sc *circuitBreaker) IsOpen() bool {
 type resolutionContext struct {
 	store            string
 	model            *openfgapb.AuthorizationModel
+	typesys          *typesystem.TypeSystem
 	users            *userSet
 	targetUser       string
 	tk               *openfgapb.TupleKey
@@ -286,6 +287,7 @@ func newResolutionContext(store string, model *openfgapb.AuthorizationModel, tk 
 	return &resolutionContext{
 		store:            store,
 		model:            model,
+		typesys:          typesystem.New(model),
 		users:            newUserSet(),
 		targetUser:       tk.GetUser(),
 		tk:               tk,
@@ -324,9 +326,9 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 
 	return &resolutionContext{
 		store:            rc.store,
-		model:            rc.model,
 		users:            rc.users,
 		targetUser:       rc.targetUser,
+		typesys:          rc.typesys,
 		tk:               tk,
 		contextualTuples: rc.contextualTuples,
 		tracer:           tracer,
@@ -338,12 +340,10 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 
 func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.TupleBackend) (*openfgapb.TupleKey, error) {
 
-	typesys := typesystem.New(rc.model)
-
 	tk, ok := rc.contextualTuples.ReadUserTuple(rc.tk)
 
 	if tk != nil {
-		err := validation.ValidateTuple(typesys, tk)
+		err := validation.ValidateTuple(rc.typesys, tk)
 		if err == nil && ok {
 			return tk, nil
 		}
@@ -355,7 +355,7 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 	}
 
 	tk = tuple.GetKey()
-	if err := validation.ValidateTuple(typesys, tk); err != nil {
+	if err := validation.ValidateTuple(rc.typesys, tk); err != nil {
 		return nil, nil
 	}
 
@@ -374,7 +374,7 @@ func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend stor
 
 	return storage.NewFilteredTupleKeyIterator(
 		storage.NewCombinedIterator(iter1, iter2),
-		validation.FilterInvalidTuples(rc.model),
+		validation.FilterInvalidTuples(rc.typesys),
 	), nil
 }
 
@@ -390,6 +390,6 @@ func (rc *resolutionContext) read(ctx context.Context, backend storage.TupleBack
 
 	return storage.NewFilteredTupleKeyIterator(
 		storage.NewCombinedIterator(iter1, iter2),
-		validation.FilterInvalidTuples(rc.model),
+		validation.FilterInvalidTuples(rc.typesys),
 	), nil
 }

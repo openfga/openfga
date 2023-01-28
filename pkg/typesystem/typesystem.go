@@ -1,6 +1,7 @@
 package typesystem
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -8,9 +9,13 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+type ctxKey string
+
 const (
 	SchemaVersion1_0 = "1.0"
 	SchemaVersion1_1 = "1.1"
+
+	typesystemCtxKey ctxKey = "typesystem-context-key"
 )
 
 var (
@@ -21,6 +26,17 @@ var (
 	ErrObjectTypeUndefined   = errors.New("undefined object type")
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
 )
+
+// ContextWithTypesystem attaches the provided TypeSystem to the parent context.
+func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
+	return context.WithValue(parent, typesystemCtxKey, typesys)
+}
+
+// TypesystemFromContext returns the TypeSystem from the provided context (if any).
+func TypesystemFromContext(ctx context.Context) (*TypeSystem, bool) {
+	typesys, ok := ctx.Value(typesystemCtxKey).(*TypeSystem)
+	return typesys, ok
+}
 
 func DirectRelationReference(objectType, relation string) *openfgapb.RelationReference {
 	relationReference := &openfgapb.RelationReference{
