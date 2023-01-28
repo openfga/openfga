@@ -34,6 +34,8 @@ type Postgres struct {
 	maxTypesPerModelField  int
 }
 
+var _ storage.OpenFGADatastore = (*Postgres)(nil)
+
 func New(uri string, cfg *common.Config) (*Postgres, error) {
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
