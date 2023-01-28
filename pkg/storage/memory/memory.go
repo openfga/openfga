@@ -88,12 +88,12 @@ type MemoryBackend struct {
 	assertions map[string][]*openfgapb.Assertion
 }
 
+var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
+
 type AuthorizationModelEntry struct {
 	model  *openfgapb.AuthorizationModel
 	latest bool
 }
-
-var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
 // New creates a new empty MemoryBackend.
 func New(maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
@@ -639,7 +639,7 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
-// MaxTuplesPerWriteOperation returns the maximum number of tuples allowed in one write operation
+// MaxTuplesPerWrite returns the maximum number of tuples allowed in one write operation
 func (s *MemoryBackend) MaxTuplesPerWrite() int {
 	return s.maxTuplesPerWrite
 }
