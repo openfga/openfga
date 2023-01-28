@@ -569,6 +569,7 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
+// MaxTuplesPerWrite returns the maximum number of tuples allowed in one write operation
 func (s *MemoryBackend) MaxTuplesPerWrite() int {
 	return s.maxTuplesPerWrite
 }
