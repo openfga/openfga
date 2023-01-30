@@ -32,7 +32,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 }
 
-// Typesafe aliases for Write arguments.
+// Writes and Deletes are typesafe aliases for Write arguments.
 type Writes = []*openfgapb.TupleKey
 type Deletes = []*openfgapb.TupleKey
 
