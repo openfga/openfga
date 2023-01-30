@@ -18,7 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   For example, `OPENFGA_MAX_TUPLES_PER_WRITE` instead of `OPENFGA_MAXTUPLESPERWRITE`.
   For the full list please see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
   The old form still works but is considered deprecated and should not be used anymore.
-* Optimized ListObjects is now on by default (#489)
+* Optimized ListObjects is now on by default (#489) (`--experimentals="list-objects-optimized"` is no longer needed)
 * Avoid connection churn in our datastore implementations (#474)
 
 ### Fixed
