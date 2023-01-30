@@ -14,7 +14,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Added
 
-* Environment variable namings have been updated (#472). For example, `OPENFGA_MAXTUPLESPERWRITE` may now be referred to as `OPENFGA_MAX_TUPLES_PER_WRITE`. For the full list please see [.config-schema.json](./.config-schema.json). For the moment we still support the old form, but that will be dropped in a future version.
+* Environment variable names have been updated (#472).
+  For example, `OPENFGA_MAX_TUPLES_PER_WRITE` instead of `OPENFGA_MAXTUPLESPERWRITE`.
+  For the full list please see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+  The old form still works but is considered deprecated and should not be used anymore.
 * Optimized ListObjects is now on by default (#489)
 * Avoid connection churn in our datastore implementations (#474)
 
