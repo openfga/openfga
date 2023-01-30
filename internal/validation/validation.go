@@ -174,11 +174,9 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 // a generic filtering mechanism when reading tuples. It is particularly useful to filter
 // out tuples that aren't valid according to the provided model, which can help filter
 // tuples that were introduced due to another authorization model.
-func FilterInvalidTuples(model *openfgapb.AuthorizationModel) storage.TupleKeyFilterFunc {
+func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 
 	return func(tupleKey *openfgapb.TupleKey) bool {
-		typesys := typesystem.New(model)
-
 		err := ValidateTuple(typesys, tupleKey)
 		return err == nil
 	}
