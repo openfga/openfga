@@ -271,7 +271,6 @@ func (sc *circuitBreaker) IsOpen() bool {
 
 type resolutionContext struct {
 	store            string
-	model            *openfgapb.AuthorizationModel
 	typesys          *typesystem.TypeSystem
 	users            *userSet
 	targetUser       string
@@ -283,11 +282,10 @@ type resolutionContext struct {
 	externalCB       *circuitBreaker // Open is controlled from caller, Used for Difference and Intersection.
 }
 
-func newResolutionContext(store string, model *openfgapb.AuthorizationModel, tk *openfgapb.TupleKey, contextualTuples *contextualtuples.ContextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
+func newResolutionContext(store string, typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey, contextualTuples *contextualtuples.ContextualTuples, tracer resolutionTracer, metadata *utils.ResolutionMetadata, externalBreaker *circuitBreaker) *resolutionContext {
 	return &resolutionContext{
 		store:            store,
-		model:            model,
-		typesys:          typesystem.New(model),
+		typesys:          typesys,
 		users:            newUserSet(),
 		targetUser:       tk.GetUser(),
 		tk:               tk,
@@ -326,9 +324,9 @@ func (rc *resolutionContext) fork(tk *openfgapb.TupleKey, tracer resolutionTrace
 
 	return &resolutionContext{
 		store:            rc.store,
+		typesys:          rc.typesys,
 		users:            rc.users,
 		targetUser:       rc.targetUser,
-		typesys:          rc.typesys,
 		tk:               tk,
 		contextualTuples: rc.contextualTuples,
 		tracer:           tracer,

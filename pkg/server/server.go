@@ -23,17 +23,9 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slices"
 )
 
 type ExperimentalFeatureFlag string
-
-const (
-	// ListObjectsOptimized is an experimental flag that enables support for an optimized
-	// openfga.v1.ListObjects API implementation which leverages type information and reverse
-	// expansion.
-	ListObjectsOptimized ExperimentalFeatureFlag = "list-objects-optimized"
-)
 
 const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
@@ -117,16 +109,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 	}
 
-	if slices.Contains(s.config.Experimentals, ListObjectsOptimized) {
-		connectObjCmd := &commands.ConnectedObjectsCommand{
-			Datastore:        s.datastore,
-			Typesystem:       typesys,
-			ResolveNodeLimit: s.config.ResolveNodeLimit,
-			Limit:            s.config.ListObjectsMaxResults,
-		}
-
-		q.ConnectedObjects = connectObjCmd.StreamedConnectedObjects
+	connectObjCmd := &commands.ConnectedObjectsCommand{
+		Datastore:        s.datastore,
+		Typesystem:       typesys,
+		ResolveNodeLimit: s.config.ResolveNodeLimit,
+		Limit:            s.config.ListObjectsMaxResults,
 	}
+
+	q.ConnectedObjects = connectObjCmd.StreamedConnectedObjects
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
 		StoreId:              storeID,
