@@ -441,7 +441,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
-	cachedOpenFGADatastore := caching.NewCachedOpenFGADatastore(datastore, config.Datastore.MaxCacheSize)
+	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -464,12 +464,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
 	}
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 
@@ -514,7 +516,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	svr := server.New(&server.Dependencies{
-		Datastore:    cachedOpenFGADatastore,
+		Datastore:    datastore,
 		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
@@ -741,8 +743,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	authenticator.Close()
 
 	datastore.Close()
-
-	cachedOpenFGADatastore.Close()
 
 	logger.Info("server exited. goodbye 👋")
 

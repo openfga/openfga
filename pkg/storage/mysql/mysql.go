@@ -34,6 +34,8 @@ type MySQL struct {
 	maxTypesPerModelField  int
 }
 
+var _ storage.OpenFGADatastore = (*MySQL)(nil)
+
 func New(uri string, cfg *common.Config) (*MySQL, error) {
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
