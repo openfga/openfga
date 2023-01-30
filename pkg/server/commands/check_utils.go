@@ -272,7 +272,6 @@ func (sc *circuitBreaker) IsOpen() bool {
 type resolutionContext struct {
 	store            string
 	typesys          *typesystem.TypeSystem
-	model            *openfgapb.AuthorizationModel
 	users            *userSet
 	targetUser       string
 	tk               *openfgapb.TupleKey
