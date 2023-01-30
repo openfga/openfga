@@ -11,13 +11,11 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/openfga/openfga/pkg/server"
 	"github.com/openfga/openfga/pkg/server/errors"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 )
-
-// XHttpCode is used for overriding the standard HTTP code
-const XHttpCode = "x-http-code"
 
 // HTTPResponseModifier is a helper function to override the HTTP status code
 func HTTPResponseModifier(ctx context.Context, w http.ResponseWriter, p proto.Message) error {
@@ -27,13 +25,13 @@ func HTTPResponseModifier(ctx context.Context, w http.ResponseWriter, p proto.Me
 	}
 
 	// set http status code
-	if vals := md.HeaderMD.Get(XHttpCode); len(vals) > 0 {
+	if vals := md.HeaderMD.Get(server.XHttpCode); len(vals) > 0 {
 		code, err := strconv.Atoi(vals[0])
 		if err != nil {
 			return err
 		}
 		// delete the headers to not expose any grpc-metadata in http response
-		delete(md.HeaderMD, XHttpCode)
+		delete(md.HeaderMD, server.XHttpCode)
 		delete(w.Header(), "Grpc-Metadata-X-Http-Code")
 		w.WriteHeader(code)
 	}

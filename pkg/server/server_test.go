@@ -11,7 +11,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -100,7 +99,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
 
@@ -115,7 +113,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := Server{
 			datastore: mockDatastore,
 			tracer:    tracer,
-			transport: transport,
 			logger:    logger,
 		}
 
@@ -139,7 +136,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := Server{
 			datastore: mockDatastore,
 			tracer:    tracer,
-			transport: transport,
 			logger:    logger,
 		}
 
@@ -165,7 +161,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		s := Server{
 			datastore: mockDatastore,
 			tracer:    tracer,
-			transport: transport,
 			logger:    logger,
 		}
 
@@ -195,7 +190,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -221,7 +215,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	s := Server{
 		datastore: mockDatastore,
 		tracer:    tracer,
-		transport: transport,
 		logger:    logger,
 		meter:     meter,
 		config: &Config{
@@ -261,7 +254,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
@@ -306,7 +298,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	s := Server{
 		datastore: mockDatastore,
 		tracer:    tracer,
-		transport: transport,
 		logger:    logger,
 		meter:     meter,
 		config: &Config{

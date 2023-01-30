@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/gateway"
-	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -20,12 +18,17 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type ExperimentalFeatureFlag string
 
 const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+
+	// XHttpCode is used for overriding the standard HTTP code
+	XHttpCode = "x-http-code"
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -38,7 +41,6 @@ type Server struct {
 	logger    logger.Logger
 	datastore storage.OpenFGADatastore
 	encoder   encoder.Encoder
-	transport gateway.Transport
 	config    *Config
 }
 
@@ -47,7 +49,6 @@ type Dependencies struct {
 	Tracer       trace.Tracer
 	Meter        metric.Meter
 	Logger       logger.Logger
-	Transport    gateway.Transport
 	TokenEncoder encoder.Encoder
 }
 
@@ -68,7 +69,6 @@ func New(dependencies *Dependencies, config *Config) *Server {
 		logger:    dependencies.Logger,
 		datastore: dependencies.Datastore,
 		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
 		config:    config,
 	}
 }
@@ -313,7 +313,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 		return nil, err
 	}
 
-	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
+	_ = grpc.SetHeader(ctx, metadata.Pairs(XHttpCode, strconv.Itoa(http.StatusCreated)))
 
 	return res, nil
 }
@@ -351,7 +351,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 		return nil, err
 	}
 
-	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
+	_ = grpc.SetHeader(ctx, metadata.Pairs(XHttpCode, strconv.Itoa(http.StatusNoContent)))
 
 	return res, nil
 }
@@ -391,7 +391,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 		return nil, err
 	}
 
-	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusCreated))
+	_ = grpc.SetHeader(ctx, metadata.Pairs(XHttpCode, strconv.Itoa(http.StatusCreated)))
 
 	return res, nil
 }
@@ -406,7 +406,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 		return nil, err
 	}
 
-	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusNoContent))
+	_ = grpc.SetHeader(ctx, metadata.Pairs(XHttpCode, strconv.Itoa(http.StatusNoContent)))
 
 	return res, nil
 }
@@ -464,7 +464,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 		}
 	}
 
-	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
+	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
 
 	return modelID, nil
 }

@@ -25,7 +25,6 @@ import (
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
-	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -521,7 +520,6 @@ func RunServer(ctx context.Context, config *Config) error {
 		Logger:       logger,
 		Meter:        meter,
 		TokenEncoder: tokenEncoder,
-		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
