@@ -12,7 +12,11 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
+
+var tracer = otel.Tracer("internal/graph/check")
 
 type setOperatorType int
 
@@ -100,10 +104,10 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error) {
 
-	cctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(cctx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
 		cancel()
@@ -133,10 +137,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error) {
 
-	cctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
-	drain := resolver(cctx, concurrencyLimit, resultChan, handlers...)
+	drain := resolver(ctx, concurrencyLimit, resultChan, handlers...)
 
 	defer func() {
 		cancel()
@@ -174,7 +178,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 	limiter := make(chan struct{}, concurrencyLimit)
 
-	cctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(ctx)
 	baseChan := make(chan checkOutcome, 1)
 	subChan := make(chan checkOutcome, 1)
 
@@ -193,7 +197,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := baseHandler(cctx)
+		resp, err := baseHandler(ctx)
 		baseChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -202,7 +206,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	limiter <- struct{}{}
 	wg.Add(1)
 	go func() {
-		resp, err := subHandler(cctx)
+		resp, err := subHandler(ctx)
 		subChan <- checkOutcome{resp, err}
 		<-limiter
 		wg.Done()
@@ -253,6 +257,8 @@ func (c *LocalChecker) DispatchCheck(
 	ctx context.Context,
 	req *dispatcher.DispatchCheckRequest,
 ) (*dispatcher.DispatchCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "DispatchCheck")
+	defer span.End()
 
 	if req.GetResolutionMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
@@ -294,6 +300,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 	}
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirect")
+		defer span.End()
 
 		storeID := req.GetStoreID()
 		tk := req.GetTupleKey()
@@ -400,6 +408,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.Dispa
 	}
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkTTU")
+		defer span.End()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
@@ -474,8 +484,21 @@ func (c *LocalChecker) checkSetOperation(
 
 	var handlers []CheckHandlerFunc
 
+	var reducerKey string
 	switch setOpType {
 	case unionSetOperator, intersectionSetOperator, exclusionSetOperator:
+		if setOpType == unionSetOperator {
+			reducerKey = "union"
+		}
+
+		if setOpType == intersectionSetOperator {
+			reducerKey = "intersection"
+		}
+
+		if setOpType == exclusionSetOperator {
+			reducerKey = "exclusion"
+		}
+
 		for _, child := range children {
 			handlers = append(handlers, c.checkRewrite(ctx, req, child))
 		}
@@ -484,6 +507,11 @@ func (c *LocalChecker) checkSetOperation(
 	}
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkSetOperation")
+		defer span.End()
+
+		span.SetAttributes(attribute.String("reducer", reducerKey))
+
 		return reducer(ctx, c.concurrencyLimit, handlers...)
 	}
 }
