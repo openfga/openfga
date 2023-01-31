@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/caching"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
@@ -52,6 +53,7 @@ type Dependencies struct {
 }
 
 type Config struct {
+	DatastoreMaxCacheSize int
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
@@ -62,11 +64,13 @@ type Config struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
+	datastore := caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(dependencies.Datastore), config.DatastoreMaxCacheSize)
+
 	return &Server{
 		tracer:    dependencies.Tracer,
 		meter:     dependencies.Meter,
 		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
+		datastore: datastore,
 		encoder:   dependencies.TokenEncoder,
 		transport: dependencies.Transport,
 		config:    config,

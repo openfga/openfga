@@ -34,7 +34,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/caching"
 	"github.com/openfga/openfga/pkg/storage/common"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
@@ -442,8 +441,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
-	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
-
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
 	case "none":
@@ -524,6 +521,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: tokenEncoder,
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
+		DatastoreMaxCacheSize:  config.Datastore.MaxCacheSize,
 		ResolveNodeLimit:       config.ResolveNodeLimit,
 		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
 		ListObjectsDeadline:    config.ListObjectsDeadline,
