@@ -225,6 +225,8 @@ func DefaultConfig() *Config {
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
+			MaxIdleConns: 10,
+			MaxOpenConns: 30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
