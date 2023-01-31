@@ -5,6 +5,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -37,13 +38,8 @@ type Deletes = []*openfgapb.TupleKey
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
-	// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled. If nil,
-	// Read will return an iterator over all the `Tuple`s in the given store. If the `TupleKey` is partially filled,
-	// it will return an iterator over those `Tuple`s which match the `TupleKey`. Note that at least one of `Object`
-	// or `User` (or both), must be specified in this case.
-	//
-	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
-	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+	RelationshipTupleReader
+	RelationshipTupleWriter
 
 	// ListObjectsByType returns all the objects of a specific type.
 	// You can assume that the type has already been validated.
@@ -53,6 +49,16 @@ type TupleBackend interface {
 		store string,
 		objectType string,
 	) (ObjectIterator, error)
+}
+
+type RelationshipTupleReader interface {
+	// Read the set of tuples associated with `store` and `TupleKey`, which may be nil or partially filled. If nil,
+	// Read will return an iterator over all the `Tuple`s in the given store. If the `TupleKey` is partially filled,
+	// it will return an iterator over those `Tuple`s which match the `TupleKey`. Note that at least one of `Object`
+	// or `User` (or both), must be specified in this case.
+	//
+	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
+	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
@@ -62,13 +68,6 @@ type TupleBackend interface {
 		tk *openfgapb.TupleKey,
 		opts PaginationOptions,
 	) ([]*openfgapb.Tuple, []byte, error)
-
-	// Write updates data in the tuple backend, performing all delete operations in
-	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// It is expected that
-	// - there is at most 10 deletes/writes
-	// - no duplicate item in delete/write list
-	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	ReadUserTuple(
 		ctx context.Context,
@@ -97,6 +96,16 @@ type TupleBackend interface {
 		store string,
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
+}
+
+type RelationshipTupleWriter interface {
+
+	// Write updates data in the tuple backend, performing all delete operations in
+	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
+	// It is expected that
+	// - there is at most 10 deletes/writes
+	// - no duplicate item in delete/write list
+	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
 	// MaxTuplesPerWrite returns the maximum number of items allowed in a single write transaction
 	MaxTuplesPerWrite() int
@@ -176,4 +185,174 @@ type OpenFGADatastore interface {
 
 	// Close closes the datastore and cleans up any residual resources.
 	Close()
+}
+
+type ctxKey string
+
+const (
+	contextualTuplesCtxKey ctxKey = "contextual-tuples"
+)
+
+func ContextualTuplesFromContext(ctx context.Context) ([]*openfgapb.TupleKey, bool) {
+	ctxTuples, ok := ctx.Value(contextualTuplesCtxKey).([]*openfgapb.TupleKey)
+	return ctxTuples, ok
+}
+
+func ContextWithContextualTuples(parent context.Context, ctxTuples []*openfgapb.TupleKey) context.Context {
+	return context.WithValue(parent, contextualTuplesCtxKey, ctxTuples)
+}
+
+func NewContextualTupleDatastore(ds RelationshipTupleReader) RelationshipTupleReader {
+	return &ctxRelationshipTupleReader{wrapped: ds}
+}
+
+type ctxRelationshipTupleReader struct {
+	wrapped RelationshipTupleReader
+}
+
+var _ RelationshipTupleReader = (*ctxRelationshipTupleReader)(nil)
+
+// filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
+// that don't match the object and relation provided in the filterKey.
+func filterTuples(tuples []*openfgapb.TupleKey, filterKey *openfgapb.TupleKey) []*openfgapb.Tuple {
+	targetObject := filterKey.GetObject()
+	targetRelation := filterKey.GetRelation()
+
+	var filtered []*openfgapb.Tuple
+	for _, tk := range tuples {
+		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
+			filtered = append(filtered, &openfgapb.Tuple{
+				Key: tk,
+			})
+		}
+	}
+
+	return filtered
+}
+
+func (b *ctxRelationshipTupleReader) Read(
+	ctx context.Context,
+	storeID string,
+	tk *openfgapb.TupleKey,
+) (TupleIterator, error) {
+
+	var iter1 TupleIterator = &emptyTupleIterator{}
+
+	tuples, ok := ContextualTuplesFromContext(ctx)
+	if ok {
+		iter1 = NewStaticTupleIterator(filterTuples(tuples, tk))
+	}
+
+	iter2, err := b.wrapped.Read(ctx, storeID, tk)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCombinedIterator(iter1, iter2), nil
+}
+
+func (b *ctxRelationshipTupleReader) ReadPage(
+	ctx context.Context,
+	store string,
+	tk *openfgapb.TupleKey,
+	opts PaginationOptions,
+) ([]*openfgapb.Tuple, []byte, error) {
+	return b.wrapped.ReadPage(ctx, store, tk, opts)
+}
+
+func (b *ctxRelationshipTupleReader) ReadUserTuple(
+	ctx context.Context,
+	store string,
+	tk *openfgapb.TupleKey,
+) (*openfgapb.Tuple, error) {
+
+	var filteredTuples []*openfgapb.Tuple
+
+	tuples, ok := ContextualTuplesFromContext(ctx)
+	if ok {
+		filteredTuples = filterTuples(tuples, tk)
+	}
+
+	for _, tuple := range filteredTuples {
+		if tuple.GetKey().GetUser() == tk.GetUser() {
+			return tuple, nil
+		}
+	}
+
+	return b.wrapped.ReadUserTuple(ctx, store, tk)
+}
+
+func (b *ctxRelationshipTupleReader) ReadUsersetTuples(
+	ctx context.Context,
+	store string,
+	tk *openfgapb.TupleKey,
+) (TupleIterator, error) {
+
+	var iter1 TupleIterator = &emptyTupleIterator{}
+
+	var filteredTuples []*openfgapb.Tuple
+
+	tuples, ok := ContextualTuplesFromContext(ctx)
+	if ok {
+		for _, t := range filterTuples(tuples, tk) {
+			if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
+				filteredTuples = append(filteredTuples, t)
+			}
+		}
+
+		iter1 = NewStaticTupleIterator(filteredTuples)
+	}
+
+	iter2, err := b.wrapped.ReadUsersetTuples(ctx, store, tk)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCombinedIterator(iter1, iter2), nil
+}
+
+func (b *ctxRelationshipTupleReader) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter ReadStartingWithUserFilter,
+) (TupleIterator, error) {
+
+	var iter1 TupleIterator = &emptyTupleIterator{}
+
+	tuples, ok := ContextualTuplesFromContext(ctx)
+	if ok {
+
+		var filteredTuples []*openfgapb.Tuple
+		for _, t := range tuples {
+			if tuple.GetType(t.GetObject()) != filter.ObjectType {
+				continue
+			}
+
+			if t.GetRelation() != filter.Relation {
+				continue
+			}
+
+			for _, u := range filter.UserFilter {
+				targetUser := u.GetObject()
+				if u.GetRelation() != "" {
+					targetUser = tuple.ToObjectRelationString(targetUser, u.GetRelation())
+				}
+
+				if t.GetUser() == targetUser {
+					filteredTuples = append(filteredTuples, &openfgapb.Tuple{
+						Key: t,
+					})
+				}
+			}
+		}
+
+		iter1 = NewStaticTupleIterator(filteredTuples)
+	}
+
+	iter2, err := b.wrapped.ReadStartingWithUser(ctx, store, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewCombinedIterator(iter1, iter2), nil
 }
