@@ -128,13 +128,13 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
-		validation.FilterInvalidTuples(typesys.GetAuthorizationModel()),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
 	distinctUsers := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next(ctx)
+		tk, err := filteredIter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -240,14 +240,14 @@ func (q *ExpandQuery) resolveTupleToUserset(
 
 	filteredIter := storage.NewFilteredTupleKeyIterator(
 		storage.NewTupleKeyIteratorFromTupleIterator(tupleIter),
-		validation.FilterInvalidTuples(typesys.GetAuthorizationModel()),
+		validation.FilterInvalidTuples(typesys),
 	)
 	defer filteredIter.Stop()
 
 	var computed []*openfgapb.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next(ctx)
+		tk, err := filteredIter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

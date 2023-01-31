@@ -8,6 +8,30 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.3] - 2023-01-31
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.2...v0.3.3)
+
+### Added
+
+* Environment variable names have been updated (#472).
+
+  For example, `OPENFGA_MAX_TUPLES_PER_WRITE` instead of `OPENFGA_MAXTUPLESPERWRITE`.
+
+  For the full list please see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+
+  The old form still works but is considered deprecated and should not be used anymore.
+
+* Optimized ListObjects is now on by default (#489) (`--experimentals="list-objects-optimized"` is no longer needed)
+
+* Avoid connection churn in our datastore implementations (#474)
+
+* The default values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively (#492)
+
+### Fixed
+
+* ListObjects should no longer return duplicates (#475)
+
 ## [0.3.2] - 2023-01-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.1...v0.3.2)
@@ -260,7 +284,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/openfga/openfga/releases/tag/v0.3.3
 [0.3.2]: https://github.com/openfga/openfga/releases/tag/v0.3.2
 [0.3.1]: https://github.com/openfga/openfga/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
