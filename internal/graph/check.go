@@ -263,8 +263,6 @@ func (c *LocalChecker) DispatchCheck(
 		panic("typesystem missing in context")
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
 	object := req.GetTupleKey().GetObject()
 	relation := req.GetTupleKey().GetRelation()
 
