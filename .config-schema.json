@@ -43,7 +43,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["list-objects-optimized", "otel-metrics"]
+                "enum": ["otel-metrics"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -110,13 +110,13 @@
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
                     "type": "integer",
-                    "default": "unlimited - database/sql default",
+                    "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
                 "maxIdleConns": {
                     "description": "the maximum number of connections to the datastore in the idle connection pool.",
                     "type": "integer",
-                    "default": "2 - database/sql default",
+                    "default": "10",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_IDLE_CONNS"
                 },
                 "connMaxIdleTime": {

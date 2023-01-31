@@ -34,6 +34,8 @@ type MySQL struct {
 	maxTypesPerModelField  int
 }
 
+var _ storage.OpenFGADatastore = (*MySQL)(nil)
+
 func New(uri string, cfg *common.Config) (*MySQL, error) {
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
@@ -124,7 +126,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(ctx, opts)
+	return iter.ToArray(opts)
 }
 
 func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {

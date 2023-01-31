@@ -44,18 +44,15 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next(ctx context.Context) (*openfgapb.Tuple, error) {
-	select {
-	case <-ctx.Done():
+func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
+	if len(s.tuples) == 0 {
 		return nil, storage.ErrIteratorDone
-	default:
-		if len(s.tuples) == 0 {
-			return nil, storage.ErrIteratorDone
-		}
-		next, rest := s.tuples[0], s.tuples[1:]
-		s.tuples = rest
-		return next, nil
 	}
+
+	next, rest := s.tuples[0], s.tuples[1:]
+	s.tuples = rest
+
+	return next, nil
 }
 
 func (s *staticIterator) Stop() {}
@@ -87,12 +84,12 @@ type MemoryBackend struct {
 	assertions map[string][]*openfgapb.Assertion
 }
 
+var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
+
 type AuthorizationModelEntry struct {
 	model  *openfgapb.AuthorizationModel
 	latest bool
 }
-
-var _ storage.OpenFGADatastore = (*MemoryBackend)(nil)
 
 // New creates a new empty MemoryBackend.
 func New(tracer trace.Tracer, maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
@@ -639,7 +636,7 @@ func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID strin
 	return assertions, nil
 }
 
-// MaxTuplesPerWriteOperation returns the maximum number of tuples allowed in one write operation
+// MaxTuplesPerWrite returns the maximum number of tuples allowed in one write operation
 func (s *MemoryBackend) MaxTuplesPerWrite() int {
 	return s.maxTuplesPerWrite
 }
