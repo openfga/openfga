@@ -75,7 +75,7 @@ func (q *CheckQuery) Execute(ctx context.Context, req *openfgapb.CheckRequest) (
 		return nil, serverErrors.ValidationError(err)
 	}
 
-	rc := newResolutionContext(req.GetStoreId(), model, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
+	rc := newResolutionContext(req.GetStoreId(), typesys, tk, contextualTuples, resolutionTracer, utils.NewResolutionMetadata(), &circuitBreaker{breakerState: false})
 
 	rewrite, err := getTypeRelationRewrite(rc.tk, typesys)
 	if err != nil {
@@ -160,7 +160,7 @@ func (q *CheckQuery) resolveNode(ctx context.Context, rc *resolutionContext, nsU
 			q.logger.Warn(
 				fmt.Sprintf("unexpected rewrite on tupleset relation '%s#%s'", objectType, tupleset),
 				zap.String("store_id", rc.store),
-				zap.String("authorization_model_id", rc.model.Id),
+				zap.String("authorization_model_id", rc.typesys.GetAuthorizationModelID()),
 				zap.String("object_type", objectType),
 				zap.String("relation", tupleset),
 			)
@@ -377,7 +377,7 @@ func (q *CheckQuery) resolveIntersection(
 	for idx, userset := range nodes.Intersection.Child {
 		idx, userset := idx, userset
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.typesys, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := q.resolveNode(ctx, nestedRC, userset, typesys)
 			if err != nil {
@@ -446,7 +446,7 @@ func (q *CheckQuery) resolveDifference(
 	for idx, set := range sets {
 		idx, set := idx, set
 		tracer := rc.tracer.AppendIndex(idx)
-		nestedRC := newResolutionContext(rc.store, rc.model, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
+		nestedRC := newResolutionContext(rc.store, rc.typesys, rc.tk, rc.contextualTuples, tracer, rc.metadata, breaker)
 		grp.Go(func() error {
 			err := q.resolveNode(ctx, nestedRC, set, typesys)
 			if err != nil {
