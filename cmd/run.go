@@ -899,9 +899,9 @@ func bindRunFlags(cmd *cobra.Command) {
 	util.MustBindPFlag("trace.enabled", cmd.Flags().Lookup("trace-enabled"))
 	util.MustBindEnv("trace.enabled", "TRACE_ENABLED")
 
-	cmd.Flags().String("trace-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
-	util.MustBindPFlag("trace.endpoint", cmd.Flags().Lookup("trace-endpoint"))
-	util.MustBindEnv("trace.endpoint", "TRACE_ENDPOINT")
+	cmd.Flags().String("trace-grpc-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
+	util.MustBindPFlag("trace.grpc.endpoint", cmd.Flags().Lookup("trace-grpc-endpoint"))
+	util.MustBindEnv("trace.grpc.endpoint", "TRACE_GRPC_ENDPOINT")
 
 	cmd.Flags().Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 	util.MustBindPFlag("trace.sample.ratio", cmd.Flags().Lookup("trace-sample-ratio"))
