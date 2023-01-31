@@ -226,7 +226,7 @@ func DefaultConfig() *Config {
 			Engine:       "memory",
 			MaxCacheSize: 100000,
 			MaxIdleConns: 10,
-			MaxOpenConns: 90,
+			MaxOpenConns: 30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",

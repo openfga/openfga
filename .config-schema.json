@@ -110,7 +110,7 @@
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",
                     "type": "integer",
-                    "default": "90",
+                    "default": "30",
                     "x-env-variable": "OPENFGA_DATASTORE_MAX_OPEN_CONNS"
                 },
                 "maxIdleConns": {
