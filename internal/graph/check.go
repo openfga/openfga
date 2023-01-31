@@ -342,7 +342,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 
 			var handlers []CheckHandlerFunc
 			for {
-				t, err := filteredIter.Next(ctx)
+				t, err := filteredIter.Next()
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
 						break
@@ -437,7 +437,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.Dispa
 
 		var handlers []CheckHandlerFunc
 		for {
-			t, err := filteredIter.Next(ctx)
+			t, err := filteredIter.Next()
 			if err != nil {
 				if err == storage.ErrIteratorDone {
 					break
