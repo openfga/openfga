@@ -526,6 +526,8 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgapb.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgapb.Userset_ComputedUserset:
+		ctx, span := tracer.Start(ctx, "checkComputedUserset")
+		defer span.End()
 
 		return c.dispatch(
 			ctx,
