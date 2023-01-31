@@ -474,19 +474,12 @@ func (c *LocalChecker) checkSetOperation(
 	var handlers []CheckHandlerFunc
 
 	switch setOpType {
-	case unionSetOperator, intersectionSetOperator:
+	case unionSetOperator, intersectionSetOperator, exclusionSetOperator:
 		for _, child := range children {
 			handlers = append(handlers, c.checkRewrite(ctx, req, child))
 		}
-	case exclusionSetOperator:
-		if len(children) != 2 {
-			panic(fmt.Sprintf("expected two rewrite operands in exclusion operator, but got '%d'", len(children)))
-		}
-
-		handlers = append(handlers,
-			c.checkRewrite(ctx, req, children[0]),
-			c.checkRewrite(ctx, req, children[1]),
-		)
+	default:
+		panic("unexpected set operator type encountered")
 	}
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
