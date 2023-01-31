@@ -378,11 +378,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 
 			}
 
-			if len(handlers) > 0 {
-				return union(ctx, c.concurrencyLimit, handlers...)
+			if len(handlers) == 0 {
+				return &openfgapb.CheckResponse{Allowed: false}, nil
+
 			}
 
-			return &openfgapb.CheckResponse{Allowed: false}, nil
+			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
 		return union(ctx, c.concurrencyLimit, fn1, fn2)
@@ -455,11 +456,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.Dispa
 				}))
 		}
 
-		if len(handlers) > 0 {
-			return union(ctx, c.concurrencyLimit, handlers...)
+		if len(handlers) == 0 {
+			return &openfgapb.CheckResponse{Allowed: false}, nil
 		}
 
-		return &openfgapb.CheckResponse{Allowed: false}, nil
+		return union(ctx, c.concurrencyLimit, handlers...)
 	}
 }
 
