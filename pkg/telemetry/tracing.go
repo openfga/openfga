@@ -15,11 +15,13 @@ import (
 	"google.golang.org/grpc"
 )
 
+const serviceName = "openfga"
+
 func MustNewTracerProvider(endpoint string, ratio float64) *sdktrace.TracerProvider {
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewSchemaless(
-			semconv.ServiceNameKey.String("openfga"),
+			semconv.ServiceNameKey.String(serviceName),
 			semconv.ServiceVersionKey.String(build.Version),
 		))
 	if err != nil {
