@@ -53,7 +53,7 @@ type Dependencies struct {
 }
 
 type Config struct {
-	DatastoreMaxCacheSize int
+	DatastoreMaxCacheSize  int
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
