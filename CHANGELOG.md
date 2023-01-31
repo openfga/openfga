@@ -26,7 +26,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Avoid connection churn in our datastore implementations (#474)
 
-* The defaults values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively (#492)
+* The default values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively (#492)
 
 ### Fixed
 
