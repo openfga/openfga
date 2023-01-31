@@ -238,7 +238,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &openfgapb.CheckResponse{Allowed: true}, nil
 }
 
-// dispatch dispatches the provided Check request to the CheckDispatcher this ConcurrentChecker
+// dispatch dispatches the provided Check request to the CheckDispatcher this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *dispatcher.DispatchCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
