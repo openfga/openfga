@@ -165,7 +165,7 @@ func (q *ListObjectsQuery) Execute(
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
-	listObjectsGauge, err := q.Meter.AsyncInt64().Gauge(
+	listObjectsCounter, err := q.Meter.Int64UpDownCounter(
 		"openfga.listObjects.results",
 		instrument.WithDescription("Number of results returned by ListObjects"),
 		instrument.WithUnit(unit.Dimensionless),
@@ -202,7 +202,7 @@ func (q *ListObjectsQuery) Execute(
 			if !ok {
 				// Channel closed! No more results. Send them all
 				attributes = append(attributes, attribute.Bool("complete_results", true))
-				listObjectsGauge.Observe(ctx, int64(len(objects)), attributes...)
+				listObjectsCounter.Add(ctx, int64(len(objects)), attributes...)
 
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
@@ -287,7 +287,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
-		object, err := iter.Next(ctx)
+		object, err := iter.Next()
 		if err != nil {
 			if !errors.Is(err, storage.ErrIteratorDone) {
 				return err

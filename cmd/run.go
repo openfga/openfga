@@ -48,7 +48,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -234,6 +233,8 @@ func DefaultConfig() *Config {
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
+			MaxIdleConns: 10,
+			MaxOpenConns: 30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
@@ -405,8 +406,6 @@ func RunServer(ctx context.Context, config *Config) error {
 		tp = telemetry.MustNewTracerProvider(config.Trace.Endpoint, config.Trace.SampleRatio)
 	}
 
-	meter := metric.NewNoopMeter()
-
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
 	var experimentals []server.ExperimentalFeatureFlag
@@ -414,8 +413,9 @@ func RunServer(ctx context.Context, config *Config) error {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
+	meter := metric.NewNoopMeter()
 	var err error
-	if slices.Contains(config.Experimentals, "otel-metrics") {
+	if util.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
 		endpoint := config.OpenTelemetry.Endpoint

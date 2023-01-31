@@ -127,7 +127,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	}
 	defer iter.Stop()
 
-	return iter.ToArray(ctx, opts)
+	return iter.ToArray(opts)
 }
 
 func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
