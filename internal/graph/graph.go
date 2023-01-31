@@ -16,7 +16,7 @@ const (
 )
 
 var (
-	ErrResolutionDepthExceeded = fmt.Errorf("resolution depth exceeded")
+	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
 	ErrTargetError             = errors.New("graph: target incorrectly specified")
 	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
 )
