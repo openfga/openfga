@@ -531,6 +531,6 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgapb.Userset_Difference:
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
-		panic("unexpected userset rewrite encountere")
+		panic("unexpected userset rewrite encountered")
 	}
 }
