@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/openfga/openfga/pkg/logger"
 	"google.golang.org/grpc"
@@ -42,7 +41,7 @@ func (g *RPCTransport) SetHeader(ctx context.Context, key, value string) {
 			ctx,
 			"failed to set grpc header",
 			logger.Error(err),
-			logger.String("header", fmt.Sprintf("%s: %s", key, value)),
+			logger.String("header", key),
 		)
 	}
 }
