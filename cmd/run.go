@@ -513,21 +513,24 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
-	svr := server.New(&server.Dependencies{
-		Datastore:    datastore,
-		Tracer:       tracer,
-		Logger:       logger,
-		Meter:        meter,
-		TokenEncoder: tokenEncoder,
-		Transport:    gateway.NewRPCTransport(logger),
-	}, &server.Config{
-		DatastoreMaxCacheSize:  config.Datastore.MaxCacheSize,
-		ResolveNodeLimit:       config.ResolveNodeLimit,
-		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
-		ListObjectsDeadline:    config.ListObjectsDeadline,
-		ListObjectsMaxResults:  config.ListObjectsMaxResults,
-		Experimentals:          experimentals,
-	})
+	svr := server.NewWithCachedDatastore(
+		&server.Dependencies{
+			Datastore:    datastore,
+			Tracer:       tracer,
+			Logger:       logger,
+			Meter:        meter,
+			TokenEncoder: tokenEncoder,
+			Transport:    gateway.NewRPCTransport(logger),
+		},
+		&server.Config{
+			ResolveNodeLimit:       config.ResolveNodeLimit,
+			ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+			ListObjectsDeadline:    config.ListObjectsDeadline,
+			ListObjectsMaxResults:  config.ListObjectsMaxResults,
+			Experimentals:          experimentals,
+		},
+		config.Datastore.MaxCacheSize,
+	)
 
 	logger.Info(
 		"🚀 starting openfga service...",

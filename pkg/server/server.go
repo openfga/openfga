@@ -53,7 +53,6 @@ type Dependencies struct {
 }
 
 type Config struct {
-	DatastoreMaxCacheSize  int
 	ResolveNodeLimit       uint32
 	ChangelogHorizonOffset int
 	ListObjectsDeadline    time.Duration
@@ -61,10 +60,23 @@ type Config struct {
 	Experimentals          []ExperimentalFeatureFlag
 }
 
-// New creates a new Server which uses the supplied backends
-// for managing data.
+// New creates a new Server which uses the supplied backend for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
-	datastore := caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(dependencies.Datastore), config.DatastoreMaxCacheSize)
+	return &Server{
+		tracer:    dependencies.Tracer,
+		meter:     dependencies.Meter,
+		logger:    dependencies.Logger,
+		datastore: storage.NewContextWrapper(dependencies.Datastore),
+		encoder:   dependencies.TokenEncoder,
+		transport: dependencies.Transport,
+		config:    config,
+	}
+}
+
+// NewWithCachedDatastore creates a new Server which wraps the supplied backend
+// with an authorization model cache and uses that for managing data.
+func NewWithCachedDatastore(dependencies *Dependencies, config *Config, datastoreMaxCacheSize int) *Server {
+	datastore := caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(dependencies.Datastore), datastoreMaxCacheSize)
 
 	return &Server{
 		tracer:    dependencies.Tracer,
