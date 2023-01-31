@@ -11,7 +11,7 @@ import (
 var ErrIteratorDone = errors.New("iterator done")
 
 type Iterator[T any] interface {
-	// Next will return the next available item. If the context is cancelled or times out, it should return ErrIteratorDone
+	// Next will return the next available item.
 	Next() (T, error)
 	// Stop terminates iteration over the underlying iterator.
 	Stop()
@@ -57,8 +57,7 @@ func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
 
 var _ ObjectIterator = (*uniqueObjectIterator)(nil)
 
-// Next returns the next unique object from the two underlying iterators. If
-// the context is cancelled or times out, it should return ErrIteratorDone
+// Next returns the next unique object from the two underlying iterators.
 func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
 	for {
 		obj, err := u.iter1.Next()
