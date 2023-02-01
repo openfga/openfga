@@ -156,6 +156,156 @@ func (mr *MockTupleBackendMockRecorder) Write(ctx, store, d, w interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockTupleBackend)(nil).Write), ctx, store, d, w)
 }
 
+// MockRelationshipTupleReader is a mock of RelationshipTupleReader interface.
+type MockRelationshipTupleReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockRelationshipTupleReaderMockRecorder
+}
+
+// MockRelationshipTupleReaderMockRecorder is the mock recorder for MockRelationshipTupleReader.
+type MockRelationshipTupleReaderMockRecorder struct {
+	mock *MockRelationshipTupleReader
+}
+
+// NewMockRelationshipTupleReader creates a new mock instance.
+func NewMockRelationshipTupleReader(ctrl *gomock.Controller) *MockRelationshipTupleReader {
+	mock := &MockRelationshipTupleReader{ctrl: ctrl}
+	mock.recorder = &MockRelationshipTupleReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockRecorder {
+	return m.recorder
+}
+
+// Read mocks base method.
+func (m *MockRelationshipTupleReader) Read(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Read", arg0, arg1, arg2)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Read indicates an expected call of Read.
+func (mr *MockRelationshipTupleReaderMockRecorder) Read(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Read", reflect.TypeOf((*MockRelationshipTupleReader)(nil).Read), arg0, arg1, arg2)
+}
+
+// ReadPage mocks base method.
+func (m *MockRelationshipTupleReader) ReadPage(ctx context.Context, store string, tk *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadPage", ctx, store, tk, opts)
+	ret0, _ := ret[0].([]*openfgav1.Tuple)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ReadPage indicates an expected call of ReadPage.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadPage(ctx, store, tk, opts interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadPage", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadPage), ctx, store, tk, opts)
+}
+
+// ReadStartingWithUser mocks base method.
+func (m *MockRelationshipTupleReader) ReadStartingWithUser(ctx context.Context, store string, filter storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadStartingWithUser", ctx, store, filter)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadStartingWithUser indicates an expected call of ReadStartingWithUser.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadStartingWithUser(ctx, store, filter interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadStartingWithUser), ctx, store, filter)
+}
+
+// ReadUserTuple mocks base method.
+func (m *MockRelationshipTupleReader) ReadUserTuple(ctx context.Context, store string, tk *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadUserTuple", ctx, store, tk)
+	ret0, _ := ret[0].(*openfgav1.Tuple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadUserTuple indicates an expected call of ReadUserTuple.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadUserTuple(ctx, store, tk interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUserTuple", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUserTuple), ctx, store, tk)
+}
+
+// ReadUsersetTuples mocks base method.
+func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, tk *openfgav1.TupleKey) (storage.TupleIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, tk)
+	ret0, _ := ret[0].(storage.TupleIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUsersetTuples), ctx, store, tk)
+}
+
+// MockRelationshipTupleWriter is a mock of RelationshipTupleWriter interface.
+type MockRelationshipTupleWriter struct {
+	ctrl     *gomock.Controller
+	recorder *MockRelationshipTupleWriterMockRecorder
+}
+
+// MockRelationshipTupleWriterMockRecorder is the mock recorder for MockRelationshipTupleWriter.
+type MockRelationshipTupleWriterMockRecorder struct {
+	mock *MockRelationshipTupleWriter
+}
+
+// NewMockRelationshipTupleWriter creates a new mock instance.
+func NewMockRelationshipTupleWriter(ctrl *gomock.Controller) *MockRelationshipTupleWriter {
+	mock := &MockRelationshipTupleWriter{ctrl: ctrl}
+	mock.recorder = &MockRelationshipTupleWriterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockRelationshipTupleWriter) EXPECT() *MockRelationshipTupleWriterMockRecorder {
+	return m.recorder
+}
+
+// MaxTuplesPerWrite mocks base method.
+func (m *MockRelationshipTupleWriter) MaxTuplesPerWrite() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MaxTuplesPerWrite")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// MaxTuplesPerWrite indicates an expected call of MaxTuplesPerWrite.
+func (mr *MockRelationshipTupleWriterMockRecorder) MaxTuplesPerWrite() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MaxTuplesPerWrite", reflect.TypeOf((*MockRelationshipTupleWriter)(nil).MaxTuplesPerWrite))
+}
+
+// Write mocks base method.
+func (m *MockRelationshipTupleWriter) Write(ctx context.Context, store string, d storage.Deletes, w storage.Writes) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Write", ctx, store, d, w)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Write indicates an expected call of Write.
+func (mr *MockRelationshipTupleWriterMockRecorder) Write(ctx, store, d, w interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockRelationshipTupleWriter)(nil).Write), ctx, store, d, w)
+}
+
 // MockAuthorizationModelReadBackend is a mock of AuthorizationModelReadBackend interface.
 type MockAuthorizationModelReadBackend struct {
 	ctrl     *gomock.Controller

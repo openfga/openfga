@@ -296,7 +296,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next(ctx)
+		t, err := iter.Next()
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -476,7 +476,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for {
-		t, err := iter.Next(ctx)
+		t, err := iter.Next()
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break

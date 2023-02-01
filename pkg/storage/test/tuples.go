@@ -281,7 +281,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		var gotTupleKeys []*openfgapb.TupleKey
 		for {
-			tk, err := iter.Next(ctx)
+			tk, err := iter.Next()
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
@@ -294,7 +294,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 
 		// Then the iterator should run out
-		_, err = gotTuples.Next(ctx)
+		_, err = gotTuples.Next()
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 
 		require.Len(t, gotTupleKeys, 3)
@@ -311,7 +311,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 
-		_, err = gotTuples.Next(context.Background())
+		_, err = gotTuples.Next()
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
@@ -410,7 +410,7 @@ func ListObjectsByTypeTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 	var actual []string
 	for {
-		obj, err := iter.Next(context.Background())
+		obj, err := iter.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -547,7 +547,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions) []string {
 	var objects []string
 	for {
-		tp, err := tupleIterator.Next(context.Background())
+		tp, err := tupleIterator.Next()
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break

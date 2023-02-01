@@ -46,7 +46,6 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -225,6 +224,8 @@ func DefaultConfig() *Config {
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
+			MaxIdleConns: 10,
+			MaxOpenConns: 30,
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
@@ -397,7 +398,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	var err error
 	meter := metric.NewNoopMeter()
 
-	if slices.Contains(config.Experimentals, "otel-metrics") {
+	if util.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
 		endpoint := config.OpenTelemetry.Endpoint
