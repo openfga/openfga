@@ -399,7 +399,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
-	tokenEncoder := encoder.NewBase64Encoder()
 
 	var tp *sdktrace.TracerProvider
 	if config.Trace.Enabled {
@@ -479,16 +478,18 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
+		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
+		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	opts := []grpc.ServerOption{
@@ -535,7 +536,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		Datastore:    datastore,
 		Logger:       logger,
 		Meter:        meter,
-		TokenEncoder: tokenEncoder,
+		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
 		ResolveNodeLimit:       config.ResolveNodeLimit,
