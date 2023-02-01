@@ -478,7 +478,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		otelgrpc.UnaryServerInterceptor(),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
@@ -486,7 +486,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		otelgrpc.StreamServerInterceptor(),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
