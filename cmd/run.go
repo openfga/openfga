@@ -400,7 +400,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 
-	var tp *sdktrace.TracerProvider
+	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		tp = telemetry.MustNewTracerProvider(config.Trace.Endpoint, config.Trace.SampleRatio)
 	}
