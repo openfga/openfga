@@ -134,7 +134,6 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		})
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    telemetry.NewNoopTracer(),
 		meter:     telemetry.NewNoopMeter(),
 		transport: gateway.NewNoopTransport(),
 		logger:    logger.NewNoopLogger(),
@@ -193,7 +192,6 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		})
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    telemetry.NewNoopTracer(),
 		meter:     telemetry.NewNoopMeter(),
 		transport: gateway.NewNoopTransport(),
 		logger:    logger.NewNoopLogger(),

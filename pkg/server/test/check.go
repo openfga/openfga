@@ -390,7 +390,6 @@ func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 // the code that tries to find the user through usersets is aborted immediately.
 func BenchmarkCheckWithDirectResolution(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -437,7 +436,7 @@ func BenchmarkCheckWithDirectResolution(b *testing.B, datastore storage.OpenFGAD
 	}})
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
