@@ -386,13 +386,19 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
+	tracer := telemetry.NewNoopTracer()
+	tokenEncoder := encoder.NewBase64Encoder()
 
-	tp := telemetry.MustNewTracerProvider()
-	tracer := tp.Tracer("openfga")
+	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
-	meter := metric.NewNoopMeter()
+	var experimentals []server.ExperimentalFeatureFlag
+	for _, feature := range config.Experimentals {
+		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	}
 
 	var err error
+	meter := metric.NewNoopMeter()
+
 	if util.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
@@ -404,13 +410,6 @@ func RunServer(ctx context.Context, config *Config) error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
 		}
-	}
-
-	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
-	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
 	dsCfg := common.NewConfig(
@@ -465,7 +464,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
@@ -473,7 +471,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	streamingServerInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
@@ -518,8 +515,6 @@ func RunServer(ctx context.Context, config *Config) error {
 			}
 		}()
 	}
-
-	tokenEncoder := encoder.NewBase64Encoder()
 
 	svr := server.New(&server.Dependencies{
 		Datastore:    datastore,
