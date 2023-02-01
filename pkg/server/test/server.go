@@ -70,6 +70,7 @@ func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 func RunCheckBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { BenchmarkCheckWithoutTrace(b, ds) })
 	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { BenchmarkCheckWithTrace(b, ds) })
+	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { BenchmarkCheckWithDirectResolution(b, ds) })
 }
 
 func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

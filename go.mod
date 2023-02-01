@@ -29,10 +29,10 @@ require (
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
-	go.buf.build/openfga/go/openfga/api v1.2.48
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.37.0
-	go.opentelemetry.io/contrib/instrumentation/host v0.37.0
-	go.opentelemetry.io/contrib/instrumentation/runtime v0.37.0
+	go.buf.build/openfga/go/openfga/api v1.2.49
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.38.0
+	go.opentelemetry.io/contrib/instrumentation/host v0.38.0
+	go.opentelemetry.io/contrib/instrumentation/runtime v0.38.0
 	go.opentelemetry.io/otel v1.12.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.35.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v0.35.0

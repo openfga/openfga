@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -379,6 +380,77 @@ func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 				User:     "github|iaco@openfga",
 			},
 			Trace: true,
+		})
+	}
+
+	checkResponse = r
+}
+
+// BenchmarkCheckWithDirectResolution ensures that when the user can be found through direct resolution,
+// the code that tries to find the user through usersets is aborted immediately.
+func BenchmarkCheckWithDirectResolution(b *testing.B, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	tracer := telemetry.NewNoopTracer()
+	meter := telemetry.NewNoopMeter()
+	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
+
+	data, err := os.ReadFile(gitHubTestDataFile)
+	require.NoError(b, err)
+
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+	require.NoError(b, err)
+
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+	}
+
+	err = datastore.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(b, err)
+
+	// add user to many usersets
+	for i := 0; i < 1000; i++ {
+		err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+			User:     "anne",
+			Relation: "member",
+			Object:   fmt.Sprintf("team:%d", i),
+		}})
+		require.NoError(b, err)
+	}
+
+	// one of those usersets gives access to the repo
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+		User:     "team:999#member",
+		Relation: "owner",
+		Object:   "repo:openfga",
+	}})
+	require.NoError(b, err)
+
+	// add direct access to the repo
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+		User:     "anne",
+		Relation: "owner",
+		Object:   "repo:openfga",
+	}})
+	require.NoError(b, err)
+
+	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+
+	var r *openfgapb.CheckResponse
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, _ = checkQuery.Execute(ctx, &openfgapb.CheckRequest{
+			StoreId:              store,
+			AuthorizationModelId: model.Id,
+			TupleKey: &openfgapb.TupleKey{
+				User:     "anne",
+				Relation: "owner",
+				Object:   "repo:openfga",
+			},
 		})
 	}
 
