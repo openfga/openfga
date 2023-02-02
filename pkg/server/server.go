@@ -26,7 +26,7 @@ type ExperimentalFeatureFlag string
 
 const (
 	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
-	AuthorizationModelIDTraceTag = "authorization-model-id"
+	AuthorizationModelIDTraceTag = "authorization_model_id"
 )
 
 // A Server implements the OpenFGA service backend as both
