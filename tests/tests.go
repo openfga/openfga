@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -16,14 +16,14 @@ import (
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func StartServer(t *testing.T, cfg *cmd.Config) context.CancelFunc {
+func StartServer(t *testing.T, cfg *run.Config) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		err := cmd.RunServer(ctx, cfg)
+		err := run.RunServer(ctx, cfg)
 		require.NoError(t, err)
 	}()
 

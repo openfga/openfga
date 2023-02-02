@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
-	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
@@ -59,7 +59,7 @@ func testCheck(t *testing.T, engine string) {
 	err = yaml.Unmarshal(data, &testCases)
 	require.NoError(t, err)
 
-	cfg := cmd.MustDefaultConfigWithRandomPorts()
+	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
