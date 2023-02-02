@@ -266,7 +266,7 @@ func (c *LocalChecker) DispatchCheck(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		panic("typesystem missing in context")
+		return nil, fmt.Errorf("typesystem missing in context")
 	}
 
 	object := req.GetTupleKey().GetObject()
@@ -294,12 +294,12 @@ func (c *LocalChecker) DispatchCheck(
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.DispatchCheckRequest) CheckHandlerFunc {
 
-	typesys, ok := typesystem.TypesystemFromContext(parentctx)
-	if !ok {
-		panic("typesystem missing in context")
-	}
-
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
+		if !ok {
+			return nil, fmt.Errorf("typesystem missing in context")
+		}
+
 		ctx, span := tracer.Start(ctx, "checkDirect")
 		defer span.End()
 
@@ -402,12 +402,12 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.DispatchCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
 
-	typesys, ok := typesystem.TypesystemFromContext(parentctx)
-	if !ok {
-		panic("typesystem missing in context")
-	}
-
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
+		if !ok {
+			return nil, fmt.Errorf("typesystem missing in context")
+		}
+
 		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
 
