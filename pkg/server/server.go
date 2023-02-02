@@ -25,7 +25,8 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
+	AuthorizationModelIDTraceTag = "authorization-model-id"
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -272,7 +273,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	ctx, span := s.tracer.Start(ctx, "readAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-		attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(req.GetId())},
+		attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
 
@@ -441,7 +442,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 		}
 	}
 
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
+	span.SetAttributes(attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(modelID)})
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
