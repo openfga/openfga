@@ -297,11 +297,11 @@
                     "default": "false",
                     "x-env-variable": "OPENFGA_TRACE_ENABLED"
                 },
-                "grpcEndpoint": {
+                "otlpGrpcEndpoint": {
                     "description": "The grpc endpoint of the trace collector",
                     "type": "string",
                     "default": "0.0.0.0:4317",
-                    "x-env-variable": "OPENFGA_TRACE_GRPC_ENDPOINT"
+                    "x-env-variable": "OPENFGA_TRACE_OTLP_GRPC_ENDPOINT"
                 },
                 "sampleRatio": {
                     "description": "The fraction of traces to sample. 1 means all, 0 means none.",
