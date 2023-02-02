@@ -34,6 +34,10 @@ services:
     image: openfga/openfga:latest
     container_name: openfga
     command: run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
+    environment:
+      - OPENFGA_TRACE_ENABLED=true
+      - OPENFGA_TRACE_SAMPLE_RATIO=1
+      - OPENFGA_TRACE_OTLP_GRPC_ENDPOINT=otel-collector:4317
     networks:
       - default
     ports:
@@ -46,6 +50,8 @@ services:
     command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
       - "./otel-collector-config.yaml:/etc/otel-collector-config.yaml"
+    networks:
+      - default
     ports:
       - "4317:4317"
       - "4318:4318"
@@ -58,3 +64,5 @@ services:
       - "16686:16686"
     depends_on:
       - otel-collector
+    networks:
+      - default

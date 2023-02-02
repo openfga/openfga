@@ -135,9 +135,9 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("trace.enabled", flags.Lookup("trace-enabled"))
 	util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
-	flags.String("trace-otlp-grpc-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
-	util.MustBindPFlag("trace.endpoint", flags.Lookup("trace-otlp-grpc-endpoint"))
-	util.MustBindEnv("trace.endpoint", "OPENFGA_TRACE_OTLP_GRPC_ENDPOINT")
+	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
+	util.MustBindPFlag("trace.otlp.endpoint", flags.Lookup("trace-otlp-endpoint"))
+	util.MustBindEnv("trace.otlp.endpoint", "OPENFGA_TRACE_OTLP_ENDPOINT")
 
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 	util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))

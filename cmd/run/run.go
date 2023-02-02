@@ -155,8 +155,12 @@ type LogConfig struct {
 
 type TraceConfig struct {
 	Enabled     bool
-	Endpoint    string
+	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
 	SampleRatio float64
+}
+
+type OTLPTraceConfig struct {
+	Endpoint string
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -258,8 +262,10 @@ func DefaultConfig() *Config {
 			Level:  "info",
 		},
 		Trace: TraceConfig{
-			Enabled:     false,
-			Endpoint:    "0.0.0.0:4317",
+			Enabled: false,
+			OTLP: OTLPTraceConfig{
+				Endpoint: "0.0.0.0:4317",
+			},
 			SampleRatio: 0.2,
 		},
 		Playground: PlaygroundConfig{
@@ -320,8 +326,6 @@ func ReadConfig() (*Config, error) {
 	for _, path := range configPaths {
 		viper.AddConfigPath(path)
 	}
-
-	viper.AutomaticEnv()
 
 	err := viper.ReadInConfig()
 	if err != nil {
@@ -401,7 +405,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		tp = telemetry.MustNewTracerProvider(config.Trace.Endpoint, config.Trace.SampleRatio)
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -583,7 +587,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
-			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
