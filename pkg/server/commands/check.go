@@ -32,9 +32,9 @@ type CheckQuery struct {
 }
 
 // NewCheckQuery creates a CheckQuery with specified `tupleBackend` and `typeDefinitionReadBackend` to use for storage
-func NewCheckQuery(datastore storage.OpenFGADatastore, meter metric.Meter, logr logger.Logger, resolveNodeLimit uint32) *CheckQuery {
+func NewCheckQuery(datastore storage.OpenFGADatastore, meter metric.Meter, logger logger.Logger, resolveNodeLimit uint32) *CheckQuery {
 	return &CheckQuery{
-		logger:           logr,
+		logger:           logger,
 		meter:            meter,
 		datastore:        datastore,
 		resolveNodeLimit: resolveNodeLimit,
