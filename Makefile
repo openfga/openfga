@@ -28,7 +28,6 @@ build: ## Build the OpenFGA service
 run: build ## Run the OpenFGA server with in-memory storage
 	./openfga run
 
-
 .PHONY: start-postgres
 start-postgres: ## Start a Postgres Docker container
 	docker run -d --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:14
