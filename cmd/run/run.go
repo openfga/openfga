@@ -308,6 +308,8 @@ func ReadConfig() (*Config, error) {
 		viper.AddConfigPath(path)
 	}
 
+	viper.AutomaticEnv()
+
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
