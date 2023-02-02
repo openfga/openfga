@@ -227,7 +227,6 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	q := commands.NewCheckQuery(s.datastore, s.tracer, s.meter, s.logger, s.config.ResolveNodeLimit)
 
@@ -261,7 +260,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	q := commands.NewExpandQuery(s.datastore, s.tracer, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
@@ -320,7 +318,6 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
@@ -346,9 +343,8 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
-	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	return q.Execute(ctx, req.GetStoreId(), modelID)
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
@@ -445,6 +441,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 		}
 	}
 
+	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil
