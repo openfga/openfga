@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// BindRunFlags binds the cobra cmd flags to the equivalent config value being managed
+// bindRunFlags binds the cobra cmd flags to the equivalent config value being managed
 // by viper. This bridges the config between cobra flags and viper flags.
 func bindRunFlags(command *cobra.Command) {
 	defaultConfig := DefaultConfig()
