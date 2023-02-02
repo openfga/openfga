@@ -136,12 +136,12 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
 	flags.String("trace-otlp-grpc-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
-	util.MustBindPFlag("trace.otlp.grpc.endpoint", flags.Lookup("trace-otlp-grpc-endpoint"))
-	util.MustBindEnv("trace.otlp.grpc.endpoint", "OPENFGA_TRACE_OTLP_GRPC_ENDPOINT")
+	util.MustBindPFlag("trace.endpoint", flags.Lookup("trace-otlp-grpc-endpoint"))
+	util.MustBindEnv("trace.endpoint", "OPENFGA_TRACE_OTLP_GRPC_ENDPOINT")
 
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
-	util.MustBindPFlag("trace.sample.ratio", flags.Lookup("trace-sample-ratio"))
-	util.MustBindEnv("trace.sample.ratio", "OPENFGA_TRACE_SAMPLE_RATIO")
+	util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
+	util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
 
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
