@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/cmd/util"
@@ -476,25 +474,15 @@ func RunServer(ctx context.Context, config *Config) error {
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
-		grpc_validator.UnaryServerInterceptor(),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		middleware.NewRequestIDInterceptor(logger),
-		middleware.NewLoggingInterceptor(logger),
-		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
-	}
-
-	streamingServerInterceptors := []grpc.StreamServerInterceptor{
-		grpc_validator.StreamServerInterceptor(),
-		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		middleware.NewStreamingRequestIDInterceptor(logger),
-		middleware.NewStreamingLoggingInterceptor(logger),
-		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
-	}
+	unaryInterceptors, streamingInterceptors := middleware.NewInterceptors(&middleware.Config{
+		Logr:           logger,
+		Authenticator:  authenticator,
+		TracerProvider: tp,
+	})
 
 	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
-		grpc.ChainStreamInterceptor(streamingServerInterceptors...),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	}
 
 	if config.GRPC.TLS.Enabled {
