@@ -466,6 +466,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		grpc_validator.UnaryServerInterceptor(),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewRequestIDInterceptor(logger),
+		middleware.NewStoreIDInterceptor(),
 		middleware.NewLoggingInterceptor(logger),
 	}
 
@@ -473,6 +474,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		grpc_validator.StreamServerInterceptor(),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
+		middleware.NewStreamingStoreIDInterceptor(),
 		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 
