@@ -275,7 +275,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	g := graph.NewLocalChecker(storage.NewContextualTupleDatastore(s.datastore), 100)
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys))
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	resp, err := g.DispatchCheck(ctx, &dispatcher.DispatchCheckRequest{
