@@ -749,7 +749,6 @@ func RunServer(ctx context.Context, config *Config) error {
 	datastore.Close()
 
 	_ = tp.ForceFlush(ctx)
-
 	_ = tp.Shutdown(ctx)
 
 	logger.Info("server exited. goodbye 👋")
@@ -887,9 +886,9 @@ func bindRunFlags(cmd *cobra.Command) {
 	util.MustBindPFlag("trace.enabled", cmd.Flags().Lookup("trace-enabled"))
 	util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
 
-	cmd.Flags().String("trace-grpc-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
-	util.MustBindPFlag("trace.grpc.endpoint", cmd.Flags().Lookup("trace-grpc-endpoint"))
-	util.MustBindEnv("trace.grpc.endpoint", "OPENFGA_TRACE_GRPC_ENDPOINT")
+	cmd.Flags().String("trace-otlp-grpc-endpoint", defaultConfig.Trace.Endpoint, "the endpoint of the trace collector")
+	util.MustBindPFlag("trace.otlp.grpc.endpoint", cmd.Flags().Lookup("trace-otlp-grpc-endpoint"))
+	util.MustBindEnv("trace.otlp.grpc.endpoint", "OPENFGA_TRACE_OTLP_GRPC_ENDPOINT")
 
 	cmd.Flags().Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 	util.MustBindPFlag("trace.sample.ratio", cmd.Flags().Lookup("trace-sample-ratio"))
