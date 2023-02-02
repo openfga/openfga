@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openfga/openfga/internal/dispatcher"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -17,6 +16,64 @@ import (
 )
 
 var tracer = otel.Tracer("internal/graph/check")
+
+// CheckResolver represents an interface that can be implemented to provide recursive resolution
+// of a Check.
+type CheckResolver interface {
+	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
+}
+
+type ResolveCheckRequest struct {
+	StoreID              string
+	AuthorizationModelID string
+	TupleKey             *openfgapb.TupleKey
+	ContextualTuples     []*openfgapb.TupleKey
+	ResolutionMetadata   *ResolutionMetadata
+}
+
+type ResolveCheckResponse struct {
+	Allowed bool
+}
+
+func (r *ResolveCheckRequest) GetStoreID() string {
+	if r != nil {
+		return r.StoreID
+	}
+
+	return ""
+}
+
+func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
+	if r != nil {
+		return r.AuthorizationModelID
+	}
+
+	return ""
+}
+
+func (r *ResolveCheckRequest) GetTupleKey() *openfgapb.TupleKey {
+	if r != nil {
+		return r.TupleKey
+	}
+
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetContextualTuples() []*openfgapb.TupleKey {
+	if r != nil {
+		return r.ContextualTuples
+	}
+
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
+	if r != nil {
+		return r.ResolutionMetadata
+	}
+
+	return nil
+}
 
 type setOperatorType int
 
@@ -35,7 +92,6 @@ type checkOutcome struct {
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds               storage.RelationshipTupleReader
-	dispatcher       dispatcher.CheckDispatcher
 	concurrencyLimit uint32
 }
 
@@ -46,8 +102,6 @@ func NewLocalChecker(
 	concurrencyLimit uint32,
 ) *LocalChecker {
 	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit}
-	checker.dispatcher = checker // todo: replace with a different CheckDispatcher once we support remote dispatching
-
 	return checker
 }
 
@@ -238,11 +292,11 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &openfgapb.CheckResponse{Allowed: true}, nil
 }
 
-// dispatch dispatches the provided Check request to the CheckDispatcher this LocalChecker
+// dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
-func (c *LocalChecker) dispatch(ctx context.Context, req *dispatcher.DispatchCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		resp, err := c.dispatcher.DispatchCheck(ctx, req)
+		resp, err := c.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -253,11 +307,11 @@ func (c *LocalChecker) dispatch(ctx context.Context, req *dispatcher.DispatchChe
 	}
 }
 
-func (c *LocalChecker) DispatchCheck(
+func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
-	req *dispatcher.DispatchCheckRequest,
-) (*dispatcher.DispatchCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "DispatchCheck")
+	req *ResolveCheckRequest,
+) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 
 	if req.GetResolutionMetadata().Depth == 0 {
@@ -283,7 +337,7 @@ func (c *LocalChecker) DispatchCheck(
 		return nil, err
 	}
 
-	return &dispatcher.DispatchCheckResponse{
+	return &ResolveCheckResponse{
 		Allowed: resp.Allowed,
 	}, nil
 }
@@ -292,7 +346,7 @@ func (c *LocalChecker) DispatchCheck(
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
-func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.DispatchCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -374,11 +428,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 				if usersetRelation != "" {
 					handlers = append(handlers, c.dispatch(
 						ctx,
-						&dispatcher.DispatchCheckRequest{
+						&ResolveCheckRequest{
 							StoreID:              storeID,
 							AuthorizationModelID: req.GetAuthorizationModelID(),
 							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
-							ResolutionMetadata: &dispatcher.ResolutionMetadata{
+							ResolutionMetadata: &ResolutionMetadata{
 								Depth: req.GetResolutionMetadata().Depth - 1,
 							},
 						}))
@@ -400,7 +454,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *dispatcher.Di
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.DispatchCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -456,11 +510,11 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.Dispa
 
 			handlers = append(handlers, c.dispatch(
 				ctx,
-				&dispatcher.DispatchCheckRequest{
+				&ResolveCheckRequest{
 					StoreID:              req.GetStoreID(),
 					AuthorizationModelID: req.GetAuthorizationModelID(),
 					TupleKey:             tupleKey,
-					ResolutionMetadata: &dispatcher.ResolutionMetadata{
+					ResolutionMetadata: &ResolutionMetadata{
 						Depth: req.GetResolutionMetadata().Depth - 1,
 					},
 				}))
@@ -476,7 +530,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *dispatcher.Dispa
 
 func (c *LocalChecker) checkSetOperation(
 	ctx context.Context,
-	req *dispatcher.DispatchCheckRequest,
+	req *ResolveCheckRequest,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
 	children ...*openfgapb.Userset,
@@ -518,7 +572,7 @@ func (c *LocalChecker) checkSetOperation(
 
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
-	req *dispatcher.DispatchCheckRequest,
+	req *ResolveCheckRequest,
 	rewrite *openfgapb.Userset,
 ) CheckHandlerFunc {
 
@@ -531,7 +585,7 @@ func (c *LocalChecker) checkRewrite(
 
 		return c.dispatch(
 			ctx,
-			&dispatcher.DispatchCheckRequest{
+			&ResolveCheckRequest{
 				StoreID:              req.GetStoreID(),
 				AuthorizationModelID: req.GetAuthorizationModelID(),
 				TupleKey: tuple.NewTupleKey(
@@ -539,7 +593,7 @@ func (c *LocalChecker) checkRewrite(
 					rw.ComputedUserset.GetRelation(),
 					req.TupleKey.GetUser(),
 				),
-				ResolutionMetadata: &dispatcher.ResolutionMetadata{
+				ResolutionMetadata: &ResolutionMetadata{
 					Depth: req.ResolutionMetadata.Depth - 1,
 				},
 			})

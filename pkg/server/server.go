@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/dispatcher"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
@@ -43,6 +42,8 @@ type Server struct {
 	encoder   encoder.Encoder
 	transport gateway.Transport
 	config    *Config
+
+	checkResolver graph.CheckResolver
 }
 
 type Dependencies struct {
@@ -65,14 +66,18 @@ type Config struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
+
+	ds := dependencies.Datastore
+
 	return &Server{
-		tracer:    dependencies.Tracer,
-		meter:     dependencies.Meter,
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		tracer:        dependencies.Tracer,
+		meter:         dependencies.Meter,
+		logger:        dependencies.Logger,
+		datastore:     ds,
+		encoder:       dependencies.TokenEncoder,
+		transport:     dependencies.Transport,
+		config:        config,
+		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
 	}
 }
 
@@ -273,17 +278,15 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		}
 	}
 
-	g := graph.NewLocalChecker(storage.NewContextualTupleDatastore(s.datastore), 100)
-
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
-	resp, err := g.DispatchCheck(ctx, &dispatcher.DispatchCheckRequest{
+	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
-		ResolutionMetadata: &dispatcher.ResolutionMetadata{
+		ResolutionMetadata: &graph.ResolutionMetadata{
 			Depth: s.config.ResolveNodeLimit,
 		},
 	})

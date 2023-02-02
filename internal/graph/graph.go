@@ -32,6 +32,10 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 	return depth, ok
 }
 
+type ResolutionMetadata struct {
+	Depth uint32
+}
+
 // RelationshipIngressType is used to define an enum of the type of ingresses between
 // source object references and target user references that exist in the graph of
 // relationships.
