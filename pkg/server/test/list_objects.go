@@ -35,13 +35,6 @@ type listObjectsTestCase struct {
 	expectedResult []string //all the results. the server may return less
 }
 
-var tKAllAdminsRepo6 = tuple.NewTupleKey("repo:6", "admin", "*")
-var tkAnnaRepo1 = tuple.NewTupleKey("repo:1", "admin", "anna")
-var tkAnnaRepo2 = tuple.NewTupleKey("repo:2", "admin", "anna")
-var tkAnnaRepo3 = tuple.NewTupleKey("repo:3", "admin", "anna")
-var tkAnnaRepo4 = tuple.NewTupleKey("repo:4", "admin", "anna")
-var tkBobRepo2 = tuple.NewTupleKey("repo:2", "admin", "bob")
-
 func newListObjectsRequest(store, objectType, relation, user, modelID string, contextualTuples *openfgapb.ContextualTupleKeys) *openfgapb.ListObjectsRequest {
 	return &openfgapb.ListObjectsRequest{
 		StoreId:              store,
@@ -74,6 +67,12 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		err = ds.WriteAuthorizationModel(ctx, store, model)
 		require.NoError(t, err)
 
+		var tKAllAdminsRepo6 = tuple.NewTupleKey("repo:6", "admin", "*")
+		var tkAnnaRepo1 = tuple.NewTupleKey("repo:1", "admin", "anna")
+		var tkAnnaRepo2 = tuple.NewTupleKey("repo:2", "admin", "anna")
+		var tkAnnaRepo3 = tuple.NewTupleKey("repo:3", "admin", "anna")
+		var tkAnnaRepo4 = tuple.NewTupleKey("repo:4", "admin", "anna")
+		var tkBobRepo2 = tuple.NewTupleKey("repo:2", "admin", "bob")
 		writes := []*openfgapb.TupleKey{tKAllAdminsRepo6, tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo2}
 		err = ds.Write(ctx, store, nil, writes)
 		require.NoError(t, err)
@@ -232,7 +231,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			{
 				name:           "performs_correct_checks",
 				request:        newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, nil),
-				expectedResult: []string{"repo:2", "repo:6"},
+				expectedResult: []string{"repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -247,7 +246,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:7",
 					}}}),
-				expectedResult: []string{"repo:2", "repo:5", "repo:6", "repo:7"},
+				expectedResult: []string{"repo:5", "repo:6", "repo:7"},
 				expectedError:  nil,
 			},
 			{
@@ -258,7 +257,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "member",
 						Object:   "team:abc",
 					}}}),
-				expectedResult: []string{"repo:2", "repo:6"},
+				expectedResult: []string{"repo:6"},
 				expectedError:  nil,
 			},
 			{
@@ -270,6 +269,12 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Object:   "organization:abc",
 					}}}),
 				expectedResult: []string{},
+				expectedError:  nil,
+			},
+			{
+				name:           "ignores_users_which_are_not_the_one_in_the_request",
+				request:        newListObjectsRequest(store, "organization", "owner", "user:bob", model.Id, nil),
+				expectedResult: []string{"organization:abc"}, //excludes organization:def
 				expectedError:  nil,
 			},
 			{
