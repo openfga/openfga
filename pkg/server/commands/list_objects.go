@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -31,7 +30,6 @@ const (
 type ListObjectsQuery struct {
 	Datastore             storage.OpenFGADatastore
 	Logger                logger.Logger
-	Tracer                trace.Tracer
 	Meter                 metric.Meter
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
@@ -317,7 +315,7 @@ func (q *ListObjectsQuery) internalCheck(
 	objectsFound *uint32,
 	resultsChan chan<- string,
 ) error {
-	query := NewCheckQuery(q.Datastore, q.Tracer, q.Meter, q.Logger, q.ResolveNodeLimit)
+	query := NewCheckQuery(q.Datastore, q.Meter, q.Logger, q.ResolveNodeLimit)
 
 	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              req.GetStoreId(),

@@ -13,9 +13,11 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var tracer = otel.Tracer("openfga/pkg/storage/memory")
 
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
@@ -60,7 +62,6 @@ func (s *staticIterator) Stop() {}
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
-	tracer                        trace.Tracer
 	maxTuplesPerWrite             int
 	maxTypesPerAuthorizationModel int
 	mu                            sync.Mutex
@@ -92,9 +93,8 @@ type AuthorizationModelEntry struct {
 }
 
 // New creates a new empty MemoryBackend.
-func New(tracer trace.Tracer, maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
+func New(maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
 	return &MemoryBackend{
-		tracer:                        tracer,
 		maxTuplesPerWrite:             maxTuplesPerWrite,
 		maxTypesPerAuthorizationModel: maxTypesPerAuthorizationModel,
 		tuples:                        make(map[string][]*openfgapb.Tuple, 0),
@@ -111,7 +111,7 @@ func (s *MemoryBackend) Close() {
 }
 
 func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	_, span := s.tracer.Start(ctx, "memory.ListObjectsByType")
+	_, span := tracer.Start(ctx, "memory.ListObjectsByType")
 	defer span.End()
 
 	uniqueObjects := make(map[string]bool, 0)
@@ -136,14 +136,14 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 
 // Read See storage.TupleBackend.Read
 func (s *MemoryBackend) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	ctx, span := s.tracer.Start(ctx, "memory.Read")
+	ctx, span := tracer.Start(ctx, "memory.Read")
 	defer span.End()
 
 	return s.read(ctx, store, key, storage.PaginationOptions{})
 }
 
 func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	ctx, span := s.tracer.Start(ctx, "memory.ReadPage")
+	ctx, span := tracer.Start(ctx, "memory.ReadPage")
 	defer span.End()
 
 	it, err := s.read(ctx, store, key, paginationOptions)
@@ -155,7 +155,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 }
 
 func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgapb.TupleChange, []byte, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadChanges")
+	_, span := tracer.Start(ctx, "memory.ReadChanges")
 	defer span.End()
 
 	s.mu.Lock()
@@ -218,7 +218,7 @@ func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType strin
 }
 
 func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) (*staticIterator, error) {
-	_, span := s.tracer.Start(ctx, "memory.read")
+	_, span := tracer.Start(ctx, "memory.read")
 	defer span.End()
 
 	s.mu.Lock()
@@ -260,7 +260,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgapb.Tu
 
 // Write See storage.TupleBackend.Write
 func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
-	_, span := s.tracer.Start(ctx, "memory.Write")
+	_, span := tracer.Start(ctx, "memory.Write")
 	defer span.End()
 
 	s.mu.Lock()
@@ -323,7 +323,7 @@ func find(tuples []*openfgapb.Tuple, tupleKey *openfgapb.TupleKey) bool {
 
 // ReadUserTuple See storage.TupleBackend.ReadUserTuple
 func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadUserTuple")
+	_, span := tracer.Start(ctx, "memory.ReadUserTuple")
 	defer span.End()
 
 	s.mu.Lock()
@@ -341,7 +341,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
 func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadUsersetTuples")
+	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
 	s.mu.Lock()
@@ -365,7 +365,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadStartingWithUser")
+	_, span := tracer.Start(ctx, "memory.ReadStartingWithUser")
 	defer span.End()
 
 	s.mu.Lock()
@@ -434,7 +434,7 @@ func definitionByType(authorizationModel *openfgapb.AuthorizationModel, objectTy
 
 // ReadAuthorizationModel See storage.AuthorizationModelBackend.ReadAuthorizationModel
 func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgapb.AuthorizationModel, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadAuthorizationModel")
+	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModel")
 	defer span.End()
 
 	s.mu.Lock()
@@ -460,7 +460,7 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 // ReadAuthorizationModels See storage.AuthorizationModelBackend.ReadAuthorizationModels
 // options.From is expected to be a number
 func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store string, options storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadAuthorizationModels")
+	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModels")
 	defer span.End()
 
 	s.mu.Lock()
@@ -507,7 +507,7 @@ func (s *MemoryBackend) ReadAuthorizationModels(ctx context.Context, store strin
 
 // FindLatestAuthorizationModelID See storage.AuthorizationModelBackend.FindLatestAuthorizationModelID
 func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error) {
-	_, span := s.tracer.Start(ctx, "memory.FindLatestAuthorizationModelID")
+	_, span := tracer.Start(ctx, "memory.FindLatestAuthorizationModelID")
 	defer span.End()
 
 	s.mu.Lock()
@@ -529,7 +529,7 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 
 // ReadTypeDefinition See storage.TypeDefinitionReadBackend.ReadTypeDefinition
 func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgapb.TypeDefinition, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadTypeDefinition")
+	_, span := tracer.Start(ctx, "memory.ReadTypeDefinition")
 	defer span.End()
 
 	s.mu.Lock()
@@ -553,7 +553,7 @@ func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objec
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel
 func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
-	_, span := s.tracer.Start(ctx, "memory.WriteAuthorizationModel")
+	_, span := tracer.Start(ctx, "memory.WriteAuthorizationModel")
 	defer span.End()
 
 	s.mu.Lock()
@@ -576,7 +576,7 @@ func (s *MemoryBackend) WriteAuthorizationModel(ctx context.Context, store strin
 }
 
 func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgapb.Store) (*openfgapb.Store, error) {
-	_, span := s.tracer.Start(ctx, "memory.CreateStore")
+	_, span := tracer.Start(ctx, "memory.CreateStore")
 	defer span.End()
 
 	s.mu.Lock()
@@ -598,7 +598,7 @@ func (s *MemoryBackend) CreateStore(ctx context.Context, newStore *openfgapb.Sto
 }
 
 func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
-	_, span := s.tracer.Start(ctx, "memory.DeleteStore")
+	_, span := tracer.Start(ctx, "memory.DeleteStore")
 	defer span.End()
 
 	s.mu.Lock()
@@ -609,7 +609,7 @@ func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 }
 
 func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
-	_, span := s.tracer.Start(ctx, "memory.WriteAssertions")
+	_, span := tracer.Start(ctx, "memory.WriteAssertions")
 	defer span.End()
 
 	s.mu.Lock()
@@ -622,7 +622,7 @@ func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID stri
 }
 
 func (s *MemoryBackend) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
-	_, span := s.tracer.Start(ctx, "memory.ReadAssertions")
+	_, span := tracer.Start(ctx, "memory.ReadAssertions")
 	defer span.End()
 
 	s.mu.Lock()
@@ -647,7 +647,7 @@ func (s *MemoryBackend) MaxTypesPerAuthorizationModel() int {
 }
 
 func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgapb.Store, error) {
-	_, span := s.tracer.Start(ctx, "memory.GetStore")
+	_, span := tracer.Start(ctx, "memory.GetStore")
 	defer span.End()
 
 	s.mu.Lock()
@@ -661,7 +661,7 @@ func (s *MemoryBackend) GetStore(ctx context.Context, storeID string) (*openfgap
 }
 
 func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
-	_, span := s.tracer.Start(ctx, "memory.ListStores")
+	_, span := tracer.Start(ctx, "memory.ListStores")
 	defer span.End()
 
 	s.mu.Lock()
