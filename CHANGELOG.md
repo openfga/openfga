@@ -14,7 +14,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Fixed
 
-* The new environment variables should work this time (#498)
+* Fixed environment variable mapping (#498). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
 
 ### Removed
 
