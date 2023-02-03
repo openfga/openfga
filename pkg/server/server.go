@@ -28,7 +28,8 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
+	AuthorizationModelIDTraceTag = "authorization_model_id"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -238,7 +239,6 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
@@ -300,7 +300,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	q := commands.NewExpandQuery(s.datastore, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
@@ -313,7 +312,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "readAuthorizationModel", trace.WithAttributes(
 		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-		attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(req.GetId())},
+		attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
 
@@ -359,7 +358,6 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
@@ -385,9 +383,8 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(attribute.KeyValue{Key: "authorization-model-id", Value: attribute.StringValue(modelID)})
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
-	return q.Execute(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	return q.Execute(ctx, req.GetStoreId(), modelID)
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
@@ -484,6 +481,7 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 		}
 	}
 
+	span.SetAttributes(attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(modelID)})
 	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
 
 	return modelID, nil

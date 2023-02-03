@@ -8,6 +8,23 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.4] - 2023-02-02
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.3...v0.3.4)
+
+### Fixed
+
+* Fixed the environment variable mapping (#498). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+* Fix for stack overflow error in ListObjects (#506). Thank you for reporting the issue @wonderbeyond!
+
+### Added
+
+* Added OpenTelemetry tracing (#499)
+
+### Removed
+
+* The ReadTuples endpoint has been removed (#495). Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead (e.g. `POST /stores/<store_id>/read` with `{}` as the body).  
+
 ## [0.3.3] - 2023-01-31
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.2...v0.3.3)
@@ -284,7 +301,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/openfga/openfga/releases/tag/v0.3.4
 [0.3.3]: https://github.com/openfga/openfga/releases/tag/v0.3.3
 [0.3.2]: https://github.com/openfga/openfga/releases/tag/v0.3.2
 [0.3.1]: https://github.com/openfga/openfga/releases/tag/v0.3.1

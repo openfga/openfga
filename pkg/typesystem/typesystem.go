@@ -313,6 +313,13 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 
 func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, visited map[string]struct{}) (bool, error) {
 
+	key := fmt.Sprintf("%s#%s", objectType, relation)
+	if _, ok := visited[key]; ok {
+		return false, nil
+	}
+
+	visited[key] = struct{}{}
+
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
 		return false, err
@@ -413,7 +420,6 @@ func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, v
 			if _, ok := visited[key]; ok {
 				continue
 			}
-			visited[key] = struct{}{}
 
 			containsIntersection, err := t.relationInvolvesIntersection(
 				typeRestriction.GetType(),
@@ -443,6 +449,14 @@ func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (boo
 }
 
 func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visited map[string]struct{}) (bool, error) {
+
+	key := fmt.Sprintf("%s#%s", objectType, relation)
+	if _, ok := visited[key]; ok {
+		return false, nil
+	}
+
+	visited[key] = struct{}{}
+
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
 		return false, err
@@ -542,7 +556,6 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 			if _, ok := visited[key]; ok {
 				continue
 			}
-			visited[key] = struct{}{}
 
 			containsExclusion, err := t.relationInvolvesExclusion(
 				typeRestriction.GetType(),
