@@ -46,6 +46,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/metric"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -152,6 +153,16 @@ type LogConfig struct {
 	Level string
 }
 
+type TraceConfig struct {
+	Enabled     bool
+	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
+	SampleRatio float64
+}
+
+type OTLPTraceConfig struct {
+	Endpoint string
+}
+
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
 type PlaygroundConfig struct {
 	Enabled bool
@@ -207,6 +218,7 @@ type Config struct {
 	HTTP          HTTPConfig
 	Authn         AuthnConfig
 	Log           LogConfig
+	Trace         TraceConfig
 	Playground    PlaygroundConfig
 	Profiler      ProfilerConfig
 	OpenTelemetry OpenTelemetryConfig `mapstructure:"otel"`
@@ -248,6 +260,13 @@ func DefaultConfig() *Config {
 		Log: LogConfig{
 			Format: "text",
 			Level:  "info",
+		},
+		Trace: TraceConfig{
+			Enabled: false,
+			OTLP: OTLPTraceConfig{
+				Endpoint: "0.0.0.0:4317",
+			},
+			SampleRatio: 0.2,
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -383,8 +402,11 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
-	tracer := telemetry.NewNoopTracer()
-	tokenEncoder := encoder.NewBase64Encoder()
+
+	tp := sdktrace.NewTracerProvider()
+	if config.Trace.Enabled {
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
+	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
@@ -393,9 +415,8 @@ func RunServer(ctx context.Context, config *Config) error {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	var err error
 	meter := metric.NewNoopMeter()
-
+	var err error
 	if util.Contains(config.Experimentals, "otel-metrics") {
 
 		protocol := config.OpenTelemetry.Protocol
@@ -411,7 +432,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	dsCfg := common.NewConfig(
 		common.WithLogger(logger),
-		common.WithTracer(tracer),
 		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		common.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		common.WithMaxOpenConns(config.Datastore.MaxOpenConns),
@@ -423,7 +443,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	var datastore storage.OpenFGADatastore
 	switch config.Datastore.Engine {
 	case "memory":
-		datastore = memory.New(tracer, config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+		datastore = memory.New(config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
@@ -437,9 +457,9 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
-
 	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
+
+	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
@@ -459,23 +479,25 @@ func RunServer(ctx context.Context, config *Config) error {
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	unaryServerInterceptors := []grpc.UnaryServerInterceptor{
+	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
+		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
-	streamingServerInterceptors := []grpc.StreamServerInterceptor{
+	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
+		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(unaryServerInterceptors...),
-		grpc.ChainStreamInterceptor(streamingServerInterceptors...),
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	}
 
 	if config.GRPC.TLS.Enabled {
@@ -515,10 +537,9 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	svr := server.New(&server.Dependencies{
 		Datastore:    datastore,
-		Tracer:       tracer,
 		Logger:       logger,
 		Meter:        meter,
-		TokenEncoder: tokenEncoder,
+		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
 		ResolveNodeLimit:       config.ResolveNodeLimit,
@@ -566,7 +587,6 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		dialOpts := []grpc.DialOption{
 			grpc.WithBlock(),
-			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 		}
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
@@ -741,6 +761,9 @@ func RunServer(ctx context.Context, config *Config) error {
 	authenticator.Close()
 
 	datastore.Close()
+
+	_ = tp.ForceFlush(ctx)
+	_ = tp.Shutdown(ctx)
 
 	logger.Info("server exited. goodbye 👋")
 

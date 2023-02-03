@@ -13,7 +13,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -377,7 +376,6 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 
@@ -393,7 +391,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			}
 
 			test.request.StoreId = store
-			resp, err := commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, test.request)
+			resp, err := commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, test.request)
 			require.NoError(err)
 
 			if test.response.Tuples != nil {
@@ -556,7 +554,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	encoder := encoder.NewBase64Encoder()
 
@@ -567,7 +564,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			test.request.StoreId = store
-			_, err = commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, test.request)
+			_, err = commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, test.request)
 			require.Error(err)
 		})
 	}
@@ -575,7 +572,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
 
@@ -599,7 +595,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	err := datastore.Write(ctx, store, nil, writes)
 	require.NoError(t, err)
 
-	cmd := commands.NewReadQuery(datastore, tracer, logger, encoder.NewBase64Encoder())
+	cmd := commands.NewReadQuery(datastore, logger, encoder.NewBase64Encoder())
 
 	firstRequest := &openfgapb.ReadRequest{
 		StoreId:           store,
@@ -642,7 +638,6 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
 
@@ -664,7 +659,7 @@ func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.O
 	err = datastore.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(t, err)
 
-	_, err = commands.NewReadQuery(datastore, tracer, logger, encoder).Execute(ctx, &openfgapb.ReadRequest{
+	_, err = commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, &openfgapb.ReadRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})
