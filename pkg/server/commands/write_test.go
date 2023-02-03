@@ -9,7 +9,6 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
@@ -24,7 +23,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		expectedError error
 	}
 
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
 	mockController := gomock.NewController(t)
@@ -43,7 +41,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, tracer, logger)
+	cmd := NewWriteCommand(mockDatastore, logger)
 
 	tests := []test{
 		{
@@ -137,7 +135,6 @@ func TestValidateWriteRequest(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			tracer := telemetry.NewNoopTracer()
 			logger := logger.NewNoopLogger()
 
 			mockController := gomock.NewController(t)
@@ -145,7 +142,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, tracer, logger)
+			cmd := NewWriteCommand(mockDatastore, logger)
 
 			if len(test.writes) > 0 {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)
