@@ -18,8 +18,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ### Removed
 
-* The ReadTuples endpoint has been removed. Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead. (#495)
-  e.g. `POST /stores/<store_id>/read` with `{}` as the body
+* The ReadTuples endpoint has been removed (#495). Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead, e.g., `POST /stores/<store_id>/read` with `{}` as the body  
 
 ## [0.3.3] - 2023-01-31
 
