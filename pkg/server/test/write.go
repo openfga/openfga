@@ -10,7 +10,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -1548,7 +1547,6 @@ var writeCommandTests = []writeCommandTest{
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
 	for _, test := range writeCommandTests {
@@ -1563,7 +1561,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, tracer, logger)
+			cmd := commands.NewWriteCommand(datastore, logger)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = test.model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)

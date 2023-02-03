@@ -11,20 +11,18 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
 	logger    logger.Logger
-	tracer    trace.Tracer
 	datastore storage.OpenFGADatastore
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger) *ExpandQuery {
-	return &ExpandQuery{logger: logger, tracer: tracer, datastore: datastore}
+func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger) *ExpandQuery {
+	return &ExpandQuery{logger: logger, datastore: datastore}
 }
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
@@ -95,7 +93,7 @@ func (q *ExpandQuery) resolveUserset(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveUserset")
+	ctx, span := tracer.Start(ctx, "resolveUserset")
 	defer span.End()
 
 	switch us := userset.Userset.(type) {
@@ -118,7 +116,7 @@ func (q *ExpandQuery) resolveUserset(
 
 // resolveThis resolves a DirectUserset into a leaf node containing a distinct set of users with that relation.
 func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfgapb.TupleKey, typesys *typesystem.TypeSystem) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveThis")
+	ctx, span := tracer.Start(ctx, "resolveThis")
 	defer span.End()
 
 	tupleIter, err := q.datastore.Read(ctx, store, tk)
@@ -165,9 +163,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 // resolveComputedUserset builds a leaf node containing the result of resolving a ComputedUserset rewrite.
 func (q *ExpandQuery) resolveComputedUserset(ctx context.Context, userset *openfgapb.ObjectRelation, tk *openfgapb.TupleKey) (*openfgapb.UsersetTree_Node, error) {
-
-	var span trace.Span
-	_, span = q.tracer.Start(ctx, "resolveComputedUserset")
+	_, span := tracer.Start(ctx, "resolveComputedUserset")
 	defer span.End()
 
 	computed := &openfgapb.TupleKey{
@@ -205,7 +201,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveTupleToUserset")
+	ctx, span := tracer.Start(ctx, "resolveTupleToUserset")
 	defer span.End()
 
 	targetObject := tk.GetObject()
@@ -298,7 +294,7 @@ func (q *ExpandQuery) resolveUnionUserset(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveUnionUserset")
+	ctx, span := tracer.Start(ctx, "resolveUnionUserset")
 	defer span.End()
 
 	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
@@ -323,7 +319,7 @@ func (q *ExpandQuery) resolveIntersectionUserset(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveIntersectionUserset")
+	ctx, span := tracer.Start(ctx, "resolveIntersectionUserset")
 	defer span.End()
 
 	nodes, err := q.resolveUsersets(ctx, store, usersets.Child, tk, typesys)
@@ -348,7 +344,7 @@ func (q *ExpandQuery) resolveDifferenceUserset(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) (*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveDifferenceUserset")
+	ctx, span := tracer.Start(ctx, "resolveDifferenceUserset")
 	defer span.End()
 
 	nodes, err := q.resolveUsersets(ctx, store, []*openfgapb.Userset{userset.Base, userset.Subtract}, tk, typesys)
@@ -376,7 +372,7 @@ func (q *ExpandQuery) resolveUsersets(
 	tk *openfgapb.TupleKey,
 	typesys *typesystem.TypeSystem,
 ) ([]*openfgapb.UsersetTree_Node, error) {
-	ctx, span := q.tracer.Start(ctx, "resolveUsersets")
+	ctx, span := tracer.Start(ctx, "resolveUsersets")
 	defer span.End()
 
 	out := make([]*openfgapb.UsersetTree_Node, len(usersets))

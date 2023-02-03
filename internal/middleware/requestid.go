@@ -6,15 +6,17 @@ import (
 	"github.com/google/uuid"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/openfga/openfga/pkg/logger"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
 const (
-	requestIDCtxKey ctxKey = "request-id-context-key"
-
-	requestIDHeader string = "X-Request-Id"
+	requestIDCtxKey   ctxKey = "request-id-context-key"
+	requestIDTraceKey string = "request_id"
+	requestIDHeader   string = "X-Request-Id"
 )
 
 func RequestIDFromContext(ctx context.Context) (string, bool) {
@@ -31,8 +33,13 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		requestID := id.String()
 
+		// Add the requestID to the context
 		ctx = context.WithValue(ctx, requestIDCtxKey, requestID)
 
+		// Add the requestID to the span
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String(requestIDTraceKey, requestID))
+
+		// Add the requestID to the response header
 		err = grpc.SetHeader(ctx, metadata.Pairs(requestIDHeader, requestID))
 		if err != nil {
 			logger.Error("failed to set header", zap.Error(err))
@@ -53,8 +60,13 @@ func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInt
 
 		requestID := id.String()
 
+		// Add the requestID to the context
 		ss.WrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
 
+		// Add the requestID to the span
+		trace.SpanFromContext(ss.Context()).SetAttributes(attribute.String(requestIDTraceKey, requestID))
+
+		// Add the requestID to the response header
 		err = ss.SetHeader(metadata.Pairs(requestIDHeader, requestID))
 		if err != nil {
 			logger.Error("failed to set header", zap.Error(err))
