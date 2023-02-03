@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -25,8 +24,6 @@ const (
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		start := time.Now()
-
 		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
 
 		if requestID, ok := RequestIDFromContext(ctx); ok {
@@ -69,8 +66,6 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		start := time.Now()
-
 		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
 
 		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
