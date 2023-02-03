@@ -12,7 +12,6 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -22,15 +21,13 @@ const (
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger    logger.Logger
-	tracer    trace.Tracer
 	datastore storage.OpenFGADatastore
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
 	return &WriteCommand{
 		logger:    logger,
-		tracer:    tracer,
 		datastore: datastore,
 	}
 }
@@ -50,7 +47,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 }
 
 func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.WriteRequest) error {
-	ctx, span := c.tracer.Start(ctx, "validateTuplesets")
+	ctx, span := tracer.Start(ctx, "validateTuplesets")
 	defer span.End()
 
 	store := req.GetStoreId()

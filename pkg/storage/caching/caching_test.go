@@ -7,7 +7,6 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -15,7 +14,7 @@ import (
 
 func TestCache(t *testing.T) {
 	ctx := context.Background()
-	memoryBackend := memory.New(telemetry.NewNoopTracer(), 10000, 10000)
+	memoryBackend := memory.New(10000, 10000)
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 	defer cachingBackend.Close()
 

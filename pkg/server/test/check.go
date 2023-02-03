@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -174,7 +175,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 
@@ -195,7 +195,7 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(t, err)
 			}
 
-			cmd := commands.NewCheckQuery(datastore, tracer, meter, logger, test.resolveNodeLimit)
+			cmd := commands.NewCheckQuery(datastore, meter, logger, test.resolveNodeLimit)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)
@@ -218,7 +218,6 @@ func CheckQueryTest(t *testing.T, datastore storage.OpenFGADatastore) {
 // TestCheckQueryAuthorizationModelsVersioning ensures that Check is using the "auth model id" passed in as parameter to expand the usersets
 func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -263,7 +262,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{Object: "repo:openfgapb", Relation: "owner", User: "yenkel"}})
 	require.NoError(t, err)
 
-	oldResp, err := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
+	oldResp, err := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: oldModel.Id,
 		TupleKey: &openfgapb.TupleKey{
@@ -275,7 +274,7 @@ func TestCheckQueryAuthorizationModelsVersioning(t *testing.T, datastore storage
 	require.NoError(t, err)
 	require.True(t, oldResp.Allowed)
 
-	updatedResp, err := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
+	updatedResp, err := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit).Execute(ctx, &openfgapb.CheckRequest{
 		StoreId:              store,
 		AuthorizationModelId: updatedModel.Id,
 		TupleKey: &openfgapb.TupleKey{
@@ -298,7 +297,6 @@ var checkResponse *openfgapb.CheckResponse //nolint
 
 func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -322,7 +320,7 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
@@ -344,7 +342,6 @@ func BenchmarkCheckWithoutTrace(b *testing.B, datastore storage.OpenFGADatastore
 
 func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	meter := telemetry.NewNoopMeter()
 	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
@@ -368,7 +365,7 @@ func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, tuples)
 	require.NoError(b, err)
 
-	checkQuery := commands.NewCheckQuery(datastore, tracer, meter, logger, defaultResolveNodeLimit)
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
 
 	var r *openfgapb.CheckResponse
 
@@ -383,6 +380,76 @@ func BenchmarkCheckWithTrace(b *testing.B, datastore storage.OpenFGADatastore) {
 				User:     "github|iaco@openfga",
 			},
 			Trace: true,
+		})
+	}
+
+	checkResponse = r
+}
+
+// BenchmarkCheckWithDirectResolution ensures that when the user can be found through direct resolution,
+// the code that tries to find the user through usersets is aborted immediately.
+func BenchmarkCheckWithDirectResolution(b *testing.B, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+	meter := telemetry.NewNoopMeter()
+	logger := logger.NewNoopLogger()
+	store := ulid.Make().String()
+
+	data, err := os.ReadFile(gitHubTestDataFile)
+	require.NoError(b, err)
+
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+	require.NoError(b, err)
+
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+	}
+
+	err = datastore.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(b, err)
+
+	// add user to many usersets
+	for i := 0; i < 1000; i++ {
+		err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+			User:     "anne",
+			Relation: "member",
+			Object:   fmt.Sprintf("team:%d", i),
+		}})
+		require.NoError(b, err)
+	}
+
+	// one of those usersets gives access to the repo
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+		User:     "team:999#member",
+		Relation: "owner",
+		Object:   "repo:openfga",
+	}})
+	require.NoError(b, err)
+
+	// add direct access to the repo
+	err = datastore.Write(ctx, store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{{
+		User:     "anne",
+		Relation: "owner",
+		Object:   "repo:openfga",
+	}})
+	require.NoError(b, err)
+
+	checkQuery := commands.NewCheckQuery(datastore, meter, logger, defaultResolveNodeLimit)
+
+	var r *openfgapb.CheckResponse
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r, _ = checkQuery.Execute(ctx, &openfgapb.CheckRequest{
+			StoreId:              store,
+			AuthorizationModelId: model.Id,
+			TupleKey: &openfgapb.TupleKey{
+				User:     "anne",
+				Relation: "owner",
+				Object:   "repo:openfga",
+			},
 		})
 	}
 

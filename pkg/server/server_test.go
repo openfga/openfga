@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"runtime"
@@ -51,7 +52,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+	ds := memory.New(10, 24)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
 }
@@ -80,7 +81,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
-		ds := memory.New(telemetry.NewNoopTracer(), 10, 24)
+		ds := memory.New(10, 24)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
@@ -96,9 +97,124 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 }
 
+func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
+	t.SkipNow() //TODO remove
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": typesystem.This(),
+				},
+			},
+		},
+	}, nil)
+
+	tupleKey := &openfgapb.TupleKey{
+		Object:   "repo:openfga",
+		Relation: "reader",
+		User:     "anne",
+	}
+	tuple := &openfgapb.Tuple{Key: tupleKey}
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any()).AnyTimes().Return(tuple, nil)
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(50 * time.Millisecond)
+			return nil, errors.New("some error")
+		})
+	s := Server{
+		datastore: mockDatastore,
+		meter:     telemetry.NewNoopMeter(),
+		transport: gateway.NewNoopTransport(),
+		logger:    logger.NewNoopLogger(),
+		config: &Config{
+			ResolveNodeLimit: 25,
+		},
+	}
+
+	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tupleKey,
+		AuthorizationModelId: modelID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, true, checkResponse.Allowed)
+}
+
+func TestShortestPathToSolutionWins(t *testing.T) {
+	t.SkipNow() //TODO remove
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "repo",
+				Relations: map[string]*openfgapb.Userset{
+					"reader": typesystem.This(),
+				},
+			},
+		},
+	}, nil)
+
+	tupleKey := &openfgapb.TupleKey{
+		Object:   "repo:openfga",
+		Relation: "reader",
+		User:     "*",
+	}
+	tuple := &openfgapb.Tuple{Key: tupleKey}
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
+	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(500 * time.Millisecond)
+			return nil, storage.ErrNotFound
+		})
+	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
+		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			time.Sleep(100 * time.Millisecond)
+			return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
+		})
+	s := Server{
+		datastore: mockDatastore,
+		meter:     telemetry.NewNoopMeter(),
+		transport: gateway.NewNoopTransport(),
+		logger:    logger.NewNoopLogger(),
+		config: &Config{
+			ResolveNodeLimit: 25,
+		},
+	}
+
+	start := time.Now()
+	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tupleKey,
+		AuthorizationModelId: modelID,
+	})
+	end := time.Since(start)
+	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
+	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
+	require.NoError(t, err)
+	require.Equal(t, true, checkResponse.Allowed)
+}
+
 func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 
@@ -114,7 +230,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -138,7 +253,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -164,7 +278,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		s := Server{
 			datastore: mockDatastore,
-			tracer:    tracer,
 			transport: transport,
 			logger:    logger,
 		}
@@ -193,7 +306,6 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
@@ -220,7 +332,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    tracer,
 		transport: transport,
 		logger:    logger,
 		meter:     meter,
@@ -259,7 +370,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
 	meter := telemetry.NewNoopMeter()
@@ -305,7 +415,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		tracer:    tracer,
 		transport: transport,
 		logger:    logger,
 		meter:     meter,

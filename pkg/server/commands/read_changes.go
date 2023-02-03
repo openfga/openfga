@@ -10,23 +10,20 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 )
 
 type ReadChangesQuery struct {
 	backend       storage.ChangelogBackend
 	logger        logger.Logger
-	tracer        trace.Tracer
 	encoder       encoder.Encoder
 	horizonOffset time.Duration
 }
 
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
-func NewReadChangesQuery(backend storage.ChangelogBackend, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
+func NewReadChangesQuery(backend storage.ChangelogBackend, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
 	return &ReadChangesQuery{
 		backend:       backend,
 		logger:        logger,
-		tracer:        tracer,
 		encoder:       encoder,
 		horizonOffset: time.Duration(horizonOffset) * time.Minute,
 	}
