@@ -4,12 +4,13 @@ import (
 	"os"
 
 	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/run"
 )
 
 func main() {
 	rootCmd := cmd.NewRootCommand()
 
-	runCmd := cmd.NewRunCommand()
+	runCmd := run.NewRunCommand()
 	rootCmd.AddCommand(runCmd)
 
 	migrateCmd := cmd.NewMigrateCommand()

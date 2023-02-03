@@ -11,7 +11,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -1967,7 +1966,6 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
@@ -1985,7 +1983,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, tracer, logger)
+			query := commands.NewExpandQuery(datastore, logger)
 			got, err := query.Execute(ctx, test.request)
 			require.NoError(err)
 
@@ -2161,7 +2159,6 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
@@ -2179,7 +2176,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, tracer, logger)
+			query := commands.NewExpandQuery(datastore, logger)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert
