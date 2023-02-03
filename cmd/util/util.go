@@ -3,7 +3,6 @@
 package util
 
 import (
-	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -19,14 +18,6 @@ func MustBindPFlag(key string, flag *pflag.Flag) {
 func MustBindEnv(input ...string) {
 	if err := viper.BindEnv(input...); err != nil {
 		panic("failed to bind env key: " + err.Error())
-	}
-}
-
-// MustMarkFlagRequired attempts to mark a cmd flag as required. Panics if the command
-// fails with a non-nil error.
-func MustMarkFlagRequired(cmd *cobra.Command, name string) {
-	if err := cmd.MarkFlagRequired(name); err != nil {
-		panic("failed to mark flag as required: " + err.Error())
 	}
 }
 
