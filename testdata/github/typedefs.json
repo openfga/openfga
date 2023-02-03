@@ -147,6 +147,10 @@
                 "type": "user"
               },
               {
+                "type": "user",
+                "wildcard": {}
+              },
+              {
                 "type": "team",
                 "relation": "member"
               }
