@@ -46,7 +46,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		resp, err := handler(ctx, req)
 
-		fields = append(fields, zap.Int64(reqDurationKey, time.Since(start).Milliseconds()))
+		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
@@ -87,7 +87,7 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		err := handler(srv, stream)
 
-		fields = append(fields, zap.Int64(reqDurationKey, time.Since(start).Milliseconds()))
+		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
