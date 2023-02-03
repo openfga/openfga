@@ -16,7 +16,6 @@ const (
 	methodKey       = "method"
 	requestIDKey    = "request_id"
 	traceIDKey      = "trace_id"
-	reqDurationKey  = "req_duration_ms"
 	rawRequestKey   = "raw_request"
 	rawResponseKey  = "raw_response"
 	publicErrorKey  = "public_error"
@@ -45,8 +44,6 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		}
 
 		resp, err := handler(ctx, req)
-
-		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
@@ -86,8 +83,6 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 		}
 
 		err := handler(srv, stream)
-
-		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
