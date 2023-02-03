@@ -10,7 +10,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // A ReadQuery can be used to read one or many tuplesets
@@ -20,16 +19,14 @@ import (
 // constrained by a relation name.
 type ReadQuery struct {
 	datastore storage.OpenFGADatastore
-	tracer    trace.Tracer
 	logger    logger.Logger
 	encoder   encoder.Encoder
 }
 
 // NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
-func NewReadQuery(datastore storage.OpenFGADatastore, tracer trace.Tracer, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
+func NewReadQuery(datastore storage.OpenFGADatastore, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
 	return &ReadQuery{
 		datastore: datastore,
-		tracer:    tracer,
 		logger:    logger,
 		encoder:   encoder,
 	}

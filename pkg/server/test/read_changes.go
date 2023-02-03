@@ -13,11 +13,9 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -62,7 +60,7 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 
 func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, datastore)
+	ctx, backend, err := setup(store, datastore)
 	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -124,7 +122,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -184,7 +182,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 0)
+		readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder, 0)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -201,7 +199,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder, 2)
+		readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder, 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 }
@@ -250,10 +248,10 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, tracer, err := setup(store, datastore)
+	ctx, backend, err := setup(store, datastore)
 	require.NoError(t, err)
 
-	readChangesQuery := commands.NewReadChangesQuery(backend, tracer, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
+	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
 
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	require.NoError(t, err)
@@ -264,15 +262,14 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func setup(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, trace.Tracer, error) {
+func setup(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 
 	writes := []*openfgapb.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
 	err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, writes)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	return ctx, datastore, tracer, nil
+	return ctx, datastore, nil
 }

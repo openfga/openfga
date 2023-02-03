@@ -54,9 +54,7 @@ func newListObjectsRequest(store, objectType, relation, user, modelID string, co
 }
 
 func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
-
 	ctx := context.Background()
-	tracer := telemetry.NewNoopTracer()
 
 	t.Run("Github_without_TypeInfo", func(t *testing.T) {
 		store := ulid.Make().String()
@@ -174,7 +172,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
-			Tracer:                tracer,
 			Meter:                 telemetry.NewNoopMeter(),
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
@@ -328,7 +325,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
-			Tracer:                tracer,
 			Meter:                 telemetry.NewNoopMeter(),
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
@@ -467,7 +463,6 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		Tracer:           telemetry.NewNoopTracer(),
 		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
@@ -528,7 +523,6 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		Tracer:           telemetry.NewNoopTracer(),
 		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 	}

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
-	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
@@ -266,7 +266,7 @@ var testCases = map[string]struct {
 }
 
 func TestWriteAuthorizationModel(t *testing.T) {
-	cfg := cmd.MustDefaultConfigWithRandomPorts()
+	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = "memory"
 
