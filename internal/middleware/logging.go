@@ -6,13 +6,15 @@ import (
 
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
 
 const (
-	methodKey       = "method"
+	grpcServiceKey  = "grpc_service"
+	grpcMethodKey   = "grpc_method"
 	requestIDKey    = "request_id"
 	traceIDKey      = "trace_id"
 	rawRequestKey   = "raw_request"
@@ -24,7 +26,10 @@ const (
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
+		fields := []zap.Field{
+			zap.String(grpcServiceKey, openfgapb.OpenFGAService_ServiceDesc.ServiceName),
+			zap.String(grpcMethodKey, info.FullMethod),
+		}
 
 		if requestID, ok := RequestIDFromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
@@ -66,7 +71,10 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
+		fields := []zap.Field{
+			zap.String(grpcServiceKey, openfgapb.OpenFGAService_ServiceDesc.ServiceName),
+			zap.String(grpcMethodKey, info.FullMethod),
+		}
 
 		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
