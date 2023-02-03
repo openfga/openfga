@@ -15,6 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 
 * Fixed the environment variable mapping (#498). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+* Fix for stack overflow error in ListObjects (#506). Thank you for reporting the issue @wonderbeyond!
 
 ### Added
 
