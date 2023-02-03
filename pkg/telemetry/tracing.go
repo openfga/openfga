@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/openfga/openfga/internal/build"
 	"go.opentelemetry.io/otel"
@@ -28,13 +30,16 @@ func MustNewTracerProvider(endpoint string, ratio float64) *sdktrace.TracerProvi
 		panic(err)
 	}
 
-	exp, err := otlptracegrpc.New(context.Background(),
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	exp, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithDialOption(grpc.WithBlock()),
 	)
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
 	}
 
 	tp := sdktrace.NewTracerProvider(
