@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"time"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
@@ -14,25 +13,22 @@ import (
 )
 
 const (
-	methodKey          = "method"
-	requestIDKey       = "request_id"
-	traceIDKey         = "trace_id"
-	requestDurationKey = "request_duration"
-	tookKey            = "took" // TODO: remove in the future
-	rawRequestKey      = "raw_request"
-	rawResponseKey     = "raw_response"
-	publicErrorKey     = "public_error"
-	grpcErrorKey       = "grpc_error"
-	grpcCompleteKey    = "grpc_complete"
+	methodKey       = "method"
+	requestIDKey    = "request_id"
+	traceIDKey      = "trace_id"
+	reqDurationKey  = "req_duration"
+	rawRequestKey   = "raw_request"
+	rawResponseKey  = "raw_response"
+	publicErrorKey  = "public_error"
+	grpcErrorKey    = "grpc_error"
+	grpcCompleteKey = "grpc_complete"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		start := time.Now()
 
-		fields := []zap.Field{
-			zap.String(methodKey, info.FullMethod),
-		}
+		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
 
 		if requestID, ok := RequestIDFromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
@@ -50,10 +46,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		resp, err := handler(ctx, req)
 
-		fields = append(fields,
-			zap.Duration(requestDurationKey, time.Since(start)),
-			zap.Duration(tookKey, time.Since(start)), // TODO: remove in future
-		)
+		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
@@ -81,26 +74,20 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		start := time.Now()
 
-		fields := []zap.Field{
-			zap.String(methodKey, info.FullMethod),
-		}
+		fields := []zap.Field{zap.String(methodKey, info.FullMethod)}
 
-		ss := grpc_middleware.WrapServerStream(stream)
-		if requestID, ok := RequestIDFromContext(ss.Context()); ok {
+		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
-		spanCtx := trace.SpanContextFromContext(ss.Context())
+		spanCtx := trace.SpanContextFromContext(stream.Context())
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
-		err := handler(srv, ss)
+		err := handler(srv, stream)
 
-		fields = append(fields,
-			zap.Duration(requestDurationKey, time.Since(start)),
-			zap.Duration(tookKey, time.Since(start)), // TODO: remove in future
-		)
+		fields = append(fields, zap.Duration(reqDurationKey, time.Since(start)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
