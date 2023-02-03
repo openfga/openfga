@@ -1200,6 +1200,19 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			rr:       DirectRelationReference("example", "editor"),
 			expected: false,
 		},
+		{
+			name: "cyclical_evaluation_of_tupleset",
+			model: `
+			type user
+
+			type node
+			  relations
+			    define parent: [node] as self
+			    define editor: [user] as self or editor from parent
+			`,
+			rr:       DirectRelationReference("node", "editor"),
+			expected: false,
+		},
 	}
 
 	for _, test := range tests {
@@ -1344,6 +1357,19 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 			    define viewer: [example#editor] as self
 			`,
 			rr:       DirectRelationReference("example", "editor"),
+			expected: false,
+		},
+		{
+			name: "cyclical_evaluation_of_tupleset",
+			model: `
+			type user
+
+			type node
+			  relations
+			    define parent: [node] as self
+			    define editor: [user] as self or editor from parent
+			`,
+			rr:       DirectRelationReference("node", "editor"),
 			expected: false,
 		},
 	}
