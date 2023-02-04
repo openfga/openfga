@@ -169,7 +169,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
-	store := req.GetStoreId()
+	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -180,7 +180,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 
 	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgapb.ReadRequest{
-		StoreId:           store,
+		StoreId:           storeID,
 		TupleKey:          tk,
 		PageSize:          req.GetPageSize(),
 		ContinuationToken: req.GetContinuationToken(),
@@ -188,18 +188,18 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 }
 
 func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
-	store := req.GetStoreId()
+	storeID := req.GetStoreId()
 	ctx, span := tracer.Start(ctx, "write")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
 	cmd := commands.NewWriteCommand(s.datastore, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
-		StoreId:              store,
+		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
@@ -207,7 +207,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	store := req.GetStoreId()
+	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "check", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -216,7 +216,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	q := commands.NewCheckQuery(s.datastore, s.meter, s.logger, s.config.ResolveNodeLimit)
 
 	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
-		StoreId:              store,
+		StoreId:              storeID,
 		TupleKey:             tk,
 		ContextualTuples:     req.GetContextualTuples(),
 		AuthorizationModelId: modelID,
@@ -239,7 +239,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 }
 
 func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
-	store := req.GetStoreId()
+	storeID := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -248,14 +248,14 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	))
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
 	q := commands.NewExpandQuery(s.datastore, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
-		StoreId:              store,
+		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		TupleKey:             tk,
 	})
@@ -295,18 +295,18 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 }
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
-	store := req.GetStoreId()
+	storeID := req.GetStoreId()
 	ctx, span := tracer.Start(ctx, "writeAssertions")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
+	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
-		StoreId:              store,
+		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Assertions:           req.GetAssertions(),
 	})
