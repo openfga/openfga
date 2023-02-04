@@ -95,6 +95,9 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		err := handler(srv, stream)
 
+		code := status.Convert(err).Code()
+		fields = append(fields, zap.Uint32(grpcCodeKey, uint32(code)))
+
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
 				fields = append(fields, zap.Error(internalError.Internal()))
