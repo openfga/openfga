@@ -79,7 +79,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "listObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(targetObjectType)},
 	))
 	defer span.End()
@@ -129,7 +128,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	storeID := req.GetStoreId()
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "streamedListObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
@@ -174,7 +172,6 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "read", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -192,9 +189,7 @@ func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfga
 
 func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
 	store := req.GetStoreId()
-	ctx, span := tracer.Start(ctx, "write", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
-	))
+	ctx, span := tracer.Start(ctx, "write")
 	defer span.End()
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
@@ -215,7 +210,6 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "check", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -248,7 +242,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "expand", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
@@ -270,7 +263,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "readAuthorizationModel", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
@@ -280,9 +272,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 }
 
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, "writeAuthorizationModel", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
+	ctx, span := tracer.Start(ctx, "writeAuthorizationModel")
 	defer span.End()
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
@@ -297,9 +287,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 }
 
 func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.ReadAuthorizationModelsRequest) (*openfgapb.ReadAuthorizationModelsResponse, error) {
-	ctx, span := tracer.Start(ctx, "readAuthorizationModels", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
+	ctx, span := tracer.Start(ctx, "readAuthorizationModels")
 	defer span.End()
 
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
@@ -308,9 +296,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
-	ctx, span := tracer.Start(ctx, "writeAssertions", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
-	))
+	ctx, span := tracer.Start(ctx, "writeAssertions")
 	defer span.End()
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
@@ -334,10 +320,9 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 }
 
 func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertionsRequest) (*openfgapb.ReadAssertionsResponse, error) {
-	ctx, span := tracer.Start(ctx, "readAssertions", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
+	ctx, span := tracer.Start(ctx, "readAssertions")
 	defer span.End()
+
 	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -348,7 +333,6 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadChangesQuery", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
@@ -388,9 +372,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequ
 }
 
 func (s *Server) GetStore(ctx context.Context, req *openfgapb.GetStoreRequest) (*openfgapb.GetStoreResponse, error) {
-	ctx, span := tracer.Start(ctx, "getStore", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-	))
+	ctx, span := tracer.Start(ctx, "getStore")
 	defer span.End()
 
 	q := commands.NewGetStoreQuery(s.datastore, s.logger)
