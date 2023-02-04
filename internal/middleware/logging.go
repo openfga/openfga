@@ -10,11 +10,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 )
 
 const (
 	grpcServiceKey  = "grpc_service"
 	grpcMethodKey   = "grpc_method"
+	grpcTypeKey     = "grpc_type"
+	grpcCodeKey     = "grpc_code"
 	requestIDKey    = "request_id"
 	traceIDKey      = "trace_id"
 	rawRequestKey   = "raw_request"
@@ -29,6 +32,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, openfgapb.OpenFGAService_ServiceDesc.ServiceName),
 			zap.String(grpcMethodKey, info.FullMethod),
+			zap.String(grpcTypeKey, "unary"),
 		}
 
 		if requestID, ok := RequestIDFromContext(ctx); ok {
@@ -46,6 +50,9 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		}
 
 		resp, err := handler(ctx, req)
+
+		code := status.Convert(err).Code()
+		fields = append(fields, zap.Uint32(grpcCodeKey, uint32(code)))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
@@ -74,6 +81,7 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, openfgapb.OpenFGAService_ServiceDesc.ServiceName),
 			zap.String(grpcMethodKey, info.FullMethod),
+			zap.String(grpcTypeKey, "server_stream"),
 		}
 
 		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
