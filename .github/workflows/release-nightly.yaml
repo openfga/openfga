@@ -1,9 +1,6 @@
-name: release
+name: nightly release
 
-on:
-  push:
-    tags:
-      - "v*"
+on: push
 
 permissions:
   contents: write
@@ -13,11 +10,6 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - name: Extract Version from Tag
-        id: tag_name
-        run: |
-          echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-        shell: bash
 
       - name: Checkout
         uses: actions/checkout@v2
@@ -34,13 +26,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Run GoReleaser
+        
+      - name: Run GoReleaser Nightly
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
-          version: latest
-          args: release --rm-dist --config .goreleaser.yaml
+          version: nightly
+          args: release --rm-dist --config .goreleaser-nightly.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

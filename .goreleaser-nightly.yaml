@@ -1,0 +1,84 @@
+project_name: openfga-nightly
+
+before:
+  hooks:
+    - make install-tools
+    - go generate ./...
+
+builds:
+  - main: ./cmd/openfga
+    binary: openfga
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    ldflags:
+      - "-s -w"
+
+dockers:
+  - goos: linux
+    goarch: amd64
+
+    dockerfile: Dockerfile.goreleaser
+
+    image_templates:
+      - "openfga/openfga:nightly-amd64"
+
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+
+    extra_files:
+      - assets
+
+  - goos: linux
+    goarch: arm64
+
+    dockerfile: Dockerfile.goreleaser
+
+    image_templates:
+      - "openfga/openfga:nightly-arm64"
+
+    use: buildx
+
+    build_flag_templates:
+      - "--platform=linux/arm64"
+
+    extra_files:
+      - assets
+
+docker_manifests:
+  - name_template: openfga/openfga:nightly
+    image_templates:
+      - openfga/openfga:nightly-amd64
+      - openfga/openfga:nightly-arm64
+
+release:
+  github:
+    owner: openfga
+    name: openfga
+
+archives:
+  - replacements:
+      darwin: Darwin
+      linux: Linux
+      windows: Windows
+      386: i386
+      amd64: x86_64
+    files:
+      - assets
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "nightly-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
