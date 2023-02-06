@@ -288,6 +288,7 @@ func MustDefaultConfigWithRandomPorts() *Config {
 
 	// Since this is used for tests, turn the following off:
 	config.Playground.Enabled = false
+	config.Metrics.Enabled = false
 
 	l, err := net.Listen("tcp", "")
 	if err != nil {
