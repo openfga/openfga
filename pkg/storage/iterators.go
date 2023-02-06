@@ -106,11 +106,11 @@ type combinedIterator[T any] struct {
 }
 
 func (c *combinedIterator[T]) Next() (T, error) {
-	for i := 0; i < len(c.iters); i++ {
-		if c.iters[i] == nil {
+	for i, iter := range c.iters {
+		if iter == nil {
 			continue
 		}
-		val, err := c.iters[i].Next()
+		val, err := iter.Next()
 		if err != nil {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
@@ -128,9 +128,9 @@ func (c *combinedIterator[T]) Next() (T, error) {
 }
 
 func (c *combinedIterator[T]) Stop() {
-	for i := 0; i < len(c.iters); i++ {
-		if c.iters[i] != nil {
-			c.iters[i].Stop()
+	for _, iter := range c.iters {
+		if iter != nil {
+			iter.Stop()
 		}
 	}
 }
