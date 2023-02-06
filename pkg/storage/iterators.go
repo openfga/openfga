@@ -107,20 +107,22 @@ type combinedIterator[T any] struct {
 
 func (c *combinedIterator[T]) Next() (T, error) {
 	for i := 0; i < len(c.iters); i++ {
-		if c.iters[i] != nil {
-			val, err := c.iters[i].Next()
-			if err != nil {
-				if !errors.Is(err, ErrIteratorDone) {
-					return val, err
-				} else {
-					c.iters[i] = nil // end of this iterator
-				}
-			} else {
-				return val, nil
-			}
+		if c.iters[i] == nil {
+			continue
 		}
+		val, err := c.iters[i].Next()
+		if err != nil {
+			if !errors.Is(err, ErrIteratorDone) {
+				return val, err
+			}
+			c.iters[i] = nil // end of this iterator
+			continue
+		}
+
+		return val, nil
 	}
 
+	// all iterators ended
 	var val T
 	return val, ErrIteratorDone
 }
@@ -133,7 +135,7 @@ func (c *combinedIterator[T]) Stop() {
 	}
 }
 
-// NewCombinedIterator takes an array of generic iterators of a given type T and combines them into a single iterator that yields
+// NewCombinedIterator takes generic iterators of a given type T and combines them into a single iterator that yields
 // all the values from all iterators. Duplicates can be returned.
 func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 	return &combinedIterator[T]{iters}
