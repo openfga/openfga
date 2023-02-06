@@ -14,17 +14,16 @@ import (
 )
 
 const (
-	grpcServiceKey  = "grpc_service"
-	grpcMethodKey   = "grpc_method"
-	grpcTypeKey     = "grpc_type"
-	grpcCodeKey     = "grpc_code"
-	requestIDKey    = "request_id"
-	traceIDKey      = "trace_id"
-	rawRequestKey   = "raw_request"
-	rawResponseKey  = "raw_response"
-	publicErrorKey  = "public_error"
-	grpcErrorKey    = "grpc_error"
-	grpcCompleteKey = "grpc_complete"
+	grpcServiceKey   = "grpc_service"
+	grpcMethodKey    = "grpc_method"
+	grpcTypeKey      = "grpc_type"
+	grpcCodeKey      = "grpc_code"
+	requestIDKey     = "request_id"
+	traceIDKey       = "trace_id"
+	rawRequestKey    = "raw_request"
+	rawResponseKey   = "raw_response"
+	internalErrorKey = "internal_error"
+	grpcCompleteKey  = "grpc_complete"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -51,16 +50,20 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 		resp, err := handler(ctx, req)
 
-		code := status.Convert(err).Code()
-		fields = append(fields, zap.Uint32(grpcCodeKey, uint32(code)))
+		code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
+		fields = append(fields, zap.Int32(grpcCodeKey, code))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
-				fields = append(fields, zap.Error(internalError.Internal()))
+				fields = append(fields, zap.String(internalErrorKey, internalError.Internal().Error()))
 			}
 
-			fields = append(fields, zap.String(publicErrorKey, err.Error()))
-			logger.Error(grpcErrorKey, fields...)
+			if isInternalError(code) {
+				logger.Error(err.Error(), fields...)
+			} else {
+				fields = append(fields, zap.Error(err))
+				logger.Info(grpcCompleteKey, fields...)
+			}
 
 			return nil, err
 		}
@@ -95,16 +98,20 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		err := handler(srv, stream)
 
-		code := status.Convert(err).Code()
-		fields = append(fields, zap.Uint32(grpcCodeKey, uint32(code)))
+		code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
+		fields = append(fields, zap.Int32(grpcCodeKey, code))
 
 		if err != nil {
 			if internalError, ok := err.(serverErrors.InternalError); ok {
-				fields = append(fields, zap.Error(internalError.Internal()))
+				fields = append(fields, zap.String(internalErrorKey, internalError.Internal().Error()))
 			}
 
-			fields = append(fields, zap.String(publicErrorKey, err.Error()))
-			logger.Error(grpcErrorKey, fields...)
+			if isInternalError(code) {
+				logger.Error(err.Error(), fields...)
+			} else {
+				fields = append(fields, zap.Error(err))
+				logger.Info(grpcCompleteKey, fields...)
+			}
 
 			return err
 		}
@@ -113,4 +120,11 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		return nil
 	}
+}
+
+func isInternalError(code int32) bool {
+	if code >= 4000 && code < 5000 {
+		return true
+	}
+	return false
 }
