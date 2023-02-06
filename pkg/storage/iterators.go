@@ -102,38 +102,41 @@ func (u *uniqueObjectIterator) Stop() {
 }
 
 type combinedIterator[T any] struct {
-	iter1, iter2 Iterator[T]
+	iters []Iterator[T]
 }
 
 func (c *combinedIterator[T]) Next() (T, error) {
-	val, err := c.iter1.Next()
-	if err != nil {
-		if !errors.Is(err, ErrIteratorDone) {
-			return val, err
+	for i := 0; i < len(c.iters); i++ {
+		if c.iters[i] != nil {
+			val, err := c.iters[i].Next()
+			if err != nil {
+				if !errors.Is(err, ErrIteratorDone) {
+					return val, err
+				} else {
+					c.iters[i] = nil // end of this iterator
+				}
+			} else {
+				return val, nil
+			}
 		}
-	} else {
-		return val, nil
 	}
 
-	val, err = c.iter2.Next()
-	if err != nil {
-		if !errors.Is(err, ErrIteratorDone) {
-			return val, err
-		}
-	}
-
-	return val, err
+	var val T
+	return val, ErrIteratorDone
 }
 
 func (c *combinedIterator[T]) Stop() {
-	c.iter1.Stop()
-	c.iter2.Stop()
+	for i := 0; i < len(c.iters); i++ {
+		if c.iters[i] != nil {
+			c.iters[i].Stop()
+		}
+	}
 }
 
-// NewCombinedIterator takes two generic iterators of a given type T and combines them into a single iterator that yields
-// all of the values from both iterators. If the two iterators yield the same value then duplicates will be returned.
-func NewCombinedIterator[T any](iter1, iter2 Iterator[T]) Iterator[T] {
-	return &combinedIterator[T]{iter1, iter2}
+// NewCombinedIterator takes an array of generic iterators of a given type T and combines them into a single iterator that yields
+// all the values from all iterators. Duplicates can be returned.
+func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
+	return &combinedIterator[T]{iters}
 }
 
 // NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
