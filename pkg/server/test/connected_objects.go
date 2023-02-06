@@ -861,6 +861,30 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			expectedObjects: []string{"resource:eng_handbook"},
 		},
+		{
+			name: "cyclical_tupleset_relation_terminates",
+			request: &commands.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "node",
+				Relation:   "editor",
+				User: &commands.UserRefObject{Object: &openfgapb.Object{
+					Type: "user",
+					Id:   "wonder",
+				}},
+			},
+			model: `
+			type user
+
+			type node
+			  relations
+			    define parent: [node] as self
+			    define editor: [user] as self or editor from parent
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("node:abc", "editor", "user:wonder"),
+			},
+			expectedObjects: []string{"node:abc"},
+		},
 	}
 
 	for _, test := range tests {
