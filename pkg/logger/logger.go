@@ -119,6 +119,7 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 	cfg.Level = zap.NewAtomicLevelAt(level)
 	cfg.EncoderConfig.TimeKey = "timestamp"
 	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
+	cfg.DisableStacktrace = true
 
 	if logFormat == "text" {
 		cfg.Encoding = "console"
