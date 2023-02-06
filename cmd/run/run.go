@@ -18,9 +18,9 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
@@ -40,12 +40,12 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -175,14 +175,11 @@ type ProfilerConfig struct {
 	Addr    string
 }
 
-type OpenTelemetryMetricsConfig struct {
-	Endpoint string
-	Protocol string
-}
-
-// OpenTelemetryConfig defines configurations for OpenTelemetry telemetry settings.
-type OpenTelemetryConfig struct {
-	OpenTelemetryMetricsConfig `mapstructure:"metrics"`
+// MetricConfig defines configurations for serving custom metrics from OpenFGA.
+type MetricConfig struct {
+	Enabled             bool
+	Addr                string
+	EnableRPCHistograms bool
 }
 
 type Config struct {
@@ -213,15 +210,15 @@ type Config struct {
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
-	Datastore     DatastoreConfig
-	GRPC          GRPCConfig
-	HTTP          HTTPConfig
-	Authn         AuthnConfig
-	Log           LogConfig
-	Trace         TraceConfig
-	Playground    PlaygroundConfig
-	Profiler      ProfilerConfig
-	OpenTelemetry OpenTelemetryConfig `mapstructure:"otel"`
+	Datastore  DatastoreConfig
+	GRPC       GRPCConfig
+	HTTP       HTTPConfig
+	Authn      AuthnConfig
+	Log        LogConfig
+	Trace      TraceConfig
+	Playground PlaygroundConfig
+	Profiler   ProfilerConfig
+	Metrics    MetricConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -276,11 +273,10 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			Addr:    ":3001",
 		},
-		OpenTelemetry: OpenTelemetryConfig{
-			OpenTelemetryMetricsConfig: OpenTelemetryMetricsConfig{
-				Protocol: "grpc",
-				Endpoint: "0.0.0.0:4317",
-			},
+		Metrics: MetricConfig{
+			Enabled:             true,
+			Addr:                "0.0.0.0:2112",
+			EnableRPCHistograms: false,
 		},
 	}
 }
@@ -415,20 +411,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	meter := metric.NewNoopMeter()
 	var err error
-	if util.Contains(config.Experimentals, "otel-metrics") {
-
-		protocol := config.OpenTelemetry.Protocol
-		endpoint := config.OpenTelemetry.Endpoint
-
-		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
-
-		meter, err = telemetry.NewOTLPMeter(ctx, logger, protocol, endpoint)
-		if err != nil {
-			return fmt.Errorf("failed to initialize otlp metrics meter: %w", err)
-		}
-	}
 
 	dsCfg := common.NewConfig(
 		common.WithLogger(logger),
@@ -481,19 +464,37 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		middleware.NewRequestIDInterceptor(logger),
-		middleware.NewLoggingInterceptor(logger),
-		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+	}
+
+	if config.Metrics.Enabled {
+		unaryInterceptors = append(unaryInterceptors, grpc_prometheus.UnaryServerInterceptor)
+		streamingInterceptors = append(streamingInterceptors, grpc_prometheus.StreamServerInterceptor)
+
+		if config.Metrics.EnableRPCHistograms {
+			grpc_prometheus.EnableHandlingTimeHistogram()
+		}
+	}
+
+	if config.Trace.Enabled {
+		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)))
+		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)))
+	}
+
+	unaryInterceptors = append(unaryInterceptors,
+		middleware.NewRequestIDInterceptor(logger),
+		middleware.NewLoggingInterceptor(logger),
+		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+	)
+
+	streamingInterceptors = append(streamingInterceptors,
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
-	}
+	)
 
 	opts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
@@ -535,10 +536,22 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
+	if config.Metrics.Enabled {
+		logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
+
+		go func() {
+			http.Handle("/metrics", promhttp.Handler())
+			if err := http.ListenAndServe(config.Metrics.Addr, nil); err != nil {
+				if err != http.ErrServerClosed {
+					logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
+				}
+			}
+		}()
+	}
+
 	svr := server.New(&server.Dependencies{
 		Datastore:    datastore,
 		Logger:       logger,
-		Meter:        meter,
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{

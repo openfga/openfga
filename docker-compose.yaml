@@ -38,11 +38,13 @@ services:
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
+      - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
     networks:
       - default
     ports:
       - "8080:8080"
       - "3000:3000"
+      - "2112:2112"
 
   otel-collector:
     image: otel/opentelemetry-collector:latest
@@ -66,3 +68,32 @@ services:
       - otel-collector
     networks:
       - default
+
+  prometheus:
+    image: prom/prometheus:v2.30.3
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  grafana:
+      image: grafana/grafana
+      ports:
+        - 3001:3000
+      restart: unless-stopped
+      depends_on:
+        prometheus:
+          condition: service_started
+      volumes:
+        - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+        - ./grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
+        - ./grafana/dashboards:/etc/grafana/dashboards
+        - grafana_data:/var/lib/grafana
+volumes:
+  prometheus_data:
+  grafana_data:
