@@ -117,6 +117,7 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.DisableStacktrace = true
 
 	if logFormat == "text" {
 		cfg.Encoding = "console"
