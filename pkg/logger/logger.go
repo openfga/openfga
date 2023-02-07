@@ -117,6 +117,8 @@ func NewLogger(logFormat, logLevel string) (*ZapLogger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.Level = zap.NewAtomicLevelAt(level)
+	cfg.EncoderConfig.TimeKey = "timestamp"
+	cfg.EncoderConfig.CallerKey = "" // remove the "caller" field
 	cfg.DisableStacktrace = true
 
 	if logFormat == "text" {
@@ -145,20 +147,4 @@ func MustNewLogger(logFormat, logLevel string) *ZapLogger {
 	}
 
 	return logger
-}
-
-func Error(err error) zap.Field {
-	return zap.Error(err)
-}
-
-func String(k, v string) zap.Field {
-	return zap.String(k, v)
-}
-
-func Int(k string, v int) zap.Field {
-	return zap.Int(k, v)
-}
-
-func Uint32(k string, v uint32) zap.Field {
-	return zap.Uint32(k, v)
 }

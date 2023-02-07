@@ -18,7 +18,6 @@ var (
 	AuthorizationModelResolutionTooComplex = status.Error(codes.Code(openfgapb.ErrorCode_authorization_model_resolution_too_complex), "Authorization Model resolution required too many rewrite rules to be resolved. Check your authorization model for infinite recursion or too much nesting")
 	InvalidWriteInput                      = status.Error(codes.Code(openfgapb.ErrorCode_invalid_write_input), "Invalid input. Make sure you provide at least one write, or at least one delete")
 	InvalidContinuationToken               = status.Error(codes.Code(openfgapb.ErrorCode_invalid_continuation_token), "Invalid continuation token")
-	InvalidTupleSet                        = status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple_set), "Invalid TupleSet. Make sure you provide a type, and either an objectId or a userSet")
 	InvalidCheckInput                      = status.Error(codes.Code(openfgapb.ErrorCode_invalid_check_input), "Invalid input. Make sure you provide a user, object and relation")
 	InvalidExpandInput                     = status.Error(codes.Code(openfgapb.ErrorCode_invalid_expand_input), "Invalid input. Make sure you provide an object and a relation")
 	UnsupportedUserSet                     = status.Error(codes.Code(openfgapb.ErrorCode_unsupported_user_set), "Userset is not supported (right now)")

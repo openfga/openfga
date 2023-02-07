@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openfga/openfga/pkg/logger"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -40,8 +41,8 @@ func (g *RPCTransport) SetHeader(ctx context.Context, key, value string) {
 		g.logger.ErrorWithContext(
 			ctx,
 			"failed to set grpc header",
-			logger.Error(err),
-			logger.String("header", key),
+			zap.Error(err),
+			zap.String("header", key),
 		)
 	}
 }
