@@ -14,16 +14,16 @@ import (
 )
 
 const (
-	grpcServiceKey   = "grpc_service"
-	grpcMethodKey    = "grpc_method"
-	grpcTypeKey      = "grpc_type"
-	grpcCodeKey      = "grpc_code"
-	requestIDKey     = "request_id"
-	traceIDKey       = "trace_id"
-	rawRequestKey    = "raw_request"
-	rawResponseKey   = "raw_response"
-	internalErrorKey = "internal_error"
-	grpcCompleteKey  = "grpc_complete"
+	grpcServiceKey     = "grpc_service"
+	grpcMethodKey      = "grpc_method"
+	grpcTypeKey        = "grpc_type"
+	grpcCodeKey        = "grpc_code"
+	requestIDKey       = "request_id"
+	traceIDKey         = "trace_id"
+	rawRequestKey      = "raw_request"
+	rawResponseKey     = "raw_response"
+	internalErrorKey   = "internal_error"
+	grpcReqCompleteKey = "grpc_req_complete"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -62,7 +62,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 				logger.Error(err.Error(), fields...)
 			} else {
 				fields = append(fields, zap.Error(err))
-				logger.Info(grpcCompleteKey, fields...)
+				logger.Info(grpcReqCompleteKey, fields...)
 			}
 
 			return nil, err
@@ -73,7 +73,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			fields = append(fields, zap.Any(rawResponseKey, json.RawMessage(jsonResp)))
 		}
 
-		logger.Info(grpcCompleteKey, fields...)
+		logger.Info(grpcReqCompleteKey, fields...)
 
 		return resp, nil
 	}
@@ -110,13 +110,13 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 				logger.Error(err.Error(), fields...)
 			} else {
 				fields = append(fields, zap.Error(err))
-				logger.Info(grpcCompleteKey, fields...)
+				logger.Info(grpcReqCompleteKey, fields...)
 			}
 
 			return err
 		}
 
-		logger.Info(grpcCompleteKey, fields...)
+		logger.Info(grpcReqCompleteKey, fields...)
 
 		return nil
 	}
