@@ -21,6 +21,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -270,6 +271,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		},
 	})
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
