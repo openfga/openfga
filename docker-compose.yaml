@@ -51,7 +51,7 @@ services:
     container_name: otel-collector
     command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
-      - "./otel-collector-config.yaml:/etc/otel-collector-config.yaml"
+      - "./telemetry/otel-collector-config.yaml:/etc/otel-collector-config.yaml"
     networks:
       - default
     ports:
@@ -74,7 +74,7 @@ services:
     ports:
       - 9090:9090
     volumes:
-      - ./prometheus:/etc/prometheus
+      - ./telemetry/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -90,9 +90,9 @@ services:
         prometheus:
           condition: service_started
       volumes:
-        - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-        - ./grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
-        - ./grafana/dashboards:/etc/grafana/dashboards
+        - ./telemetry/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+        - ./telemetry/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
+        - ./telemetry/grafana/dashboards:/etc/grafana/dashboards
         - grafana_data:/var/lib/grafana
 volumes:
   prometheus_data:

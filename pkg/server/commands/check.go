@@ -30,7 +30,7 @@ type CheckQuery struct {
 }
 
 // NewCheckQuery creates a CheckQuery that uses the datastore and loggers provided. Check resolution
-// is limited to the provided resolveNodeLimit.
+// depth is limited to the provided resolveNodeLimit.
 func NewCheckQuery(datastore storage.OpenFGADatastore, logger logger.Logger, resolveNodeLimit uint32) *CheckQuery {
 	return &CheckQuery{
 		logger:           logger,
