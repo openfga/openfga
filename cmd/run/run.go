@@ -405,6 +405,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
+		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
 	}
 
@@ -422,7 +423,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		protocol := config.OpenTelemetry.Protocol
 		endpoint := config.OpenTelemetry.Endpoint
 
-		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
+		logger.Info(fmt.Sprintf("🕵 openTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
 
 		meter, err = telemetry.NewOTLPMeter(ctx, logger, protocol, endpoint)
 		if err != nil {
