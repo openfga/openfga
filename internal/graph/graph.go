@@ -16,8 +16,9 @@ const (
 )
 
 var (
-	ErrTargetError    = errors.New("graph: target incorrectly specified")
-	ErrNotImplemented = errors.New("graph: intersection and exclusion are not yet implemented")
+	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
+	ErrTargetError             = errors.New("graph: target incorrectly specified")
+	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
 )
 
 // ContextWithResolutionDepth attaches the provided graph resolution depth to the parent context.
@@ -29,6 +30,10 @@ func ContextWithResolutionDepth(parent context.Context, depth uint32) context.Co
 func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 	depth, ok := ctx.Value(resolutionDepthCtxKey).(uint32)
 	return depth, ok
+}
+
+type ResolutionMetadata struct {
+	Depth uint32
 }
 
 // RelationshipIngressType is used to define an enum of the type of ingresses between
