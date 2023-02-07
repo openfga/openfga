@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	storeIDCtxKey   ctxKey = "store-id-context-key"
-	storeIDTraceKey        = "store_id"
+	storeIDCtxKey ctxKey = "store-id-context-key"
+
+	storeIDTraceKey = "store_id"
 )
 
 func StoreIDFromContext(ctx context.Context) (string, bool) {
@@ -18,14 +19,14 @@ func StoreIDFromContext(ctx context.Context) (string, bool) {
 	return storeID, ok
 }
 
-type hasGetStoreId interface {
+type hasGetStoreID interface {
 	GetStoreId() string
 }
 
 // NewStoreIDInterceptor must come after the trace interceptor
 func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if r, ok := req.(hasGetStoreId); ok {
+		if r, ok := req.(hasGetStoreID); ok {
 			storeID := r.GetStoreId()
 
 			// Add the storeID to the context
@@ -53,7 +54,7 @@ func (w *wrappedStoreIDServerStream) RecvMsg(m interface{}) error {
 		return nil
 	}
 
-	if r, ok := m.(hasGetStoreId); ok {
+	if r, ok := m.(hasGetStoreID); ok {
 		storeID := r.GetStoreId()
 
 		// Add the storeID to the context
