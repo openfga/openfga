@@ -20,6 +20,7 @@ const (
 	grpcCodeKey        = "grpc_code"
 	requestIDKey       = "request_id"
 	traceIDKey         = "trace_id"
+	storeIDKey         = "store_id"
 	rawRequestKey      = "raw_request"
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
@@ -41,6 +42,10 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 		spanCtx := trace.SpanContextFromContext(ctx)
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
+		}
+
+		if storeID, ok := StoreIDFromContext(ctx); ok {
+			fields = append(fields, zap.String(storeIDKey, storeID))
 		}
 
 		jsonReq, err := json.Marshal(req)
@@ -94,6 +99,10 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 		spanCtx := trace.SpanContextFromContext(stream.Context())
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
+		}
+
+		if storeID, ok := StoreIDFromContext(stream.Context()); ok {
+			fields = append(fields, zap.String(storeIDKey, storeID))
 		}
 
 		err := handler(srv, stream)
