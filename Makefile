@@ -61,7 +61,7 @@ go-generate: install-tools
 
 .PHONY: unit-test
 unit-test: go-generate ## Run unit tests
-	go test -race \
+	go test -race -v \
 			-coverpkg=./... \
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
