@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -175,6 +176,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
+			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
 		}
 
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
@@ -335,6 +337,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
 			ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
+			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
 		}
 
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
@@ -530,6 +533,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		Logger:           logger.NewNoopLogger(),
 		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
+		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
 	}
 
 	var r *openfgapb.ListObjectsResponse
