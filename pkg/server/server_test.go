@@ -13,6 +13,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -23,6 +24,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -97,40 +99,48 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 }
 
 func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
-	t.SkipNow() //TODO remove
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "anne")
+	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader": typesystem.This(),
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgapb.AuthorizationModel{
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": typesystem.This(),
+					},
 				},
 			},
-		},
-	}, nil)
+		}, nil)
 
-	tupleKey := &openfgapb.TupleKey{
-		Object:   "repo:openfga",
-		Relation: "reader",
-		User:     "anne",
-	}
-	tuple := &openfgapb.Tuple{Key: tupleKey}
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any()).AnyTimes().Return(tuple, nil)
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
-			time.Sleep(50 * time.Millisecond)
-			return nil, errors.New("some error")
-		})
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		AnyTimes().
+		Return(tuple, nil)
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+				time.Sleep(50 * time.Millisecond)
+				return nil, errors.New("some error")
+			})
+
 	s := Server{
 		datastore: mockDatastore,
 		transport: gateway.NewNoopTransport(),
@@ -138,11 +148,12 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		config: &Config{
 			ResolveNodeLimit: 25,
 		},
+		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
 	}
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
 		StoreId:              storeID,
-		TupleKey:             tupleKey,
+		TupleKey:             tk,
 		AuthorizationModelId: modelID,
 	})
 	require.NoError(t, err)
@@ -150,44 +161,57 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
-	t.SkipNow() //TODO remove
 	ctx := context.Background()
+
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "*")
+	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader": typesystem.This(),
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgapb.AuthorizationModel{
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"reader": typesystem.This(),
+					},
 				},
 			},
-		},
-	}, nil)
+		}, nil)
 
-	tupleKey := &openfgapb.TupleKey{
-		Object:   "repo:openfga",
-		Relation: "reader",
-		User:     "*",
-	}
-	tuple := &openfgapb.Tuple{Key: tupleKey}
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
-	mockDatastore.EXPECT().ReadUserTuple(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
-			time.Sleep(500 * time.Millisecond)
-			return nil, storage.ErrNotFound
-		})
-	mockDatastore.EXPECT().ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
-			time.Sleep(100 * time.Millisecond)
-			return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
-		})
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(ctx context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(500 * time.Millisecond):
+					return nil, storage.ErrNotFound
+				}
+			})
+
+	mockDatastore.EXPECT().
+		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
+		AnyTimes().
+		DoAndReturn(
+			func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+				time.Sleep(100 * time.Millisecond)
+				return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
+			})
+
 	s := Server{
 		datastore: mockDatastore,
 		transport: gateway.NewNoopTransport(),
@@ -195,15 +219,17 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		config: &Config{
 			ResolveNodeLimit: 25,
 		},
+		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
 	}
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
 		StoreId:              storeID,
-		TupleKey:             tupleKey,
+		TupleKey:             tk,
 		AuthorizationModelId: modelID,
 	})
 	end := time.Since(start)
+
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
 	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)

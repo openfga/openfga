@@ -66,10 +66,10 @@ func sanitizedMessage(message string) string {
 }
 
 // NewEncodedError returns the encoded error with the correct http status code etc.
-func NewEncodedError(errorCode int32, message string) EncodedError {
+func NewEncodedError(errorCode int32, message string) *EncodedError {
 
 	if !IsValidEncodedError(errorCode) {
-		return EncodedError{
+		return &EncodedError{
 			HTTPStatusCode: http.StatusInternalServerError,
 			GRPCStatusCode: codes.Internal,
 			ActualError: ErrorResponse{
@@ -100,7 +100,7 @@ func NewEncodedError(errorCode int32, message string) EncodedError {
 		code = openfgapb.NotFoundErrorCode(errorCode).String()
 		grpcStatusCode = codes.NotFound
 	}
-	return EncodedError{
+	return &EncodedError{
 		HTTPStatusCode: httpStatusCode,
 		GRPCStatusCode: grpcStatusCode,
 		ActualError: ErrorResponse{

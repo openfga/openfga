@@ -630,7 +630,7 @@ func RunServer(ctx context.Context, config *Config) error {
 			runtime.WithStreamErrorHandler(func(ctx context.Context, e error) *status.Status {
 				intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(e))
 				encodedErr := serverErrors.NewEncodedError(intCode, e.Error())
-				return status.Convert(&encodedErr)
+				return status.Convert(encodedErr)
 			}),
 			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
 		}

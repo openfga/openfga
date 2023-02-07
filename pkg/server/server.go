@@ -9,7 +9,9 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
+	"github.com/openfga/openfga/internal/graph"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -41,6 +43,8 @@ type Server struct {
 	encoder   encoder.Encoder
 	transport gateway.Transport
 	config    *Config
+
+	checkResolver graph.CheckResolver
 }
 
 type Dependencies struct {
@@ -61,12 +65,16 @@ type Config struct {
 // New creates a new Server which uses the supplied backends
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
+
+	ds := dependencies.Datastore
+
 	return &Server{
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		logger:        dependencies.Logger,
+		datastore:     dependencies.Datastore,
+		encoder:       dependencies.TokenEncoder,
+		transport:     dependencies.Transport,
+		config:        config,
+		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
 	}
 }
 
@@ -206,32 +214,65 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
+
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
+		attribute.KeyValue{Key: "store", Value: attribute.StringValue(store)},
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
 
+	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
+		return nil, serverErrors.InvalidCheckInput
+	}
+
 	modelID, err := s.resolveAuthorizationModelID(ctx, store, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
 
-	q := commands.NewCheckQuery(s.datastore, s.logger, s.config.ResolveNodeLimit)
-
-	res, err := q.Execute(ctx, &openfgapb.CheckRequest{
-		StoreId:              store,
-		TupleKey:             tk,
-		ContextualTuples:     req.GetContextualTuples(),
-		AuthorizationModelId: modelID,
-		Trace:                req.GetTrace(),
-	})
+	model, err := s.datastore.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		return nil, err
+	}
+
+	typesys := typesystem.New(model)
+
+	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
+		return nil, serverErrors.ValidationError(err)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
+
+	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+		StoreID:              req.GetStoreId(),
+		AuthorizationModelID: req.GetAuthorizationModelId(),
+		TupleKey:             req.GetTupleKey(),
+		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+		ResolutionMetadata: &graph.ResolutionMetadata{
+			Depth: s.config.ResolveNodeLimit,
+		},
+	})
+	if err != nil {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
+	res := &openfgapb.CheckResponse{
+		Allowed: resp.Allowed,
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
