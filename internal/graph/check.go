@@ -124,10 +124,22 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 	var wg sync.WaitGroup
 
 	checker := func(fn CheckHandlerFunc) {
-		resp, err := fn(ctx)
-		resultChan <- checkOutcome{resp, err}
-		<-limiter
-		wg.Done()
+		defer wg.Done()
+
+		resolved := make(chan checkOutcome, 1)
+
+		go func() {
+			resp, err := fn(ctx)
+			resolved <- checkOutcome{resp, err}
+			<-limiter
+		}()
+
+		select {
+		case <-ctx.Done():
+			return
+		case res := <-resolved:
+			resultChan <- res
+		}
 	}
 
 	wg.Add(1)
