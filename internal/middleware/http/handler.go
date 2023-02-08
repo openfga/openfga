@@ -64,7 +64,7 @@ func handleForwardResponseTrailer(w http.ResponseWriter, md runtime.ServerMetada
 
 // CustomHTTPErrorHandler provides handling of custom error object
 // It is very similar to runtime.DefaultHTTPErrorHandler except it takes in the EncodedError object
-func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err errors.EncodedError) {
+func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err *errors.EncodedError) {
 	// convert as error object
 	pb := err.ActualError
 

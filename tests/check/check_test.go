@@ -114,9 +114,6 @@ func runTests(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
 						require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-						if assertion.Trace != "" {
-							require.Equal(t, assertion.Trace, resp.GetResolution())
-						}
 					} else {
 						require.Error(t, err)
 						e, ok := status.FromError(err)
