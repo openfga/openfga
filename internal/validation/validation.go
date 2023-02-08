@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -162,7 +162,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 
 	// the user must be an object (case 1), so check directly against the objectType
 	for _, typeInformation := range relationInformation.GetDirectlyRelatedUserTypes() {
-		if typeInformation.GetType() == userType && typeInformation.GetWildcard() == nil {
+		if typeInformation.GetType() == userType && typeInformation.GetWildcard() == nil && typeInformation.GetRelation() == "" {
 			return nil
 		}
 	}
@@ -174,11 +174,9 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 // a generic filtering mechanism when reading tuples. It is particularly useful to filter
 // out tuples that aren't valid according to the provided model, which can help filter
 // tuples that were introduced due to another authorization model.
-func FilterInvalidTuples(model *openfgapb.AuthorizationModel) storage.TupleKeyFilterFunc {
+func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 
 	return func(tupleKey *openfgapb.TupleKey) bool {
-		typesys := typesystem.New(model)
-
 		err := ValidateTuple(typesys, tupleKey)
 		return err == nil
 	}
@@ -193,6 +191,10 @@ func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) erro
 
 	if !tuple.IsValidObject(object) {
 		return fmt.Errorf("invalid 'object' field format")
+	}
+
+	if tuple.IsTypedWildcard(object) {
+		return fmt.Errorf("the 'object' field cannot reference a typed wildcard")
 	}
 
 	objectType := tuple.GetType(object)
@@ -251,6 +253,14 @@ func ValidateUser(typesys *typesystem.TypeSystem, user string) error {
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		if !tuple.IsValidObject(user) && !tuple.IsObjectRelation(user) {
 			return fmt.Errorf("the 'user' field must be an object (e.g. document:1) or an 'object#relation' or a typed wildcard (e.g. group:*)")
+		}
+
+		if tuple.IsObjectRelation(user) {
+			userObj, _ := tuple.SplitObjectRelation(user)
+
+			if tuple.IsTypedWildcard(userObj) {
+				return fmt.Errorf("the 'user' field cannot reference a typed wildcard in a userset value")
+			}
 		}
 	}
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/pkg/server/errors"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/protobuf/proto"
 )
@@ -64,7 +64,7 @@ func handleForwardResponseTrailer(w http.ResponseWriter, md runtime.ServerMetada
 
 // CustomHTTPErrorHandler provides handling of custom error object
 // It is very similar to runtime.DefaultHTTPErrorHandler except it takes in the EncodedError object
-func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err errors.EncodedError) {
+func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err *errors.EncodedError) {
 	// convert as error object
 	pb := err.ActualError
 

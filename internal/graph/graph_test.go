@@ -10,7 +10,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
+func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 
 	tests := []struct {
 		name     string
@@ -31,7 +31,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define editor: [user, group#member] as self
-				define viewer as editor
+			    define viewer as editor
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -54,7 +54,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define editor: [user] as self
-				define viewer as editor
+			    define viewer as editor
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -81,7 +81,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define parent: [folder] as self
-				define viewer: [user] as self or viewer from parent
+			    define viewer: [user] as self or viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -112,7 +112,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define editor: [user, group#member] as self
-				define viewer: [user] as self or editor
+			    define viewer: [user] as self or editor
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -161,7 +161,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type folder
 			  relations
 			    define parent: [folder] as self
-				define viewer: [user] as self or viewer from parent
+			    define viewer: [user] as self or viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("folder", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -201,7 +201,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define parent: [folder] as self
-				define viewer as viewer from parent
+			    define viewer as viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -232,7 +232,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define parent: [folder] as self
-				define viewer as viewer from parent
+			    define viewer as viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("group", "member"),
@@ -259,7 +259,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define parent: [folder] as self
-				define viewer as viewer from parent
+			    define viewer as viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
@@ -284,7 +284,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define parent: [folder, organization] as self
-				define viewer as viewer from parent
+			    define viewer as viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -310,6 +310,28 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 				{
 					Type:    DirectIngress,
 					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+			},
+		},
+		{
+			name: "ingresses_for_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+			    define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+			    define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
 				},
 			},
 		},
@@ -370,7 +392,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define editor: [user:*] as self
-				define viewer as editor
+			    define viewer as editor
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -389,7 +411,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define editor: [user] as self
-				define viewer as editor
+			    define viewer as editor
 			`,
 			target:   typesystem.DirectRelationReference("document", "viewer"),
 			source:   typesystem.WildcardRelationReference("user"),
@@ -405,9 +427,9 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define relation1: [user:*] as self or relation2 or relation3 or relation4
-				define relation2: [group:*] as self
-				define relation3: [employee:*] as self
-				define relation4: [user] as self
+			    define relation2: [group:*] as self
+			    define relation3: [employee:*] as self
+			    define relation4: [user] as self
 			`,
 			target: typesystem.DirectRelationReference("document", "relation1"),
 			source: typesystem.DirectRelationReference("user", ""),
@@ -430,7 +452,7 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			type document
 			  relations
 			    define relation1: [user] as self or relation2
-				define relation2: [user:*] as self
+			    define relation2: [user:*] as self
 			`,
 			target: typesystem.DirectRelationReference("document", "relation1"),
 			source: typesystem.WildcardRelationReference("user"),
@@ -517,6 +539,293 @@ func TestConnectedObjectGraph_RelationshipIngresss(t *testing.T) {
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
+		},
+		{
+			name: "ingress_through_ttu_on_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+			    define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+			    define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", "can_view"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "view"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
+		},
+		{
+			name: "indirect_relation_through_ttu_on_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+			    define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+			    define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("organization", "can_view"),
+				},
+			},
+		},
+		{
+			name: "ttu_on_non-assignable_relation",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+			    define can_view as viewer
+
+			type document
+			  relations
+			    define parent: [organization] as self
+			    define view as can_view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", "can_view"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "view"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
+		},
+		{
+			name: "multiple_indirect_non-assignable_relations_through_ttu",
+			model: `
+			type organization
+			  relations
+			    define viewer: [organization] as self
+			    define view as viewer
+
+			type folder
+			  relations
+			    define parent: [organization] as self
+			    define view as view from parent
+
+			type other
+
+			type document
+			  relations
+			    define parent: [folder, other] as self
+			    define view as view from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "view"),
+			source: typesystem.DirectRelationReference("organization", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
+				},
+			},
+		},
+		{
+			name: "multiple_directly_assignable_relationships_through_unions",
+			model: `
+			type user
+
+			type team
+			  relations
+			    define admin: [user] as self
+			    define member: [user, team#member] as self or admin
+
+			type trial
+			  relations
+			    define editor: [user, team#member] as self or owner
+			    define owner: [user] as self
+			    define viewer: [user, team#member] as self or editor
+			`,
+			target: typesystem.DirectRelationReference("trial", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("trial", "viewer"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("trial", "editor"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("trial", "owner"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("team", "member"),
+				},
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("team", "admin"),
+				},
+			},
+		},
+		{
+			name: "multiple_assignable_and_non-assignable_computed_usersets",
+			model: `
+			type user
+
+			type team
+			  relations
+			    define admin: [user] as self
+			    define member: [user, team#member] as self or admin
+
+			type trial
+			  relations
+			    define editor: [user, team#member] as self or owner
+			    define owner: [user] as self
+			    define viewer: [user, team#member] as self or editor
+			`,
+			target: typesystem.DirectRelationReference("trial", "viewer"),
+			source: typesystem.DirectRelationReference("team", "admin"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("team", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_assignable_computed_userset",
+			model: `
+			type user
+
+			type team
+			  relations
+			    define admin: [user] as self
+			    define member: [team#member] as self or admin
+			`,
+			target: typesystem.DirectRelationReference("team", "member"),
+			source: typesystem.DirectRelationReference("team", "admin"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("team", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_computed_userset",
+			model: `
+			type user
+
+			type group
+			  relations
+			    define manager: [user] as self
+			    define member as manager
+
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("group", "manager"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_1",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("group", "member"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_2",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("group", "member"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("org", "dept_member"),
+					TuplesetRelation: typesystem.DirectRelationReference("org", "dept"),
+				},
+			},
+		},
+		{
+			name: "indirect_relationship_through_non-assignable_ttu_3",
+			model: `
+			type user
+
+			type org
+			  relations
+			    define dept: [group] as self
+			    define dept_member as member from dept
+
+			type group
+			  relations
+			    define member: [user] as self
+
+			type resource
+			  relations
+			    define writer: [org#dept_member] as self
+			`,
+			target: typesystem.DirectRelationReference("resource", "writer"),
+			source: typesystem.DirectRelationReference("org", "dept_member"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    DirectIngress,
+					Ingress: typesystem.DirectRelationReference("resource", "writer"),
+				},
+			},
 		},
 	}
 

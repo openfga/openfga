@@ -2,10 +2,9 @@ package contextualtuples
 
 import (
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/typesystem"
-
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	serverErrors "github.com/openfga/openfga/server/errors"
+	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 

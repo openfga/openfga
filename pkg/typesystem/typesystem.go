@@ -1,6 +1,7 @@
 package typesystem
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -8,9 +9,13 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+type ctxKey string
+
 const (
 	SchemaVersion1_0 = "1.0"
 	SchemaVersion1_1 = "1.1"
+
+	typesystemCtxKey ctxKey = "typesystem-context-key"
 )
 
 var (
@@ -23,6 +28,17 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
+
+// ContextWithTypesystem attaches the provided TypeSystem to the parent context.
+func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
+	return context.WithValue(parent, typesystemCtxKey, typesys)
+}
+
+// TypesystemFromContext returns the TypeSystem from the provided context (if any).
+func TypesystemFromContext(ctx context.Context) (*TypeSystem, bool) {
+	typesys, ok := ctx.Value(typesystemCtxKey).(*TypeSystem)
+	return typesys, ok
+}
 
 func DirectRelationReference(objectType, relation string) *openfgapb.RelationReference {
 	relationReference := &openfgapb.RelationReference{
@@ -114,8 +130,11 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgapb.TypeDefinition
 }
 
-// New creates a *TypeSystem from an *openfgapb.AuthorizationModel. New assumes that the model
-// has already been validated.
+type ValidatedTypeSystem struct {
+	*TypeSystem
+}
+
+// New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	tds := map[string]*openfgapb.TypeDefinition{}
 	for _, td := range model.GetTypeDefinitions() {
@@ -287,8 +306,21 @@ func (t *TypeSystem) HasTypeInfo(objectType, relation string) (bool, error) {
 }
 
 // RelationInvolvesIntersection returns true if the provided relation's userset rewrite
-// is defined by one or more direct or indirect intersections.
+// is defined by one or more direct or indirect intersections or any of the types related to
+// the provided relation are defined by one or more direct or indirect intersections.
 func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (bool, error) {
+	visited := map[string]struct{}{}
+	return t.relationInvolvesIntersection(objectType, relation, visited)
+}
+
+func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, visited map[string]struct{}) (bool, error) {
+
+	key := fmt.Sprintf("%s#%s", objectType, relation)
+	if _, ok := visited[key]; ok {
+		return false, nil
+	}
+
+	visited[key] = struct{}{}
 
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
@@ -297,51 +329,105 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 
 	rewrite := rel.GetRewrite()
 
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_This:
-		return false, nil
-	case *openfgapb.Userset_ComputedUserset:
-		rewrittenRelation := rw.ComputedUserset.GetRelation()
-		rewritten, err := t.GetRelation(objectType, rewrittenRelation)
-		if err != nil {
-			return false, err
-		}
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgapb.Userset) interface{} {
 
-		return t.RelationInvolvesIntersection(objectType, rewritten.GetName())
-	case *openfgapb.Userset_TupleToUserset:
-		tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
-		rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
-
-		tuplesetRel, err := t.GetRelation(objectType, tupleset)
-		if err != nil {
-			return false, err
-		}
-
-		directlyRelatedTypes := tuplesetRel.GetTypeInfo().GetDirectlyRelatedUserTypes()
-		for _, relatedType := range directlyRelatedTypes {
-			// must be of the form 'objectType' by this point since we disallow `tupleset` relations of the form `objectType:id#relation`
-			r := relatedType.GetRelation()
-			if r != "" {
-				return false, fmt.Errorf(
-					"invalid type restriction '%s#%s' specified on tupleset relation '%s#%s': %w",
-					relatedType.GetType(),
-					relatedType.GetRelation(),
-					objectType,
-					tupleset,
-					ErrInvalidModel,
-				)
+		switch rw := r.GetUserset().(type) {
+		case *openfgapb.Userset_ComputedUserset:
+			rewrittenRelation := rw.ComputedUserset.GetRelation()
+			rewritten, err := t.GetRelation(objectType, rewrittenRelation)
+			if err != nil {
+				return err
 			}
 
-			rel, err := t.GetRelation(relatedType.GetType(), rewrittenRelation)
+			containsIntersection, err := t.relationInvolvesIntersection(
+				objectType,
+				rewritten.GetName(),
+				visited,
+			)
 			if err != nil {
-				if errors.Is(err, ErrObjectTypeUndefined) || errors.Is(err, ErrRelationUndefined) {
-					continue
+				return err
+			}
+
+			if containsIntersection {
+				return true
+			}
+
+		case *openfgapb.Userset_TupleToUserset:
+			tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
+			rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
+
+			tuplesetRel, err := t.GetRelation(objectType, tupleset)
+			if err != nil {
+				return err
+			}
+
+			directlyRelatedTypes := tuplesetRel.GetTypeInfo().GetDirectlyRelatedUserTypes()
+			for _, relatedType := range directlyRelatedTypes {
+				// must be of the form 'objectType' by this point since we disallow `tupleset` relations of the form `objectType:id#relation`
+				r := relatedType.GetRelation()
+				if r != "" {
+					return fmt.Errorf(
+						"invalid type restriction '%s#%s' specified on tupleset relation '%s#%s': %w",
+						relatedType.GetType(),
+						relatedType.GetRelation(),
+						objectType,
+						tupleset,
+						ErrInvalidModel,
+					)
 				}
 
-				return false, err
+				rel, err := t.GetRelation(relatedType.GetType(), rewrittenRelation)
+				if err != nil {
+					if errors.Is(err, ErrObjectTypeUndefined) || errors.Is(err, ErrRelationUndefined) {
+						continue
+					}
+
+					return err
+				}
+
+				containsIntersection, err := t.relationInvolvesIntersection(
+					relatedType.GetType(),
+					rel.GetName(),
+					visited,
+				)
+				if err != nil {
+					return err
+				}
+
+				if containsIntersection {
+					return true
+				}
 			}
 
-			containsIntersection, err := t.RelationInvolvesIntersection(relatedType.GetType(), rel.GetName())
+			return nil
+
+		case *openfgapb.Userset_Intersection:
+			return true
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	if result != nil && result.(bool) {
+		return true, nil
+	}
+
+	for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		if typeRestriction.GetRelation() != "" {
+
+			key := fmt.Sprintf("%s#%s", typeRestriction.GetType(), typeRestriction.GetRelation())
+			if _, ok := visited[key]; ok {
+				continue
+			}
+
+			containsIntersection, err := t.relationInvolvesIntersection(
+				typeRestriction.GetType(),
+				typeRestriction.GetRelation(),
+				visited,
+			)
 			if err != nil {
 				return false, err
 			}
@@ -350,27 +436,29 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 				return true, nil
 			}
 		}
-	case *openfgapb.Userset_Intersection:
-		return true, nil
-	case *openfgapb.Userset_Union:
-		for _, child := range rw.Union.GetChild() {
-			if RewriteContainsIntersection(child) {
-				return true, nil
-			}
-		}
-	case *openfgapb.Userset_Difference:
-		difference := rw.Difference
-		if RewriteContainsIntersection(difference.GetBase()) || RewriteContainsIntersection(difference.GetSubtract()) {
-			return true, nil
-		}
 	}
 
 	return false, nil
 }
 
 // RelationInvolvesExclusion returns true if the provided relation's userset rewrite
-// is defined by one or more direct or indirect exclusions.
+// is defined by one or more direct or indirect exclusions or any of the types related to
+// the provided relation are defined by one or more direct or indirect exclusions.
 func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (bool, error) {
+	visited := map[string]struct{}{}
+	return t.relationInvolvesExclusion(objectType, relation, visited)
+
+}
+
+func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visited map[string]struct{}) (bool, error) {
+
+	key := fmt.Sprintf("%s#%s", objectType, relation)
+	if _, ok := visited[key]; ok {
+		return false, nil
+	}
+
+	visited[key] = struct{}{}
+
 	rel, err := t.GetRelation(objectType, relation)
 	if err != nil {
 		return false, err
@@ -378,51 +466,104 @@ func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (boo
 
 	rewrite := rel.GetRewrite()
 
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_This:
-		return false, nil
-	case *openfgapb.Userset_ComputedUserset:
-		rewrittenRelation := rw.ComputedUserset.GetRelation()
-		rewritten, err := t.GetRelation(objectType, rewrittenRelation)
-		if err != nil {
-			return false, err
-		}
-
-		return t.RelationInvolvesExclusion(objectType, rewritten.GetName())
-	case *openfgapb.Userset_TupleToUserset:
-		tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
-		rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
-
-		tuplesetRel, err := t.GetRelation(objectType, tupleset)
-		if err != nil {
-			return false, err
-		}
-
-		directlyRelatedTypes := tuplesetRel.GetTypeInfo().GetDirectlyRelatedUserTypes()
-		for _, relatedType := range directlyRelatedTypes {
-			// must be of the form 'objectType' by this point since we disallow `tupleset` relations of the form `objectType:id#relation`
-			r := relatedType.GetRelation()
-			if r != "" {
-				return false, fmt.Errorf(
-					"invalid type restriction '%s#%s' specified on tupleset relation '%s#%s': %w",
-					relatedType.GetType(),
-					relatedType.GetRelation(),
-					objectType,
-					tupleset,
-					ErrInvalidModel,
-				)
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgapb.Userset) interface{} {
+		switch rw := r.GetUserset().(type) {
+		case *openfgapb.Userset_ComputedUserset:
+			rewrittenRelation := rw.ComputedUserset.GetRelation()
+			rewritten, err := t.GetRelation(objectType, rewrittenRelation)
+			if err != nil {
+				return err
 			}
 
-			rel, err := t.GetRelation(relatedType.GetType(), rewrittenRelation)
+			containsExclusion, err := t.relationInvolvesExclusion(
+				objectType,
+				rewritten.GetName(),
+				visited,
+			)
 			if err != nil {
-				if errors.Is(err, ErrObjectTypeUndefined) || errors.Is(err, ErrRelationUndefined) {
-					continue
+				return err
+			}
+
+			if containsExclusion {
+				return true
+			}
+
+		case *openfgapb.Userset_TupleToUserset:
+			tupleset := rw.TupleToUserset.GetTupleset().GetRelation()
+			rewrittenRelation := rw.TupleToUserset.ComputedUserset.GetRelation()
+
+			tuplesetRel, err := t.GetRelation(objectType, tupleset)
+			if err != nil {
+				return err
+			}
+
+			directlyRelatedTypes := tuplesetRel.GetTypeInfo().GetDirectlyRelatedUserTypes()
+			for _, relatedType := range directlyRelatedTypes {
+				// must be of the form 'objectType' by this point since we disallow `tupleset` relations of the form `objectType:id#relation`
+				r := relatedType.GetRelation()
+				if r != "" {
+					return fmt.Errorf(
+						"invalid type restriction '%s#%s' specified on tupleset relation '%s#%s': %w",
+						relatedType.GetType(),
+						relatedType.GetRelation(),
+						objectType,
+						tupleset,
+						ErrInvalidModel,
+					)
 				}
 
-				return false, err
+				rel, err := t.GetRelation(relatedType.GetType(), rewrittenRelation)
+				if err != nil {
+					if errors.Is(err, ErrObjectTypeUndefined) || errors.Is(err, ErrRelationUndefined) {
+						continue
+					}
+
+					return err
+				}
+
+				containsExclusion, err := t.relationInvolvesExclusion(
+					relatedType.GetType(),
+					rel.GetName(),
+					visited,
+				)
+				if err != nil {
+					return err
+				}
+
+				if containsExclusion {
+					return true
+				}
 			}
 
-			containsExclusion, err := t.RelationInvolvesExclusion(relatedType.GetType(), rel.GetName())
+			return nil
+
+		case *openfgapb.Userset_Difference:
+			return true
+		}
+
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+
+	if result != nil && result.(bool) {
+		return true, nil
+	}
+
+	for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+		if typeRestriction.GetRelation() != "" {
+
+			key := fmt.Sprintf("%s#%s", typeRestriction.GetType(), typeRestriction.GetRelation())
+			if _, ok := visited[key]; ok {
+				continue
+			}
+
+			containsExclusion, err := t.relationInvolvesExclusion(
+				typeRestriction.GetType(),
+				typeRestriction.GetRelation(),
+				visited,
+			)
 			if err != nil {
 				return false, err
 			}
@@ -431,79 +572,106 @@ func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (boo
 				return true, nil
 			}
 		}
-
-	case *openfgapb.Userset_Intersection:
-		for _, child := range rw.Intersection.GetChild() {
-			if RewriteContainsExclusion(child) {
-				return true, nil
-			}
-		}
-	case *openfgapb.Userset_Union:
-		for _, child := range rw.Union.GetChild() {
-			if RewriteContainsExclusion(child) {
-				return true, nil
-			}
-		}
-	case *openfgapb.Userset_Difference:
-		return true, nil
 	}
 
 	return false, nil
 }
 
-// Validate validates an *openfgapb.AuthorizationModel according to the following rules:
-//  1. Checks that the model have a valid schema version.
+// allRelations returns all relations in the TypeSystem
+func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
+	relations := map[string]*openfgapb.Relation{}
+
+	for _, td := range t.typeDefinitions {
+		relationMetadata := td.GetMetadata().GetRelations()
+
+		for relation, rewrite := range td.GetRelations() {
+			var typeInfo *openfgapb.RelationTypeInfo
+			if md, ok := relationMetadata[relation]; ok {
+				typeInfo = &openfgapb.RelationTypeInfo{
+					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
+				}
+			}
+
+			relations[relation] = &openfgapb.Relation{
+				Name:     relation,
+				Rewrite:  rewrite,
+				TypeInfo: typeInfo,
+			}
+		}
+	}
+
+	return relations
+}
+
+// Validate validates a *TypeSystem according to the following rules:
+//  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
-//     a. Be valid relations on the same type in the authorization model (in cases of computedUserset)
+//     a. Be valid relations on the same type in the *TypeSystem (in cases of computedUserset)
 //     b. Be valid relations on another existing type (in cases of tupleToUserset)
 //  3. Do not allow duplicate types or duplicate relations (only need to check types as relations are
 //     in a map so cannot contain duplicates)
 //
-// If the authorization model has a v1.1 schema version  (with types on relations), then additionally
-// validate the type system according to the following rules:
+// If the *TypeSystem has a v1.1 schema version (with types on relations), then additionally
+// validate the *TypeSystem according to the following rules:
 //  3. Every type restriction on a relation must be a valid type:
-//     a. For a type (e.g. user) this means checking that this type is in the TypeSystem
-//     b. For a type#relation this means checking that this type with this relation is in the TypeSystem
+//     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
+//     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func Validate(model *openfgapb.AuthorizationModel) error {
-	schemaVersion := model.GetSchemaVersion()
+func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
+	schemaVersion := t.GetSchemaVersion()
 
 	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
-		return ErrInvalidSchemaVersion
+		return nil, ErrInvalidSchemaVersion
 	}
 
-	if containsDuplicateType(model) {
-		return ErrDuplicateTypes
+	if containsDuplicateType(t.model.GetTypeDefinitions()) {
+		return nil, ErrDuplicateTypes
 	}
 
-	if err := validateNames(model); err != nil {
-		return err
+	if err := validateNames(t.model); err != nil {
+		return nil, err
 	}
 
-	if err := validateRelationRewrites(model); err != nil {
-		return err
+	if err := validateRelationRewrites(t); err != nil {
+		return nil, err
 	}
 
 	if schemaVersion == SchemaVersion1_1 {
-		if err := validateRelationTypeRestrictions(model); err != nil {
-			return err
+		if err := t.validateRelationTypeRestrictions(); err != nil {
+			return nil, err
 		}
 	}
 
-	if err := ensureNoCyclesInTupleToUsersetDefinitions(model); err != nil {
-		return err
+	if err := ensureNoCyclesInTupleToUsersetDefinitions(t.model); err != nil {
+		return nil, err
 	}
 
-	if err := ensureNoCyclesInComputedRewrite(model); err != nil {
-		return err
+	if err := ensureNoCyclesInComputedRewrite(t.model); err != nil {
+		return nil, err
 	}
 
-	return nil
+	// Validate the userset rewrites
+	for _, td := range t.GetTypeDefinitions() {
+		for relation, rewrite := range td.GetRelations() {
+			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if schemaVersion == SchemaVersion1_1 {
+		if err := t.validateRelationTypeRestrictions(); err != nil {
+			return nil, err
+		}
+	}
+
+	return &ValidatedTypeSystem{t}, nil
 }
 
-func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
+func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
 	seen := map[string]struct{}{}
-	for _, td := range model.TypeDefinitions {
+	for _, td := range tds {
 		objectType := td.GetType()
 		if _, ok := seen[objectType]; ok {
 			return true
@@ -528,8 +696,8 @@ func validateNames(model *openfgapb.AuthorizationModel) error {
 	return nil
 }
 
-func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
-	typeDefinitions := model.GetTypeDefinitions()
+func validateRelationRewrites(t *TypeSystem) error {
+	typeDefinitions := t.model.GetTypeDefinitions()
 
 	relations := map[string]*openfgapb.Relation{}
 	typerels := map[string]map[string]*openfgapb.Relation{}
@@ -565,7 +733,7 @@ func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 		objectType := td.GetType()
 
 		for relation, rewrite := range td.GetRelations() {
-			err := isUsersetRewriteValid(relations, typerels[objectType], objectType, relation, rewrite)
+			err := t.isUsersetRewriteValid(objectType, relation, rewrite)
 			if err != nil {
 				return err
 			}
@@ -575,67 +743,72 @@ func validateRelationRewrites(model *openfgapb.AuthorizationModel) error {
 	return nil
 }
 
-// isUsersetRewriteValid checks if a particular userset rewrite is valid. The first argument is all the relations in
-// the typeSystem, the second argument is the subset of relations on the type where the rewrite occurs.
-func isUsersetRewriteValid(
-	allRelations map[string]*openfgapb.Relation,
-	relationsOnType map[string]*openfgapb.Relation,
-	objectType, relation string,
-	rewrite *openfgapb.Userset,
-) error {
+// isUsersetRewriteValid checks if the rewrite on objectType#relation is valid.
+func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite *openfgapb.Userset) error {
 	if rewrite.GetUserset() == nil {
 		return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrInvalidUsersetRewrite}
 	}
 
-	switch t := rewrite.GetUserset().(type) {
+	switch r := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_ComputedUserset:
-		computedUserset := t.ComputedUserset.GetRelation()
+		computedUserset := r.ComputedUserset.GetRelation()
 		if computedUserset == relation {
 			return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrInvalidUsersetRewrite}
 		}
-		if _, ok := relationsOnType[computedUserset]; !ok {
+		if _, err := t.GetRelation(objectType, computedUserset); err != nil {
 			return &RelationUndefinedError{ObjectType: objectType, Relation: computedUserset, Err: ErrRelationUndefined}
 		}
 	case *openfgapb.Userset_TupleToUserset:
-		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
+		tupleset := r.TupleToUserset.GetTupleset().GetRelation()
 
-		tuplesetRelation, ok := relationsOnType[tupleset]
-		if !ok {
+		tuplesetRelation, err := t.GetRelation(objectType, tupleset)
+		if err != nil {
 			return &RelationUndefinedError{ObjectType: objectType, Relation: tupleset, Err: ErrRelationUndefined}
 		}
 
-		// tupleset relations must only be direct relationships, no rewrites
-		// are allowed on them
+		// tupleset relations must only be direct relationships, no rewrites are allowed on them
 		tuplesetRewrite := tuplesetRelation.GetRewrite()
 		if reflect.TypeOf(tuplesetRewrite.GetUserset()) != reflect.TypeOf(&openfgapb.Userset_This{}) {
 			return fmt.Errorf("the '%s#%s' relation is referenced in at least one tupleset and thus must be a direct relation", objectType, tupleset)
 		}
 
-		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
-		if _, ok := allRelations[computedUserset]; !ok {
-			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
+
+		if t.GetSchemaVersion() == SchemaVersion1_1 {
+			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+			for _, rr := range userTypes {
+				if _, err := t.GetRelation(rr.GetType(), computedUserset); err == nil {
+					return nil
+				}
+			}
+
+			return fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes)
+		} else {
+			if _, ok := t.allRelations()[computedUserset]; !ok {
+				return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+			}
 		}
 	case *openfgapb.Userset_Union:
-		for _, child := range t.Union.GetChild() {
-			err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, child)
+		for _, child := range r.Union.GetChild() {
+			err := t.isUsersetRewriteValid(objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Intersection:
-		for _, child := range t.Intersection.GetChild() {
-			err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, child)
+		for _, child := range r.Intersection.GetChild() {
+			err := t.isUsersetRewriteValid(objectType, relation, child)
 			if err != nil {
 				return err
 			}
 		}
 	case *openfgapb.Userset_Difference:
-		err := isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, t.Difference.Base)
+		err := t.isUsersetRewriteValid(objectType, relation, r.Difference.Base)
 		if err != nil {
 			return err
 		}
 
-		err = isUsersetRewriteValid(allRelations, relationsOnType, objectType, relation, t.Difference.Subtract)
+		err = t.isUsersetRewriteValid(objectType, relation, r.Difference.Subtract)
 		if err != nil {
 			return err
 		}
@@ -644,18 +817,16 @@ func isUsersetRewriteValid(
 	return nil
 }
 
-func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error {
-	typesys := New(model)
-
-	for objectType := range typesys.typeDefinitions {
-		relations, err := typesys.GetRelations(objectType)
+func (t *TypeSystem) validateRelationTypeRestrictions() error {
+	for objectType := range t.typeDefinitions {
+		relations, err := t.GetRelations(objectType)
 		if err != nil {
 			return err
 		}
 
 		for name, relation := range relations {
 			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			assignable := typesys.IsDirectlyAssignable(relation)
+			assignable := t.IsDirectlyAssignable(relation)
 
 			if assignable && len(relatedTypes) == 0 {
 				return AssignableRelationError(objectType, name)
@@ -669,18 +840,18 @@ func validateRelationTypeRestrictions(model *openfgapb.AuthorizationModel) error
 				relatedObjectType := related.GetType()
 				relatedRelation := related.GetRelation()
 
-				if _, err := typesys.GetRelations(relatedObjectType); err != nil {
+				if _, err := t.GetRelations(relatedObjectType); err != nil {
 					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 				}
 
 				if related.GetRelationOrWildcard() != nil {
 					// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
-					if ok, _ := typesys.IsTuplesetRelation(objectType, name); ok {
+					if ok, _ := t.IsTuplesetRelation(objectType, name); ok {
 						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 					}
 
 					if relatedRelation != "" {
-						if _, err := typesys.GetRelation(relatedObjectType, relatedRelation); err != nil {
+						if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
 							return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
 						}
 					}
@@ -774,82 +945,61 @@ func ensureNoCyclesInComputedRewrite(model *openfgapb.AuthorizationModel) error 
 }
 
 func (t *TypeSystem) IsDirectlyAssignable(relation *openfgapb.Relation) bool {
-	rewrite := relation.GetRewrite()
-
-	return RewriteContainsSelf(rewrite)
+	return RewriteContainsSelf(relation.GetRewrite())
 }
 
 // RewriteContainsSelf returns true if the provided userset rewrite
 // is defined by one or more self referencing definitions.
 func RewriteContainsSelf(rewrite *openfgapb.Userset) bool {
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_This:
-		return true
-	case *openfgapb.Userset_Union:
-		for _, child := range rw.Union.GetChild() {
-			if RewriteContainsSelf(child) {
-				return true
-			}
-		}
-	case *openfgapb.Userset_Intersection:
-		for _, child := range rw.Intersection.GetChild() {
-			if RewriteContainsSelf(child) {
-				return true
-			}
-		}
-	case *openfgapb.Userset_Difference:
-		difference := rw.Difference
-		if RewriteContainsSelf(difference.GetBase()) || RewriteContainsSelf(difference.GetSubtract()) {
+
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgapb.Userset) interface{} {
+		if _, ok := r.Userset.(*openfgapb.Userset_This); ok {
 			return true
 		}
+
+		return nil
+	})
+	if err != nil {
+		panic("unexpected error during rewrite evaluation")
 	}
 
-	return false
+	return result != nil && result.(bool) // type-cast matches the return from the WalkRelationshipRewriteHandler above
 }
 
 // RewriteContainsIntersection returns true if the provided userset rewrite
 // is defined by one or more direct or indirect intersections.
 func RewriteContainsIntersection(rewrite *openfgapb.Userset) bool {
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_Intersection:
-		return true
-	case *openfgapb.Userset_Union:
-		for _, child := range rw.Union.GetChild() {
-			if RewriteContainsIntersection(child) {
-				return true
-			}
-		}
-	case *openfgapb.Userset_Difference:
-		difference := rw.Difference
-		if RewriteContainsIntersection(difference.GetBase()) || RewriteContainsIntersection(difference.GetSubtract()) {
+
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgapb.Userset) interface{} {
+		if _, ok := r.Userset.(*openfgapb.Userset_Intersection); ok {
 			return true
 		}
+
+		return nil
+	})
+	if err != nil {
+		panic("unexpected error during rewrite evaluation")
 	}
 
-	return false
+	return result != nil && result.(bool) // type-cast matches the return from the WalkRelationshipRewriteHandler above
 }
 
 // RewriteContainsExclusion returns true if the provided userset rewrite
 // is defined by one or more direct or indirect exclusions.
 func RewriteContainsExclusion(rewrite *openfgapb.Userset) bool {
-	switch rw := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_Intersection:
-		for _, child := range rw.Intersection.GetChild() {
-			if RewriteContainsExclusion(child) {
-				return true
-			}
+
+	result, err := WalkUsersetRewrite(rewrite, func(r *openfgapb.Userset) interface{} {
+		if _, ok := r.Userset.(*openfgapb.Userset_Difference); ok {
+			return true
 		}
-	case *openfgapb.Userset_Union:
-		for _, child := range rw.Union.GetChild() {
-			if RewriteContainsExclusion(child) {
-				return true
-			}
-		}
-	case *openfgapb.Userset_Difference:
-		return true
+
+		return nil
+	})
+	if err != nil {
+		panic("unexpected error during rewrite evaluation")
 	}
 
-	return false
+	return result != nil && result.(bool) // type-cast matches the return from the WalkRelationshipRewriteHandler above
 }
 
 type InvalidTypeError struct {
@@ -982,4 +1132,50 @@ func (t *TypeSystem) tupleToUsersetsDefinitions(relationDef *openfgapb.Userset, 
 		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
 	}
 	return *resp
+}
+
+// WalkUsersetRewriteHandler is a userset rewrite handler that is applied to a node in a userset rewrite
+// tree. Implementations of the WalkUsersetRewriteHandler should return a non-nil value when the traversal
+// over the rewrite tree should terminate and nil if traversal should proceed to other nodes in the tree.
+type WalkUsersetRewriteHandler func(rewrite *openfgapb.Userset) interface{}
+
+// WalkUsersetRewrite recursively walks the provided userset rewrite and invokes the provided WalkUsersetRewriteHandler
+// to each node in the userset rewrite tree until the first non-nil response is encountered.
+func WalkUsersetRewrite(rewrite *openfgapb.Userset, handler WalkUsersetRewriteHandler) (interface{}, error) {
+
+	var children []*openfgapb.Userset
+
+	if result := handler(rewrite); result != nil {
+		return result, nil
+	}
+
+	switch t := rewrite.Userset.(type) {
+	case *openfgapb.Userset_This:
+		return handler(rewrite), nil
+	case *openfgapb.Userset_ComputedUserset:
+		return handler(rewrite), nil
+	case *openfgapb.Userset_TupleToUserset:
+		return handler(rewrite), nil
+	case *openfgapb.Userset_Union:
+		children = t.Union.GetChild()
+	case *openfgapb.Userset_Intersection:
+		children = t.Intersection.GetChild()
+	case *openfgapb.Userset_Difference:
+		children = append(children, t.Difference.GetBase(), t.Difference.GetSubtract())
+	default:
+		return nil, fmt.Errorf("unexpected userset rewrite type encountered")
+	}
+
+	for _, child := range children {
+		result, err := WalkUsersetRewrite(child, handler)
+		if err != nil {
+			return nil, err
+		}
+
+		if result != nil {
+			return result, nil
+		}
+	}
+
+	return nil, nil
 }

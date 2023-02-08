@@ -8,6 +8,69 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.4] - 2023-02-02
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.3...v0.3.4)
+
+### Fixed
+
+* Fixed the environment variable mapping (#498). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+* Fix for stack overflow error in ListObjects (#506). Thank you for reporting the issue @wonderbeyond!
+
+### Added
+
+* Added OpenTelemetry tracing (#499)
+
+### Removed
+
+* The ReadTuples endpoint has been removed (#495). Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead (e.g. `POST /stores/<store_id>/read` with `{}` as the body).  
+
+## [0.3.3] - 2023-01-31
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.2...v0.3.3)
+
+### Added
+
+* Environment variable names have been updated (#472).
+
+  For example, `OPENFGA_MAX_TUPLES_PER_WRITE` instead of `OPENFGA_MAXTUPLESPERWRITE`.
+
+  For the full list please see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+
+  The old form still works but is considered deprecated and should not be used anymore.
+
+* Optimized ListObjects is now on by default (#489) (`--experimentals="list-objects-optimized"` is no longer needed)
+
+* Avoid connection churn in our datastore implementations (#474)
+
+* The default values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively (#492)
+
+### Fixed
+
+* ListObjects should no longer return duplicates (#475)
+
+## [0.3.2] - 2023-01-18
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.1...v0.3.2)
+
+
+### Added
+* OpenTelemetry metrics integration with an `otlp` exporter (#360) - thanks @AlexandreBrg!
+
+  To export OpenTelemetry metrics from an OpenFGA instance you can now provide the `otel-metrics` experimental flag along with the `--otel-telemetry-endpoint` and `--otel-telemetry-protocol` flags. For example,
+
+  ```
+  ./openfga run --experimentals=otel-metrics --otel-telemetry-endpoint=127.0.0.1:4317 --otel-telemetry-protocol=http
+  ```
+
+  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry-metrics-and-tracing).
+
+* Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) (#444)
+
+### Fixed
+* Tuple validations for models with schema version 1.1 (#446, #457)
+* Evaluate rewrites on nested usersets in the optimized ListObjects implementation (#432)
+
 ## [0.3.1] - 2022-12-19
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.0...v0.3.1)
@@ -238,7 +301,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/openfga/openfga/releases/tag/v0.3.4
+[0.3.3]: https://github.com/openfga/openfga/releases/tag/v0.3.3
+[0.3.2]: https://github.com/openfga/openfga/releases/tag/v0.3.2
 [0.3.1]: https://github.com/openfga/openfga/releases/tag/v0.3.1
 [0.3.0]: https://github.com/openfga/openfga/releases/tag/v0.3.0
 [0.2.5]: https://github.com/openfga/openfga/releases/tag/v0.2.5
