@@ -632,24 +632,6 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 		return nil, err
 	}
 
-	if err := validateRelationRewrites(t); err != nil {
-		return nil, err
-	}
-
-	if schemaVersion == SchemaVersion1_1 {
-		if err := t.validateRelationTypeRestrictions(); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := ensureNoCyclesInTupleToUsersetDefinitions(t.model); err != nil {
-		return nil, err
-	}
-
-	if err := ensureNoCyclesInComputedRewrite(t.model); err != nil {
-		return nil, err
-	}
-
 	// Validate the userset rewrites
 	for _, td := range t.GetTypeDefinitions() {
 		for relation, rewrite := range td.GetRelations() {
@@ -658,6 +640,14 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 				return nil, err
 			}
 		}
+	}
+
+	if err := ensureNoCyclesInTupleToUsersetDefinitions(t); err != nil {
+		return nil, err
+	}
+
+	if err := ensureNoCyclesInComputedRewrite(t.model); err != nil {
+		return nil, err
 	}
 
 	if schemaVersion == SchemaVersion1_1 {
@@ -681,6 +671,8 @@ func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
 	return false
 }
 
+// validateNames ensures that a model doesn't have object types or relations
+// called "self" or "this"
 func validateNames(model *openfgapb.AuthorizationModel) error {
 	for _, td := range model.TypeDefinitions {
 		objectType := td.GetType()
@@ -693,53 +685,6 @@ func validateNames(model *openfgapb.AuthorizationModel) error {
 			}
 		}
 	}
-	return nil
-}
-
-func validateRelationRewrites(t *TypeSystem) error {
-	typeDefinitions := t.model.GetTypeDefinitions()
-
-	relations := map[string]*openfgapb.Relation{}
-	typerels := map[string]map[string]*openfgapb.Relation{}
-
-	for _, td := range typeDefinitions {
-		objectType := td.GetType()
-
-		typerels[objectType] = map[string]*openfgapb.Relation{}
-
-		for relation, rewrite := range td.GetRelations() {
-			relationMetadata := td.GetMetadata().GetRelations()
-			md, ok := relationMetadata[relation]
-
-			var typeinfo *openfgapb.RelationTypeInfo
-			if ok {
-				typeinfo = &openfgapb.RelationTypeInfo{
-					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
-				}
-			}
-
-			r := &openfgapb.Relation{
-				Name:     relation,
-				Rewrite:  rewrite,
-				TypeInfo: typeinfo,
-			}
-
-			typerels[objectType][relation] = r
-			relations[relation] = r
-		}
-	}
-
-	for _, td := range typeDefinitions {
-		objectType := td.GetType()
-
-		for relation, rewrite := range td.GetRelations() {
-			err := t.isUsersetRewriteValid(objectType, relation, rewrite)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -878,8 +823,7 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 //	 relations
 //		define parent as self
 //		define viewer as viewer from parent
-func ensureNoCyclesInTupleToUsersetDefinitions(model *openfgapb.AuthorizationModel) error {
-	typesys := New(model)
+func ensureNoCyclesInTupleToUsersetDefinitions(typesys *TypeSystem) error {
 	for objectType := range typesys.typeDefinitions {
 		relations, err := typesys.GetRelations(objectType)
 		if err == nil {
