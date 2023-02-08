@@ -119,8 +119,6 @@ func (q *ListObjectsQuery) handler(
 		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
 		// and the model must include type info for ConnectedObjects to work.
 		if !containsIntersection && !containsExclusion && hasTypeInfo {
-			span.SetAttributes(attribute.Bool("list-objects-optimized", true))
-
 			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
 			userObjType, userObjID := tuple.SplitObject(userObj)
@@ -147,6 +145,8 @@ func (q *ListObjectsQuery) handler(
 			}
 
 			handler = func() {
+				span.SetAttributes(attribute.Bool("list-objects-optimized", true))
+
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
 					ObjectType:       targetObjectType,
