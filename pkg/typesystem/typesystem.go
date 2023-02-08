@@ -679,12 +679,14 @@ func validateNames(model *openfgapb.AuthorizationModel) error {
 		if objectType == "self" || objectType == "this" {
 			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}
 		}
+
 		for relation := range td.GetRelations() {
 			if relation == "self" || relation == "this" {
 				return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrReservedKeywords}
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -810,19 +812,17 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 }
 
 // ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
-// type folder
-//
-//	 relations
-//		define parent: [folder] as self
-//		define viewer as viewer from parent
+//  type folder
+//   relations
+//    define parent: [folder] as self
+//    define viewer as viewer from parent
 //
 // and
 //
-// type folder
-//
-//	 relations
-//		define parent as self
-//		define viewer as viewer from parent
+//  type folder
+//   relations
+//    define parent as self
+//    define viewer as viewer from parent
 func ensureNoCyclesInTupleToUsersetDefinitions(typesys *TypeSystem) error {
 	for objectType := range typesys.typeDefinitions {
 		relations, err := typesys.GetRelations(objectType)
@@ -856,11 +856,10 @@ func ensureNoCyclesInTupleToUsersetDefinitions(typesys *TypeSystem) error {
 }
 
 // ensureNoCyclesInComputedRewrite throws an error on the following model because `folder` type is a cycle.
-// type folder
-//
-//	 relations
-//		define parent: child
-//		define child: parent
+//  type folder
+// 	 relations
+//	  define parent as child
+//	  define child as parent
 func ensureNoCyclesInComputedRewrite(model *openfgapb.AuthorizationModel) error {
 	typesys := New(model)
 	for objectType := range typesys.typeDefinitions {
