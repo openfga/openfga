@@ -88,6 +88,8 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "streamedConnectedObjects")
+	defer span.End()
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
 	if !ok {
@@ -189,6 +191,8 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	req *ConnectedObjectsRequest,
 	resultChan chan<- string, // object string (e.g. document:1)
 ) error {
+	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects")
+	defer span.End()
 
 	var foundCount *uint32
 	if c.Limit > 0 {
@@ -214,6 +218,8 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset")
+	defer span.End()
 
 	store := req.storeID
 
@@ -368,6 +374,8 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandDirect")
+	defer span.End()
 
 	store := req.storeID
 
