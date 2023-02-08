@@ -27,6 +27,8 @@ import (
 const (
 	defaultListObjectsDeadline   = 5 * time.Second
 	defaultListObjectsMaxResults = 5
+
+	checkConcurrencyLimit = 100
 )
 
 type listObjectsTestCase struct {
@@ -176,7 +178,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
-			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
+			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 		}
 
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
@@ -337,7 +339,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
 			ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
-			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
+			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 		}
 
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
@@ -533,7 +535,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		Logger:           logger.NewNoopLogger(),
 		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
-		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
+		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 	}
 
 	var r *openfgapb.ListObjectsResponse
