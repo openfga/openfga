@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -54,6 +55,8 @@ func (q *ListObjectsQuery) handler(
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) error {
+
+	span := trace.SpanFromContext(ctx)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -90,6 +93,8 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
+		span.SetAttributes(attribute.Bool("list-objects-optimized", false))
+
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
 			errChan <- err
@@ -114,6 +119,8 @@ func (q *ListObjectsQuery) handler(
 		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
 		// and the model must include type info for ConnectedObjects to work.
 		if !containsIntersection && !containsExclusion && hasTypeInfo {
+			span.SetAttributes(attribute.Bool("list-objects-optimized", true))
+
 			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
 			userObjType, userObjID := tuple.SplitObject(userObj)
