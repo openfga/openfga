@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -614,7 +615,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
 		tuples []*openfgapb.TupleKey
-		model  *openfgapb.AuthorizationModel
+		model  string
 	}
 
 	type output struct {
@@ -641,29 +642,41 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				errorCode: codes.Code(openfgapb.ErrorCode_authorization_model_not_found),
 			},
 			testData: &testData{
-				model: &openfgapb.AuthorizationModel{
-					SchemaVersion: typesystem.SchemaVersion1_1,
-					TypeDefinitions: []*openfgapb.TypeDefinition{
-						{
-							Type: "user",
-						},
-						{
-							Type: "document",
-							Relations: map[string]*openfgapb.Userset{
-								"viewer": typesystem.This(),
-							},
-							Metadata: &openfgapb.Metadata{
-								Relations: map[string]*openfgapb.RelationMetadata{
-									"viewer": {
-										DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-											typesystem.DirectRelationReference("user", ""),
-										},
-									},
-								},
-							},
-						},
-					},
+				model: `
+				type user
+
+				type document
+				  relations
+				    define viewer: [user] as self
+				`,
+			},
+		},
+		{
+			name: "direct_relationships_with_intersecton_returns_expected_objects",
+			input: &openfgapb.ListObjectsRequest{
+				StoreId:  ulid.Make().String(),
+				Type:     "document",
+				Relation: "viewer",
+				User:     "user:jon",
+			},
+			output: output{
+				resp: &openfgapb.ListObjectsResponse{
+					Objects: []string{"document:1"},
 				},
+			},
+			testData: &testData{
+				tuples: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				},
+				model: `
+				type user
+
+				type document
+				  relations
+				    define allowed: [user] as self
+				    define viewer: [user] as self and allowed
+				`,
 			},
 		},
 	}
@@ -676,13 +689,15 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 
+			typedefs := parser.MustParse(test.testData.model)
+
 			storeID := test.input.StoreId
 
 			if test.testData != nil {
 				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
-					SchemaVersion:   test.testData.model.SchemaVersion,
-					TypeDefinitions: test.testData.model.TypeDefinitions,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: typedefs,
 				})
 				require.NoError(t, err)
 
