@@ -228,6 +228,10 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	))
 	defer span.End()
 
+	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
+		return nil, serverErrors.InvalidCheckInput
+	}
+
 	storeID := req.GetStoreId()
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
