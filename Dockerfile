@@ -1,6 +1,6 @@
 FROM golang:1.20-alpine AS builder
 ARG OS=linux
-ARG ARCH
+ARG ARCH=amd64
 
 WORKDIR /app
 
