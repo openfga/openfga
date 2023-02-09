@@ -90,6 +90,8 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
 			errChan <- err
