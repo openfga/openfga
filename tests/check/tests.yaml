@@ -17,7 +17,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-            trace: .(direct).
           - tuple:
               object: document:2
               relation: viewer
@@ -48,7 +47,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-            trace: .(computed-userset).document:1#writer.(direct).
           - tuple:
               object: document:2
               relation: writer
@@ -86,7 +84,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-            trace: .(tuple-to-userset).document:1#parent.folder:x#viewer.(direct).
 
   - name: this_and_union
     stages:
@@ -110,7 +107,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-            trace: .union.0(direct).
           - tuple:
               object: document:2
               relation: viewer

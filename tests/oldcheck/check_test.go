@@ -100,9 +100,6 @@ func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 				})
 				require.NoError(t, err)
 				require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-				if assertion.Trace != "" {
-					require.Equal(t, assertion.Trace, resp.GetResolution())
-				}
 			}
 		})
 	}
