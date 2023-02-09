@@ -1,4 +1,8 @@
-FROM scratch
+FROM alpine
+ARG OS
+ARG ARCH
 COPY assets /assets
 COPY openfga /
+RUN wget -q -O /bin/grpc_health_probe "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.13/grpc_health_probe-${OS}-${ARCH}"
+RUN chmod +x /bin/grpc_health_probe
 ENTRYPOINT ["/openfga"]

@@ -45,6 +45,11 @@ services:
       - "8080:8080"
       - "3000:3000"
       - "2112:2112"
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=openfga:8081"]
+      interval: 5s
+      timeout: 30s
+      retries: 3
 
   otel-collector:
     image: otel/opentelemetry-collector:latest

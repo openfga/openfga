@@ -29,6 +29,8 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
 	AuthorizationModelIDTraceTag = "authorization_model_id"
+
+	checkConcurrencyLimit = 100
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -74,7 +76,7 @@ func New(dependencies *Dependencies, config *Config) *Server {
 		encoder:       dependencies.TokenEncoder,
 		transport:     dependencies.Transport,
 		config:        config,
-		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100),
+		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 	}
 }
 
@@ -107,6 +109,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		CheckResolver:         s.checkResolver,
 	}
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
@@ -166,6 +169,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
+		CheckResolver:         s.checkResolver,
 	}
 
 	req.AuthorizationModelId = modelID
