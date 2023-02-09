@@ -89,8 +89,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(targetObjectType)},
+		attribute.String("store", storeID),
+		attribute.String("object_type", targetObjectType),
+		attribute.String("relation", req.GetRelation()),
+		attribute.String("user", req.GetUser()),
 	))
 	defer span.End()
 
@@ -140,8 +142,10 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	storeID := req.GetStoreId()
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "store", Value: attribute.StringValue(req.GetStoreId())},
-		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
+		attribute.String("store", storeID),
+		attribute.String("object_type", req.GetType()),
+		attribute.String("relation", req.GetRelation()),
+		attribute.String("user", req.GetUser()),
 	))
 	defer span.End()
 
