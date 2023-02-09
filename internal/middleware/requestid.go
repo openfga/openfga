@@ -50,7 +50,7 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ss := newWrapperServerStream(stream)
+		ss := newWrappedServerStream(stream, logger)
 
 		id, err := uuid.NewRandom()
 		if err != nil {

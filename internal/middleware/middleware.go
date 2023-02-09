@@ -2,24 +2,31 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/openfga/openfga/pkg/logger"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
+
+const grpcReqReceivedKey = "grpc_req_received"
 
 type ctxKey string
 
 type wrappedServerStream struct {
 	grpc.ServerStream
 	wrappedContext context.Context
+	logger         logger.Logger
 }
 
-func newWrapperServerStream(stream grpc.ServerStream) *wrappedServerStream {
+func newWrappedServerStream(stream grpc.ServerStream, logger logger.Logger) *wrappedServerStream {
 	if existing, ok := stream.(*wrappedServerStream); ok {
 		return existing
 	}
 	return &wrappedServerStream{
 		ServerStream:   stream,
 		wrappedContext: stream.Context(),
+		logger:         logger,
 	}
 }
 
@@ -28,17 +35,32 @@ func (s *wrappedServerStream) Context() context.Context {
 }
 
 func (s *wrappedServerStream) RecvMsg(m interface{}) error {
-	if err := s.ServerStream.RecvMsg(m); err != nil {
-		return err
-	}
+	// err handled below after preparing the log fields
+	err := s.ServerStream.RecvMsg(m)
 
-	s.wrappedContext = context.WithValue(s.Context(), storeIDCtxKey, s)
+	fields := []zap.Field{zap.String(grpcTypeKey, "server_stream")}
+
+	if requestID, ok := RequestIDFromContext(s.Context()); ok {
+		fields = append(fields, zap.String(requestIDKey, requestID))
+	}
 
 	if r, ok := m.(hasGetStoreID); ok {
 		storeID := r.GetStoreId()
 		s.wrappedContext = context.WithValue(s.Context(), storeIDCtxKey, storeID)
-
+		fields = append(fields, zap.String(storeIDKey, storeID))
 	}
+
+	jsonM, err := json.Marshal(m)
+	if err == nil {
+		fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonM)))
+	}
+
+	if err != nil {
+		s.logger.Error(err.Error(), fields...)
+		return err
+	}
+
+	s.logger.Info(grpcReqReceivedKey, fields...)
 
 	return nil
 }

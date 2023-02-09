@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
@@ -41,8 +42,8 @@ func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 }
 
 // NewStreamingStoreIDInterceptor must come after the trace interceptor
-func NewStreamingStoreIDInterceptor() grpc.StreamServerInterceptor {
+func NewStreamingStoreIDInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		return handler(srv, newWrapperServerStream(stream))
+		return handler(srv, newWrappedServerStream(stream, logger))
 	}
 }
