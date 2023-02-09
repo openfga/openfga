@@ -1,4 +1,4 @@
-package storeid
+package middleware
 
 import (
 	"context"

@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/openfga/openfga/pkg/logger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -51,7 +50,7 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 
 func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ss := grpc_middleware.WrapServerStream(stream)
+		ss := newWrapperServerStream(stream)
 
 		id, err := uuid.NewRandom()
 		if err != nil {
@@ -61,7 +60,7 @@ func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInt
 		requestID := id.String()
 
 		// Add the requestID to the context
-		ss.WrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
+		ss.wrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
 
 		// Add the requestID to the span
 		trace.SpanFromContext(ss.Context()).SetAttributes(attribute.String(requestIDTraceKey, requestID))
