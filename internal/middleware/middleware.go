@@ -35,8 +35,8 @@ func (s *wrappedServerStream) Context() context.Context {
 }
 
 func (s *wrappedServerStream) RecvMsg(m interface{}) error {
-	// err handled below after preparing the log fields
-	err := s.ServerStream.RecvMsg(m)
+	// recvMsgErr handled below after preparing the log fields
+	recvMsgErr := s.ServerStream.RecvMsg(m)
 
 	fields := []zap.Field{zap.String(grpcTypeKey, "server_stream")}
 
@@ -55,7 +55,7 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 		fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonM)))
 	}
 
-	if err != nil {
+	if recvMsgErr != nil {
 		s.logger.Error(err.Error(), fields...)
 		return err
 	}

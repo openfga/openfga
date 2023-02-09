@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -69,7 +70,7 @@ func TestStreamingStoreIDInterceptor(t *testing.T) {
 		}
 
 		ss := &mockServerStream{ctx: context.Background()}
-		err := NewStreamingStoreIDInterceptor()(nil, ss, nil, handler)
+		err := NewStreamingStoreIDInterceptor(logger.NewNoopLogger())(nil, ss, nil, handler)
 		require.NoError(t, err)
 	})
 
@@ -86,7 +87,7 @@ func TestStreamingStoreIDInterceptor(t *testing.T) {
 		}
 
 		ss := &mockServerStream{ctx: context.Background()}
-		err := NewStreamingStoreIDInterceptor()(nil, ss, nil, handler)
+		err := NewStreamingStoreIDInterceptor(logger.NewNoopLogger())(nil, ss, nil, handler)
 		require.NoError(t, err)
 	})
 }
