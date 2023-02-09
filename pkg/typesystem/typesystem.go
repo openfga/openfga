@@ -822,16 +822,16 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 // ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
 //
 //	type folder
-//	 relations
-//	   define parent: [folder] as self
-//	   define viewer as viewer from parent
+//	  relations
+//	    define parent: [folder] as self
+//	    define viewer as viewer from parent
 //
 // and
 //
 //	type folder
-//	 relations
-//	  define parent as self
-//	  define viewer as viewer from parent
+//	  relations
+//	    define parent as self
+//	    define viewer as viewer from parent
 func (t *TypeSystem) ensureNoCyclesInTupleToUsersetDefinitions() error {
 	for objectType := range t.typeDefinitions {
 		relations, err := t.GetRelations(objectType)
