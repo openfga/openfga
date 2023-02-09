@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/golang/mock v1.6.0
 	github.com/golangci/golangci-lint v1.50.1
-	golang.org/x/vuln v0.0.0-20230130175424-dd534eeddf33
+	golang.org/x/vuln v0.0.0-20230209185747-5884084d81cd
 )
 
 require (
@@ -161,11 +161,11 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.17.0 // indirect
-	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
+	golang.org/x/exp v0.0.0-20230206171751-46f607a40771 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20220827204233-334a2380cb91 // indirect
-	golang.org/x/mod v0.7.0 // indirect
+	golang.org/x/mod v0.8.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
+	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.3.8 // indirect
 	golang.org/x/tools v0.5.1-0.20230117180257-8aba49bb5ea2 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
