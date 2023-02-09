@@ -332,7 +332,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		return nil, fmt.Errorf("typesystem missing in context")
+		panic("typesystem missing in context")
 	}
 
 	object := req.GetTupleKey().GetObject()
