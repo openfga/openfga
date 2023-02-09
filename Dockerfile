@@ -1,5 +1,5 @@
 FROM golang:1.20-alpine AS builder
-ARG OS
+ARG OS=linux
 ARG ARCH
 
 WORKDIR /app
