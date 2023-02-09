@@ -244,15 +244,14 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset")
-	span.SetAttributes(
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("source.object_type", req.sourceObjectRef.GetType()),
 		attribute.String("source.relation", req.sourceObjectRef.GetRelation()),
 		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
 		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
 		attribute.String("ingress.type", req.ingress.Type.String()),
 		attribute.String("target.user", req.targetUserRef.String()),
-	)
+	))
 	defer span.End()
 
 	store := req.storeID
@@ -408,15 +407,14 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandDirect")
-	span.SetAttributes(
+	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("source.object_type", req.sourceObjectRef.GetType()),
 		attribute.String("source.relation", req.sourceObjectRef.GetRelation()),
 		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
 		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
 		attribute.String("ingress.type", req.ingress.Type.String()),
 		attribute.String("target.user", req.targetUserRef.String()),
-	)
+	))
 	defer span.End()
 
 	store := req.storeID
