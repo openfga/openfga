@@ -495,12 +495,12 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrReservedKeywords,
 		},
 		{
-			name: "Fails_If_Auth_Model_1.0_Has_A_Cycle",
+			name: "Fails_If_Auth_Model_1.0_Has_A_Cycle_And_Only_One_Type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_0,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
-						Type: "folder", //the only type!
+						Type: "folder",
 						Relations: map[string]*openfgapb.Userset{
 							"parent": This(),
 							"viewer": TupleToUserset("parent", "viewer"),
@@ -509,6 +509,25 @@ func TestInvalidRewriteValidations(t *testing.T) {
 				},
 			},
 			err: ErrCycle,
+		},
+		{
+			name: "Succeeds_If_Auth_Model_1.0_Has_A_Cycle_But_There_Is_More_Than_One_Type",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: nil,
 		},
 	}
 
