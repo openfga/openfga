@@ -1,4 +1,4 @@
-package middleware
+package storeid
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 )
+
+type ctxKey string
 
 const (
 	storeIDCtxKey ctxKey = "store-id-context-key"
@@ -40,16 +42,16 @@ func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-type storeIDServerStream struct {
+type wrappedServerStream struct {
 	grpc.ServerStream
-	WrappedContext context.Context
+	ctx context.Context
 }
 
-func (w *storeIDServerStream) Context() context.Context {
-	return w.WrappedContext
+func (w *wrappedServerStream) Context() context.Context {
+	return w.ctx
 }
 
-func (w *storeIDServerStream) RecvMsg(m interface{}) error {
+func (w *wrappedServerStream) RecvMsg(m interface{}) error {
 	if err := w.ServerStream.RecvMsg(m); err != nil {
 		return nil
 	}
@@ -58,7 +60,7 @@ func (w *storeIDServerStream) RecvMsg(m interface{}) error {
 		storeID := r.GetStoreId()
 
 		// Add the storeID to the context
-		w.WrappedContext = context.WithValue(w.Context(), storeIDCtxKey, storeID)
+		w.ctx = context.WithValue(w.Context(), storeIDCtxKey, storeID)
 
 		// Add the storeID to the span
 		trace.SpanFromContext(w.Context()).SetAttributes(attribute.String(storeIDTraceKey, storeID))
@@ -70,8 +72,9 @@ func (w *storeIDServerStream) RecvMsg(m interface{}) error {
 // NewStreamingStoreIDInterceptor must come after the trace interceptor
 func NewStreamingStoreIDInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ss := &storeIDServerStream{ServerStream: stream, WrappedContext: stream.Context()}
-
-		return handler(srv, ss)
+		return handler(srv, &wrappedServerStream{
+			ServerStream: stream,
+			ctx:          context.Background(),
+		})
 	}
 }

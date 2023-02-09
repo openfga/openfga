@@ -28,6 +28,7 @@ import (
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
+	"github.com/openfga/openfga/internal/middleware/storeid"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server"
@@ -484,7 +485,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		grpc_validator.UnaryServerInterceptor(),
 		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewRequestIDInterceptor(logger),
-		middleware.NewStoreIDInterceptor(),
+		storeid.NewStoreIDInterceptor(),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
@@ -493,7 +494,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		grpc_validator.StreamServerInterceptor(),
 		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
-		middleware.NewStreamingStoreIDInterceptor(),
+		storeid.NewStreamingStoreIDInterceptor(),
 		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
