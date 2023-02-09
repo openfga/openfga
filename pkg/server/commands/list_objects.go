@@ -94,6 +94,7 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan)
