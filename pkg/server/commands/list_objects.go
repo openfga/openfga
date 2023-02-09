@@ -27,6 +27,7 @@ import (
 
 const (
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	listObjectsOptimizedKey = "list_objects_optimized"
 )
 
 type ListObjectsQuery struct {
@@ -93,7 +94,7 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
-		span.SetAttributes(attribute.Bool("list-objects-optimized", false))
+		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
@@ -145,7 +146,7 @@ func (q *ListObjectsQuery) handler(
 			}
 
 			handler = func() {
-				span.SetAttributes(attribute.Bool("list-objects-optimized", true))
+				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
 
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
