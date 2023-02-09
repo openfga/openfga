@@ -44,11 +44,18 @@ func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 
 type wrappedServerStream struct {
 	grpc.ServerStream
-	ctx context.Context
+	wrappedContext context.Context
+}
+
+func newWrappedServerStream(stream grpc.ServerStream) *wrappedServerStream {
+	if existing, ok := stream.(*wrappedServerStream); ok {
+		return existing
+	}
+	return &wrappedServerStream{ServerStream: stream, wrappedContext: stream.Context()}
 }
 
 func (w *wrappedServerStream) Context() context.Context {
-	return w.ctx
+	return w.wrappedContext
 }
 
 func (w *wrappedServerStream) RecvMsg(m interface{}) error {
@@ -60,7 +67,7 @@ func (w *wrappedServerStream) RecvMsg(m interface{}) error {
 		storeID := r.GetStoreId()
 
 		// Add the storeID to the context
-		w.ctx = context.WithValue(w.Context(), storeIDCtxKey, storeID)
+		w.wrappedContext = context.WithValue(w.Context(), storeIDCtxKey, storeID)
 
 		// Add the storeID to the span
 		trace.SpanFromContext(w.Context()).SetAttributes(attribute.String(storeIDTraceKey, storeID))
@@ -72,9 +79,6 @@ func (w *wrappedServerStream) RecvMsg(m interface{}) error {
 // NewStreamingStoreIDInterceptor must come after the trace interceptor
 func NewStreamingStoreIDInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		return handler(srv, &wrappedServerStream{
-			ServerStream: stream,
-			ctx:          context.Background(),
-		})
+		return handler(srv, newWrappedServerStream(stream))
 	}
 }
