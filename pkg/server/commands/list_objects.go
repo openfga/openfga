@@ -20,12 +20,14 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	listObjectsOptimizedKey = "list_objects_optimized"
 )
 
 type ListObjectsQuery struct {
@@ -54,6 +56,8 @@ func (q *ListObjectsQuery) handler(
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) error {
+
+	span := trace.SpanFromContext(ctx)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -91,6 +95,7 @@ func (q *ListObjectsQuery) handler(
 
 	handler := func() {
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
@@ -142,6 +147,8 @@ func (q *ListObjectsQuery) handler(
 			}
 
 			handler = func() {
+				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
+
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
 					ObjectType:       targetObjectType,
