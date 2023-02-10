@@ -397,7 +397,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
-			targetUserStr = fmt.Sprintf("%s#%s", val.ObjectRelation.Object, val.ObjectRelation.Relation)
+			targetUserStr = tuple.GetObjectRelationAsString(val.ObjectRelation)
 		}
 
 		if val, ok := req.targetUserRef.(*UserRefObject); ok {

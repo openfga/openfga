@@ -55,6 +55,14 @@ func BuildObject(objectType, objectID string) string {
 	return fmt.Sprintf("%s:%s", objectType, objectID)
 }
 
+// GetObjectRelationAsString returns a string like "object#relation". If there is no relation it returns "object"
+func GetObjectRelationAsString(objectRelation *openfgapb.ObjectRelation) string {
+	if objectRelation.GetRelation() != "" {
+		return fmt.Sprintf("%s#%s", objectRelation.GetObject(), objectRelation.GetRelation())
+	}
+	return objectRelation.GetObject()
+}
+
 // SplitObjectRelation splits an object relation string into an object ID and relation name. If no relation is present,
 // it returns the original string and an empty relation.
 func SplitObjectRelation(objectRelation string) (string, string) {
