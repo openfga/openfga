@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	storeIDCtxKey ctxKey = "store-id-context-key"
-
-	storeIDTraceKey = "store_id"
+	storeIDCtxKey   ctxKey = "store-id-context-key"
+	storeIDTraceKey        = "store_id"
 )
 
 func StoreIDFromContext(ctx context.Context) (string, bool) {
