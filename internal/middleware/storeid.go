@@ -23,7 +23,8 @@ type hasGetStoreID interface {
 	GetStoreId() string
 }
 
-// NewStoreIDInterceptor must come after the trace interceptor
+// NewStoreIDInterceptor creates a grpc.UnaryServerInterceptor which must come
+// after the trace interceptor and before the logger interceptor.
 func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if r, ok := req.(hasGetStoreID); ok {

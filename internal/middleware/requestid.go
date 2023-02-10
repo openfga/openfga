@@ -23,6 +23,8 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return requestID, ok
 }
 
+// NewRequestIDInterceptor creates a grpc.UnaryServerInterceptor which must come
+// after the trace interceptor and before the logger interceptor.
 func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		id, err := uuid.NewRandom()
