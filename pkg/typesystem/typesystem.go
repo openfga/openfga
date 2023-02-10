@@ -26,6 +26,8 @@ var (
 	ErrRelationUndefined     = errors.New("undefined relation")
 	ErrObjectTypeUndefined   = errors.New("undefined object type")
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
+	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
+	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
 
 // ContextWithTypesystem attaches the provided TypeSystem to the parent context.
@@ -627,6 +629,10 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 		return nil, ErrDuplicateTypes
 	}
 
+	if err := t.validateNames(); err != nil {
+		return nil, err
+	}
+
 	// Validate the userset rewrites
 	for _, td := range t.GetTypeDefinitions() {
 		for relation, rewrite := range td.GetRelations() {
@@ -635,6 +641,14 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 				return nil, err
 			}
 		}
+	}
+
+	if err := t.ensureNoCyclesInTupleToUsersetDefinitions(); err != nil {
+		return nil, err
+	}
+
+	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
+		return nil, err
 	}
 
 	if schemaVersion == SchemaVersion1_1 {
@@ -656,6 +670,25 @@ func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
 		seen[objectType] = struct{}{}
 	}
 	return false
+}
+
+// validateNames ensures that a model doesn't have object types or relations
+// called "self" or "this"
+func (t *TypeSystem) validateNames() error {
+	for _, td := range t.model.TypeDefinitions {
+		objectType := td.GetType()
+		if objectType == "self" || objectType == "this" {
+			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}
+		}
+
+		for relation := range td.GetRelations() {
+			if relation == "self" || relation == "this" {
+				return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrReservedKeywords}
+			}
+		}
+	}
+
+	return nil
 }
 
 // isUsersetRewriteValid checks if the rewrite on objectType#relation is valid.
@@ -747,6 +780,14 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 				return AssignableRelationError(objectType, name)
 			}
 
+			if assignable && len(relatedTypes) == 1 {
+				relatedObjectType := relatedTypes[0].GetType()
+				relatedRelation := relatedTypes[0].GetRelation()
+				if objectType == relatedObjectType && name == relatedRelation {
+					return &InvalidRelationError{ObjectType: objectType, Relation: name, Cause: ErrCycle}
+				}
+			}
+
 			if !assignable && len(relatedTypes) != 0 {
 				return NonAssignableRelationError(objectType, name)
 			}
@@ -774,6 +815,83 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 
 			}
 		}
+	}
+
+	return nil
+}
+
+// ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
+//
+//	type folder
+//	  relations
+//	    define parent: [folder] as self
+//	    define viewer as viewer from parent
+//
+// and
+//
+//	type folder
+//	  relations
+//	    define parent as self
+//	    define viewer as viewer from parent
+func (t *TypeSystem) ensureNoCyclesInTupleToUsersetDefinitions() error {
+	for objectType := range t.typeDefinitions {
+		relations, err := t.GetRelations(objectType)
+		if err == nil {
+			for relationName, relation := range relations {
+				switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
+				case *openfgapb.Userset_TupleToUserset:
+					// define viewer as viewer from parent
+					if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
+						tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
+						tuplesetRelation, err := t.GetRelation(objectType, tuplesetRelationName)
+						// define parent: [folder] as self
+						if err == nil {
+							switch tuplesetRelation.GetRewrite().Userset.(type) {
+							case *openfgapb.Userset_This:
+								if t.schemaVersion == SchemaVersion1_0 && len(t.typeDefinitions) == 1 {
+									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
+								}
+								if t.schemaVersion == SchemaVersion1_1 && len(tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
+									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// ensureNoCyclesInComputedRewrite throws an error on the following model because `folder` type is a cycle.
+//
+//	 type folder
+//		 relations
+//		  define parent as child
+//		  define child as parent
+func (t *TypeSystem) ensureNoCyclesInComputedRewrite() error {
+	for objectType := range t.typeDefinitions {
+		relations, err := t.GetRelations(objectType)
+		if err == nil {
+			for sourceRelationName, relation := range relations {
+				switch source := relation.GetRewrite().Userset.(type) {
+				case *openfgapb.Userset_ComputedUserset:
+					target := source.ComputedUserset.GetRelation()
+					targetRelation, err := t.GetRelation(objectType, target)
+					if err == nil {
+						switch rewrite := targetRelation.GetRewrite().Userset.(type) {
+						case *openfgapb.Userset_ComputedUserset:
+							if rewrite.ComputedUserset.GetRelation() == sourceRelationName {
+								return &InvalidTypeError{ObjectType: objectType, Cause: ErrCycle}
+							}
+						}
+					}
+				}
+			}
+		}
+
 	}
 
 	return nil
@@ -835,6 +953,19 @@ func RewriteContainsExclusion(rewrite *openfgapb.Userset) bool {
 	}
 
 	return result != nil && result.(bool) // type-cast matches the return from the WalkRelationshipRewriteHandler above
+}
+
+type InvalidTypeError struct {
+	ObjectType string
+	Cause      error
+}
+
+func (e *InvalidTypeError) Error() string {
+	return fmt.Sprintf("the definition of type '%s' is invalid", e.ObjectType)
+}
+
+func (e *InvalidTypeError) Unwrap() error {
+	return e.Cause
 }
 
 type InvalidRelationError struct {

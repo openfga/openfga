@@ -17,12 +17,70 @@ var testCases = map[string]struct {
 	model string
 	code  int
 }{
+	// implemented in Fails_If_Using_Self_As_Type_Name
+	//"case1": {
+	//	model: `
+	//	type user
+	//	type self
+	//	  relations
+	//		define member: [user] as self
+	//	`,
+	//	code: 2056,
+	//},
+	// implemented in Fails_If_Using_This_As_Type_Name
+	//"case2": {
+	//	model: `
+	//	type user
+	//	type this
+	//	  relations
+	//		define member: [user] as self
+	//	`,
+	//	code: 2056,
+	//},
+	// implemented in Fails_If_Using_Self_As_Relation_Name
+	//"case3": {
+	//	model: `
+	//	type user
+	//	type group
+	//	  relations
+	//		define self: [user] as self
+	//	`,
+	//	code: 2056,
+	//},
+	// implemented in Fails_If_Using_This_As_Relation_Name
+	//"case4": {
+	//	model: `
+	//	type user
+	//	type group
+	//	  relations
+	//		define this: [user] as self
+	//	`,
+	//	code: 2056,
+	//},
 	"case6": {
 		model: `
 		type user
 		type group
 		  relations
 			define group as group from group
+		`,
+		code: 2056,
+	},
+	"case7": {
+		model: `
+		type user
+		type group
+		  relations
+			define parent: [group] as self
+			define viewer as viewer from parent
+		`,
+		code: 2056,
+	},
+	"case8": {
+		model: `
+		type group
+		  relations
+			define viewer: [group#viewer] as self
 		`,
 		code: 2056,
 	},
@@ -78,6 +136,28 @@ var testCases = map[string]struct {
 		type group
 		  relations
 			define parent: [group, group#org] as self
+		`,
+		code: 2056,
+	},
+	"case14": {
+		model: `
+		type user
+		type org
+		  relations
+			define viewer: [user] as self
+		type group
+		  relations
+			define parent: [group] as self
+			define viewer as viewer from parent
+		`,
+		code: 2056,
+	},
+	"case16": {
+		model: `
+		type document
+		  relations
+			define reader as writer
+			define writer as reader
 		`,
 		code: 2056,
 	},
@@ -251,7 +331,7 @@ var testCases = map[string]struct {
 			define viewer as editor but not editor
 		`,
 	},
-	"at_long_as_one_computed_userset_type_is_valid": {
+	"as_long_as_one_computed_userset_type_is_valid": {
 		model: `
 		type user
 		type group
