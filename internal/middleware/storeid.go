@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	storeIDCtxKey   ctxKey = "store-id-context-key"
-	storeIDTraceKey        = "store_id"
+	storeIDCtxKey ctxKey = "store-id-context-key"
+
+	storeIDTraceKey = "store_id"
 )
 
 func StoreIDFromContext(ctx context.Context) (string, bool) {
@@ -23,7 +24,7 @@ type hasGetStoreID interface {
 }
 
 // NewStoreIDInterceptor creates a grpc.UnaryServerInterceptor which must come
-// after the trace interceptor and before the logger interceptor.
+// after the trace interceptor and before the logging interceptor.
 func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		if r, ok := req.(hasGetStoreID); ok {
@@ -40,7 +41,8 @@ func NewStoreIDInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// NewStreamingStoreIDInterceptor must come after the trace interceptor
+// NewStreamingStoreIDInterceptor creates a grpc.StreamServerInterceptor and
+// must come after the trace interceptor and before the logging interceptor.
 func NewStreamingStoreIDInterceptor() grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return handler(srv, newWrappedServerStream(stream))

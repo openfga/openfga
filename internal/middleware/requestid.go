@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	requestIDCtxKey   ctxKey = "request-id-context-key"
-	requestIDTraceKey string = "request_id"
-	requestIDHeader   string = "X-Request-Id"
+	requestIDCtxKey ctxKey = "request-id-context-key"
+
+	requestIDTraceKey = "request_id"
+	requestIDHeader   = "X-Request-Id"
 )
 
 func RequestIDFromContext(ctx context.Context) (string, bool) {
@@ -23,8 +24,8 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return requestID, ok
 }
 
-// NewRequestIDInterceptor creates a grpc.UnaryServerInterceptor which must come
-// after the trace interceptor and before the logger interceptor.
+// NewRequestIDInterceptor creates a grpc.UnaryServerInterceptor which must
+// come after the trace interceptor and before the logging interceptor.
 func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		id, err := uuid.NewRandom()
@@ -50,6 +51,9 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	}
 }
 
+// NewStreamingRequestIDInterceptor creates a grpc.StreamServerInterceptor
+// which must come after the trace interceptor and before the logging
+// interceptor.
 func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		ss := newWrappedServerStream(stream)
