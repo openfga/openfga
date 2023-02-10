@@ -89,7 +89,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(targetObjectType)},
+		attribute.String("object_type", targetObjectType),
+		attribute.String("relation", req.GetRelation()),
+		attribute.String("user", req.GetUser()),
 	))
 	defer span.End()
 
@@ -138,7 +140,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
-		attribute.KeyValue{Key: "objectType", Value: attribute.StringValue(req.GetType())},
+		attribute.String("object_type", req.GetType()),
+		attribute.String("relation", req.GetRelation()),
+		attribute.String("user", req.GetUser()),
 	))
 	defer span.End()
 
