@@ -13,6 +13,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,6 +29,7 @@ type ConnectedObjectsRequest struct {
 type isUserRef interface {
 	isUserRef()
 	GetObjectType() string
+	String() string
 }
 
 type UserRefObject struct {
@@ -41,6 +44,10 @@ func (u *UserRefObject) GetObjectType() string {
 	return u.Object.Type
 }
 
+func (u *UserRefObject) String() string {
+	return tuple.BuildObject(u.Object.GetType(), u.Object.GetId())
+}
+
 type UserRefTypedWildcard struct {
 	Type string
 }
@@ -53,6 +60,10 @@ func (u *UserRefTypedWildcard) GetObjectType() string {
 	return u.Type
 }
 
+func (u *UserRefTypedWildcard) String() string {
+	return fmt.Sprintf("%s:*", u.Type)
+}
+
 type UserRefObjectRelation struct {
 	ObjectRelation *openfgapb.ObjectRelation
 }
@@ -61,6 +72,13 @@ func (*UserRefObjectRelation) isUserRef() {}
 
 func (u *UserRefObjectRelation) GetObjectType() string {
 	return tuple.GetType(u.ObjectRelation.Object)
+}
+
+func (u *UserRefObjectRelation) String() string {
+	return tuple.ToObjectRelationString(
+		u.ObjectRelation.GetObject(),
+		u.ObjectRelation.GetRelation(),
+	)
 }
 
 type UserRef struct {
@@ -88,6 +106,12 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "streamedConnectedObjects", trace.WithAttributes(
+		attribute.String("object_type", req.ObjectType),
+		attribute.String("relation", req.Relation),
+		attribute.String("user", req.User.String()),
+	))
+	defer span.End()
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
 	if !ok {
@@ -189,6 +213,12 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	req *ConnectedObjectsRequest,
 	resultChan chan<- string, // object string (e.g. document:1)
 ) error {
+	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
+		attribute.String("object_type", req.ObjectType),
+		attribute.String("relation", req.Relation),
+		attribute.String("user", req.User.String()),
+	))
+	defer span.End()
 
 	var foundCount *uint32
 	if c.Limit > 0 {
@@ -214,6 +244,15 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
+		attribute.String("source.object_type", req.sourceObjectRef.GetType()),
+		attribute.String("source.relation", req.sourceObjectRef.GetRelation()),
+		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
+		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
+		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("target.user", req.targetUserRef.String()),
+	))
+	defer span.End()
 
 	store := req.storeID
 
@@ -368,6 +407,15 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
+		attribute.String("source.object_type", req.sourceObjectRef.GetType()),
+		attribute.String("source.relation", req.sourceObjectRef.GetRelation()),
+		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
+		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
+		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("target.user", req.targetUserRef.String()),
+	))
+	defer span.End()
 
 	store := req.storeID
 
@@ -397,7 +445,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
-			targetUserStr = fmt.Sprintf("%s#%s", val.ObjectRelation.Object, val.ObjectRelation.Relation)
+			targetUserStr = tuple.GetObjectRelationAsString(val.ObjectRelation)
 		}
 
 		if val, ok := req.targetUserRef.(*UserRefObject); ok {

@@ -3,8 +3,8 @@ package graph
 import (
 	"context"
 	"errors"
-	"fmt"
 
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -48,6 +48,19 @@ const (
 	TupleToUsersetIngress
 	ComputedUsersetIngress
 )
+
+func (r RelationshipIngressType) String() string {
+	switch r {
+	case DirectIngress:
+		return "direct"
+	case ComputedUsersetIngress:
+		return "computed_userset"
+	case TupleToUsersetIngress:
+		return "ttu"
+	default:
+		return "undefined"
+	}
+}
 
 // RelationshipIngress represents a possible ingress point between some source object reference
 // and a target user reference.
@@ -101,7 +114,7 @@ func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationR
 }
 
 func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference, visited map[string]struct{}) ([]*RelationshipIngress, error) {
-	key := fmt.Sprintf("%s#%s", target.GetType(), target.GetRelation())
+	key := tuple.ToObjectRelationString(target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
 		return nil, nil
