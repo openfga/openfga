@@ -92,20 +92,25 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 			zap.String(grpcTypeKey, "server_stream"),
 		}
 
-		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
+		ss := newWrappedServerStream(stream)
+
+		if requestID, ok := RequestIDFromContext(ss.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
-		spanCtx := trace.SpanContextFromContext(stream.Context())
+		spanCtx := trace.SpanContextFromContext(ss.Context())
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
-		if storeID, ok := StoreIDFromContext(stream.Context()); ok {
+		if storeID, ok := StoreIDFromContext(ss.Context()); ok {
 			fields = append(fields, zap.String(storeIDKey, storeID))
 		}
 
-		err := handler(srv, stream)
+		err := handler(srv, ss)
+
+		// Add any fields pulled from RecvMsg
+		fields = append(fields, ss.fields...)
 
 		code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 		fields = append(fields, zap.Int32(grpcCodeKey, code))

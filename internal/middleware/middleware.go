@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/openfga/openfga/pkg/logger"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -16,17 +15,16 @@ type ctxKey string
 type wrappedServerStream struct {
 	grpc.ServerStream
 	wrappedContext context.Context
-	logger         logger.Logger
+	fields         []zap.Field
 }
 
-func newWrappedServerStream(stream grpc.ServerStream, logger logger.Logger) *wrappedServerStream {
+func newWrappedServerStream(stream grpc.ServerStream) *wrappedServerStream {
 	if existing, ok := stream.(*wrappedServerStream); ok {
 		return existing
 	}
 	return &wrappedServerStream{
 		ServerStream:   stream,
 		wrappedContext: stream.Context(),
-		logger:         logger,
 	}
 }
 
@@ -38,11 +36,7 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 	// recvMsgErr handled below after preparing the log fields
 	recvMsgErr := s.ServerStream.RecvMsg(m)
 
-	fields := []zap.Field{zap.String(grpcTypeKey, "server_stream")}
-
-	if requestID, ok := RequestIDFromContext(s.Context()); ok {
-		fields = append(fields, zap.String(requestIDKey, requestID))
-	}
+	var fields []zap.Field
 
 	if r, ok := m.(hasGetStoreID); ok {
 		storeID := r.GetStoreId()
@@ -55,12 +49,11 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 		fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonM)))
 	}
 
+	s.fields = fields
+
 	if recvMsgErr != nil {
-		s.logger.Error(err.Error(), fields...)
 		return err
 	}
-
-	s.logger.Info(grpcReqReceivedKey, fields...)
 
 	return nil
 }
