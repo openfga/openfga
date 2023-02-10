@@ -344,3 +344,32 @@ func TestGetUsertypeFromUser(t *testing.T) {
 		})
 	}
 }
+
+func TestGetObjectRelationAsString(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input *openfgav1.ObjectRelation
+		want  string
+	}{
+		{
+			name: "object and relation",
+			input: &openfgav1.ObjectRelation{
+				Object:   "team:fga",
+				Relation: "member",
+			},
+			want: "team:fga#member",
+		},
+		{
+			name: "just object",
+			input: &openfgav1.ObjectRelation{
+				Object: "team:fga",
+			},
+			want: "team:fga",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := GetObjectRelationAsString(tc.input)
+			require.Equal(t, tc.want, got)
+		})
+	}
+}

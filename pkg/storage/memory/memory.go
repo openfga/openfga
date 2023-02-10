@@ -384,7 +384,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 		for _, userFilter := range filter.UserFilter {
 			targetUser := userFilter.GetObject()
 			if userFilter.GetRelation() != "" {
-				targetUser = fmt.Sprintf("%s#%s", userFilter.GetObject(), userFilter.GetRelation())
+				targetUser = tupleUtils.GetObjectRelationAsString(userFilter)
 			}
 
 			if targetUser == t.Key.GetUser() {
