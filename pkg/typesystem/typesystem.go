@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -313,7 +314,7 @@ func (t *TypeSystem) RelationInvolvesIntersection(objectType, relation string) (
 
 func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, visited map[string]struct{}) (bool, error) {
 
-	key := fmt.Sprintf("%s#%s", objectType, relation)
+	key := tuple.ToObjectRelationString(objectType, relation)
 	if _, ok := visited[key]; ok {
 		return false, nil
 	}
@@ -416,7 +417,7 @@ func (t *TypeSystem) relationInvolvesIntersection(objectType, relation string, v
 	for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 		if typeRestriction.GetRelation() != "" {
 
-			key := fmt.Sprintf("%s#%s", typeRestriction.GetType(), typeRestriction.GetRelation())
+			key := tuple.ToObjectRelationString(typeRestriction.GetType(), typeRestriction.GetRelation())
 			if _, ok := visited[key]; ok {
 				continue
 			}
@@ -450,7 +451,7 @@ func (t *TypeSystem) RelationInvolvesExclusion(objectType, relation string) (boo
 
 func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visited map[string]struct{}) (bool, error) {
 
-	key := fmt.Sprintf("%s#%s", objectType, relation)
+	key := tuple.ToObjectRelationString(objectType, relation)
 	if _, ok := visited[key]; ok {
 		return false, nil
 	}
@@ -552,7 +553,7 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 	for _, typeRestriction := range rel.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 		if typeRestriction.GetRelation() != "" {
 
-			key := fmt.Sprintf("%s#%s", typeRestriction.GetType(), typeRestriction.GetRelation())
+			key := tuple.ToObjectRelationString(typeRestriction.GetType(), typeRestriction.GetRelation())
 			if _, ok := visited[key]; ok {
 				continue
 			}
@@ -893,7 +894,7 @@ func NonAssignableRelationError(objectType, relation string) error {
 func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRelation string) error {
 	relationType := relatedObjectType
 	if relatedRelation != "" {
-		relationType = fmt.Sprintf("%s#%s", relatedObjectType, relatedRelation)
+		relationType = tuple.ToObjectRelationString(relatedObjectType, relatedRelation)
 	}
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
