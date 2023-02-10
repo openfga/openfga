@@ -49,6 +49,19 @@ const (
 	ComputedUsersetIngress
 )
 
+func (r RelationshipIngressType) String() string {
+	switch r {
+	case DirectIngress:
+		return "direct"
+	case ComputedUsersetIngress:
+		return "computed_userset"
+	case TupleToUsersetIngress:
+		return "ttu"
+	default:
+		return "undefined"
+	}
+}
+
 // RelationshipIngress represents a possible ingress point between some source object reference
 // and a target user reference.
 type RelationshipIngress struct {

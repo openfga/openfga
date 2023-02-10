@@ -10,6 +10,14 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
+func TestRelationshipIngressType_String(t *testing.T) {
+
+	require.Equal(t, "direct", DirectIngress.String())
+	require.Equal(t, "computed_userset", ComputedUsersetIngress.String())
+	require.Equal(t, "ttu", TupleToUsersetIngress.String())
+	require.Equal(t, "undefined", RelationshipIngressType(4).String())
+}
+
 func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 
 	tests := []struct {
