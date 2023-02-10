@@ -48,8 +48,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			fields = append(fields, zap.String(storeIDKey, storeID))
 		}
 
-		jsonReq, err := json.Marshal(req)
-		if err == nil {
+		if jsonReq, err := json.Marshal(req); err == nil {
 			fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonReq)))
 		}
 
@@ -73,8 +72,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			return nil, err
 		}
 
-		jsonResp, err := json.Marshal(resp)
-		if err == nil {
+		if jsonResp, err := json.Marshal(resp); err == nil {
 			fields = append(fields, zap.Any(rawResponseKey, json.RawMessage(jsonResp)))
 		}
 
