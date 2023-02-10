@@ -412,8 +412,6 @@ func RunServer(ctx context.Context, config *Config) error {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	var err error
-
 	dsCfg := common.NewConfig(
 		common.WithLogger(logger),
 		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
@@ -425,6 +423,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	)
 
 	var datastore storage.OpenFGADatastore
+	var err error
 	switch config.Datastore.Engine {
 	case "memory":
 		datastore = memory.New(config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
