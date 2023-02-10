@@ -492,8 +492,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
-		middleware.NewStreamingStoreIDInterceptor(),
 		middleware.NewStreamingRequestIDInterceptor(logger),
+		middleware.NewStreamingStoreIDInterceptor(),
 		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
