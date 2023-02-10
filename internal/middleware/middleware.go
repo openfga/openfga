@@ -8,8 +8,6 @@ import (
 	"google.golang.org/grpc"
 )
 
-const grpcReqReceivedKey = "grpc_req_received"
-
 type ctxKey string
 
 type wrappedServerStream struct {
