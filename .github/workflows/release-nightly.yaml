@@ -10,7 +10,6 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout
         uses: actions/checkout@v3
         with:
@@ -19,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v3
         with:
-          go-version-file: './go.mod'
+          go-version-file: "./go.mod"
           check-latest: true
 
       - name: Login to Docker Hub
@@ -27,15 +26,25 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-        
+
+      # skip publish to GitHub Releases
       - name: Run GoReleaser Nightly
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
           version: nightly
-          args: release --rm-dist --config .goreleaser-nightly.yaml
+          args: release --skip-publish --rm-dist --config .goreleaser-nightly.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publlish to Docker Hub manually
+      - name: Publish to Docker Hub
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile.goreleaser
+          push: true
+          tags: openfga/openfga:nightly
 
       - name: Update Docker Hub Description
         uses: peter-evans/dockerhub-description@v3
