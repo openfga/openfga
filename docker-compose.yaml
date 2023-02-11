@@ -70,6 +70,7 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
+    command: ["--query.max-clock-skew-adjustment", "500ms"]
     ports:
       - "16686:16686"
     depends_on:
