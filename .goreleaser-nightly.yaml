@@ -16,6 +16,9 @@ builds:
       - darwin
     ldflags:
       - "-s -w"
+      - "-X github.com/openfga/openfga/internal/build.Version=nightly"
+      - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
+      - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
 
 dockers:
   - goos: linux
