@@ -520,6 +520,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				User:     tk.GetUser(),
 			}
 
+			if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
+				if errors.Is(err, typesystem.ErrRelationUndefined) {
+					continue // skip computed relations on tupleset relationships if they are undefined
+				}
+			}
+
 			handlers = append(handlers, c.dispatch(
 				ctx,
 				&ResolveCheckRequest{

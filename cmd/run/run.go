@@ -406,6 +406,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
+		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
 	}
 
@@ -423,7 +424,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		protocol := config.OpenTelemetry.Protocol
 		endpoint := config.OpenTelemetry.Endpoint
 
-		logger.Info(fmt.Sprintf("🕵 OpenTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
+		logger.Info(fmt.Sprintf("🕵 openTelemetry 'otlp' metrics exported to '%s' via protocol '%s'", endpoint, protocol))
 
 		meter, err = telemetry.NewOTLPMeter(ctx, logger, protocol, endpoint)
 		if err != nil {
@@ -484,6 +485,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		grpc_validator.UnaryServerInterceptor(),
 		otelgrpc.UnaryServerInterceptor(),
 		middleware.NewRequestIDInterceptor(logger),
+		middleware.NewStoreIDInterceptor(),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
@@ -493,8 +495,10 @@ func RunServer(ctx context.Context, config *Config) error {
 		otelgrpc.StreamServerInterceptor(),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
+		// The following interceptors wrap the server stream with our own
+		// wrapper and must come last.
+		middleware.NewStreamingStoreIDInterceptor(),
 		middleware.NewStreamingLoggingInterceptor(logger),
-		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
 
 	opts := []grpc.ServerOption{
