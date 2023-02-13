@@ -1,6 +1,8 @@
 name: nightly release
 
-on: push
+on:
+  schedule:
+    - cron: "0 0 * * *"
 
 permissions:
   contents: write
