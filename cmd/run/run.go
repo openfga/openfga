@@ -402,6 +402,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
+		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
 	}
 
@@ -464,10 +465,12 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
+		middleware.NewRequestIDInterceptor(logger),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
+		middleware.NewStreamingRequestIDInterceptor(logger),
 	}
 
 	if config.Metrics.Enabled {
@@ -485,15 +488,17 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	unaryInterceptors = append(unaryInterceptors,
-		middleware.NewRequestIDInterceptor(logger),
+		middleware.NewStoreIDInterceptor(),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		middleware.NewStreamingRequestIDInterceptor(logger),
-		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		// The following interceptors wrap the server stream with our own
+		// wrapper and must come last.
+		middleware.NewStreamingStoreIDInterceptor(),
+		middleware.NewStreamingLoggingInterceptor(logger),
 	)
 
 	opts := []grpc.ServerOption{
