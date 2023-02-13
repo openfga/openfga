@@ -1975,21 +1975,6 @@ tests:
               user: a:b:c
             errorCode: 2000
 
-  - name: validation_circular_model
-    stages:
-      - model: |
-          type user
-          type document
-            relations
-              define viewer as writer
-              define writer as viewer
-        assertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            errorCode: 2002
-
   - name: validation_invalid_object_type_in_contextual_tuple
     stages:
       - model: |

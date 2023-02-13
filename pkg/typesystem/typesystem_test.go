@@ -434,6 +434,101 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			},
 			err: ErrRelationUndefined,
 		},
+		{
+			name: "Fails_If_Using_This_As_Relation_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"this": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_Self_As_Relation_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"self": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_This_As_Type_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "this",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Using_Self_As_Type_Name",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "self",
+						Relations: map[string]*openfgapb.Userset{
+							"viewer": This(),
+						},
+					},
+				},
+			},
+			err: ErrReservedKeywords,
+		},
+		{
+			name: "Fails_If_Auth_Model_1.0_Has_A_Cycle_And_Only_One_Type",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: ErrCycle,
+		},
+		{
+			name: "Succeeds_If_Auth_Model_1.0_Has_A_Cycle_But_There_Is_More_Than_One_Type",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "folder",
+						Relations: map[string]*openfgapb.Userset{
+							"parent": This(),
+							"viewer": TupleToUserset("parent", "viewer"),
+						},
+					},
+				},
+			},
+			err: nil,
+		},
 	}
 
 	for _, test := range tests {
