@@ -21,7 +21,10 @@ services:
         condition: service_healthy
     image: openfga/openfga:latest
     container_name: migrate
-    command: migrate --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
+    command: migrate
     networks:
       - default
 
@@ -33,8 +36,10 @@ services:
         condition: service_started
     image: openfga/openfga:latest
     container_name: openfga
-    command: run --datastore-engine postgres --datastore-uri 'postgres://postgres:password@postgres:5432/postgres?sslmode=disable'
+    command: run
     environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
@@ -42,7 +47,13 @@ services:
       - default
     ports:
       - "8080:8080"
+      - "8081:8081"
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "/bin/grpc_health_probe", "-addr=openfga:8081"]
+      interval: 5s
+      timeout: 30s
+      retries: 3
 
   otel-collector:
     image: otel/opentelemetry-collector:latest

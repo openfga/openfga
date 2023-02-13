@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openfga/openfga/internal/contextualtuples"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -19,12 +20,14 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/unit"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	listObjectsOptimizedKey = "list_objects_optimized"
 )
 
 type ListObjectsQuery struct {
@@ -35,6 +38,7 @@ type ListObjectsQuery struct {
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
 	ConnectedObjects      func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- string) error
+	CheckResolver         graph.CheckResolver
 }
 
 type listObjectsRequest interface {
@@ -52,6 +56,8 @@ func (q *ListObjectsQuery) handler(
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) error {
+
+	span := trace.SpanFromContext(ctx)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -88,6 +94,9 @@ func (q *ListObjectsQuery) handler(
 	}
 
 	handler := func() {
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
+
 		err = q.performChecks(ctx, req, resultsChan)
 		if err != nil {
 			errChan <- err
@@ -138,6 +147,8 @@ func (q *ListObjectsQuery) handler(
 			}
 
 			handler = func() {
+				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
+
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
 					ObjectType:       targetObjectType,
@@ -264,6 +275,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 }
 
 func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string) error {
+	ctx, span := tracer.Start(ctx, "performChecks")
+	defer span.End()
 	var objectsFound = new(uint32)
 
 	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
@@ -315,19 +328,22 @@ func (q *ListObjectsQuery) internalCheck(
 	objectsFound *uint32,
 	resultsChan chan<- string,
 ) error {
-	query := NewCheckQuery(q.Datastore, q.Meter, q.Logger, q.ResolveNodeLimit)
 
-	resp, err := query.Execute(ctx, &openfgapb.CheckRequest{
-		StoreId:              req.GetStoreId(),
-		AuthorizationModelId: req.GetAuthorizationModelId(),
+	resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+		StoreID:              req.GetStoreId(),
+		AuthorizationModelID: req.GetAuthorizationModelId(),
 		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), req.GetRelation(), req.GetUser()),
-		ContextualTuples:     req.GetContextualTuples(),
+		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+		ResolutionMetadata: &graph.ResolutionMetadata{
+			Depth: q.ResolveNodeLimit,
+		},
 	})
 	if err != nil {
 		// ignore the error. we don't want to abort everything if one of the checks failed.
-		q.Logger.ErrorWithContext(ctx, "check_error", logger.Error(err))
+		q.Logger.ErrorWithContext(ctx, "check_error", zap.Error(err))
 		return nil
 	}
+
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
 		resultsChan <- tuple.ObjectKey(obj)
 	}
