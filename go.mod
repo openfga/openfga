@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/craigpastro/openfga-dsl-parser v0.1.1
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86
-	github.com/docker/docker v20.10.23+incompatible
+	github.com/docker/docker v23.0.1+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang-jwt/jwt/v4 v4.4.3
@@ -77,7 +77,6 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/shirou/gopsutil/v3 v3.22.12 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
