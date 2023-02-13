@@ -45,6 +45,7 @@ import (
 	"github.com/spf13/viper"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
@@ -481,7 +482,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		otelgrpc.UnaryServerInterceptor(),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
@@ -489,7 +490,8 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)),
+		otelgrpc.StreamServerInterceptor(),
+		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
 		middleware.NewStreamingRequestIDInterceptor(logger),
 		middleware.NewStreamingLoggingInterceptor(logger),
 		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
@@ -586,6 +588,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		runtime.DefaultContextTimeout = config.HTTP.UpstreamTimeout
 
 		dialOpts := []grpc.DialOption{
+			grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
 			grpc.WithBlock(),
 		}
 		if config.GRPC.TLS.Enabled {
@@ -627,13 +630,13 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		httpServer = &http.Server{
 			Addr: config.HTTP.Addr,
-			Handler: cors.New(cors.Options{
+			Handler: otelhttp.NewHandler(cors.New(cors.Options{
 				AllowedOrigins:   config.HTTP.CORSAllowedOrigins,
 				AllowCredentials: true,
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux),
+			}).Handler(mux), "http_server"),
 		}
 
 		go func() {
