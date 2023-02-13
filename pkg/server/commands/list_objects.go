@@ -257,6 +257,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 }
 
 func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string) error {
+	ctx, span := tracer.Start(ctx, "performChecks")
+	defer span.End()
 	var objectsFound = new(uint32)
 
 	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
