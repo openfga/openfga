@@ -47,6 +47,7 @@ services:
       - default
     ports:
       - "8080:8080"
+      - "8081:8081"
       - "3000:3000"
     healthcheck:
       test: ["CMD", "/bin/grpc_health_probe", "-addr=openfga:8081"]
