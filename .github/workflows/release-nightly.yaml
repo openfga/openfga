@@ -37,7 +37,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Publlish to Docker Hub manually
       - name: Publish to Docker Hub
         uses: docker/build-push-action@v2
         with:
