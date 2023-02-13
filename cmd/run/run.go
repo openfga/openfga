@@ -640,7 +640,9 @@ func RunServer(ctx context.Context, config *Config) error {
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux), "http_server"),
+			}).Handler(mux), "openfga_http_server", otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
+				return fmt.Sprintf("%s %s%s", r.Method, r.Host, r.URL.Path)
+			})),
 		}
 
 		go func() {
