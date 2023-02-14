@@ -152,13 +152,13 @@ func testBadAuthModelID(t *testing.T, engine string) {
 
 	storeID := resp.GetId()
 	model := `
-type user
+	type user
 
-type doc
-  relations
-    define viewer: [user] as self
-    define can_view as viewer
-`
+	type doc
+	  relations
+	    define viewer: [user] as self
+	    define can_view as viewer
+	`
 	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
