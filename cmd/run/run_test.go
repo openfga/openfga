@@ -850,11 +850,15 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, len(val.Array()), len(cfg.Experimentals))
 
-	val = res.Get("properties.otel.properties.metrics.properties.endpoint.default")
+	val = res.Get("properties.metrics.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.OpenTelemetry.Endpoint)
+	require.Equal(t, val.Bool(), cfg.Metrics.Enabled)
 
-	val = res.Get("properties.otel.properties.metrics.properties.protocol.default")
+	val = res.Get("properties.metrics.properties.addr.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.OpenTelemetry.Protocol)
+	require.Equal(t, val.String(), cfg.Metrics.Addr)
+
+	val = res.Get("properties.metrics.properties.enableRPCHistograms.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Metrics.EnableRPCHistograms)
 }
