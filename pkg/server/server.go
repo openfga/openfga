@@ -21,7 +21,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -41,7 +40,6 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	meter     metric.Meter
 	logger    logger.Logger
 	datastore storage.OpenFGADatastore
 	encoder   encoder.Encoder
@@ -53,7 +51,6 @@ type Server struct {
 
 type Dependencies struct {
 	Datastore    storage.OpenFGADatastore
-	Meter        metric.Meter
 	Logger       logger.Logger
 	Transport    gateway.Transport
 	TokenEncoder encoder.Encoder
@@ -74,7 +71,6 @@ func New(dependencies *Dependencies, config *Config) *Server {
 	ds := dependencies.Datastore
 
 	return &Server{
-		meter:         dependencies.Meter,
 		logger:        dependencies.Logger,
 		datastore:     dependencies.Datastore,
 		encoder:       dependencies.TokenEncoder,
@@ -111,7 +107,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
-		Meter:                 s.meter,
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
@@ -173,7 +168,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
-		Meter:                 s.meter,
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,

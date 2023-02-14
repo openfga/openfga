@@ -15,7 +15,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -174,7 +173,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
-			Meter:                 telemetry.NewNoopMeter(),
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
@@ -334,7 +332,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		listObjectsQuery := &commands.ListObjectsQuery{
 			Datastore:             ds,
 			Logger:                logger.NewNoopLogger(),
-			Meter:                 telemetry.NewNoopMeter(),
 			ListObjectsDeadline:   defaultListObjectsDeadline,
 			ListObjectsMaxResults: defaultListObjectsMaxResults,
 			ResolveNodeLimit:      defaultResolveNodeLimit,
@@ -473,7 +470,6 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
 	}
@@ -533,7 +529,6 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		Meter:            telemetry.NewNoopMeter(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 	}

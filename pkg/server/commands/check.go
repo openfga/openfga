@@ -17,7 +17,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -26,16 +25,15 @@ import (
 // CheckQuery instances may be safely shared by multiple go-routines
 type CheckQuery struct {
 	logger           logger.Logger
-	meter            metric.Meter
 	datastore        storage.OpenFGADatastore
 	resolveNodeLimit uint32
 }
 
-// NewCheckQuery creates a CheckQuery with specified `tupleBackend` and `typeDefinitionReadBackend` to use for storage
-func NewCheckQuery(datastore storage.OpenFGADatastore, meter metric.Meter, logger logger.Logger, resolveNodeLimit uint32) *CheckQuery {
+// NewCheckQuery creates a CheckQuery that uses the datastore and loggers provided. Check resolution
+// depth is limited to the provided resolveNodeLimit.
+func NewCheckQuery(datastore storage.OpenFGADatastore, logger logger.Logger, resolveNodeLimit uint32) *CheckQuery {
 	return &CheckQuery{
 		logger:           logger,
-		meter:            meter,
 		datastore:        datastore,
 		resolveNodeLimit: resolveNodeLimit,
 	}

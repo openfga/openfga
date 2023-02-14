@@ -315,6 +315,29 @@
                     "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
                 }
             }
+        },
+        "metrics": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable/disable prometheus metrics on the '/metrics' endpoint",
+                    "type": "bool",
+                    "default": "true",
+                    "x-env-variable": "OPENFGA_METRICS_ENABLED"
+                },
+                "addr": {
+                    "description": "the host:port address to serve the prometheus metrics server on",
+                    "type": "string",
+                    "default": "0.0.0.0:2112",
+                    "x-env-variable": "OPENFGA_METRICS_ADDR"
+                },
+                "enableRPCHistograms": {
+                    "description": "enables prometheus histogram metrics for RPC latency distributions",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
+                }
+            }
         }
     },
     "definitions": {
