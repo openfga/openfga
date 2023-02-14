@@ -1344,3 +1344,31 @@ tests:
           relation: viewer
           user: user:aardvark
         expectation: false
+
+  - name: skip_undefined_computed_relations_on_tuplesets
+    model: |
+      type rule
+        relations
+          define assigned as self
+          define has_assigned as u1 from assigned or u2 from assigned
+      type parent1
+        relations
+          define role as self
+          define u1 as role
+      type parent2
+        relations
+          define role as self
+          define u2 as role
+    assertions:
+      - tuple:
+          object: rule:X
+          relation: has_assigned
+          user: user:1
+        contextualTuples:
+          - object: parent2:a
+            relation: role
+            user: user:1
+          - object: rule:X
+            relation: assigned
+            user: parent2:a
+        expectation: true

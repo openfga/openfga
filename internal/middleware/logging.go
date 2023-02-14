@@ -20,6 +20,7 @@ const (
 	grpcCodeKey        = "grpc_code"
 	requestIDKey       = "request_id"
 	traceIDKey         = "trace_id"
+	storeIDKey         = "store_id"
 	rawRequestKey      = "raw_request"
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
@@ -43,8 +44,11 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
-		jsonReq, err := json.Marshal(req)
-		if err == nil {
+		if storeID, ok := StoreIDFromContext(ctx); ok {
+			fields = append(fields, zap.String(storeIDKey, storeID))
+		}
+
+		if jsonReq, err := json.Marshal(req); err == nil {
 			fields = append(fields, zap.Any(rawRequestKey, json.RawMessage(jsonReq)))
 		}
 
@@ -68,8 +72,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			return nil, err
 		}
 
-		jsonResp, err := json.Marshal(resp)
-		if err == nil {
+		if jsonResp, err := json.Marshal(resp); err == nil {
 			fields = append(fields, zap.Any(rawResponseKey, json.RawMessage(jsonResp)))
 		}
 
@@ -87,16 +90,25 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 			zap.String(grpcTypeKey, "server_stream"),
 		}
 
-		if requestID, ok := RequestIDFromContext(stream.Context()); ok {
+		ss := newWrappedServerStream(stream)
+
+		if requestID, ok := RequestIDFromContext(ss.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
-		spanCtx := trace.SpanContextFromContext(stream.Context())
+		spanCtx := trace.SpanContextFromContext(ss.Context())
 		if spanCtx.HasTraceID() {
 			fields = append(fields, zap.String(traceIDKey, spanCtx.TraceID().String()))
 		}
 
-		err := handler(srv, stream)
+		if storeID, ok := StoreIDFromContext(ss.Context()); ok {
+			fields = append(fields, zap.String(storeIDKey, storeID))
+		}
+
+		err := handler(srv, ss)
+
+		// Add any fields pulled from RecvMsg
+		fields = append(fields, ss.fields...)
 
 		code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 		fields = append(fields, zap.Int32(grpcCodeKey, code))

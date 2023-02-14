@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/openfga/openfga/pkg/logger"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -14,9 +13,10 @@ import (
 )
 
 const (
-	requestIDCtxKey   ctxKey = "request-id-context-key"
-	requestIDTraceKey string = "request_id"
-	requestIDHeader   string = "X-Request-Id"
+	requestIDCtxKey ctxKey = "request-id-context-key"
+
+	requestIDTraceKey = "request_id"
+	requestIDHeader   = "X-Request-Id"
 )
 
 func RequestIDFromContext(ctx context.Context) (string, bool) {
@@ -24,6 +24,8 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return requestID, ok
 }
 
+// NewRequestIDInterceptor creates a grpc.UnaryServerInterceptor which must
+// come after the trace interceptor and before the logging interceptor.
 func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		id, err := uuid.NewRandom()
@@ -49,9 +51,12 @@ func NewRequestIDInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	}
 }
 
+// NewStreamingRequestIDInterceptor creates a grpc.StreamServerInterceptor
+// which must come after the trace interceptor and before the logging
+// interceptor.
 func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInterceptor {
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		ss := grpc_middleware.WrapServerStream(stream)
+		ss := newWrappedServerStream(stream)
 
 		id, err := uuid.NewRandom()
 		if err != nil {
@@ -61,7 +66,7 @@ func NewStreamingRequestIDInterceptor(logger logger.Logger) grpc.StreamServerInt
 		requestID := id.String()
 
 		// Add the requestID to the context
-		ss.WrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
+		ss.wrappedContext = context.WithValue(ss.Context(), requestIDCtxKey, requestID)
 
 		// Add the requestID to the span
 		trace.SpanFromContext(ss.Context()).SetAttributes(attribute.String(requestIDTraceKey, requestID))
