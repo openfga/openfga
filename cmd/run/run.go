@@ -483,8 +483,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	if config.Trace.Enabled {
-		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)))
-		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor(otelgrpc.WithTracerProvider(tp)))
+		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor())
+		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor())
 	}
 
 	unaryInterceptors = append(unaryInterceptors,
