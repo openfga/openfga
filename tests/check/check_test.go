@@ -41,20 +41,20 @@ type assertion struct {
 }
 
 func TestCheckMemory(t *testing.T) {
-	testCheck(t, "memory")
-	testBadAuthModelID(t, "memory")
+	testRunAll(t, "memory")
 }
 
 func TestCheckPostgres(t *testing.T) {
-	testCheck(t, "postgres")
-	testBadAuthModelID(t, "postgres")
-
+	testRunAll(t, "postgres")
 }
 
 func TestCheckMySQL(t *testing.T) {
-	testCheck(t, "mysql")
-	testBadAuthModelID(t, "mysql")
+	testRunAll(t, "mysql")
+}
 
+func testRunAll(t *testing.T, engine string) {
+	testCheck(t, engine)
+	testBadAuthModelID(t, engine)
 }
 
 func testCheck(t *testing.T, engine string) {
@@ -151,33 +151,16 @@ func testBadAuthModelID(t *testing.T, engine string) {
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
+	model := `type user
+
+type doc
+  relations
+    define viewer: [user] as self
+    define can_view as viewer`
 	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-		StoreId:       storeID,
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: []*pb.TypeDefinition{
-			{
-				Type:      "user",
-				Relations: map[string]*pb.Userset{},
-			},
-			{
-				Type: "doc",
-				Relations: map[string]*pb.Userset{
-					"viewer":   typesystem.This(),
-					"can_view": typesystem.ComputedUserset("viewer"),
-				},
-				Metadata: &pb.Metadata{
-					Relations: map[string]*pb.RelationMetadata{
-						"viewer": {
-							DirectlyRelatedUserTypes: []*pb.RelationReference{
-								{
-									Type: "user",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(model),
 	})
 	require.NoError(t, err)
 	_, err = client.Check(ctx, &pb.CheckRequest{
@@ -190,6 +173,4 @@ func testBadAuthModelID(t *testing.T, engine string) {
 	e, ok := status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, int(pb.ErrorCode_authorization_model_not_found), int(e.Code()))
-
-	cancel()
 }

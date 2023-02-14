@@ -246,7 +246,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 		return nil, err
 	}
