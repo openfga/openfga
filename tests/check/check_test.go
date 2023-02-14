@@ -151,12 +151,14 @@ func testBadAuthModelID(t *testing.T, engine string) {
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
-	model := `type user
+	model := `
+type user
 
 type doc
   relations
     define viewer: [user] as self
-    define can_view as viewer`
+    define can_view as viewer
+`
 	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
