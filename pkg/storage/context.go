@@ -52,11 +52,11 @@ func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, 
 	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey)
 }
 
-func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (TupleIterator, error) {
+func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter ReadUsersetTuplesFilter) (TupleIterator, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
-	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, tupleKey)
+	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter)
 }
 
 func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts ReadStartingWithUserFilter) (TupleIterator, error) {

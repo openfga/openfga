@@ -362,7 +362,10 @@ func (rc *resolutionContext) readUserTuple(ctx context.Context, backend storage.
 
 func (rc *resolutionContext) readUsersetTuples(ctx context.Context, backend storage.TupleBackend) (storage.TupleKeyIterator, error) {
 	cUsersetTuples := rc.contextualTuples.ReadUsersetTuples(rc.tk)
-	usersetTuples, err := backend.ReadUsersetTuples(ctx, rc.store, rc.tk)
+	usersetTuples, err := backend.ReadUsersetTuples(ctx, rc.store, storage.ReadUsersetTuplesFilter{
+		ObjectID: rc.tk.Object,
+		Relation: rc.tk.Relation,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -372,28 +372,40 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		storeID := req.GetStoreID()
 		tk := req.GetTupleKey()
 
+		var allowedTypesForUser []*openfgapb.RelationReference
+		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+			// allowedTypesForUser could be "user" or "user:*" or "group#member"
+			allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(tuple.GetType(tk.GetObject()), tk.Relation)
+		}
+
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					return &openfgapb.CheckResponse{Allowed: false}, nil
+			if c.shouldCheckDirectTuple(typesys, allowedTypesForUser, tk.GetUser()) {
+				t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						return &openfgapb.CheckResponse{Allowed: false}, nil
+					}
+
+					return &openfgapb.CheckResponse{Allowed: false}, err
 				}
 
-				return &openfgapb.CheckResponse{Allowed: false}, err
-			}
+				// filter out invalid tuples yielded by the database query
+				err = validation.ValidateTuple(typesys, tk)
 
-			// filter out invalid tuples yielded by the database query
-			err = validation.ValidateTuple(typesys, tk)
-
-			if t != nil && err == nil {
-				return &openfgapb.CheckResponse{Allowed: true}, nil
+				if t != nil && err == nil {
+					return &openfgapb.CheckResponse{Allowed: true}, nil
+				}
 			}
 
 			return &openfgapb.CheckResponse{Allowed: false}, nil
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, tk)
+			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+				ObjectID:            tk.Object,
+				Relation:            tk.Relation,
+				AllowedTypesForUser: allowedTypesForUser,
+			})
 			if err != nil {
 				return &openfgapb.CheckResponse{Allowed: false}, err
 			}
@@ -461,6 +473,24 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		return union(ctx, c.concurrencyLimit, fn1, fn2)
 	}
+}
+
+// allowedTypesForUser could be "team" or "team:*" or "group#member"
+// shouldCheckDirectTuple returns true if allowedTypes contains "team" and the user is like type "team:fga"
+// or if allowedTypes contains "group#member" and the user is like type "group:fga#member"
+func (c *LocalChecker) shouldCheckDirectTuple(typesys *typesystem.TypeSystem, allowedTypes []*openfgapb.RelationReference, user string) bool {
+	if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+		userType, _ := tuple.SplitObject(user)
+		_, userRel := tuple.SplitObjectRelation(user)
+		for _, targetType := range allowedTypes {
+			if userType == targetType.GetType() && targetType.GetRelation() == userRel {
+				return true
+			}
+		}
+		return false
+	}
+	// 1.0 model
+	return true
 }
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one

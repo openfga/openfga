@@ -128,18 +128,18 @@ func (mr *MockTupleBackendMockRecorder) ReadUserTuple(ctx, store, tk interface{}
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *MockTupleBackend) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, tk)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
+func (mr *MockTupleBackendMockRecorder) ReadUsersetTuples(ctx, store, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadUsersetTuples), ctx, store, tk)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockTupleBackend)(nil).ReadUsersetTuples), ctx, store, filter)
 }
 
 // Write mocks base method.
@@ -241,18 +241,18 @@ func (mr *MockRelationshipTupleReaderMockRecorder) ReadUserTuple(ctx, store, tk 
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, tk *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *MockRelationshipTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, tk)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
+func (mr *MockRelationshipTupleReaderMockRecorder) ReadUsersetTuples(ctx, store, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUsersetTuples), ctx, store, tk)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ReadUsersetTuples), ctx, store, filter)
 }
 
 // MockRelationshipTupleWriter is a mock of RelationshipTupleWriter interface.
@@ -1057,18 +1057,18 @@ func (mr *MockOpenFGADatastoreMockRecorder) ReadUserTuple(ctx, store, tk interfa
 }
 
 // ReadUsersetTuples mocks base method.
-func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store string, tk *openfgav1.TupleKey) (storage.TupleIterator, error) {
+func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, tk)
+	ret := m.ctrl.Call(m, "ReadUsersetTuples", ctx, store, filter)
 	ret0, _ := ret[0].(storage.TupleIterator)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ReadUsersetTuples indicates an expected call of ReadUsersetTuples.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, tk interface{}) *gomock.Call {
+func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, tk)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter)
 }
 
 // Write mocks base method.

@@ -75,10 +75,18 @@ type RelationshipTupleReader interface {
 		tk *openfgapb.TupleKey,
 	) (*openfgapb.Tuple, error)
 
+	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
+	// For example, given the following relationship tuples:
+	//	document:doc1, viewer, user:*
+	//	document:doc1, viewer, group:eng#member
+	// and the filter
+	//	object=document:1, relation=viewer, allowedTypesForUser=[group#member]
+	// this method would return the tuple (document:doc1, viewer, group:eng#member)
+	// If allowedTypesForUser is empty, both tuples would be returned.
 	ReadUsersetTuples(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
+		filter ReadUsersetTuplesFilter,
 	) (TupleIterator, error)
 
 	// ReadStartingWithUser performs a reverse read of relationship tuples starting at one or
@@ -117,6 +125,12 @@ type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
 	UserFilter []*openfgapb.ObjectRelation
+}
+
+type ReadUsersetTuplesFilter struct {
+	ObjectID            string                         // required
+	Relation            string                         // required
+	AllowedTypesForUser []*openfgapb.RelationReference // optional
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
@@ -214,13 +228,10 @@ var _ RelationshipTupleReader = (*ctxRelationshipTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgapb.TupleKey, filterKey *openfgapb.TupleKey) []*openfgapb.Tuple {
-	targetObject := filterKey.GetObject()
-	targetRelation := filterKey.GetRelation()
-
+func filterTuples(tuples []*openfgapb.TupleKey, targetObjectID, targetRelation string) []*openfgapb.Tuple {
 	var filtered []*openfgapb.Tuple
 	for _, tk := range tuples {
-		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
+		if tk.GetObject() == targetObjectID && tk.GetRelation() == targetRelation {
 			filtered = append(filtered, &openfgapb.Tuple{
 				Key: tk,
 			})
@@ -240,7 +251,7 @@ func (b *ctxRelationshipTupleReader) Read(
 
 	tuples, ok := ContextualTuplesFromContext(ctx)
 	if ok {
-		iter1 = NewStaticTupleIterator(filterTuples(tuples, tk))
+		iter1 = NewStaticTupleIterator(filterTuples(tuples, tk.Object, tk.Relation))
 	}
 
 	iter2, err := b.wrapped.Read(ctx, storeID, tk)
@@ -270,7 +281,7 @@ func (b *ctxRelationshipTupleReader) ReadUserTuple(
 
 	tuples, ok := ContextualTuplesFromContext(ctx)
 	if ok {
-		filteredTuples = filterTuples(tuples, tk)
+		filteredTuples = filterTuples(tuples, tk.Object, tk.Relation)
 	}
 
 	for _, tuple := range filteredTuples {
@@ -285,7 +296,7 @@ func (b *ctxRelationshipTupleReader) ReadUserTuple(
 func (b *ctxRelationshipTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
-	tk *openfgapb.TupleKey,
+	filter ReadUsersetTuplesFilter,
 ) (TupleIterator, error) {
 
 	var iter1 TupleIterator = &emptyTupleIterator{}
@@ -294,7 +305,7 @@ func (b *ctxRelationshipTupleReader) ReadUsersetTuples(
 
 	tuples, ok := ContextualTuplesFromContext(ctx)
 	if ok {
-		for _, t := range filterTuples(tuples, tk) {
+		for _, t := range filterTuples(tuples, filter.ObjectID, filter.Relation) {
 			if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
 				filteredTuples = append(filteredTuples, t)
 			}
@@ -303,7 +314,7 @@ func (b *ctxRelationshipTupleReader) ReadUsersetTuples(
 		iter1 = NewStaticTupleIterator(filteredTuples)
 	}
 
-	iter2, err := b.wrapped.ReadUsersetTuples(ctx, store, tk)
+	iter2, err := b.wrapped.ReadUsersetTuples(ctx, store, filter)
 	if err != nil {
 		return nil, err
 	}
