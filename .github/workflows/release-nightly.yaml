@@ -34,7 +34,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v2
         with:
           distribution: goreleaser
-          version: nightly
+          version: latest
           args: release --skip-publish --rm-dist --config .goreleaser-nightly.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
