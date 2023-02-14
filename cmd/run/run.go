@@ -485,6 +485,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		otelgrpc.UnaryServerInterceptor(otelgrpc.WithTracerProvider(tp)),
 		middleware.NewRequestIDInterceptor(logger),
 		middleware.NewStoreIDInterceptor(),
+		middleware.NewModelIDInterceptor(datastore),
 		middleware.NewLoggingInterceptor(logger),
 		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
 	}
@@ -497,6 +498,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		middleware.NewStreamingStoreIDInterceptor(),
+		middleware.NewStreamingModelIDInterceptor(datastore),
 		middleware.NewStreamingLoggingInterceptor(logger),
 	}
 

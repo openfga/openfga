@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -95,12 +96,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID := req.GetAuthorizationModelId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
+
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
 		return nil, serverErrors.AuthorizationModelNotFound(modelID)
@@ -146,14 +146,12 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("no model id")
 	}
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	model, err := s.datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
@@ -207,16 +205,14 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
 
 	cmd := commands.NewWriteCommand(s.datastore, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
-		StoreId:              storeID,
+		StoreId:              req.GetStoreId(),
 		AuthorizationModelId: modelID,
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
@@ -238,9 +234,9 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
@@ -299,9 +295,9 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
 
 	q := commands.NewExpandQuery(s.datastore, s.logger)
@@ -349,16 +345,15 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
+
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
-		StoreId:              storeID,
+		StoreId:              req.GetStoreId(),
 		AuthorizationModelId: modelID,
 		Assertions:           req.GetAssertions(),
 	})
@@ -375,11 +370,13 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
+	modelID, ok := middleware.ModelIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no model id")
 	}
+
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
+
 	return q.Execute(ctx, req.GetStoreId(), modelID)
 }
 
@@ -447,35 +444,4 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
 	return s.datastore.IsReady(ctx)
-}
-
-// resolveAuthorizationModelID takes a modelId. If it is empty, it will find and return the latest authorization model ID.
-//
-// If is not empty, it will validate it and return it.
-//
-// This allows caching of types. If the user inserts a new authorization model and doesn't
-// provide this field (which should be rate limited more aggressively) the in-flight requests won't be
-// affected and newer calls will use the updated authorization model.
-func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
-	defer span.End()
-
-	var err error
-	if modelID != "" {
-		if _, err := ulid.Parse(modelID); err != nil {
-			return "", serverErrors.AuthorizationModelNotFound(modelID)
-		}
-	} else {
-		if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return "", serverErrors.LatestAuthorizationModelNotFound(store)
-			}
-			return "", serverErrors.HandleError("", err)
-		}
-	}
-
-	span.SetAttributes(attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(modelID)})
-	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
-
-	return modelID, nil
 }
