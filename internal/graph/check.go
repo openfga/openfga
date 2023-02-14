@@ -434,7 +434,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						return &openfgapb.CheckResponse{Allowed: true}, nil
 					}
 
-					return &openfgapb.CheckResponse{Allowed: false}, nil
+					continue
 				}
 
 				if usersetRelation != "" {
@@ -449,7 +449,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							},
 						}))
 				}
-
 			}
 
 			if len(handlers) == 0 {
