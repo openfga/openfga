@@ -1,6 +1,6 @@
 FROM alpine
-ARG OS
-ARG ARCH
+ARG OS=linux
+ARG ARCH=amd64
 COPY assets /assets
 COPY openfga /
 RUN wget -q -O /bin/grpc_health_probe "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.13/grpc_health_probe-${OS}-${ARCH}"
