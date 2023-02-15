@@ -49,7 +49,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     relations
       define y as self
   ```
-  Given the tuple `document:1#parent@organization:x`, then `Check(document:1#viewer@jon)` would return an error prior to this fix because the `x` computed relation on the `document#parent` tupleset relation is not defined for the `org` object type.
+  Given the tuple `{ user: "org:contoso", relation: "parent", object: "document:1" }`, then `Check({ user: "jon", relation: "viewer", object: "document:1" })` would return an error prior to this fix because the `x` computed relation on the `document#parent` tupleset relation is not defined for the `org` object type.
 
 * Eliminate duplicate objects in ListObjects response (#528)
 
