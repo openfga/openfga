@@ -1810,6 +1810,35 @@ tests:
                 relation: writer
                 user: user:*
             expectation: true
+  - name: wildcard_and_userset_restriction
+    stages:
+      - model: |
+          type user
+          type user2
+          type group
+            relations
+              define member: [user2] as self
+          type document
+            relations
+              define viewer: [user:*, group#member] as self
+        tuples:
+          - object: document:public
+            relation: viewer
+            user: user:*
+          - object: document:public
+            relation: viewer
+            user: group:fga#member
+          - object: group:fga
+            relation: member
+            user: user2:bob
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: user2:bob
+            expectation: true
+
+
 
   - name: wildcard_obeys_the_types_in_stages
     stages:
