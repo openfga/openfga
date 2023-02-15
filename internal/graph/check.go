@@ -378,26 +378,29 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(tuple.GetType(tk.GetObject()), tk.Relation)
 		}
 
+		var outerHandlers []CheckHandlerFunc
+
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-			if c.shouldCheckDirectTuple(typesys, allowedTypesForUser, tk.GetUser()) {
-				t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
-				if err != nil {
-					if errors.Is(err, storage.ErrNotFound) {
-						return &openfgapb.CheckResponse{Allowed: false}, nil
-					}
-
-					return &openfgapb.CheckResponse{Allowed: false}, err
+			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					return &openfgapb.CheckResponse{Allowed: false}, nil
 				}
 
-				// filter out invalid tuples yielded by the database query
-				err = validation.ValidateTuple(typesys, tk)
-
-				if t != nil && err == nil {
-					return &openfgapb.CheckResponse{Allowed: true}, nil
-				}
+				return &openfgapb.CheckResponse{Allowed: false}, err
 			}
 
+			// filter out invalid tuples yielded by the database query
+			err = validation.ValidateTuple(typesys, tk)
+
+			if t != nil && err == nil {
+				return &openfgapb.CheckResponse{Allowed: true}, nil
+			}
 			return &openfgapb.CheckResponse{Allowed: false}, nil
+		}
+
+		if c.shouldCheckDirectTuple(typesys, allowedTypesForUser, tk.GetUser()) {
+			outerHandlers = append(outerHandlers, fn1)
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
@@ -471,7 +474,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		return union(ctx, c.concurrencyLimit, fn1, fn2)
+		outerHandlers = append(outerHandlers, fn2)
+
+		return union(ctx, c.concurrencyLimit, outerHandlers...)
 	}
 }
 
