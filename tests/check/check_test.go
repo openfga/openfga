@@ -48,7 +48,8 @@ func testCheck(t *testing.T, engine string) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	RunTests(t, pb.NewOpenFGAServiceClient(conn))
+	RunSchema1_1_CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+	RunSchema1_0_CheckTests(t, pb.NewOpenFGAServiceClient(conn))
 }
 
 func testBadAuthModelID(t *testing.T, engine string) {

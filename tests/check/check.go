@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -45,15 +46,30 @@ type ClientInterface interface {
 	Check(ctx context.Context, in *pb.CheckRequest, opts ...grpc.CallOption) (*pb.CheckResponse, error)
 }
 
-// RunTests is public so can be run when OpenFGA is used as a library. An
-// OpenFGA server needs to be running and the client parameter is a client
-// for the server.
-func RunTests(t *testing.T, client ClientInterface) {
-	data, err := assets.EmbedTests.ReadFile("tests/check_tests.yaml")
+// RunSchema1_1_CheckTests is public so can be run when OpenFGA is used as a
+// library. An OpenFGA server needs to be running and the client parameter is
+// a client for the server.
+func RunSchema1_1_CheckTests(t *testing.T, client ClientInterface) {
+	runTests(t, typesystem.SchemaVersion1_1, client)
+}
+
+// RunSchema1_0_CheckTests is the 1.0 version of RunSchema1_1_CheckTests.
+func RunSchema1_0_CheckTests(t *testing.T, client ClientInterface) {
+	runTests(t, typesystem.SchemaVersion1_0, client)
+}
+
+func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
+	var b []byte
+	var err error
+	if schemaVersion == typesystem.SchemaVersion1_1 {
+		b, err = assets.EmbedTests.ReadFile("tests/check_1_1_tests.yaml")
+	} else {
+		b, err = assets.EmbedTests.ReadFile("tests/check_1_0_tests.yaml")
+	}
 	require.NoError(t, err)
 
 	var testCases checkTests
-	err = yaml.Unmarshal(data, &testCases)
+	err = yaml.Unmarshal(b, &testCases)
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -66,11 +82,19 @@ func RunTests(t *testing.T, client ClientInterface) {
 
 		t.Run(test.Name, func(t *testing.T) {
 			for _, stage := range test.Stages {
-				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustParse(stage.Model),
-				})
+				if schemaVersion == typesystem.SchemaVersion1_1 {
+					_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+						StoreId:         storeID,
+						SchemaVersion:   typesystem.SchemaVersion1_1,
+						TypeDefinitions: parser.MustParse(stage.Model),
+					})
+				} else {
+					_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+						StoreId:         storeID,
+						SchemaVersion:   typesystem.SchemaVersion1_0,
+						TypeDefinitions: v1parser.MustParse(stage.Model),
+					})
+				}
 				require.NoError(t, err)
 
 				if len(stage.Tuples) > 0 {
