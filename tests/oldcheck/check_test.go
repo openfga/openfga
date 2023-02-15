@@ -2,10 +2,10 @@ package oldcheck
 
 import (
 	"context"
-	"os"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser"
+	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -45,7 +45,7 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func testCheck(t *testing.T, engine string) {
-	data, err := os.ReadFile("tests.yaml")
+	data, err := assets.EmbedTests.ReadFile("tests/oldcheck_tests.yaml")
 	require.NoError(t, err)
 
 	var testCases checkTests
