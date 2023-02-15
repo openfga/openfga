@@ -45,9 +45,9 @@ type ClientInterface interface {
 	Check(ctx context.Context, in *pb.CheckRequest, opts ...grpc.CallOption) (*pb.CheckResponse, error)
 }
 
-// RunTests is public so can be run when OpenFGA is used as a library.
-// An OpenFGA server needs to be running and client is a client for
-// the server.
+// RunTests is public so can be run when OpenFGA is used as a library. An
+// OpenFGA server needs to be running and the client parameter is a client
+// for the server.
 func RunTests(t *testing.T, client ClientInterface) {
 	data, err := assets.EmbedTests.ReadFile("tests/check_tests.yaml")
 	require.NoError(t, err)

@@ -11,6 +11,8 @@ import (
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
@@ -39,7 +41,11 @@ func testCheck(t *testing.T, engine string) {
 	cancel := tests.StartServer(t, cfg)
 	defer cancel()
 
-	conn := tests.Connect(t, cfg.GRPC.Addr)
+	conn, err := grpc.Dial(cfg.GRPC.Addr,
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
 	defer conn.Close()
 
 	RunTests(t, pb.NewOpenFGAServiceClient(conn))
@@ -54,8 +60,13 @@ func testBadAuthModelID(t *testing.T, engine string) {
 	cancel := tests.StartServer(t, cfg)
 	defer cancel()
 
-	conn := tests.Connect(t, cfg.GRPC.Addr)
+	conn, err := grpc.Dial(cfg.GRPC.Addr,
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
 	defer conn.Close()
+
 	client := pb.NewOpenFGAServiceClient(conn)
 
 	ctx := context.Background()

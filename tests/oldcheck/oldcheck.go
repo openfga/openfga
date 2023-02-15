@@ -6,11 +6,10 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,19 +31,17 @@ type assertion struct {
 	Trace            string
 }
 
-func TestCheckMemory(t *testing.T) {
-	testCheck(t, "memory")
+type ClientInterface interface {
+	CreateStore(ctx context.Context, in *pb.CreateStoreRequest, opts ...grpc.CallOption) (*pb.CreateStoreResponse, error)
+	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
+	Write(ctx context.Context, in *pb.WriteRequest, opts ...grpc.CallOption) (*pb.WriteResponse, error)
+	Check(ctx context.Context, in *pb.CheckRequest, opts ...grpc.CallOption) (*pb.CheckResponse, error)
 }
 
-func TestCheckPostgres(t *testing.T) {
-	testCheck(t, "postgres")
-}
-
-func TestCheckMySQL(t *testing.T) {
-	testCheck(t, "mysql")
-}
-
-func testCheck(t *testing.T, engine string) {
+// RunTests is public so can be run when OpenFGA is used as a library. An
+// OpenFGA server needs to be running and the client parameter is a client
+// for the server.
+func RunTests(t *testing.T, client ClientInterface) {
 	data, err := assets.EmbedTests.ReadFile("tests/oldcheck_tests.yaml")
 	require.NoError(t, err)
 
@@ -52,26 +49,9 @@ func testCheck(t *testing.T, engine string) {
 	err = yaml.Unmarshal(data, &testCases)
 	require.NoError(t, err)
 
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = engine
-
-	cancel := tests.StartServer(t, cfg)
-	defer cancel()
-
-	conn := tests.Connect(t, cfg.GRPC.Addr)
-	defer conn.Close()
-
-	runTest(t, pb.NewOpenFGAServiceClient(conn), testCases)
-
-	// Shutdown the server.
-	cancel()
-}
-
-func runTest(t *testing.T, client pb.OpenFGAServiceClient, tests checkTests) {
 	ctx := context.Background()
 
-	for _, test := range tests.Tests {
+	for _, test := range testCases.Tests {
 		t.Run(test.Name, func(t *testing.T) {
 			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
 			require.NoError(t, err)
