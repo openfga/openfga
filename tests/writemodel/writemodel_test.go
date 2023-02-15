@@ -1,4 +1,4 @@
-package write_model
+package writemodel
 
 import (
 	"testing"
