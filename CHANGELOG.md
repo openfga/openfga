@@ -53,10 +53,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Eliminate duplicate objects in ListObjects response (#528)
 
-* Error handling for Check when a provided authorization model id is not found (#541)
-
-  The `Check` API would return an internal server error if you provided an authorization model id in the request that didn't reference an existing model. This fixes that so you get a request validation error instead.
-
 ## [0.3.4] - 2023-02-02
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.3...v0.3.4)
