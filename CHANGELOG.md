@@ -15,11 +15,11 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) for Health Checks (#520)
 
-  OpenFGA containers now include an embedded `grpc_health_probe` binary that can be used to probe the Health Check endpoints of OpenFGA servers. Take a look at the `./docker-compose.yaml` file for an example.
+  OpenFGA containers now include an embedded `grpc_health_probe` binary that can be used to probe the Health Check endpoints of OpenFGA servers. Take a look at the [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) file for an example.
 
 * Improvements to telemetry: logging, tracing, and metrics (#468, #514, #517, #522)
 
-  * We have added Prometheus as the standard metrics provided for OpenFGA and provide a way to launch Grafana to view the metrics locally. See `./docker-compose.yaml` for more information.
+  * We have added Prometheus as the standard metrics provided for OpenFGA and provide a way to launch Grafana to view the metrics locally. See [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) for more information.
 
   * We've improved the attributes of various trace spans and made sure that trace span names align with the functions they decorate.
 
