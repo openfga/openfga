@@ -1,7 +1,7 @@
 FROM alpine AS builder
 ARG OS=linux
 ARG ARCH=amd64
-RUN apk update && apk add --no-cache wget
+RUN apk add --no-cache wget
 RUN wget -q -O /bin/grpc_health_probe "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/v0.4.13/grpc_health_probe-${OS}-${ARCH}"
 
 FROM alpine
