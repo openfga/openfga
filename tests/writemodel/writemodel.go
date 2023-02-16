@@ -1,15 +1,14 @@
-package model
+package writemodel
 
 import (
 	"context"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 )
 
@@ -345,24 +344,15 @@ var testCases = map[string]struct {
 	},
 }
 
-func TestWriteAuthorizationModel(t *testing.T) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = "memory"
-
-	cancel := tests.StartServer(t, cfg)
-	defer cancel()
-
-	conn := tests.Connect(t, cfg.GRPC.Addr)
-	defer conn.Close()
-
-	runTests(t, pb.NewOpenFGAServiceClient(conn))
-
-	// Shutdown the server.
-	cancel()
+type ClientInterface interface {
+	CreateStore(ctx context.Context, in *pb.CreateStoreRequest, opts ...grpc.CallOption) (*pb.CreateStoreResponse, error)
+	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
 }
 
-func runTests(t *testing.T, client pb.OpenFGAServiceClient) {
+// RunTests is public so can be run when OpenFGA is used as a library. An
+// OpenFGA server needs to be running and the client parameter is a client
+// for the server.
+func RunTests(t *testing.T, client ClientInterface) {
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "write_model_test"})
 	require.NoError(t, err)
