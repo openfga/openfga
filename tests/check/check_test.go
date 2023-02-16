@@ -147,21 +147,28 @@ type organization
     define repo_writer: [user,organization#member] as self
 `
 
-func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
+func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, pb.OpenFGAServiceClient, error) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
 	cancel := tests.StartServer(b, cfg)
-	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	require.NoError(b, err)
-	defer conn.Close()
+
 	client := pb.NewOpenFGAServiceClient(conn)
+	return cancel, conn, client, err
+}
+
+func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
+
+	cancel, conn, client, err := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
@@ -191,20 +198,9 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithTrace(b *testing.B, engine string) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = engine
-
-	cancel := tests.StartServer(b, cfg)
+	cancel, conn, client, err := setupBenchmarkTest(b, engine)
 	defer cancel()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(b, err)
 	defer conn.Close()
-	client := pb.NewOpenFGAServiceClient(conn)
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
@@ -235,20 +231,9 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = engine
-
-	cancel := tests.StartServer(b, cfg)
+	cancel, conn, client, err := setupBenchmarkTest(b, engine)
 	defer cancel()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(b, err)
 	defer conn.Close()
-	client := pb.NewOpenFGAServiceClient(conn)
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})

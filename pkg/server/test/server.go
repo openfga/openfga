@@ -6,6 +6,11 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+const (
+	defaultResolveNodeLimit = 25
+	gitHubTestDataFile      = "testdata/github.json" // relative to project root
+)
+
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
 	RunCommandTests(t, ds)
