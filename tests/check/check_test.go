@@ -147,7 +147,7 @@ type organization
     define repo_writer: [user,organization#member] as self
 `
 
-func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, pb.OpenFGAServiceClient, error) {
+func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, pb.OpenFGAServiceClient) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -161,12 +161,12 @@ func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.
 	require.NoError(b, err)
 
 	client := pb.NewOpenFGAServiceClient(conn)
-	return cancel, conn, client, err
+	return cancel, conn, client
 }
 
 func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 
-	cancel, conn, client, err := setupBenchmarkTest(b, engine)
+	cancel, conn, client := setupBenchmarkTest(b, engine)
 	defer cancel()
 	defer conn.Close()
 
@@ -198,7 +198,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithTrace(b *testing.B, engine string) {
-	cancel, conn, client, err := setupBenchmarkTest(b, engine)
+	cancel, conn, client := setupBenchmarkTest(b, engine)
 	defer cancel()
 	defer conn.Close()
 
@@ -231,7 +231,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 }
 
 func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
-	cancel, conn, client, err := setupBenchmarkTest(b, engine)
+	cancel, conn, client := setupBenchmarkTest(b, engine)
 	defer cancel()
 	defer conn.Close()
 
