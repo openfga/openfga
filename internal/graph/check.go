@@ -372,12 +372,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		storeID := req.GetStoreID()
 		tk := req.GetTupleKey()
 
-		var allowedTypesForUser []*openfgapb.RelationReference
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-			// allowedTypesForUser could be "user" or "user:*" or "group#member"
-			allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(tuple.GetType(tk.GetObject()), tk.Relation)
-		}
-
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
@@ -412,6 +406,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+			var allowedTypesForUser []*openfgapb.RelationReference
+			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+				// allowedTypesForUser could be "user" or "user:*" or "group#member"
+				allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(tuple.GetType(tk.GetObject()), tk.Relation)
+			}
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				ObjectID:            tk.Object,
 				Relation:            tk.Relation,
