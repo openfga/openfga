@@ -83,5 +83,5 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 			./cmd/openfga/...
 
 .PHONY: bench
-bench: go-generate ## Run benchmark test
-	go test ./... -bench=. -run=XXX -benchmem
+bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
+	go test ./... -bench . -benchtime 10s -run=XXX -cpu 1 -benchmem
