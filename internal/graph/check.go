@@ -391,18 +391,18 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return &openfgapb.CheckResponse{Allowed: false}, nil
 		}
 
-		shouldCheckDirectTuple, err := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetObject()), tk.GetRelation()),              //target
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
-		)
-		if err != nil {
-			return nil, err
-		}
-
 		var checkFuncs []CheckHandlerFunc
 
-		if shouldCheckDirectTuple || typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
+		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
 			checkFuncs = append(checkFuncs, fn1)
+		} else {
+			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+				typesystem.DirectRelationReference(tuple.GetType(tk.GetObject()), tk.GetRelation()),              //target
+				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+			)
+			if shouldCheckDirectTuple {
+				checkFuncs = append(checkFuncs, fn1)
+			}
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
