@@ -85,11 +85,15 @@ jobs:
             restore-keys: |
               ${{ runner.os }}-go
 
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
+
         # build the openfga/openfga image for the functional tests
         - uses: docker/build-push-action@v3
           with:
             file: Dockerfile
             push: false # don't publish the built container for functional tests
+            load: true
             tags: "openfga/openfga:functionaltest"
 
         - name: Functional Tests

@@ -9,9 +9,8 @@ FROM alpine as final
 EXPOSE 8081
 EXPOSE 8080
 EXPOSE 3000
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.15 /ko-app/grpc-health-probe /bin/grpc_health_probe
+COPY --chmod=0755 --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.15 /ko-app/grpc-health-probe /bin/grpc_health_probe
 COPY --from=builder /app/openfga /app/openfga
 COPY --from=builder /app/assets /app/assets
-RUN chmod +x /bin/grpc_health_probe
 WORKDIR /app
 ENTRYPOINT ["./openfga"]
