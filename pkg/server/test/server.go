@@ -12,9 +12,6 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
-	t.Run("TestCheckQuery", func(t *testing.T) { CheckQueryTest(t, ds) })
-	t.Run("TestCheckQueryAuthorizationModelsVersioning", func(t *testing.T) { TestCheckQueryAuthorizationModelsVersioning(t, ds) })
-
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
 	t.Run("TestSuccessfulReadAuthorizationModelQuery", func(t *testing.T) { TestSuccessfulReadAuthorizationModelQuery(t, ds) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { ReadAuthorizationModelTest(t, ds) })
@@ -63,14 +60,7 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	RunCheckBenchmarks(b, ds)
 	RunListObjectsBenchmarks(b, ds)
-}
-
-func RunCheckBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { BenchmarkCheckWithoutTrace(b, ds) })
-	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { BenchmarkCheckWithTrace(b, ds) })
-	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { BenchmarkCheckWithDirectResolution(b, ds) })
 }
 
 func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

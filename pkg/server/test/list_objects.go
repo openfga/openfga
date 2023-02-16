@@ -27,7 +27,9 @@ const (
 	defaultListObjectsDeadline   = 5 * time.Second
 	defaultListObjectsMaxResults = 5
 
-	checkConcurrencyLimit = 100
+	checkConcurrencyLimit   = 100
+	defaultResolveNodeLimit = 25
+	gitHubTestDataFile      = "testdata/github.json" // relative to project root
 )
 
 type listObjectsTestCase struct {
