@@ -24,6 +24,7 @@ func ModelIDFromContext(ctx context.Context) (string, bool) {
 }
 
 type hasGetAuthorizationModelId interface {
+	GetStoreId() string
 	GetAuthorizationModelId() string
 }
 
@@ -34,14 +35,17 @@ func NewModelIDInterceptor(ds storage.AuthorizationModelReadBackend) grpc.UnaryS
 			modelID := r.GetAuthorizationModelId()
 
 			if modelID == "" {
-				storeID, ok := StoreIDFromContext(ctx)
-				if !ok {
+				storeID := r.GetStoreId()
+				if storeID == "" {
 					return nil, errors.New("no store id")
 				}
 
 				var err error
 				modelID, err = ds.FindLatestAuthorizationModelID(ctx, storeID)
 				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						return nil, errors.New("no latest model id in datastore")
+					}
 					return nil, err
 				}
 			}

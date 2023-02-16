@@ -42,19 +42,6 @@ func TestUnaryStoreIDInterceptor(t *testing.T) {
 	})
 }
 
-type mockServerStream struct {
-	grpc.ServerStream
-	ctx context.Context
-}
-
-func (s *mockServerStream) Context() context.Context {
-	return s.ctx
-}
-
-func (s *mockServerStream) RecvMsg(m interface{}) error {
-	return nil
-}
-
 func TestStreamingStoreIDInterceptor(t *testing.T) {
 	t.Run("streaming_interceptor_with_no_GetStoreId_in_request", func(t *testing.T) {
 		handler := func(srv interface{}, stream grpc.ServerStream) error {
