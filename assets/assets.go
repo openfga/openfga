@@ -12,3 +12,6 @@ var EmbedMigrations embed.FS
 
 //go:embed playground/*
 var EmbedPlayground embed.FS
+
+//go:embed tests/*
+var EmbedTests embed.FS
