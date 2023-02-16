@@ -378,8 +378,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(tuple.GetType(tk.GetObject()), tk.Relation)
 		}
 
-		var outerHandlers []CheckHandlerFunc
-
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
@@ -399,8 +397,18 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return &openfgapb.CheckResponse{Allowed: false}, nil
 		}
 
-		if c.shouldCheckDirectTuple(typesys, allowedTypesForUser, tk.GetUser()) {
-			outerHandlers = append(outerHandlers, fn1)
+		shouldCheckDirectTuple, err := typesys.IsDirectlyRelated(
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetObject()), tk.GetRelation()),              //target
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		var checkFuncs []CheckHandlerFunc
+
+		if shouldCheckDirectTuple || typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
+			checkFuncs = append(checkFuncs, fn1)
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
@@ -474,28 +482,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		outerHandlers = append(outerHandlers, fn2)
+		checkFuncs = append(checkFuncs, fn2)
 
-		return union(ctx, c.concurrencyLimit, outerHandlers...)
+		return union(ctx, c.concurrencyLimit, checkFuncs...)
 	}
-}
-
-// allowedTypesForUser could be "team" or "team:*" or "group#member"
-// shouldCheckDirectTuple returns true if allowedTypes contains "team" and the user is like type "team:fga"
-// or if allowedTypes contains "group#member" and the user is like type "group:fga#member"
-func (c *LocalChecker) shouldCheckDirectTuple(typesys *typesystem.TypeSystem, allowedTypes []*openfgapb.RelationReference, user string) bool {
-	if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-		userType, _ := tuple.SplitObject(user)
-		_, userRel := tuple.SplitObjectRelation(user)
-		for _, targetType := range allowedTypes {
-			if userType == targetType.GetType() && targetType.GetRelation() == userRel {
-				return true
-			}
-		}
-		return false
-	}
-	// 1.0 model
-	return true
 }
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
