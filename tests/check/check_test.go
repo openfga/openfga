@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -15,6 +16,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
+
+var tuples = []*pb.TupleKey{
+	tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga#member"),
+	tuple.NewTupleKey("team:openfga", "member", "user:github|iaco@openfga"),
+}
 
 func TestCheckMemory(t *testing.T) {
 	testRunAll(t, "memory")
@@ -99,4 +105,183 @@ func testBadAuthModelID(t *testing.T, engine string) {
 	e, ok := status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, int(pb.ErrorCode_authorization_model_not_found), int(e.Code()))
+}
+
+func BenchmarkCheckMemory(b *testing.B) {
+	benchmarkAll(b, "memory")
+}
+
+func BenchmarkCheckPostgres(b *testing.B) {
+	benchmarkAll(b, "postgres")
+}
+
+func BenchmarkCheckMySQL(b *testing.B) {
+	benchmarkAll(b, "mysql")
+}
+
+func benchmarkAll(b *testing.B, engine string) {
+	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
+	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
+	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
+}
+
+const githubModel = `
+type user
+type team
+  relations
+    define member: [user,team#member] as self
+type repo
+  relations
+    define admin: [user,team#member] as self or repo_admin from owner
+    define maintainer: [user,team#member] as self or admin
+    define owner: [organization] as self
+    define reader: [user,team#member] as self or triager or repo_reader from owner
+    define triager: [user,team#member] as self or writer
+    define writer: [user,team#member] as self or maintainer or repo_writer from owner
+type organization
+  relations
+    define member: [user] as self or owner
+    define owner: [user] as self
+    define repo_admin: [user,organization#member] as self
+    define repo_reader: [user,organization#member] as self
+    define repo_writer: [user,organization#member] as self
+`
+
+func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, pb.OpenFGAServiceClient) {
+	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg.Log.Level = "none"
+	cfg.Datastore.Engine = engine
+
+	cancel := tests.StartServer(b, cfg)
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr,
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(b, err)
+
+	client := pb.NewOpenFGAServiceClient(conn)
+	return cancel, conn, client
+}
+
+func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
+
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	ctx := context.Background()
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
+	require.NoError(b, err)
+
+	storeID := resp.GetId()
+	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(githubModel),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(ctx, &pb.WriteRequest{
+		StoreId: storeID,
+		Writes:  &pb.TupleKeys{TupleKeys: tuples},
+	})
+	require.NoError(b, err)
+
+	for i := 0; i < b.N; i++ {
+		_, err = client.Check(ctx, &pb.CheckRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+		})
+
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithTrace(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	ctx := context.Background()
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
+	require.NoError(b, err)
+
+	storeID := resp.GetId()
+	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(githubModel),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(ctx, &pb.WriteRequest{
+		StoreId: storeID,
+		Writes:  &pb.TupleKeys{TupleKeys: tuples},
+	})
+	require.NoError(b, err)
+
+	for i := 0; i < b.N; i++ {
+		_, err = client.Check(ctx, &pb.CheckRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+			Trace:    true,
+		})
+
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	ctx := context.Background()
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
+	require.NoError(b, err)
+
+	storeID := resp.GetId()
+	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(githubModel),
+	})
+	require.NoError(b, err)
+
+	// add user to many usersets
+	for i := 0; i < 1000; i++ {
+		_, err = client.Write(ctx, &pb.WriteRequest{
+			StoreId: storeID,
+			Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+				tuple.NewTupleKey(fmt.Sprintf("team:%d", i), "member", "user:anne"),
+			}},
+		})
+		require.NoError(b, err)
+	}
+
+	// one of those usersets gives access to the repo
+	_, err = client.Write(ctx, &pb.WriteRequest{
+		StoreId: storeID,
+		Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+			tuple.NewTupleKey("repo:openfga", "admin", "team:999#member"),
+		}},
+	})
+	require.NoError(b, err)
+
+	// add direct access to the repo
+	_, err = client.Write(ctx, &pb.WriteRequest{
+		StoreId: storeID,
+		Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+			tuple.NewTupleKey("repo:openfga", "admin", "user:anne"),
+		}},
+	})
+	require.NoError(b, err)
+
+	for i := 0; i < b.N; i++ {
+		_, err = client.Check(ctx, &pb.CheckRequest{
+			StoreId:  storeID,
+			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:anne"),
+		})
+
+		require.NoError(b, err)
+	}
 }

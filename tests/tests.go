@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func StartServer(t *testing.T, cfg *run.Config) context.CancelFunc {
+func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI()
 
