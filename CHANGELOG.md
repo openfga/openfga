@@ -8,6 +8,51 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.5] - 2023-02-14
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.4...v0.3.5)
+
+### Added
+* [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) for Health Checks (#520)
+
+  OpenFGA containers now include an embedded `grpc_health_probe` binary that can be used to probe the Health Check endpoints of OpenFGA servers. Take a look at the [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) file for an example.
+
+* Improvements to telemetry: logging, tracing, and metrics (#468, #514, #517, #522)
+
+  * We have added Prometheus as the standard metrics provided for OpenFGA and provide a way to launch Grafana to view the metrics locally. See [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) for more information.
+
+  * We've improved the attributes of various trace spans and made sure that trace span names align with the functions they decorate.
+
+  * Our logging has been enhanced with more logged fields including request level logging which includes a `request_id` and `store_id` field in the log message.
+
+  These features will allow operators of OpenFGA to improve their monitoring and observability processes.
+
+* Nightly releases (#508) - thanks @Siddhant-K-code!
+
+  You should now be able to run nightly releases of OpenFGA using `docker pull openfga/openfga:nightly`
+
+### Fixed
+* Undefined computed relations on tuplesets now behave properly (#532)
+
+  If you had a model involing two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
+  ```
+  type document
+    relations
+      define parent as self
+      define viewer as x from parent or y from parent
+
+  type folder
+    relations
+      define x as self
+
+  type org
+    relations
+      define y as self
+  ```
+  Given the tuple `{ user: "org:contoso", relation: "parent", object: "document:1" }`, then `Check({ user: "jon", relation: "viewer", object: "document:1" })` would return an error prior to this fix because the `x` computed relation on the `document#parent` tupleset relation is not defined for the `org` object type.
+
+* Eliminate duplicate objects in ListObjects response (#528)
+
 ## [0.3.4] - 2023-02-02
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.3...v0.3.4)
@@ -301,7 +346,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/openfga/openfga/releases/tag/v0.3.5
 [0.3.4]: https://github.com/openfga/openfga/releases/tag/v0.3.4
 [0.3.3]: https://github.com/openfga/openfga/releases/tag/v0.3.3
 [0.3.2]: https://github.com/openfga/openfga/releases/tag/v0.3.2
