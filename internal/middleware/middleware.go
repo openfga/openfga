@@ -47,7 +47,7 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 		fields = append(fields, zap.String(storeIDKey, storeID))
 	}
 
-	if r, ok := m.(hasGetAuthorizationModelId); ok {
+	if r, ok := m.(hasGetAuthorizationModelID); ok {
 		modelID := r.GetAuthorizationModelId()
 		if modelID == "" {
 			modelID, err = s.datastore.FindLatestAuthorizationModelID(s.Context(), storeID)

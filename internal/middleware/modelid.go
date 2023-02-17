@@ -23,7 +23,7 @@ func ModelIDFromContext(ctx context.Context) (string, bool) {
 	return modelID, ok
 }
 
-type hasGetAuthorizationModelId interface {
+type hasGetAuthorizationModelID interface {
 	GetStoreId() string
 	GetAuthorizationModelId() string
 }
@@ -31,7 +31,7 @@ type hasGetAuthorizationModelId interface {
 // NewModelIDInterceptor must come after the trace and storeID interceptors
 func NewModelIDInterceptor(ds storage.AuthorizationModelReadBackend) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if r, ok := req.(hasGetAuthorizationModelId); ok {
+		if r, ok := req.(hasGetAuthorizationModelID); ok {
 			modelID := r.GetAuthorizationModelId()
 
 			if modelID == "" {
