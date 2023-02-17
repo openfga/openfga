@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,6 +22,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type ExperimentalFeatureFlag string
@@ -92,9 +93,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
@@ -141,9 +142,9 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return err
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
@@ -199,9 +200,9 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	cmd := commands.NewWriteCommand(s.datastore, s.logger)
@@ -228,9 +229,9 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
@@ -292,9 +293,9 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 	storeID := req.GetStoreId()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	q := commands.NewExpandQuery(s.datastore, s.logger)
@@ -342,9 +343,9 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
@@ -367,9 +368,9 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	modelID, ok := middleware.ModelIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("no model id")
+	modelID, err := resolveModelID(ctx, req.GetAuthorizationModelId())
+	if err != nil {
+		return nil, err
 	}
 
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
@@ -441,4 +442,18 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
 	return s.datastore.IsReady(ctx)
+}
+
+func resolveModelID(ctx context.Context, modelID string) (string, error) {
+	var ok bool
+	if modelID == "" {
+		modelID, ok = middleware.ModelIDFromContext(ctx)
+		if !ok {
+			return "", errors.New("no model id")
+		}
+	}
+
+	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
+
+	return modelID, nil
 }
