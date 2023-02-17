@@ -23,7 +23,6 @@ import (
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
-	"github.com/openfga/openfga/pkg/telemetry"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -144,7 +143,6 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		meter:     telemetry.NewNoopMeter(),
 		transport: gateway.NewNoopTransport(),
 		logger:    logger.NewNoopLogger(),
 		config: &Config{
@@ -216,7 +214,6 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 	s := Server{
 		datastore: mockDatastore,
-		meter:     telemetry.NewNoopMeter(),
 		transport: gateway.NewNoopTransport(),
 		logger:    logger.NewNoopLogger(),
 		config: &Config{
@@ -259,7 +256,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
-	meter := telemetry.NewNoopMeter()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -285,7 +281,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		datastore: mockDatastore,
 		transport: transport,
 		logger:    logger,
-		meter:     meter,
 		config: &Config{
 			ResolveNodeLimit:      25,
 			ListObjectsDeadline:   5 * time.Second,
@@ -323,7 +318,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
-	meter := telemetry.NewNoopMeter()
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -368,7 +362,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		datastore: mockDatastore,
 		transport: transport,
 		logger:    logger,
-		meter:     meter,
 		config: &Config{
 			ResolveNodeLimit:      25,
 			ListObjectsDeadline:   5 * time.Second,

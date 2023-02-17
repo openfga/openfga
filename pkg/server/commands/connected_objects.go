@@ -473,6 +473,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	}
 
 	if publiclyAssignable {
+		// e.g. 'user:*'
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
 			Object: fmt.Sprintf("%s:*", targetUserObjectType),
 		})
@@ -486,15 +487,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	if val, ok := req.targetUserRef.(*UserRefObject); ok {
 		userFilter = append(userFilter, &openfgapb.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
-		})
-	}
-
-	// e.g. 'user:*'
-	if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
-		targetRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Wildcard{}
-
-		userFilter = append(userFilter, &openfgapb.ObjectRelation{
-			Object: tuple.BuildObject(val.Type, "*"),
 		})
 	}
 
@@ -538,7 +530,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		foundObject := tk.GetObject()
 		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
-		if _, ok := foundObjectsMap.Load(foundObject); ok {
+		if _, ok := foundObjectsMap.LoadOrStore(foundObject, struct{}{}); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
 			// from the database in the first place
 
@@ -552,7 +544,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			}
 
 			resultChan <- foundObject
-			foundObjectsMap.Store(foundObject, struct{}{})
 		}
 
 		var targetUserRef isUserRef

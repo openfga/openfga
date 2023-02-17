@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 10s
+  scrape_timeout: 10s
+
+scrape_configs:
+  - job_name: openfga
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - 'openfga:2112'
