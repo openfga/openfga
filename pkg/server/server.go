@@ -97,12 +97,26 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	if err != nil {
 		return nil, err
 	}
+
 	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 	if err != nil {
-		return nil, serverErrors.AuthorizationModelNotFound(modelID)
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
+		}
+
+		return nil, err
 	}
 
 	typesys := typesystem.New(model)
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
@@ -153,10 +167,20 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		if errors.Is(err, storage.ErrNotFound) {
 			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
 		}
+
 		return serverErrors.HandleError("", err)
 	}
 
 	typesys := typesystem.New(model)
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
 		Datastore:        s.datastore,
