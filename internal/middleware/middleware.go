@@ -64,7 +64,7 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 			fields = append(fields, zap.String(modelIDKey, modelID))
 
 			// Add the modelID to the return header
-			_ = s.SetHeader(metadata.Pairs(modelIDHeader, modelID))
+			_ = s.SendHeader(metadata.Pairs(modelIDHeader, modelID))
 		}
 	}
 

@@ -639,6 +639,7 @@ func RunServer(ctx context.Context, config *Config) error {
 				return status.Convert(encodedErr)
 			}),
 			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
+			runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 		}
 		mux := runtime.NewServeMux(muxOpts...)
 		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {

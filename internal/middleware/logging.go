@@ -21,7 +21,7 @@ const (
 	requestIDKey       = "request_id"
 	traceIDKey         = "trace_id"
 	storeIDKey         = "store_id"
-	modelIDKey         = "model_id"
+	modelIDKey         = "authorization_model_id"
 	rawRequestKey      = "raw_request"
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
