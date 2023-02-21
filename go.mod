@@ -30,7 +30,7 @@ require (
 	github.com/stretchr/testify v1.8.1
 	github.com/tidwall/gjson v1.14.4
 	go.buf.build/openfga/go/openfga/api v1.2.49
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.38.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.39.0
 	go.opentelemetry.io/otel v1.13.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.12.0
 	go.opentelemetry.io/otel/sdk v1.12.0
@@ -86,13 +86,13 @@ require (
 	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.12.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.12.0 // indirect
-	go.opentelemetry.io/otel/metric v0.35.0 // indirect
+	go.opentelemetry.io/otel/metric v0.36.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
 	golang.org/x/crypto v0.6.0 // indirect
 	golang.org/x/exp v0.0.0-20230206171751-46f607a40771 // indirect
-	golang.org/x/net v0.6.0 // indirect
+	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20230131230820-1c016267d619 // indirect
