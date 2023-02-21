@@ -38,10 +38,6 @@ dockers:
     use: buildx
     build_flag_templates:
       - "--platform=linux/amd64"
-      - "--build-arg"
-      - "OS=linux"
-      - "--build-arg"
-      - "ARCH=amd64"
 
     extra_files:
       - assets
@@ -63,10 +59,6 @@ dockers:
 
     build_flag_templates:
       - "--platform=linux/arm64"
-      - "--build-arg"
-      - "OS=linux"
-      - "--build-arg"
-      - "ARCH=arm64"
 
     extra_files:
       - assets

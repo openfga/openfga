@@ -143,6 +143,18 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
 	util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
 
+	flags.Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable prometheus metrics on the '/metrics' endpoint")
+	util.MustBindPFlag("metrics.enabled", flags.Lookup("metrics-enabled"))
+	util.MustBindEnv("metrics.enabled", "OPENFGA_METRICS_ENABLED")
+
+	flags.String("metrics-addr", defaultConfig.Metrics.Addr, "the host:port address to serve the prometheus metrics server on")
+	util.MustBindPFlag("metrics.addr", flags.Lookup("metrics-addr"))
+	util.MustBindEnv("metrics.addr", "OPENFGA_METRICS_ADDR")
+
+	flags.Bool("metrics-enable-rpc-histograms", defaultConfig.Metrics.EnableRPCHistograms, "enables prometheus histogram metrics for RPC latency distributions")
+	util.MustBindPFlag("metrics.enableRPCHistograms", flags.Lookup("metrics-enable-rpc-histograms"))
+	util.MustBindEnv("metrics.enableRPCHistograms", "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS")
+
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 	util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
 	util.MustBindEnv("maxTuplesPerWrite", "OPENFGA_MAX_TUPLES_PER_WRITE", "OPENFGA_MAXTUPLESPERWRITE")
@@ -166,12 +178,4 @@ func bindRunFlags(command *cobra.Command) {
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
 	util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 	util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
-
-	flags.String("otel-metrics-endpoint", defaultConfig.OpenTelemetry.Endpoint, "OpenTelemetry collector endpoint to use")
-	util.MustBindPFlag("otel.metrics.endpoint", flags.Lookup("otel-metrics-endpoint"))
-	util.MustBindEnv("otel.metrics.endpoint", "OPENFGA_OTEL_METRICS_ENDPOINT")
-
-	flags.String("otel-metrics-protocol", defaultConfig.OpenTelemetry.Protocol, "OpenTelemetry protocol to use to send OTLP metrics")
-	util.MustBindPFlag("otel.metrics.protocol", flags.Lookup("otel-metrics-protocol"))
-	util.MustBindEnv("otel.metrics.protocol", "OPENFGA_OTEL_METRICS_PROTOCOL")
 }

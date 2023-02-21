@@ -17,9 +17,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/metric/instrument"
-	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -33,7 +30,6 @@ const (
 type ListObjectsQuery struct {
 	Datastore             storage.OpenFGADatastore
 	Logger                logger.Logger
-	Meter                 metric.Meter
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
@@ -176,15 +172,6 @@ func (q *ListObjectsQuery) Execute(
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
-	listObjectsCounter, err := q.Meter.Int64UpDownCounter(
-		"openfga.listObjects.results",
-		instrument.WithDescription("Number of results returned by ListObjects"),
-		instrument.WithUnit(unit.Dimensionless),
-	)
-	if err != nil {
-		return nil, serverErrors.NewInternalError("", err)
-	}
-
 	resultsChan := make(chan string, 1)
 	if q.ListObjectsMaxResults > 0 {
 		resultsChan = make(chan string, q.ListObjectsMaxResults)
@@ -199,22 +186,17 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err = q.handler(timeoutCtx, req, resultsChan, errChan)
+	err := q.handler(timeoutCtx, req, resultsChan, errChan)
 	if err != nil {
 		return nil, err
 	}
 
-	attributes := make([]attribute.KeyValue, 1)
 	objects := make([]string, 0)
 
 	for {
 		select {
 		case objectID, ok := <-resultsChan:
 			if !ok {
-				// Channel closed! No more results. Send them all
-				attributes = append(attributes, attribute.Bool("complete_results", true))
-				listObjectsCounter.Add(ctx, int64(len(objects)), attributes...)
-
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil

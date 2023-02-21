@@ -1,0 +1,1409 @@
+tests:
+  - name: This
+    stages:
+      - model: |
+          type document
+            relations
+              define viewer as self
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: false
+
+  - name: ComputedUserset
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define viewer as writer
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: writer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: aardvark
+            expectation: false
+
+  - name: TupleToUserset
+    stages:
+      - model: |
+          type folder
+            relations
+              define viewer as self
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:x
+          - object: folder:x
+            relation: viewer
+            user: aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+
+  - name: ThisAndUnion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define viewer as self or writer
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+
+  - name: ThisAndIntersection
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define viewer as self and writer
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:2
+            relation: viewer
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: ThisAndExclusionBase
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define viewer as self but not writer
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:2
+            relation: viewer
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: ComputedUsersetAndUnion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer or editor
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:2
+            relation: editor
+            user: badger
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+
+  - name: ComputedUsersetAndIntersection
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer and editor
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: ComputedUsersetAndExclusion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer but not editor
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: TupleToUsersetAndComputedUserset
+    stages:
+      - model: |
+          type folder
+            relations
+              define writer as self
+              define viewer as writer
+          
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: writer
+            user: aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+
+  - name: TupleToUsersetAndTupleToUserset
+    stages:
+      - model: |
+          type group
+            relations
+              define member as self
+          
+          type folder
+            relations
+              define parent as self
+              define viewer as member from parent
+          
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: parent
+            user: group:G
+          - object: group:G
+            relation: member
+            user: aardvark
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+
+  - name: TupleToUsersetAndUnion
+    stages:
+      - model: |
+          type folder
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer or editor
+          
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: editor
+            user: badger
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: true
+
+  - name: TupleToUsersetAndIntersection
+    stages:
+      - model: |
+          type folder
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer and editor
+    
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: editor
+            user: aardvark
+          - object: folder:X
+            relation: writer
+            user: badger
+          - object: folder:X
+            relation: editor
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: TupleToUsersetAndExclusion
+    stages:
+      - model: |
+          type folder
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer but not editor
+    
+          type document
+            relations
+              define parent as self
+              define viewer as viewer from parent
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: editor
+            user: aardvark
+          - object: folder:X
+            relation: writer
+            user: badger
+          - object: folder:X
+            relation: editor
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: UnionAndTupleToUserset
+    stages:
+      - model: |
+          type folder
+            relations
+              define viewer as self
+    
+          type document
+            relations
+              define parent as self
+              define writer as self
+              define viewer as writer or (viewer from parent)
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: badger
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: true
+
+  - name: UnionAndUnion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer or (editor or owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: owner
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+
+  - name: UnionAndIntersection
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer or (editor and owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+          - object: document:4
+            relation: owner
+            user: duck
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+
+  - name: UnionAndExclusion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer or (editor but not owner)
+        tuples:
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+          - object: document:4
+            relation: owner
+            user: duck
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+
+  - name: IntersectionAndTupleToUserset
+    stages:
+      - model: |
+          type folder
+            relations
+              define viewer as self
+          
+          type document
+            relations
+              define parent as self
+              define writer as self
+              define viewer as writer and (viewer from parent)
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: viewer
+            user: badger
+          - object: document:2
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: IntersectionAndUnion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer and (editor or owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:4
+            relation: editor
+            user: duck
+          - object: document:5
+            relation: owner
+            user: eagle
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+          - tuple:
+              object: document:5
+              relation: viewer
+              user: eagle
+            expectation: false
+
+  - name: IntersectionAndIntersection
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer and (editor and owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:3
+            relation: owner
+            user: cheetah
+          - object: document:4
+            relation: writer
+            user: duck
+          - object: document:5
+            relation: editor
+            user: eagle
+          - object: document:6
+            relation: owner
+            user: fox
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+          - tuple:
+              object: document:5
+              relation: viewer
+              user: eagle
+            expectation: false
+          - tuple:
+              object: document:6
+              relation: viewer
+              user: fox
+            expectation: false
+
+  - name: IntersectionAndExclusion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer and (editor but not owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:3
+            relation: owner
+            user: cheetah
+          - object: document:4
+            relation: writer
+            user: duck
+          - object: document:5
+            relation: editor
+            user: eagle
+          - object: document:6
+            relation: owner
+            user: fox
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+          - tuple:
+              object: document:5
+              relation: viewer
+              user: eagle
+            expectation: false
+          - tuple:
+              object: document:6
+              relation: viewer
+              user: fox
+            expectation: false
+
+  - name: ExclusionAndComputedUnion
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define viewer as writer but not editor
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: ExclusionAndTupleToUsersetInBase
+    stages:
+      - model: |
+          type folder
+            relations
+              define viewer as self
+          
+          type document
+            relations
+              define parent as self
+              define writer as self
+              define viewer as (viewer from parent) but not writer
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: viewer
+            user: badger
+          - object: document:2
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: cheetah
+            expectation: false
+
+  - name: ExclusionAndTupleToUsersetInSubtract
+    stages:
+      - model: |
+          type folder
+            relations
+              define viewer as self
+    
+          type document
+            relations
+              define parent as self
+              define writer as self
+              define viewer as writer but not (viewer from parent)
+        tuples:
+          - object: document:1
+            relation: parent
+            user: folder:X
+          - object: folder:X
+            relation: viewer
+            user: aardvark
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: folder:X
+            relation: viewer
+            user: badger
+          - object: document:2
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: cheetah
+            expectation: true
+
+  - name: ExclusionAndUnionInBase
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as (writer or editor) but not owner
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: editor
+            user: cheetah
+          - object: document:3
+            relation: owner
+            user: cheetah
+          - object: document:4
+            relation: writer
+            user: duck
+          - object: document:5
+            relation: editor
+            user: eagle
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: true
+          - tuple:
+              object: document:5
+              relation: viewer
+              user: eagle
+            expectation: true
+
+  - name: ExclusionAndUnionInSubtract
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer but not (editor or owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+
+  - name: ExclusionAndIntersectionInBase
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as (writer and editor) but not owner
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:4
+            relation: editor
+            user: duck
+          - object: document:5
+            relation: owner
+            user: eagle
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: false
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: false
+          - tuple:
+              object: document:5
+              relation: viewer
+              user: eagle
+            expectation: false
+
+  - name: ExclusionAndIntersectionInSubtract
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer but not (editor and owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:3
+            relation: owner
+            user: cheetah
+          - object: document:4
+            relation: writer
+            user: duck
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: true
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+          - tuple:
+              object: document:4
+              relation: viewer
+              user: duck
+            expectation: true
+
+  - name: ExclusionAndExclusionInBase
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as (writer but not editor) but not owner
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: owner
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: false
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+
+  - name: ExclusionAndExclusionInSubtract
+    stages:
+      - model: |
+          type document
+            relations
+              define writer as self
+              define editor as self
+              define owner as self
+              define viewer as writer but not (editor but not owner)
+        tuples:
+          - object: document:1
+            relation: writer
+            user: aardvark
+          - object: document:1
+            relation: editor
+            user: aardvark
+          - object: document:1
+            relation: owner
+            user: aardvark
+          - object: document:2
+            relation: writer
+            user: badger
+          - object: document:2
+            relation: editor
+            user: badger
+          - object: document:3
+            relation: writer
+            user: cheetah
+          - object: document:3
+            relation: owner
+            user: cheetah
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: aardvark
+            expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: badger
+            expectation: false
+          - tuple:
+              object: document:3
+              relation: viewer
+              user: cheetah
+            expectation: true
+
+  - name: userset_as_user
+    stages:
+      - model: |
+          type group
+            relations
+              define member as self
+          
+          type document
+            relations
+              define viewer as self
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: group:x#member
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: group:x#member
+            expectation: true
+
+  - name: wildcard_direct
+    stages:
+      - model: |
+          type document
+            relations
+              define viewer as self
+        tuples:
+          - object: document:public
+            relation: viewer
+            user: "*"
+        assertions:
+          - tuple:
+              object: document:public
+              relation: viewer
+              user: aardvark
+            expectation: true
+
+  - name: typed_wildcard_string_is_treated_as_a_literal
+    stages:
+      - model: |
+          type document
+            relations
+              define viewer as self
+        tuples:
+          - object: document:1
+            relation: viewer
+            user: user:*
+        assertions:
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:*
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:aardvark
+            expectation: false
+
+  - name: skip_undefined_computed_relations_on_tuplesets
+    stages:
+      - model: |
+          type rule
+            relations
+              define assigned as self
+              define has_assigned as u1 from assigned or u2 from assigned
+          type parent1
+            relations
+              define role as self
+              define u1 as role
+          type parent2
+            relations
+              define role as self
+              define u2 as role
+        assertions:
+          - tuple:
+              object: rule:X
+              relation: has_assigned
+              user: user:1
+            contextualTuples:
+              - object: parent2:a
+                relation: role
+                user: user:1
+              - object: rule:X
+                relation: assigned
+                user: parent2:a
+            expectation: true

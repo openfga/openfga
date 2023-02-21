@@ -434,7 +434,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						return &openfgapb.CheckResponse{Allowed: true}, nil
 					}
 
-					return &openfgapb.CheckResponse{Allowed: false}, nil
+					continue
 				}
 
 				if usersetRelation != "" {
@@ -449,7 +449,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							},
 						}))
 				}
-
 			}
 
 			if len(handlers) == 0 {
@@ -518,6 +517,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				Object:   userObj,
 				Relation: computedRelation,
 				User:     tk.GetUser(),
+			}
+
+			if _, err := typesys.GetRelation(tuple.GetType(userObj), computedRelation); err != nil {
+				if errors.Is(err, typesystem.ErrRelationUndefined) {
+					continue // skip computed relations on tupleset relationships if they are undefined
+				}
 			}
 
 			handlers = append(handlers, c.dispatch(
