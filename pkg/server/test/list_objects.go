@@ -105,7 +105,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		objects := resp.GetObjects()
-		require.Len(t, objects, 2)
 		require.ElementsMatch(t, []string{"doc:1", "doc:2"}, objects)
 	})
 
