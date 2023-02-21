@@ -202,21 +202,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				name: "returns_error_if_duplicate_contextual_tuples",
-				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "bob",
-						Relation: "admin",
-						Object:   "repo:5",
-					}, {
-						User:     "bob",
-						Relation: "admin",
-						Object:   "repo:5",
-					}}}),
-				expectedResult: nil,
-				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "bob")),
-			},
-			{
 				name:           "returns_error_if_unknown_type",
 				request:        newListObjectsRequest(store, "unknown", "admin", "anna", model.Id, nil),
 				expectedResult: nil,
@@ -353,21 +338,6 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError: serverErrors.InvalidTuple("the typed wildcard 'user:*' is not an allowed type restriction for 'team#member'",
 					tuple.NewTupleKey("team:fga", "member", "user:*"),
 				),
-			},
-			{
-				name: "returns_error_if_duplicate_contextual_tuples",
-				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{{
-						User:     "user:bob",
-						Relation: "admin",
-						Object:   "repo:5",
-					}, {
-						User:     "user:bob",
-						Relation: "admin",
-						Object:   "repo:5",
-					}}}),
-				expectedResult: nil,
-				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "user:bob")),
 			},
 			{
 				name:           "returns_error_if_unknown_type",

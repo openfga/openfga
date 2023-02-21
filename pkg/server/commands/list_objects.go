@@ -62,6 +62,12 @@ func (q *ListObjectsQuery) evaluate(
 		panic("typesystem missing in context")
 	}
 
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return serverErrors.HandleTupleValidateError(err)
+		}
+	}
+
 	_, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
