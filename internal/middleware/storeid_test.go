@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -61,13 +62,16 @@ func TestStreamingStoreIDInterceptor(t *testing.T) {
 	})
 
 	t.Run("streaming_interceptor_with_GetStoreId_in_request", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		modelID := ulid.Make().String()
+
 		handler := func(srv interface{}, stream grpc.ServerStream) error {
-			err := stream.RecvMsg(&openfgapb.CheckRequest{StoreId: "abc"})
+			err := stream.RecvMsg(&openfgapb.CheckRequest{StoreId: storeID, AuthorizationModelId: modelID})
 			require.NoError(t, err)
 
 			got, ok := StoreIDFromContext(stream.Context())
 			require.True(t, ok)
-			require.Equal(t, "abc", got)
+			require.Equal(t, storeID, got)
 
 			return nil
 		}

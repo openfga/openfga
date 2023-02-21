@@ -23,7 +23,7 @@ func TestUnaryModelIDInterceptor(t *testing.T) {
 		}
 
 		_, err := interceptor(context.Background(), nil, nil, handler)
-		require.Error(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("no_modelID_in_request", func(t *testing.T) {
@@ -38,7 +38,7 @@ func TestUnaryModelIDInterceptor(t *testing.T) {
 		}
 
 		_, err := interceptor(context.Background(), &openfgapb.CheckRequest{StoreId: ulid.Make().String()}, nil, handler)
-		require.NoError(t, err)
+		require.Error(t, err)
 	})
 
 	t.Run("empty_modelID_in_request_but_not_in_ds", func(t *testing.T) {

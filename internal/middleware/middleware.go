@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/openfga/openfga/pkg/storage"
@@ -40,27 +41,31 @@ func (s *wrappedServerStream) RecvMsg(m interface{}) error {
 
 	var fields []zap.Field
 
-	var storeID string
 	if r, ok := m.(hasGetStoreID); ok {
-		storeID = r.GetStoreId()
+		storeID := r.GetStoreId()
 		s.wrappedContext = context.WithValue(s.Context(), storeIDCtxKey, storeID)
 		fields = append(fields, zap.String(storeIDKey, storeID))
-	}
 
-	if r, ok := m.(hasGetAuthorizationModelID); ok {
-		modelID := r.GetAuthorizationModelId()
-		if modelID == "" {
-			modelID, err = s.datastore.FindLatestAuthorizationModelID(s.Context(), storeID)
-			if err != nil {
-				return fmt.Errorf("failed to retrieve model id: %w", err)
+		if r, ok := m.(hasGetAuthorizationModelID); ok {
+			modelID := r.GetAuthorizationModelId()
+
+			if modelID == "" {
+				if s.datastore == nil {
+					return errors.New("failed to retrieve model id")
+				}
+
+				modelID, err = s.datastore.FindLatestAuthorizationModelID(s.Context(), storeID)
+				if err != nil {
+					return fmt.Errorf("failed to retrieve model id: %w", err)
+				}
 			}
+
+			s.wrappedContext = context.WithValue(s.Context(), modelIDCtxKey, modelID)
+			fields = append(fields, zap.String(modelIDKey, modelID))
+
+			// Add the modelID to the return header
+			_ = grpc.SetHeader(s.Context(), metadata.Pairs(modelIDHeader, modelID))
 		}
-
-		s.wrappedContext = context.WithValue(s.Context(), modelIDCtxKey, modelID)
-		fields = append(fields, zap.String(modelIDKey, modelID))
-
-		// Add the modelID to the return header
-		_ = grpc.SetHeader(s.Context(), metadata.Pairs(modelIDHeader, modelID))
 	}
 
 	if jsonM, err := json.Marshal(m); err == nil {
