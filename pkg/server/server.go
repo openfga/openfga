@@ -449,7 +449,7 @@ func resolveModelID(ctx context.Context, modelID string) (string, error) {
 	if modelID == "" {
 		modelID, ok = middleware.ModelIDFromContext(ctx)
 		if !ok {
-			return "", errors.New("no model id")
+			return "", errors.New("no authorization model id")
 		}
 	}
 

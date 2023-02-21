@@ -14,8 +14,8 @@ import (
 const (
 	modelIDCtxKey ctxKey = "model-id-context-key"
 
-	modelIDTraceKey = "model_id"
-	modelIDHeader   = "model-id"
+	modelIDTraceKey = "authorization_model_id"
+	modelIDHeader   = "authorization-model-id"
 )
 
 func ModelIDFromContext(ctx context.Context) (string, bool) {
@@ -44,7 +44,7 @@ func NewModelIDInterceptor(ds storage.AuthorizationModelReadBackend) grpc.UnaryS
 				modelID, err = ds.FindLatestAuthorizationModelID(ctx, storeID)
 				if err != nil {
 					if errors.Is(err, storage.ErrNotFound) {
-						return nil, errors.New("no latest model id in datastore")
+						return nil, errors.New("no latest authorization model id in datastore")
 					}
 					return nil, err
 				}
