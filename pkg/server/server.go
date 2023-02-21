@@ -22,16 +22,11 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/metadata"
 )
 
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
-	AuthorizationModelIDTraceTag = "authorization_model_id"
-
 	checkConcurrencyLimit = 100
 )
 
@@ -307,9 +302,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 }
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
-	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
-		attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(req.GetId())},
-	))
+	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel")
 	defer span.End()
 
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
@@ -452,8 +445,6 @@ func resolveModelID(ctx context.Context, modelID string) (string, error) {
 			return "", errors.New("no authorization model id")
 		}
 	}
-
-	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
 
 	return modelID, nil
 }
