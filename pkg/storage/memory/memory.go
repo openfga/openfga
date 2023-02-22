@@ -353,7 +353,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, fil
 			Object:   filter.ObjectID,
 			Relation: filter.Relation,
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
-			if len(filter.AllowedTypesForUser) == 0 { // 1.0 model
+			if len(filter.AllowedUserTypeRestrictions) == 0 { // 1.0 model
 				matches = append(matches, t)
 				continue
 			}
@@ -361,7 +361,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, fil
 			// 1.1 model: see if the tuple found is of an allowed type
 			userType := tupleUtils.GetType(t.GetKey().GetUser())
 			_, userRelation := tupleUtils.SplitObjectRelation(t.GetKey().GetUser())
-			for _, allowedType := range filter.AllowedTypesForUser {
+			for _, allowedType := range filter.AllowedUserTypeRestrictions {
 				if allowedType.Type == userType && allowedType.GetRelation() == userRelation {
 					matches = append(matches, t)
 					continue

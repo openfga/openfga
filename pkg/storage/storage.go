@@ -128,9 +128,9 @@ type ReadStartingWithUserFilter struct {
 }
 
 type ReadUsersetTuplesFilter struct {
-	ObjectID            string                         // required
-	Relation            string                         // required
-	AllowedTypesForUser []*openfgapb.RelationReference // optional
+	ObjectID                    string                         // required
+	Relation                    string                         // required
+	AllowedUserTypeRestrictions []*openfgapb.RelationReference // optional
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.

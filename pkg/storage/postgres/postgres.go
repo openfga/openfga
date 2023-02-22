@@ -307,9 +307,9 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	if filter.Relation != "" {
 		sb = sb.Where(sq.Eq{"relation": filter.Relation})
 	}
-	if len(filter.AllowedTypesForUser) > 0 {
+	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
-		for _, userset := range filter.AllowedTypesForUser {
+		for _, userset := range filter.AllowedUserTypeRestrictions {
 			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
 				orConditions = append(orConditions, sq.Like{"_user": userset.Type + "%#" + userset.GetRelation()})
 			}

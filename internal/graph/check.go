@@ -417,9 +417,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				ObjectID:            tk.Object,
-				Relation:            tk.Relation,
-				AllowedTypesForUser: allowedTypesForUser,
+				ObjectID:                    tk.Object,
+				Relation:                    tk.Relation,
+				AllowedUserTypeRestrictions: allowedTypesForUser,
 			})
 			if err != nil {
 				return &openfgapb.CheckResponse{Allowed: false}, err
