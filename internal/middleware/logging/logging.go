@@ -34,7 +34,7 @@ type hasGetStoreID interface {
 	GetStoreId() string
 }
 
-type hasGetAuthorizationModelId interface {
+type hasGetAuthorizationModelID interface {
 	GetAuthorizationModelId() string
 }
 
@@ -85,7 +85,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 		r.fields = append(r.fields, zap.String(storeIDKey, m.GetStoreId()))
 	}
 
-	if m, ok := msg.(hasGetAuthorizationModelId); ok {
+	if m, ok := msg.(hasGetAuthorizationModelID); ok {
 		r.fields = append(r.fields, zap.String(modelIDKey, m.GetAuthorizationModelId()))
 	}
 
