@@ -12,19 +12,9 @@ import (
 )
 
 const (
-	storeIDCtxKey   = "store-id-context-key"
 	storeIDTraceKey = "store_id"
 	storeIDHeader   = "openfga-store-id"
 )
-
-func FromContext(ctx context.Context) (string, bool) {
-	if md, ok := metadata.FromOutgoingContext(ctx); ok {
-		if vals := md.Get(storeIDCtxKey); len(vals) > 0 {
-			return vals[0], true
-		}
-	}
-	return "", false
-}
 
 type hasGetStoreID interface {
 	GetStoreId() string

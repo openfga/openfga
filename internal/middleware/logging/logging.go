@@ -3,12 +3,10 @@ package logging
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/openfga/openfga/internal/middleware/requestid"
-	"github.com/openfga/openfga/internal/middleware/storeid"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
@@ -57,11 +55,6 @@ type reporter struct {
 func (r *reporter) PostCall(err error, _ time.Duration) {
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
-
-	if storeID, ok := storeid.FromContext(r.ctx); ok {
-		fmt.Println("we got store id")
-		r.fields = append(r.fields, zap.String(storeIDKey, storeID))
-	}
 
 	if err != nil {
 		if internalError, ok := err.(serverErrors.InternalError); ok {

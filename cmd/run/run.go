@@ -26,7 +26,7 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/gateway"
-	authn2 "github.com/openfga/openfga/internal/middleware/authn"
+	mwauthn "github.com/openfga/openfga/internal/middleware/authn"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/internal/middleware/logging"
 	"github.com/openfga/openfga/internal/middleware/requestid"
@@ -493,11 +493,11 @@ func RunServer(ctx context.Context, config *Config) error {
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(logger),
-		grpc_auth.UnaryServerInterceptor(authn2.AuthFunc(authenticator)),
+		grpc_auth.UnaryServerInterceptor(mwauthn.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		grpc_auth.StreamServerInterceptor(authn2.AuthFunc(authenticator)),
+		grpc_auth.StreamServerInterceptor(mwauthn.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),
