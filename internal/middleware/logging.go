@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/openfga/openfga/internal/middleware/requestid"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -35,7 +36,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			zap.String(grpcTypeKey, "unary"),
 		}
 
-		if requestID, ok := RequestIDFromContext(ctx); ok {
+		if requestID, ok := requestid.RequestIDFromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
@@ -92,7 +93,7 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		ss := newWrappedServerStream(stream)
 
-		if requestID, ok := RequestIDFromContext(ss.Context()); ok {
+		if requestID, ok := requestid.RequestIDFromContext(ss.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 

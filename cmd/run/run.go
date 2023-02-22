@@ -28,6 +28,7 @@ import (
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/middleware"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
+	"github.com/openfga/openfga/internal/middleware/requestid"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server"
@@ -465,12 +466,12 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		middleware.NewRequestIDInterceptor(logger),
+		requestid.NewRequestIDInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		middleware.NewStreamingRequestIDInterceptor(logger),
+		requestid.NewStreamingRequestIDInterceptor(),
 	}
 
 	if config.Metrics.Enabled {
@@ -637,6 +638,7 @@ func RunServer(ctx context.Context, config *Config) error {
 				return status.Convert(encodedErr)
 			}),
 			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
+			runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 		}
 		mux := runtime.NewServeMux(muxOpts...)
 		if err := openfgapb.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
