@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/openfga/openfga/internal/contextualtuples"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
@@ -46,7 +45,7 @@ type listObjectsRequest interface {
 	GetContextualTuples() *openfgapb.ContextualTupleKeys
 }
 
-func (q *ListObjectsQuery) handler(
+func (q *ListObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
 	resultsChan chan<- string,
@@ -58,21 +57,18 @@ func (q *ListObjectsQuery) handler(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
-	model, err := q.Datastore.ReadAuthorizationModel(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+	typesys, ok := typesystem.TypesystemFromContext(ctx)
+	if !ok {
+		panic("typesystem missing in context")
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return serverErrors.HandleTupleValidateError(err)
 		}
-		return err
 	}
 
-	typesys := typesystem.New(model)
-
-	if _, err = contextualtuples.New(typesys, req.GetContextualTuples().GetTupleKeys()); err != nil {
-		return err
-	}
-
-	_, err = typesys.GetRelation(targetObjectType, targetRelation)
+	_, err := typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return serverErrors.TypeNotFound(targetObjectType)
@@ -186,7 +182,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.handler(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +226,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.handler(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
 	if err != nil {
 		return err
 	}
