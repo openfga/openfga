@@ -402,17 +402,20 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				typesystem.DirectRelationReference(objectType, relation),                                         //target
 				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
 			)
+
 			if shouldCheckDirectTuple {
 				checkFuncs = append(checkFuncs, fn1)
 			}
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+
 			var allowedTypesForUser []*openfgapb.RelationReference
 			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 				// allowedTypesForUser could be "user" or "user:*" or "group#member"
 				allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
 			}
+
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				ObjectID:            tk.Object,
 				Relation:            tk.Relation,
