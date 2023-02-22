@@ -14,7 +14,7 @@ import (
 const (
 	requestIDCtxKey   = "request-id-context-key"
 	requestIDTraceKey = "request_id"
-	requestIDHeader   = "X-Request-Id"
+	requestIDHeader   = "x-request-id"
 )
 
 func FromContext(ctx context.Context) (string, bool) {
@@ -23,6 +23,7 @@ func FromContext(ctx context.Context) (string, bool) {
 			return vals[0], true
 		}
 	}
+
 	return "", false
 }
 

@@ -26,9 +26,11 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/gateway"
-	"github.com/openfga/openfga/internal/middleware"
+	authn2 "github.com/openfga/openfga/internal/middleware/authn"
 	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
+	"github.com/openfga/openfga/internal/middleware/logging"
 	"github.com/openfga/openfga/internal/middleware/requestid"
+	"github.com/openfga/openfga/internal/middleware/storeid"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server"
@@ -489,17 +491,17 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	unaryInterceptors = append(unaryInterceptors,
-		middleware.NewStoreIDInterceptor(),
-		middleware.NewLoggingInterceptor(logger),
-		grpc_auth.UnaryServerInterceptor(middleware.AuthFunc(authenticator)),
+		storeid.NewUnaryInterceptor(),
+		logging.NewLoggingInterceptor(logger),
+		grpc_auth.UnaryServerInterceptor(authn2.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		grpc_auth.StreamServerInterceptor(middleware.AuthFunc(authenticator)),
+		grpc_auth.StreamServerInterceptor(authn2.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
-		middleware.NewStreamingStoreIDInterceptor(),
-		middleware.NewStreamingLoggingInterceptor(logger),
+		storeid.NewStreamingInterceptor(),
+		logging.NewStreamingLoggingInterceptor(logger),
 	)
 
 	opts := []grpc.ServerOption{

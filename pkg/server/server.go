@@ -22,6 +22,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 type ExperimentalFeatureFlag string
@@ -464,13 +466,14 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
-// resolveAuthorizationModelID takes a modelId. If it is empty, it will find and return the latest authorization model ID.
+// resolveAuthorizationModelID takes a modelID. If it is empty, it will find
+// and return the latest authorization modelID. If is not empty, it will
+// validate it and return it.
 //
-// If is not empty, it will validate it and return it.
-//
-// This allows caching of types. If the user inserts a new authorization model and doesn't
-// provide this field (which should be rate limited more aggressively) the in-flight requests won't be
-// affected and newer calls will use the updated authorization model.
+// This allows caching of types. If the user inserts a new authorization model
+// and doesn't provide this field (which should be rate limited more
+// aggressively) the in-flight requests won't be affected and newer calls will
+// use the updated authorization model.
 func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
 	defer span.End()
@@ -490,7 +493,8 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(modelID)})
-	s.transport.SetHeader(ctx, AuthorizationModelIDHeader, modelID)
+
+	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
 
 	return modelID, nil
 }
