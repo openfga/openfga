@@ -21,25 +21,13 @@ type hasGetStoreID interface {
 }
 
 // NewUnaryInterceptor creates a grpc.UnaryServerInterceptor which must come
-// after the trace interceptor and before the logging interceptor.
+// after the trace interceptor.
 func NewUnaryInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if r, ok := req.(hasGetStoreID); ok {
-			storeID := r.GetStoreId()
-
-			// Add the storeID to the span
-			trace.SpanFromContext(ctx).SetAttributes(attribute.String(storeIDTraceKey, storeID))
-
-			// Add the storeID to the response headers
-			_ = grpc.SetHeader(ctx, metadata.Pairs(storeIDHeader, storeID))
-		}
-
-		return handler(ctx, req)
-	}
+	return interceptors.UnaryServerInterceptor(reportable())
 }
 
-// NewStreamingInterceptor creates a grpc.StreamServerInterceptor and
-// must come after the trace interceptor and before the logging interceptor.
+// NewStreamingInterceptor creates a grpc.StreamServerInterceptor which must
+// come after the trace interceptor.
 func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 	return interceptors.StreamServerInterceptor(reportable())
 }

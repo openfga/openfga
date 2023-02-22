@@ -33,9 +33,8 @@ func NewUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return interceptors.UnaryServerInterceptor(reportable())
 }
 
-// NewStreamingInterceptor creates a grpc.StreamServerInterceptor
-// which must come after the trace interceptor and before the logging
-// interceptor.
+// NewStreamingInterceptor creates a grpc.StreamServerInterceptor which must
+// come after the trace interceptor and before the logging interceptor.
 func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 	return interceptors.StreamServerInterceptor(reportable())
 }
