@@ -36,7 +36,7 @@ func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 			zap.String(grpcTypeKey, "unary"),
 		}
 
-		if requestID, ok := requestid.RequestIDFromContext(ctx); ok {
+		if requestID, ok := requestid.FromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
@@ -93,7 +93,7 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 
 		ss := newWrappedServerStream(stream)
 
-		if requestID, ok := requestid.RequestIDFromContext(ss.Context()); ok {
+		if requestID, ok := requestid.FromContext(ss.Context()); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 

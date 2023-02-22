@@ -17,7 +17,7 @@ const (
 	requestIDHeader   = "X-Request-Id"
 )
 
-func RequestIDFromContext(ctx context.Context) (string, bool) {
+func FromContext(ctx context.Context) (string, bool) {
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		if vals := md.Get(requestIDCtxKey); len(vals) > 0 {
 			return vals[0], true
@@ -26,16 +26,16 @@ func RequestIDFromContext(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-// NewRequestIDInterceptor creates a grpc.UnaryServerInterceptor which must
+// NewUnaryInterceptor creates a grpc.UnaryServerInterceptor which must
 // come after the trace interceptor and before the logging interceptor.
-func NewRequestIDInterceptor() grpc.UnaryServerInterceptor {
+func NewUnaryInterceptor() grpc.UnaryServerInterceptor {
 	return interceptors.UnaryServerInterceptor(reportable())
 }
 
-// NewStreamingRequestIDInterceptor creates a grpc.StreamServerInterceptor
+// NewStreamingInterceptor creates a grpc.StreamServerInterceptor
 // which must come after the trace interceptor and before the logging
 // interceptor.
-func NewStreamingRequestIDInterceptor() grpc.StreamServerInterceptor {
+func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 	return interceptors.StreamServerInterceptor(reportable())
 }
 

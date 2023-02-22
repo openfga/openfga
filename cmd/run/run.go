@@ -466,12 +466,12 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
-		requestid.NewRequestIDInterceptor(),
+		requestid.NewUnaryInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
-		requestid.NewStreamingRequestIDInterceptor(),
+		requestid.NewStreamingInterceptor(),
 	}
 
 	if config.Metrics.Enabled {

@@ -18,14 +18,14 @@ type pingService struct {
 }
 
 func (s *pingService) Ping(ctx context.Context, req *testpb.PingRequest) (*testpb.PingResponse, error) {
-	_, ok := RequestIDFromContext(ctx)
+	_, ok := FromContext(ctx)
 	require.True(s.T, ok)
 
 	return s.TestServiceServer.Ping(ctx, req)
 }
 
 func (s *pingService) PingStream(ss testpb.TestService_PingStreamServer) error {
-	_, ok := RequestIDFromContext(ss.Context())
+	_, ok := FromContext(ss.Context())
 	require.True(s.T, ok)
 
 	return s.TestServiceServer.PingStream(ss)
@@ -36,8 +36,8 @@ func TestRequestIDTestSuite(t *testing.T) {
 		InterceptorTestSuite: &testpb.InterceptorTestSuite{
 			TestService: &pingService{&testpb.TestPingService{T: t}, t},
 			ServerOpts: []grpc.ServerOption{
-				grpc.UnaryInterceptor(NewRequestIDInterceptor()),
-				grpc.StreamInterceptor(NewStreamingRequestIDInterceptor()),
+				grpc.UnaryInterceptor(NewUnaryInterceptor()),
+				grpc.StreamInterceptor(NewStreamingInterceptor()),
 			},
 		},
 	}
