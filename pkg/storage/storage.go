@@ -228,10 +228,10 @@ var _ RelationshipTupleReader = (*ctxRelationshipTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgapb.TupleKey, targetObjectID, targetRelation string) []*openfgapb.Tuple {
+func filterTuples(tuples []*openfgapb.TupleKey, targetObject, targetRelation string) []*openfgapb.Tuple {
 	var filtered []*openfgapb.Tuple
 	for _, tk := range tuples {
-		if tk.GetObject() == targetObjectID && tk.GetRelation() == targetRelation {
+		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
 			filtered = append(filtered, &openfgapb.Tuple{
 				Key: tk,
 			})
