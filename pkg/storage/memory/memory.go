@@ -350,7 +350,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, fil
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(&openfgapb.TupleKey{
-			Object:   filter.ObjectID,
+			Object:   filter.Object,
 			Relation: filter.Relation,
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
 			if len(filter.AllowedUserTypeRestrictions) == 0 { // 1.0 model

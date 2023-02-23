@@ -128,7 +128,7 @@ type ReadStartingWithUserFilter struct {
 }
 
 type ReadUsersetTuplesFilter struct {
-	ObjectID                    string                         // required
+	Object                      string                         // required
 	Relation                    string                         // required
 	AllowedUserTypeRestrictions []*openfgapb.RelationReference // optional
 }
@@ -305,7 +305,7 @@ func (b *ctxRelationshipTupleReader) ReadUsersetTuples(
 
 	tuples, ok := ContextualTuplesFromContext(ctx)
 	if ok {
-		for _, t := range filterTuples(tuples, filter.ObjectID, filter.Relation) {
+		for _, t := range filterTuples(tuples, filter.Object, filter.Relation) {
 			if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
 				filteredTuples = append(filteredTuples, t)
 			}

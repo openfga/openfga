@@ -296,7 +296,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
 		OrderBy("ulid")
 
-	objectType, objectID := tupleUtils.SplitObject(filter.ObjectID)
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}

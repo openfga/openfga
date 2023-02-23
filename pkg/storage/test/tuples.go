@@ -274,7 +274,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-			ObjectID: "doc:readme",
+			Object:   "doc:readme",
 			Relation: "owner",
 		})
 		require.NoError(t, err)
@@ -310,7 +310,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("reading_userset_tuples_that_don't_exist_should_an_empty_iterator", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{ObjectID: "doc:readme", Relation: "owner"})
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{Object: "doc:readme", Relation: "owner"})
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 

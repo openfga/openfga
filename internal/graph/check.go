@@ -410,16 +410,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 
-			var allowedTypesForUser []*openfgapb.RelationReference
+			var allowedUserTypeRestrictions []*openfgapb.RelationReference
 			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-				// allowedTypesForUser could be "user" or "user:*" or "group#member"
-				allowedTypesForUser, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
+				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
+				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
 			}
 
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				ObjectID:                    tk.Object,
+				Object:                      tk.Object,
 				Relation:                    tk.Relation,
-				AllowedUserTypeRestrictions: allowedTypesForUser,
+				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
 			})
 			if err != nil {
 				return &openfgapb.CheckResponse{Allowed: false}, err
