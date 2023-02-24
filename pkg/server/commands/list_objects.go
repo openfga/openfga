@@ -107,12 +107,11 @@ func (q *ListObjectsQuery) evaluate(
 			)
 		}
 
-		containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-		containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
+		isUnwantedModel := typesys.ModelContainsIntersectionOrExclusion()
 
 		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
 		// and the model must include type info for ConnectedObjects to work.
-		if !containsIntersection && !containsExclusion && hasTypeInfo {
+		if !isUnwantedModel && hasTypeInfo {
 			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
 			userObjType, userObjID := tuple.SplitObject(userObj)

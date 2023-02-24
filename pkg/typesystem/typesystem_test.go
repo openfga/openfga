@@ -1114,380 +1114,6 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 	}
 }
 
-func TestRelationInvolvesIntersection(t *testing.T) {
-	tests := []struct {
-		name        string
-		model       string
-		rr          *openfgapb.RelationReference
-		expected    bool
-		expectedErr error
-	}{
-		{
-			name: "indirect_computeduserset_through_ttu_containing_intersection",
-			model: `
-			type user
-
-			type folder
-			  relations
-			    define manage: [user] as self
-			    define editor: [user] as self and manage
-
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define editor as editor from parent
-			    define viewer as editor
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "ttu_relations_containing_intersection",
-			model: `
-			type user
-
-			type folder
-			  relations
-			    define editor: [user] as self
-			    define viewer: [user] as self and editor
-
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "indirect_relations_containing_intersection",
-			model: `
-			type user
-
-			type document
-			  relations
-			    define editor: [user] as self
-			    define viewer: [user] as self and editor
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "undefined_type",
-			model: `
-			type user
-			`,
-			rr:          DirectRelationReference("document", "viewer"),
-			expected:    false,
-			expectedErr: ErrObjectTypeUndefined,
-		},
-		{
-			name: "undefined_relation",
-			model: `
-			type user
-			`,
-			rr:          DirectRelationReference("user", "viewer"),
-			expected:    false,
-			expectedErr: ErrRelationUndefined,
-		},
-		{
-			name: "non-assignable_indirect_type_restriction_involving_intersection",
-			model: `
-			type user
-
-			type org
-			  relations
-			    define allowed: [user] as self
-			    define dept: [group] as self
-			    define dept_member as member from dept
-			    define dept_allowed_member as dept_member and allowed
-
-			type resource
-			  relations
-			    define reader: [user] as self or writer
-			    define writer: [org#dept_allowed_member] as self
-			`,
-			rr:       DirectRelationReference("resource", "reader"),
-			expected: true,
-		},
-		{
-			name: "indirect_relationship_through_type_restriction",
-			model: `
-			type user
-
-			type document
-			  relations
-			    define allowed: [user] as self
-			    define editor: [user] as self and allowed
-			    define viewer: [document#editor] as self
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "github_model",
-			model: `
-			type user
-
-			type organization
-			  relations
-			    define member: [user] as self or owner
-				define owner: [user] as self
-				define repo_admin: [user, organization#member] as self
-				define repo_reader: [user, organization#member] as self
-				define repo_writer: [user, organization#member] as self
-
-			type team
-			  relations
-			    define member: [user, team#member] as self
-
-			type repo
-			  relations
-			    define admin: [user, team#member] as self or repo_admin from owner
-				define maintainer: [user, team#member] as self or admin
-				define owner: [organization] as self
-				define reader: [user, team#member] as self or triager or repo_reader from owner
-				define triager: [user, team#member] as self or writer
-				define writer: [user, team#member] as self or maintainer or repo_writer from owner
-			`,
-			rr:       DirectRelationReference("repo", "admin"),
-			expected: false,
-		},
-		{
-			name: "github_model",
-			model: `
-			type user
-
-			type organization
-			  relations
-			    define member: [user] as self or owner
-				define owner: [user] as self
-				define repo_admin: [user, organization#member] as self
-				define repo_reader: [user, organization#member] as self
-				define repo_writer: [user, organization#member] as self
-
-			type team
-			  relations
-			    define member: [user, team#member] as self
-
-			type repo
-			  relations
-			    define admin: [user, team#member] as self or repo_admin from owner
-				define maintainer: [user, team#member] as self or admin
-				define owner: [organization] as self
-				define reader: [user, team#member] as self or triager or repo_reader from owner
-				define triager: [user, team#member] as self or writer
-				define writer: [user, team#member] as self or maintainer or repo_writer from owner
-			`,
-			rr:       DirectRelationReference("repo", "admin"),
-			expected: false,
-		},
-		{
-			name: "direct_relations_related_to_each_other",
-			model: `
-			type user
-
-			type example
-			  relations
-			    define editor: [example#viewer] as self
-			    define viewer: [example#editor] as self
-			`,
-			rr:       DirectRelationReference("example", "editor"),
-			expected: false,
-		},
-		{
-			name: "cyclical_evaluation_of_tupleset",
-			model: `
-			type user
-
-			type node
-			  relations
-			    define parent: [node] as self
-			    define editor: [user] as self or editor from parent
-			`,
-			rr:       DirectRelationReference("node", "editor"),
-			expected: false,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-
-			typedefs := parser.MustParse(test.model)
-
-			typesys := New(&openfgapb.AuthorizationModel{
-				TypeDefinitions: typedefs,
-			})
-
-			objectType := test.rr.GetType()
-			relationStr := test.rr.GetRelation()
-
-			actual, err := typesys.RelationInvolvesIntersection(objectType, relationStr)
-			require.ErrorIs(t, err, test.expectedErr)
-			require.Equal(t, test.expected, actual)
-		})
-	}
-}
-
-func TestRelationInvolvesExclusion(t *testing.T) {
-
-	tests := []struct {
-		name        string
-		model       string
-		rr          *openfgapb.RelationReference
-		expected    bool
-		expectedErr error
-	}{
-		{
-			name: "indirect_computed_userset_through_ttu_containing_exclusion",
-			model: `
-			type user
-
-			type folder
-			  relations
-			    define restricted: [user] as self
-			    define editor: [user] as self but not restricted
-
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define editor as editor from parent
-			    define viewer as editor
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "ttu_relations_containing_exclusion",
-			model: `
-			type user
-
-			type folder
-			  relations
-			    define restricted: [user] as self
-			    define viewer: [user] as self but not restricted
-
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "indirect_relations_containing_exclusion",
-			model: `
-			type user
-
-			type document
-			  relations
-			    define restricted: [user] as self
-			    define editor: [user] as self but not restricted
-			    define viewer as editor
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "undefined_type",
-			model: `
-			type user
-			`,
-			rr:          DirectRelationReference("document", "viewer"),
-			expected:    false,
-			expectedErr: ErrObjectTypeUndefined,
-		},
-		{
-			name: "undefined_relation",
-			model: `
-			type user
-			`,
-			rr:          DirectRelationReference("user", "viewer"),
-			expected:    false,
-			expectedErr: ErrRelationUndefined,
-		},
-		{
-			name: "non-assignable_indirect_type_restriction_involving_exclusion",
-			model: `
-			type user
-
-			type org
-			  relations
-			    define removed: [user] as self
-			    define dept: [group] as self
-			    define dept_member as member from dept
-			    define dept_allowed_member as dept_member but not removed
-
-			type resource
-			  relations
-			    define reader: [user] as self or writer
-			    define writer: [org#dept_allowed_member] as self
-			`,
-			rr:       DirectRelationReference("resource", "reader"),
-			expected: true,
-		},
-		{
-			name: "indirect_relationship_through_type_restriction",
-			model: `
-			type user
-
-			type document
-			  relations
-			    define restricted: [user] as self
-			    define editor: [user] as self but not restricted
-			    define viewer: [document#editor] as self
-			`,
-			rr:       DirectRelationReference("document", "viewer"),
-			expected: true,
-		},
-		{
-			name: "direct_relations_related_to_each_other",
-			model: `
-			type user
-
-			type example
-			  relations
-			    define editor: [example#viewer] as self
-			    define viewer: [example#editor] as self
-			`,
-			rr:       DirectRelationReference("example", "editor"),
-			expected: false,
-		},
-		{
-			name: "cyclical_evaluation_of_tupleset",
-			model: `
-			type user
-
-			type node
-			  relations
-			    define parent: [node] as self
-			    define editor: [user] as self or editor from parent
-			`,
-			rr:       DirectRelationReference("node", "editor"),
-			expected: false,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-
-			typedefs := parser.MustParse(test.model)
-
-			typesys := New(&openfgapb.AuthorizationModel{
-				TypeDefinitions: typedefs,
-			})
-
-			objectType := test.rr.GetType()
-			relationStr := test.rr.GetRelation()
-
-			actual, err := typesys.RelationInvolvesExclusion(objectType, relationStr)
-			require.ErrorIs(t, err, test.expectedErr)
-			require.Equal(t, test.expected, actual)
-		})
-	}
-}
-
 func TestIsTuplesetRelation(t *testing.T) {
 
 	tests := []struct {
@@ -1955,6 +1581,70 @@ func TestRewriteContainsIntersection(t *testing.T) {
 
 			actual := RewriteContainsIntersection(rel.GetRewrite())
 			require.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestModelContainsIntersectionOrExclusion(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected bool
+	}{
+		{
+			name: "no_intersection_or_exclusion",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self
+			`,
+			expected: false,
+		},
+		{
+			name: "exclusion",
+			model: `
+			type user
+
+			type folder
+
+			type document
+			  relations
+				define viewer: [user] as self
+				define parent: [document, folder] as self
+				define exclusion as viewer but not parent
+			`,
+			expected: true,
+		},
+		{
+			name: "intersection",
+			model: `
+			type user
+
+			type folder
+
+			type document
+			  relations
+				define viewer: [user] as self
+				define parent: [document, folder] as self
+				define intersection as viewer and parent
+			`,
+			expected: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			typedefs := parser.MustParse(test.model)
+
+			typesys := New(&openfgapb.AuthorizationModel{
+				TypeDefinitions: typedefs,
+			})
+
+			contains := typesys.ModelContainsIntersectionOrExclusion()
+			require.Equal(t, test.expected, contains)
 		})
 	}
 }

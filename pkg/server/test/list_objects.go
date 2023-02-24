@@ -238,7 +238,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		}
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
+		runListObjectsTests(t, ctx, ds, typesys, testCases, listObjectsQuery)
 	})
 
 	t.Run("Github_with_TypeInfo", func(t *testing.T) {
@@ -400,7 +400,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		}
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
+		runListObjectsTests(t, ctx, ds, typesys, testCases, listObjectsQuery)
 	})
 }
 
@@ -420,7 +420,7 @@ func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error 
 	return nil
 }
 
-func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
+func runListObjectsTests(t *testing.T, ctx context.Context, ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
 
 	for _, test := range testCases {
 		ctx = storage.ContextWithContextualTuples(ctx, test.request.ContextualTuples.GetTupleKeys())
@@ -453,6 +453,26 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			require.ErrorIs(t, err, test.expectedError)
 			require.LessOrEqual(t, len(streamedObjectIds), defaultListObjectsMaxResults)
 			require.Subset(t, test.expectedResult, streamedObjectIds)
+
+			// each object in the response of ListObjects should return check -> true
+			checker := graph.NewLocalChecker(ds, 100)
+			for _, object := range streamedObjectIds {
+				resp, err := checker.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+					StoreID:              test.request.StoreId,
+					AuthorizationModelID: test.request.AuthorizationModelId,
+					TupleKey: &openfgapb.TupleKey{
+						Object:   object,
+						Relation: test.request.Relation,
+						User:     test.request.User,
+					},
+					ContextualTuples: test.request.ContextualTuples.GetTupleKeys(),
+					ResolutionMetadata: &graph.ResolutionMetadata{
+						Depth: defaultResolveNodeLimit,
+					},
+				})
+				require.NoError(t, err)
+				require.True(t, resp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, test.request.Relation, test.request.User))
+			}
 		})
 
 		t.Run(test.name, func(t *testing.T) {
@@ -467,6 +487,26 @@ func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObje
 			if res != nil {
 				require.LessOrEqual(t, len(res.Objects), defaultListObjectsMaxResults)
 				require.Subset(t, test.expectedResult, res.Objects)
+
+				// each object in the response of ListObjects should return check -> true
+				checker := graph.NewLocalChecker(ds, 100)
+				for _, object := range res.Objects {
+					resp, err := checker.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+						StoreID:              test.request.StoreId,
+						AuthorizationModelID: test.request.AuthorizationModelId,
+						TupleKey: &openfgapb.TupleKey{
+							Object:   object,
+							Relation: test.request.Relation,
+							User:     test.request.User,
+						},
+						ContextualTuples: test.request.ContextualTuples.GetTupleKeys(),
+						ResolutionMetadata: &graph.ResolutionMetadata{
+							Depth: defaultResolveNodeLimit,
+						},
+					})
+					require.NoError(t, err)
+					require.True(t, resp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, test.request.Relation, test.request.User))
+				}
 			}
 		})
 	}
