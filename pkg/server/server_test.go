@@ -136,7 +136,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 				time.Sleep(50 * time.Millisecond)
 				return nil, errors.New("some error")
 			})
@@ -207,7 +207,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
 		AnyTimes().
 		DoAndReturn(
-			func(_ context.Context, _ string, _ *openfgapb.TupleKey) (storage.TupleIterator, error) {
+			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 				time.Sleep(100 * time.Millisecond)
 				return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
 			})

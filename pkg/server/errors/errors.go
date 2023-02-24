@@ -97,10 +97,6 @@ func InvalidTuple(reason string, tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
 }
 
-func DuplicateContextualTuple(tk *openfgapb.TupleKey) error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_duplicate_contextual_tuple), fmt.Sprintf("Duplicate contextual tuple in request: %s.", tk.String()))
-}
-
 // InvalidObjectFormat is used when an object does not have a type and id part
 func InvalidObjectFormat(tuple *openfgapb.TupleKey) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_object_format), fmt.Sprintf("Invalid object format for tuple '%s'", tuple.String()))
