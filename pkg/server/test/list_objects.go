@@ -455,7 +455,7 @@ func runListObjectsTests(t *testing.T, ctx context.Context, ds storage.Relations
 			require.Subset(t, test.expectedResult, streamedObjectIds)
 
 			// each object in the response of ListObjects should return check -> true
-			checker := graph.NewLocalChecker(ds, 100)
+			checker := graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100)
 			for _, object := range streamedObjectIds {
 				resp, err := checker.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 					StoreID:              test.request.StoreId,
@@ -489,7 +489,8 @@ func runListObjectsTests(t *testing.T, ctx context.Context, ds storage.Relations
 				require.Subset(t, test.expectedResult, res.Objects)
 
 				// each object in the response of ListObjects should return check -> true
-				checker := graph.NewLocalChecker(ds, 100)
+				checker := graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), 100)
+
 				for _, object := range res.Objects {
 					resp, err := checker.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 						StoreID:              test.request.StoreId,
