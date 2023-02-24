@@ -121,7 +121,7 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
-        run: go test ./... -bench=. -run=XXX | tee ${{ github.sha }}_bench_output.txt
+        run: make bench | tee ${{ github.sha }}_bench_output.txt
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
