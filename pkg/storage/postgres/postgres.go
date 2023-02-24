@@ -287,7 +287,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	return record.AsTuple(), nil
 }
 
-func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
@@ -297,17 +297,28 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, tupleKey
 		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
 		OrderBy("ulid")
 
-	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
+	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
 	}
 	if objectID != "" {
 		sb = sb.Where(sq.Eq{"object_id": objectID})
 	}
-	if tupleKey.GetRelation() != "" {
-		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
+	if filter.Relation != "" {
+		sb = sb.Where(sq.Eq{"relation": filter.Relation})
 	}
-
+	if len(filter.AllowedUserTypeRestrictions) > 0 {
+		orConditions := sq.Or{}
+		for _, userset := range filter.AllowedUserTypeRestrictions {
+			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
+				orConditions = append(orConditions, sq.Like{"_user": userset.Type + "%#" + userset.GetRelation()})
+			}
+			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
+				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+			}
+		}
+		sb = sb.Where(orConditions)
+	}
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
 		return nil, common.HandleSQLError(err)

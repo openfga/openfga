@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
@@ -51,6 +52,62 @@ func newListObjectsRequest(store, objectType, relation, user, modelID string, co
 func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 	ctx := context.Background()
 
+	t.Run("list_objects_with_concurrent_checks_and_contextual_tuples", func(t *testing.T) {
+		store := ulid.Make().String()
+
+		typedefs := parser.MustParse(`
+		type user
+
+		type doc
+		  relations
+		    define reader: [user] as self
+		    define blocked: [user] as self
+			define viewer as reader but not blocked
+		`)
+
+		model := &openfgapb.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}
+		err := ds.WriteAuthorizationModel(ctx, store, model)
+		require.NoError(t, err)
+
+		typesys := typesystem.New(model)
+
+		listObjectsQuery := &commands.ListObjectsQuery{
+			Datastore:             ds,
+			Logger:                logger.NewNoopLogger(),
+			ListObjectsDeadline:   defaultListObjectsDeadline,
+			ListObjectsMaxResults: defaultListObjectsMaxResults,
+			ResolveNodeLimit:      defaultResolveNodeLimit,
+			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
+		}
+
+		request := &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: model.GetId(),
+			Type:                 "doc",
+			Relation:             "viewer",
+			User:                 "user:jon",
+			ContextualTuples: &openfgapb.ContextualTupleKeys{
+				TupleKeys: []*openfgapb.TupleKey{
+					tuple.NewTupleKey("doc:1", "reader", "user:jon"),
+					tuple.NewTupleKey("doc:2", "reader", "user:jon"),
+				},
+			},
+		}
+
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx = storage.ContextWithContextualTuples(ctx, request.ContextualTuples.GetTupleKeys())
+
+		resp, err := listObjectsQuery.Execute(ctx, request)
+		require.NoError(t, err)
+
+		objects := resp.GetObjects()
+		require.ElementsMatch(t, []string{"doc:1", "doc:2"}, objects)
+	})
+
 	t.Run("Github_without_TypeInfo", func(t *testing.T) {
 		store := ulid.Make().String()
 
@@ -78,6 +135,8 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		writes := []*openfgapb.TupleKey{tKAllAdminsRepo6, tkAnnaRepo1, tkAnnaRepo2, tkAnnaRepo3, tkAnnaRepo4, tkBobRepo2}
 		err = ds.Write(ctx, store, nil, writes)
 		require.NoError(t, err)
+
+		typesys := typesystem.New(model)
 
 		testCases := []listObjectsTestCase{
 			{
@@ -142,19 +201,18 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				expectedError:  nil,
 			},
 			{
-				name: "returns_error_if_duplicate_contextual_tuples",
+				name: "no_error_if_duplicate_contextual_tuples",
 				request: newListObjectsRequest(store, "repo", "owner", "bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "bob",
 						Relation: "admin",
 						Object:   "repo:5",
 					}, {
-						User:     "bob",
+						User:     "user:bob",
 						Relation: "admin",
 						Object:   "repo:5",
 					}}}),
-				expectedResult: nil,
-				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "bob")),
+				expectedResult: []string{"repo:5"},
 			},
 			{
 				name:           "returns_error_if_unknown_type",
@@ -179,6 +237,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 		}
 
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
 	})
 
@@ -294,8 +353,8 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				),
 			},
 			{
-				name: "returns_error_if_duplicate_contextual_tuples",
-				request: newListObjectsRequest(store, "repo", "admin", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
+				name: "no_error_if_duplicate_contextual_tuples",
+				request: newListObjectsRequest(store, "repo", "owner", "user:bob", model.Id, &openfgapb.ContextualTupleKeys{
 					TupleKeys: []*openfgapb.TupleKey{{
 						User:     "user:bob",
 						Relation: "admin",
@@ -305,8 +364,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 						Relation: "admin",
 						Object:   "repo:5",
 					}}}),
-				expectedResult: nil,
-				expectedError:  serverErrors.DuplicateContextualTuple(tuple.NewTupleKey("repo:5", "admin", "user:bob")),
+				expectedResult: []string{"repo:5"},
 			},
 			{
 				name:           "returns_error_if_unknown_type",
@@ -322,9 +380,11 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		}
 
+		typesys := typesystem.New(model)
+
 		connectedObjectsCmd := commands.ConnectedObjectsCommand{
 			Datastore:        ds,
-			Typesystem:       typesystem.New(model),
+			Typesystem:       typesys,
 			ResolveNodeLimit: defaultResolveNodeLimit,
 			Limit:            defaultListObjectsMaxResults,
 		}
@@ -339,6 +399,7 @@ func ListObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			CheckResolver:         graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 		}
 
+		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		runListObjectsTests(t, ctx, testCases, listObjectsQuery)
 	})
 }
@@ -362,6 +423,8 @@ func (x *mockStreamServer) Send(m *openfgapb.StreamedListObjectsResponse) error 
 func runListObjectsTests(t *testing.T, ctx context.Context, testCases []listObjectsTestCase, listObjectsQuery *commands.ListObjectsQuery) {
 
 	for _, test := range testCases {
+		ctx = storage.ContextWithContextualTuples(ctx, test.request.ContextualTuples.GetTupleKeys())
+
 		t.Run(test.name+"/streaming", func(t *testing.T) {
 			server := NewMockStreamServer(len(test.expectedResult))
 
