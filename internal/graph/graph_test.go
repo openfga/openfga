@@ -545,8 +545,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			target: typesystem.DirectRelationReference("document", "viewer"),
-			source: typesystem.DirectRelationReference("user", ""),
+			target:   typesystem.DirectRelationReference("document", "viewer"),
+			source:   typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{},
 		},
 		{
 			name: "ingress_through_ttu_on_non-assignable_relation",

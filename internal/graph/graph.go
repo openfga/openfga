@@ -117,13 +117,13 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 	key := tuple.ToObjectRelationString(target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
-		return nil, nil
+		return make([]*RelationshipIngress, 0), nil
 	}
 	visited[key] = struct{}{}
 
 	relation, err := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
 	if err != nil {
-		return nil, err
+		return make([]*RelationshipIngress, 0), err
 	}
 
 	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
@@ -139,7 +139,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 ) ([]*RelationshipIngress, error) {
 	switch t := rewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This:
-		var res []*RelationshipIngress
+		res := make([]*RelationshipIngress, 0)
 
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
 		publiclyAssignable, _ := g.typesystem.IsPubliclyAssignable(target, source.GetType())
@@ -189,7 +189,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
 
-		var res []*RelationshipIngress
+		res := make([]*RelationshipIngress, 0)
 
 		tuplesetTypeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
 
@@ -198,7 +198,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 			r, err := g.typesystem.GetRelation(typeRestriction.GetType(), computedUserset)
 
 			var directlyAssignable bool
-			if typeRestriction.GetType() == source.GetType() {
+			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
 				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
 			}
 
@@ -228,7 +228,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 		return res, nil
 	case *openfgapb.Userset_Union:
-		var res []*RelationshipIngress
+		res := make([]*RelationshipIngress, 0)
 		for _, child := range t.Union.GetChild() {
 			childResults, err := g.findIngressesWithRewrite(target, source, child, visited)
 			if err != nil {
