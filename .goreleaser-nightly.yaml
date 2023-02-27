@@ -20,6 +20,10 @@ builds:
       - "-X github.com/openfga/openfga/internal/build.Commit={{.Commit}}"
       - "-X github.com/openfga/openfga/internal/build.Date={{.Date}}"
 
+# Do not make github release
+release:
+  disable: true
+
 dockers:
   - goos: linux
     goarch: amd64
@@ -57,11 +61,6 @@ docker_manifests:
     image_templates:
       - openfga/openfga:nightly-amd64
       - openfga/openfga:nightly-arm64
-
-release:
-  github:
-    owner: openfga
-    name: openfga
 
 archives:
   - replacements:
