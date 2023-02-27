@@ -40,17 +40,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to Docker Hub
-        uses: docker/build-push-action@v2
+        uses: actions-hub/docker@master
         with:
-          context: .
-          file: ./Dockerfile.goreleaser
-          push: true
-          tags: openfga/openfga:nightly
-
-      - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: openfga/openfga
-          short-description: ${{ github.event.repository.description }}
+          args: push openfga/openfga:nightly
