@@ -8,6 +8,19 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.3.7] - 2023-02-21
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.6...v0.3.7)
+
+### Fixed
+* Contextual tuple propagation in the unoptimized ListObjects implementation (#565)
+
+## [0.3.6] - 2023-02-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.5...v0.3.6)
+
+Re-release of `v0.3.5` because the go module proxy cached a prior commit of the `v0.3.5` tag.
+
 ## [0.3.5] - 2023-02-14
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.4...v0.3.5)
@@ -346,7 +359,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/openfga/openfga/releases/tag/v0.3.7
+[0.3.6]: https://github.com/openfga/openfga/releases/tag/v0.3.6
 [0.3.5]: https://github.com/openfga/openfga/releases/tag/v0.3.5
 [0.3.4]: https://github.com/openfga/openfga/releases/tag/v0.3.4
 [0.3.3]: https://github.com/openfga/openfga/releases/tag/v0.3.3
