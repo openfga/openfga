@@ -217,6 +217,13 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 		for _, typeRestriction := range tuplesetTypeRestrictions {
 			r, err := g.typesystem.GetRelation(typeRestriction.GetType(), computedUserset)
+			if err != nil {
+				if errors.Is(err, typesystem.ErrRelationUndefined) {
+					continue
+				}
+
+				return nil, err
+			}
 
 			var directlyAssignable bool
 			matchesSourceRelation := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
