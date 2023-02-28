@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -836,6 +838,25 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "unrelated_source_and_target_relationship_involving_ttu",
+			model: `
+			type user
+		
+			type folder
+				relations
+					define viewer: [user] as self
+		
+			type document
+				relations
+					define can_read as viewer from parent
+					define parent: [document,folder] as self
+					define viewer: [user] as self
+			`,
+			target:   typesystem.DirectRelationReference("document", "can_read"),
+			source:   typesystem.DirectRelationReference("document", ""),
+			expected: []*RelationshipIngress{},
+		},
 	}
 
 	for _, test := range tests {
@@ -852,7 +873,13 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			ingresses, err := g.RelationshipIngresses(test.target, test.source)
 			require.NoError(t, err)
 
-			require.ElementsMatch(t, test.expected, ingresses)
+			cmpOpts := []cmp.Option{
+				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
+				RelationshipIngressTransformer,
+			}
+			if diff := cmp.Diff(ingresses, test.expected, cmpOpts...); diff != "" {
+				t.Errorf("mismatch (-got +want):\n%s", diff)
+			}
 		})
 	}
 }

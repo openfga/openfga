@@ -155,18 +155,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	g := graph.BuildConnectedObjectGraph(c.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
-	_, span2 := tracer.Start(ctx, "RelationshipIngresses", trace.WithAttributes(
-		attribute.String("_sourceObjRef", sourceObjRef.String()),
-		attribute.String("_targetUserRef", targetUserRef.String()),
-	))
 	ingresses, err := g.RelationshipIngresses(sourceObjRef, targetUserRef)
-	for i, ingress := range ingresses {
-		span2.SetAttributes(attribute.String(fmt.Sprintf("ingress%d - ingress", i), ingress.Ingress.String()))
-		span2.SetAttributes(attribute.String(fmt.Sprintf("ingress%d - type", i), ingress.Type.String()))
-		span2.SetAttributes(attribute.String(fmt.Sprintf("ingress%d - tuplesetRelation", i), ingress.TuplesetRelation.String()))
-	}
-	span2.End()
-
 	if err != nil {
 		return err
 	}

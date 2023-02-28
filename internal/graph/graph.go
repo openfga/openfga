@@ -3,7 +3,9 @@ package graph
 import (
 	"context"
 	"errors"
+	"sort"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -19,6 +21,29 @@ var (
 	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
 	ErrTargetError             = errors.New("graph: target incorrectly specified")
 	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
+
+	RelationshipIngressTransformer = cmp.Transformer("Sort", func(in []*RelationshipIngress) []*RelationshipIngress {
+		out := append([]*RelationshipIngress(nil), in...) // Copy input to avoid mutating it
+
+		// Sort by Type and then by ingress and then by tupleset relation
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].Type > out[j].Type {
+				return false
+			}
+
+			if tuple.GetRelationReferenceAsString(out[i].Ingress) > tuple.GetRelationReferenceAsString(out[j].Ingress) {
+				return false
+			}
+
+			if tuple.GetRelationReferenceAsString(out[i].TuplesetRelation) > tuple.GetRelationReferenceAsString(out[j].TuplesetRelation) {
+				return false
+			}
+
+			return true
+		})
+
+		return out
+	})
 )
 
 // ContextWithResolutionDepth attaches the provided graph resolution depth to the parent context.
@@ -97,17 +122,17 @@ func BuildConnectedObjectGraph(typesystem *typesystem.TypeSystem) *ConnectedObje
 // RelationshipIngresses computes the incoming edges (ingresses) that are possible between the target relation reference
 // and the source relational reference.
 //
-// To look up Ingresses(`document#viewer`, `source`), where `source` is an object type with no relation, find the rewrite and types of viewer in the document type:
+// To look up Ingresses(`document#viewer`, `source`), where `source` is a type with no relation, look up the definition of relation `document#viewer` and:
 // 1. If `source` is a directly related type then add `source, direct` to the result.
 // 2. If `objectType#relation` is a type and `objectType#relation` can be a `source` then add `objectType#relation, direct` to the result.
 // 3. If computed userset, say `define viewer as writer`, then recurse on `document#writer, source`.
-// 4. If tuple-to-userset, say, viewer from parent. Go to parent and find its types. In this case, `folder`. Go to `folder` and see if it has a `viewer` relation. If so, recurse on `folder#viewer, source`.
+// 4. If tuple-to-userset, say, `define viewer as viewer from parent`. Go to parent and find its types. In this case, `folder`. Go to `folder` and see if it has a `viewer` relation. If so, recurse on `folder#viewer, source`.
 //
-// To look up Ingresses(`document#viewer`, `folder#viewer`), find the rewrite and relations of viewer in the document type:
-// 1. If `folder#viewer` is a relational type then add `folder#viewer, direct` to the result.
+// To look up Ingresses(`document#viewer`, `folder#viewer`), look up the definition of relation `document#viewer` and:
+// 1. If `folder#viewer` is a directly related type then add `folder#viewer, direct` to the result.
 // 2. If computed userset, say `define viewer as writer`, then recurse on `document#writer, folder#viewer`.
-// 3. If tuple-to-userset, say, viewer from parent. Go to parent and find its related types.
-//  1. If parent's types includes `folder` type, and `folder` contains `viewer` relation then this is exactly a ttu rewrite.
+// 3. If tuple-to-userset, say, `define viewer as viewer from parent`. Go to parent and find its related types.
+//  1. If parent's types includes `folder` type, and `folder` contains `viewer` relation then this is exactly a ttu rewrite and....?
 //  2. Otherwise, suppose the types contains `objectType` which has a relation `viewer`, then recurse on `objectType#viewer, folder#viewer`
 func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
 	return g.findIngresses(target, source, map[string]struct{}{})
@@ -117,13 +142,13 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 	key := tuple.ToObjectRelationString(target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
-		return make([]*RelationshipIngress, 0), nil
+		return nil, nil
 	}
 	visited[key] = struct{}{}
 
 	relation, err := g.typesystem.GetRelation(target.GetType(), target.GetRelation())
 	if err != nil {
-		return make([]*RelationshipIngress, 0), err
+		return nil, err
 	}
 
 	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
@@ -138,13 +163,13 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 	visited map[string]struct{},
 ) ([]*RelationshipIngress, error) {
 	switch t := rewrite.GetUserset().(type) {
-	case *openfgapb.Userset_This:
-		res := make([]*RelationshipIngress, 0)
-
+	case *openfgapb.Userset_This: // e.g. define viewer:[user] as self
+		var res []*RelationshipIngress
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
 		publiclyAssignable, _ := g.typesystem.IsPubliclyAssignable(target, source.GetType())
 
 		if directlyRelated || publiclyAssignable {
+			// if source=user, or define viewer:[user:*] as self
 			res = append(res, &RelationshipIngress{
 				Type:    DirectIngress,
 				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
@@ -154,9 +179,8 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		typeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), target.GetRelation())
 
 		for _, typeRestriction := range typeRestrictions {
-			if typeRestriction.GetRelation() != "" {
-				// recursively sub-collect any ingresses for the provided type (or any
-				// descendant derived from it) that has an ingress with the 'source'
+			if typeRestriction.GetRelation() != "" { // e.g. define viewer:[team#member] as self
+				// recursively sub-collect any ingresses for (team#member, source)
 				ingresses, err := g.findIngresses(typeRestriction, source, visited)
 				if err != nil {
 					return nil, err
@@ -167,10 +191,8 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		}
 
 		return res, nil
-	case *openfgapb.Userset_ComputedUserset:
-
-		// if the target and source match and the source relation is the rewritten target relation,
-		// then there must be an ingress
+	case *openfgapb.Userset_ComputedUserset: // e.g. target = define viewer as writer
+		// if source=document#writer
 		if target.GetType() == source.GetType() && t.ComputedUserset.GetRelation() == source.GetRelation() {
 			return []*RelationshipIngress{
 				{
@@ -179,32 +201,33 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 				},
 			}, nil
 		}
-
+		// else, we recurse on document#writer
 		return g.findIngresses(
 			typesystem.DirectRelationReference(target.GetType(), t.ComputedUserset.GetRelation()),
 			source,
 			visited,
 		)
-	case *openfgapb.Userset_TupleToUserset:
-		tupleset := t.TupleToUserset.GetTupleset().GetRelation()
-		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation()
+	case *openfgapb.Userset_TupleToUserset: // e.g. type document, define viewer as writer from parent
+		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               //parent
+		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() //writer
 
-		res := make([]*RelationshipIngress, 0)
-
+		var res []*RelationshipIngress
+		// e.g. type document, define parent:[user, group] as self
 		tuplesetTypeRestrictions, _ := g.typesystem.GetDirectlyRelatedUserTypes(target.GetType(), tupleset)
 
 		for _, typeRestriction := range tuplesetTypeRestrictions {
-
+			//TODO we ignore typeRestriction.GetRelationOrWildcard()
 			r, err := g.typesystem.GetRelation(typeRestriction.GetType(), computedUserset)
 
 			var directlyAssignable bool
-			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
+			matchesSourceRelation := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
+			if matchesSourceRelation {
 				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
 			}
 
 			// if the rewritten relation is directly assignable or matches the source, then it must
 			// be an ingress.
-			if directlyAssignable || typeRestriction.GetType() == source.GetType() && source.GetRelation() == computedUserset {
+			if directlyAssignable || matchesSourceRelation {
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
@@ -227,9 +250,10 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		}
 
 		return res, nil
-	case *openfgapb.Userset_Union:
-		res := make([]*RelationshipIngress, 0)
+	case *openfgapb.Userset_Union: // e.g. target = define viewer as self or writer
+		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
+			// we recurse through each child rewrite
 			childResults, err := g.findIngressesWithRewrite(target, source, child, visited)
 			if err != nil {
 				return nil, err

@@ -63,6 +63,19 @@ func GetObjectRelationAsString(objectRelation *openfgapb.ObjectRelation) string 
 	return objectRelation.GetObject()
 }
 
+func GetRelationReferenceAsString(rr *openfgapb.RelationReference) string {
+	if rr == nil {
+		return ""
+	}
+	if _, ok := rr.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
+		return fmt.Sprintf("%s#%s", rr.GetType(), rr.GetRelation())
+	} else if _, ok := rr.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
+		return fmt.Sprintf("%s:*", rr.GetType())
+	} else {
+		panic("unexpected relation reference")
+	}
+}
+
 // SplitObjectRelation splits an object relation string into an object ID and relation name. If no relation is present,
 // it returns the original string and an empty relation.
 func SplitObjectRelation(objectRelation string) (string, string) {
