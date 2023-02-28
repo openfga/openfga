@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -18,12 +19,10 @@ import (
 )
 
 type listObjectTests struct {
-	Tests []*listObjectTest
-}
-
-type listObjectTest struct {
-	Name   string
-	Stages []*stage
+	Tests []struct {
+		Name   string
+		Stages []*stage
+	}
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -33,40 +32,30 @@ type stage struct {
 	Assertions []*assertion
 }
 
-type request struct {
-	User             string
-	Type             string
-	Relation         string
-	ContextualTuples *pb.ContextualTupleKeys
-}
-
 type assertion struct {
-	Request     *request
+	Request     *pb.ListObjectsRequest
 	Expectation []string
 	ErrorCode   int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
 
-type ClientInterface interface {
-	CreateStore(ctx context.Context, in *pb.CreateStoreRequest, opts ...grpc.CallOption) (*pb.CreateStoreResponse, error)
-	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
-	Write(ctx context.Context, in *pb.WriteRequest, opts ...grpc.CallOption) (*pb.WriteResponse, error)
-	Check(ctx context.Context, in *pb.CheckRequest, opts ...grpc.CallOption) (*pb.CheckResponse, error)
+type ListObjectsClientInterface interface {
+	check.CheckTestClientInterface
 	ListObjects(ctx context.Context, in *pb.ListObjectsRequest, opts ...grpc.CallOption) (*pb.ListObjectsResponse, error)
 }
 
 // RunSchema1_1ListObjectsTests is public so can be run when OpenFGA is used as a
 // library. An OpenFGA server needs to be running and the client parameter is
 // a client for the server.
-func RunSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
+func RunSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
 // RunSchema1_0ListObjectsTests is the 1.0 version of RunSchema1_1CheckTests.
-func RunSchema1_0ListObjectsTests(t *testing.T, client ClientInterface) {
+func RunSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 
-func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
+func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterface) {
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
@@ -90,19 +79,20 @@ func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
 
 		t.Run(test.Name, func(t *testing.T) {
 			for _, stage := range test.Stages {
+
+				var typedefs []*pb.TypeDefinition
 				if schemaVersion == typesystem.SchemaVersion1_1 {
-					_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-						StoreId:         storeID,
-						SchemaVersion:   typesystem.SchemaVersion1_1,
-						TypeDefinitions: parser.MustParse(stage.Model),
-					})
+					typedefs = parser.MustParse(stage.Model)
+
 				} else {
-					_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-						StoreId:         storeID,
-						SchemaVersion:   typesystem.SchemaVersion1_0,
-						TypeDefinitions: v1parser.MustParse(stage.Model),
-					})
+					typedefs = v1parser.MustParse(stage.Model)
 				}
+
+				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   schemaVersion,
+					TypeDefinitions: typedefs,
+				})
 				require.NoError(t, err)
 
 				if len(stage.Tuples) > 0 {
