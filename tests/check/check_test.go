@@ -123,6 +123,8 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
 	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
+	b.Run("BenchmarkCheckWithBypassDirectRead", func(b *testing.B) { benchmarkCheckWithBypassDirectRead(b, engine) })
+	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
 }
 
 const githubModel = `
@@ -187,6 +189,8 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	})
 	require.NoError(b, err)
 
+	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &pb.CheckRequest{
 			StoreId:  storeID,
@@ -203,7 +207,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	defer conn.Close()
 
 	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark with trace"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
@@ -218,6 +222,8 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 		Writes:  &pb.TupleKeys{TupleKeys: tuples},
 	})
 	require.NoError(b, err)
+
+	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &pb.CheckRequest{
@@ -236,7 +242,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	defer conn.Close()
 
 	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark without trace"})
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark with direct resolution"})
 	require.NoError(b, err)
 
 	storeID := resp.GetId()
@@ -276,12 +282,123 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	})
 	require.NoError(b, err)
 
+	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &pb.CheckRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:anne"),
 		})
 
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	ctx := context.Background()
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
+	require.NoError(b, err)
+
+	storeID := resp.GetId()
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(githubModel),
+	})
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		check, err := client.Check(ctx, &pb.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			// users can't be direct owners of repos
+			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "owner", "user:anne"),
+		})
+
+		require.False(b, check.Allowed)
+		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	ctx := context.Background()
+	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "check benchmark with bypass direct read"})
+	require.NoError(b, err)
+
+	storeID := resp.GetId()
+	// model A
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:       storeID,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(`type user
+          type group
+            relations
+              define member: [user] as self
+          type document
+            relations
+              define viewer: [user:*, group#member] as self`),
+	})
+	require.NoError(b, err)
+
+	// add user to many usersets according to model A
+	for i := 0; i < 1000; i++ {
+		_, err = client.Write(ctx, &pb.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+				tuple.NewTupleKey(fmt.Sprintf("group:%d", i), "member", "user:anne"),
+			}},
+		})
+		require.NoError(b, err)
+	}
+
+	// one of those usersets gives access to document:budget
+	_, err = client.Write(ctx, &pb.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		Writes: &pb.TupleKeys{TupleKeys: []*pb.TupleKey{
+			tuple.NewTupleKey("document:budget", "viewer", "group:999#member"),
+		}},
+	})
+	require.NoError(b, err)
+
+	// model B
+	writeAuthModelResponse, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+		StoreId:       storeID,
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(`type user
+          type user2
+          type group
+            relations
+              define member: [user2] as self
+          type document
+            relations
+              define viewer: [user:*, group#member] as self`),
+	})
+	require.NoError(b, err)
+
+	// all the usersets added above are now invalid and should be skipped!
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		check, err := client.Check(ctx, &pb.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			TupleKey:             tuple.NewTupleKey("document:budget", "viewer", "user:anne"),
+		})
+
+		require.False(b, check.Allowed)
 		require.NoError(b, err)
 	}
 }
