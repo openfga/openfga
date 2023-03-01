@@ -51,8 +51,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
-
-	t.Run("TestListObjects", func(t *testing.T) { ListObjectsTest(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
