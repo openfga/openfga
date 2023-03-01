@@ -41,7 +41,8 @@ func testListObjects(t *testing.T, engine string) {
 	)
 	require.NoError(t, err)
 	defer conn.Close()
-
-	RunSchema1_1ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
-	RunSchema1_0ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
+	t.Run("testListObjects", func(t *testing.T) {
+		RunSchema1_1ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
+		RunSchema1_0ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
+	})
 }

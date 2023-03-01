@@ -40,6 +40,7 @@ func testRunAll(t *testing.T, engine string) {
 }
 
 func testCheck(t *testing.T, engine string) {
+
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -53,9 +54,12 @@ func testCheck(t *testing.T, engine string) {
 	)
 	require.NoError(t, err)
 	defer conn.Close()
+	t.Run("testCheck", func(t *testing.T) {
 
-	RunSchema1_1CheckTests(t, pb.NewOpenFGAServiceClient(conn))
-	RunSchema1_0CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+		RunSchema1_1CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+		RunSchema1_0CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+
+	})
 }
 
 func testBadAuthModelID(t *testing.T, engine string) {

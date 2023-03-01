@@ -70,73 +70,71 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	t.Run("runListObjectsTests"+schemaVersion, func(t *testing.T) {
-		for _, test := range testCases.Tests {
-			test := test
-			t.Run(test.Name, func(t *testing.T) {
-				t.Parallel()
-				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+	for _, test := range testCases.Tests {
+		test := test
+		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+			require.NoError(t, err)
+
+			storeID := resp.GetId()
+
+			for _, stage := range test.Stages {
+
+				var typedefs []*pb.TypeDefinition
+				if schemaVersion == typesystem.SchemaVersion1_1 {
+					typedefs = parser.MustParse(stage.Model)
+
+				} else {
+					typedefs = v1parser.MustParse(stage.Model)
+				}
+
+				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+					StoreId:         storeID,
+					SchemaVersion:   schemaVersion,
+					TypeDefinitions: typedefs,
+				})
 				require.NoError(t, err)
 
-				storeID := resp.GetId()
-
-				for _, stage := range test.Stages {
-
-					var typedefs []*pb.TypeDefinition
-					if schemaVersion == typesystem.SchemaVersion1_1 {
-						typedefs = parser.MustParse(stage.Model)
-
-					} else {
-						typedefs = v1parser.MustParse(stage.Model)
-					}
-
-					_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-						StoreId:         storeID,
-						SchemaVersion:   schemaVersion,
-						TypeDefinitions: typedefs,
+				if len(stage.Tuples) > 0 {
+					_, err = client.Write(ctx, &pb.WriteRequest{
+						StoreId: storeID,
+						Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
 					})
 					require.NoError(t, err)
+				}
 
-					if len(stage.Tuples) > 0 {
-						_, err = client.Write(ctx, &pb.WriteRequest{
-							StoreId: storeID,
-							Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
-						})
+				for _, assertion := range stage.Assertions {
+					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
+						StoreId:          storeID,
+						Type:             assertion.Request.Type,
+						Relation:         assertion.Request.Relation,
+						User:             assertion.Request.User,
+						ContextualTuples: assertion.Request.ContextualTuples,
+					})
+
+					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
-					}
+						require.Subset(t, assertion.Expectation, resp.Objects)
 
-					for _, assertion := range stage.Assertions {
-						resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
-							StoreId:          storeID,
-							Type:             assertion.Request.Type,
-							Relation:         assertion.Request.Relation,
-							User:             assertion.Request.User,
-							ContextualTuples: assertion.Request.ContextualTuples,
-						})
-
-						if assertion.ErrorCode == 0 {
+						for _, object := range resp.Objects {
+							// each object in the response of ListObjects should return check -> true
+							checkResp, err := client.Check(ctx, &pb.CheckRequest{
+								StoreId:          storeID,
+								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+								ContextualTuples: assertion.Request.ContextualTuples,
+							})
 							require.NoError(t, err)
-							require.Subset(t, assertion.Expectation, resp.Objects)
-
-							for _, object := range resp.Objects {
-								// each object in the response of ListObjects should return check -> true
-								checkResp, err := client.Check(ctx, &pb.CheckRequest{
-									StoreId:          storeID,
-									TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-									ContextualTuples: assertion.Request.ContextualTuples,
-								})
-								require.NoError(t, err)
-								require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
-							}
-						} else {
-							require.Error(t, err)
-							e, ok := status.FromError(err)
-							require.True(t, ok)
-							require.Equal(t, assertion.ErrorCode, int(e.Code()))
+							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
 						}
+					} else {
+						require.Error(t, err)
+						e, ok := status.FromError(err)
+						require.True(t, ok)
+						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
 				}
-			})
-		}
-	})
+			}
+		})
+	}
 }
