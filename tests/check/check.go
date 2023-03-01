@@ -70,59 +70,63 @@ func runTests(t *testing.T, schemaVersion string, client CheckTestClientInterfac
 	require.NoError(t, err)
 
 	ctx := context.Background()
+	t.Run("runCheckTests"+schemaVersion, func(t *testing.T) {
 
-	for _, test := range testCases.Tests {
-		resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: test.Name})
-		require.NoError(t, err)
-
-		storeID := resp.GetId()
-
-		t.Run(test.Name, func(t *testing.T) {
-			for _, stage := range test.Stages {
-
-				var typedefs []*openfgapb.TypeDefinition
-				if schemaVersion == typesystem.SchemaVersion1_1 {
-					typedefs = parser.MustParse(stage.Model)
-				} else {
-					typedefs = v1parser.MustParse(stage.Model)
-				}
-
-				_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   schemaVersion,
-					TypeDefinitions: typedefs,
-				})
+		for _, test := range testCases.Tests {
+			test := test
+			t.Run(test.Name, func(t *testing.T) {
+				t.Parallel()
+				resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: test.Name})
 				require.NoError(t, err)
 
-				if len(stage.Tuples) > 0 {
-					_, err = client.Write(ctx, &openfgapb.WriteRequest{
-						StoreId: storeID,
-						Writes:  &openfgapb.TupleKeys{TupleKeys: stage.Tuples},
+				storeID := resp.GetId()
+
+				for _, stage := range test.Stages {
+
+					var typedefs []*openfgapb.TypeDefinition
+					if schemaVersion == typesystem.SchemaVersion1_1 {
+						typedefs = parser.MustParse(stage.Model)
+					} else {
+						typedefs = v1parser.MustParse(stage.Model)
+					}
+
+					_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+						StoreId:         storeID,
+						SchemaVersion:   schemaVersion,
+						TypeDefinitions: typedefs,
 					})
 					require.NoError(t, err)
-				}
 
-				for _, assertion := range stage.Assertions {
-					resp, err := client.Check(ctx, &openfgapb.CheckRequest{
-						StoreId:  storeID,
-						TupleKey: assertion.Tuple,
-						ContextualTuples: &openfgapb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
-						Trace: true,
-					})
-
-					if assertion.ErrorCode == 0 {
+					if len(stage.Tuples) > 0 {
+						_, err = client.Write(ctx, &openfgapb.WriteRequest{
+							StoreId: storeID,
+							Writes:  &openfgapb.TupleKeys{TupleKeys: stage.Tuples},
+						})
 						require.NoError(t, err)
-						require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-					} else {
-						require.Error(t, err)
-						e, ok := status.FromError(err)
-						require.True(t, ok)
-						require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					}
+
+					for _, assertion := range stage.Assertions {
+						resp, err := client.Check(ctx, &openfgapb.CheckRequest{
+							StoreId:  storeID,
+							TupleKey: assertion.Tuple,
+							ContextualTuples: &openfgapb.ContextualTupleKeys{
+								TupleKeys: assertion.ContextualTuples,
+							},
+							Trace: true,
+						})
+
+						if assertion.ErrorCode == 0 {
+							require.NoError(t, err)
+							require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+						} else {
+							require.Error(t, err)
+							e, ok := status.FromError(err)
+							require.True(t, ok)
+							require.Equal(t, assertion.ErrorCode, int(e.Code()))
+						}
 					}
 				}
-			}
-		})
-	}
+			})
+		}
+	})
 }
