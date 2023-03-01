@@ -2,7 +2,9 @@ package listobjects
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
@@ -104,7 +106,6 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 					require.NoError(t, err)
 				}
 
-				// act
 				for _, assertion := range stage.Assertions {
 					// assert 1: on regular list objects endpoint
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
@@ -140,6 +141,9 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						for {
 							resp, err := clientStream.Recv()
 							if err != nil {
+								if !errors.Is(err, io.EOF) {
+									require.Failf(t, "Streaming ListObjects threw an unexpected error", err.Error())
+								}
 								break
 							}
 							streamedObjectIds = append(streamedObjectIds, resp.Object)
@@ -158,10 +162,10 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
 
-					// assert 3: each object in the response of ListObjects should return check -> true
 					if assertion.ErrorCode != 0 {
 						continue
 					}
+					// assert 3: each object in the response of ListObjects should return check -> true
 					for _, object := range resp.Objects {
 						checkResp, err := client.Check(ctx, &pb.CheckRequest{
 							StoreId:          storeID,
