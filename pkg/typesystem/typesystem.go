@@ -222,6 +222,21 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relati
 	return r, nil
 }
 
+// GetRelationReferenceAsString returns team#member, or team:*, or an empty string if the input is nil.
+func GetRelationReferenceAsString(rr *openfgapb.RelationReference) string {
+	if rr == nil {
+		return ""
+	}
+	if _, ok := rr.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
+		return fmt.Sprintf("%s#%s", rr.GetType(), rr.GetRelation())
+	}
+	if _, ok := rr.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
+		return fmt.Sprintf("%s:*", rr.GetType())
+	}
+
+	panic("unexpected relation reference")
+}
+
 func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([]*openfgapb.RelationReference, error) {
 
 	r, err := t.GetRelation(objectType, relation)
