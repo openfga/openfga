@@ -119,7 +119,7 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	for _, t := range s.tuples[store] {
 		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
