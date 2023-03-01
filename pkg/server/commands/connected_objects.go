@@ -286,11 +286,10 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		Relation:   tuplesetRelation,
 		UserFilter: userFilter,
 	})
-	defer iter.Stop()
-
 	if err != nil {
 		return err
 	}
+	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
@@ -426,11 +425,10 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		Relation:   ingress.GetRelation(),
 		UserFilter: userFilter,
 	})
-	defer iter.Stop()
-
 	if err != nil {
 		return err
 	}
+	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
