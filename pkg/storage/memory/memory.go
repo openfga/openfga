@@ -116,6 +116,8 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 
 	uniqueObjects := make(map[string]bool, 0)
 	matches := make([]*openfgapb.Object, 0)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for _, t := range s.tuples[store] {
 		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
