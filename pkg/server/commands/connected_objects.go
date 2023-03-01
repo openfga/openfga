@@ -345,10 +345,6 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		}
 
 		tk := t.GetKey()
-		_, span := tracer.Start(ctx, "tupleEval", trace.WithAttributes(
-			attribute.String("tk", tk.String()),
-			attribute.Bool("found", false),
-		))
 
 		foundObject := tk.GetObject()
 		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
@@ -358,18 +354,15 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			// from the database in the first place
 
 			// if we've already evaluated/found the object, then continue
-			span.End()
 			continue
 		}
 
 		if foundObjectType == sourceObjectType {
 			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
-				span.End()
 				break
 			}
 
 			resultChan <- foundObject
-			span.SetAttributes(attribute.Bool("found", true))
 		}
 
 		var targetUserRef isUserRef
@@ -393,7 +386,6 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			}
 		}
 
-		span.End()
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
@@ -534,10 +526,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		tk := t.GetKey()
-		_, span := tracer.Start(ctx, "tupleEval", trace.WithAttributes(
-			attribute.String("tk", tk.String()),
-			attribute.Bool("found", false),
-		))
 
 		foundObject := tk.GetObject()
 		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
@@ -547,18 +535,15 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			// from the database in the first place
 
 			// if we've already evaluated/found the object, then continue
-			span.End()
 			continue
 		}
 
 		if foundObjectType == sourceObjectType {
 			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
-				span.End()
 				break
 			}
 
 			resultChan <- foundObject
-			span.SetAttributes(attribute.Bool("found", true))
 		}
 
 		var targetUserRef isUserRef
@@ -582,7 +567,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			}
 		}
 
-		span.End()
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
