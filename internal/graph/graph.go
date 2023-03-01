@@ -3,9 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
-	"sort"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -21,29 +19,6 @@ var (
 	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
 	ErrTargetError             = errors.New("graph: target incorrectly specified")
 	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
-
-	RelationshipIngressTransformer = cmp.Transformer("Sort", func(in []*RelationshipIngress) []*RelationshipIngress {
-		out := append([]*RelationshipIngress(nil), in...) // Copy input to avoid mutating it
-
-		// Sort by Type and then by ingress and then by tupleset relation
-		sort.SliceStable(out, func(i, j int) bool {
-			if out[i].Type > out[j].Type {
-				return false
-			}
-
-			if tuple.GetRelationReferenceAsString(out[i].Ingress) > tuple.GetRelationReferenceAsString(out[j].Ingress) {
-				return false
-			}
-
-			if tuple.GetRelationReferenceAsString(out[i].TuplesetRelation) > tuple.GetRelationReferenceAsString(out[j].TuplesetRelation) {
-				return false
-			}
-
-			return true
-		})
-
-		return out
-	})
 )
 
 // ContextWithResolutionDepth attaches the provided graph resolution depth to the parent context.

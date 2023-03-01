@@ -1958,3 +1958,15 @@ func TestRewriteContainsIntersection(t *testing.T) {
 		})
 	}
 }
+
+func TestGetRelationReferenceAsString(t *testing.T) {
+	require.Equal(t, "", GetRelationReferenceAsString(nil))
+	require.Equal(t, "team#member", GetRelationReferenceAsString(&openfgapb.RelationReference{
+		Type:               "team",
+		RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
+	}))
+	require.Equal(t, "team:*", GetRelationReferenceAsString(&openfgapb.RelationReference{
+		Type:               "team",
+		RelationOrWildcard: &openfgapb.RelationReference_Wildcard{},
+	}))
+}

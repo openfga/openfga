@@ -373,15 +373,3 @@ func TestGetObjectRelationAsString(t *testing.T) {
 		})
 	}
 }
-
-func TestGetRelationReferenceAsString(t *testing.T) {
-	require.Equal(t, "", GetRelationReferenceAsString(nil))
-	require.Equal(t, "team#member", GetRelationReferenceAsString(&openfgav1.RelationReference{
-		Type:               "team",
-		RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"},
-	}))
-	require.Equal(t, "team:*", GetRelationReferenceAsString(&openfgav1.RelationReference{
-		Type:               "team",
-		RelationOrWildcard: &openfgav1.RelationReference_Wildcard{},
-	}))
-}

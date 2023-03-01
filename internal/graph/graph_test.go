@@ -2,6 +2,7 @@ package graph
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -10,6 +11,31 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+)
+
+var (
+	RelationshipIngressTransformer = cmp.Transformer("Sort", func(in []*RelationshipIngress) []*RelationshipIngress {
+		out := append([]*RelationshipIngress(nil), in...) // Copy input to avoid mutating it
+
+		// Sort by Type and then by ingress and then by tupleset relation
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].Type > out[j].Type {
+				return false
+			}
+
+			if typesystem.GetRelationReferenceAsString(out[i].Ingress) > typesystem.GetRelationReferenceAsString(out[j].Ingress) {
+				return false
+			}
+
+			if typesystem.GetRelationReferenceAsString(out[i].TuplesetRelation) > typesystem.GetRelationReferenceAsString(out[j].TuplesetRelation) {
+				return false
+			}
+
+			return true
+		})
+
+		return out
+	})
 )
 
 func TestRelationshipIngressType_String(t *testing.T) {
