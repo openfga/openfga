@@ -355,31 +355,29 @@ type ClientInterface interface {
 func RunTests(t *testing.T, client ClientInterface) {
 	ctx := context.Background()
 
-	t.Run("runWriteModelTests", func(t *testing.T) {
-		for name, test := range testCases {
-			name := name
-			test := test
-			t.Run(name, func(t *testing.T) {
-				t.Parallel()
-				resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "write_model_test"})
-				require.NoError(t, err)
+	for name, test := range testCases {
+		name := name
+		test := test
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "write_model_test"})
+			require.NoError(t, err)
 
-				storeID := resp.GetId()
-				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   typesystem.SchemaVersion1_1,
-					TypeDefinitions: parser.MustParse(test.model),
-				})
-
-				if test.code == 0 {
-					require.NoError(t, err)
-				} else {
-					require.Error(t, err)
-					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, test.code, int(e.Code()), err)
-				}
+			storeID := resp.GetId()
+			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
 			})
-		}
-	})
+
+			if test.code == 0 {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				e, ok := status.FromError(err)
+				require.True(t, ok)
+				require.Equal(t, test.code, int(e.Code()), err)
+			}
+		})
+	}
 }

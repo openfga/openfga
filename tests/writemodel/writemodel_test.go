@@ -26,5 +26,7 @@ func TestWriteAuthorizationModel(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	RunTests(t, pb.NewOpenFGAServiceClient(conn))
+	t.Run("runWriteModelTests", func(t *testing.T) {
+		RunTests(t, pb.NewOpenFGAServiceClient(conn))
+	})
 }
