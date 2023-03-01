@@ -91,7 +91,7 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore        storage.OpenFGADatastore
+	Datastore        storage.RelationshipTupleReader
 	Typesystem       *typesystem.TypeSystem
 	ResolveNodeLimit uint32
 
@@ -225,6 +225,8 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 		foundCount = new(uint32)
 	}
 
+	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples)
+
 	var foundObjects sync.Map
 	return c.streamedConnectedObjects(ctx, req, resultChan, &foundObjects, foundCount)
 }
@@ -263,45 +265,6 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 
 	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
 
-	var tuples []*openfgapb.Tuple
-	for _, t := range req.contextualTuples {
-
-		object := t.GetObject()
-		objectType, _ := tuple.SplitObject(object)
-		if objectType != ingress.GetType() {
-			continue
-		}
-
-		if t.GetRelation() != tuplesetRelation {
-			continue
-		}
-
-		user := t.GetUser()
-
-		var targetUserStr string
-		if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
-			targetUserStr = fmt.Sprintf("%s:*", val.Type)
-		}
-
-		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
-			targetUserStr = val.ObjectRelation.Object
-		}
-
-		if val, ok := req.targetUserRef.(*UserRefObject); ok {
-			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
-		}
-
-		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.targetUserRef.GetObjectType() {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-			continue
-		}
-
-		if t.GetUser() == targetUserStr {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-		}
-	}
-	iter1 := storage.NewStaticTupleIterator(tuples)
-
 	var userFilter []*openfgapb.ObjectRelation
 
 	// e.g. 'user:bob'
@@ -318,18 +281,16 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
 		Relation:   tuplesetRelation,
 		UserFilter: userFilter,
 	})
+	defer iter.Stop()
+
 	if err != nil {
-		iter1.Stop()
 		return err
 	}
-
-	iter := storage.NewCombinedIterator(iter1, iter2)
-	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
@@ -424,45 +385,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	sourceObjectType := req.sourceObjectRef.GetType()
 	sourceObjectRel := req.sourceObjectRef.GetRelation()
 
-	var tuples []*openfgapb.Tuple
-	for _, t := range req.contextualTuples {
-
-		object := t.GetObject()
-		objectType, _ := tuple.SplitObject(object)
-		if objectType != ingress.GetType() {
-			continue
-		}
-
-		if t.GetRelation() != ingress.GetRelation() {
-			continue
-		}
-
-		user := t.GetUser()
-
-		var targetUserStr string
-		if val, ok := req.targetUserRef.(*UserRefTypedWildcard); ok {
-			targetUserStr = fmt.Sprintf("%s:*", val.Type)
-		}
-
-		if val, ok := req.targetUserRef.(*UserRefObjectRelation); ok {
-			targetUserStr = tuple.GetObjectRelationAsString(val.ObjectRelation)
-		}
-
-		if val, ok := req.targetUserRef.(*UserRefObject); ok {
-			targetUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
-		}
-
-		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.targetUserRef.GetObjectType() {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-			continue
-		}
-
-		if t.GetUser() == targetUserStr {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-		}
-	}
-	iter1 := storage.NewStaticTupleIterator(tuples)
-
 	var userFilter []*openfgapb.ObjectRelation
 
 	targetUserObjectType := req.targetUserRef.GetObjectType()
@@ -499,18 +421,16 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
 		UserFilter: userFilter,
 	})
+	defer iter.Stop()
+
 	if err != nil {
-		iter1.Stop()
 		return err
 	}
-
-	iter := storage.NewCombinedIterator(iter1, iter2)
-	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)

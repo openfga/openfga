@@ -911,7 +911,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			}
 
 			connectedObjectsCmd := commands.ConnectedObjectsCommand{
-				Datastore:        ds,
+				Datastore:        storage.NewContextualTupleDatastore(ds),
 				Typesystem:       typesystem.New(model),
 				ResolveNodeLimit: test.resolveNodeLimit,
 				Limit:            test.limit,

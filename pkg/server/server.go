@@ -122,7 +122,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
+		Datastore:        storage.NewContextualTupleDatastore(s.datastore),
 		Typesystem:       typesys,
 		ResolveNodeLimit: s.config.ResolveNodeLimit,
 		Limit:            s.config.ListObjectsMaxResults,
