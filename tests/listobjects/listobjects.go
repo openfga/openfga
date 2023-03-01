@@ -41,6 +41,7 @@ type assertion struct {
 type ListObjectsClientInterface interface {
 	check.CheckTestClientInterface
 	ListObjects(ctx context.Context, in *pb.ListObjectsRequest, opts ...grpc.CallOption) (*pb.ListObjectsResponse, error)
+	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
 }
 
 // RunSchema1_1ListObjectsTests is public so can be run when OpenFGA is used as a
@@ -72,14 +73,13 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 	ctx := context.Background()
 
 	for _, test := range testCases.Tests {
-		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-		require.NoError(t, err)
-
-		storeID := resp.GetId()
-
 		t.Run(test.Name, func(t *testing.T) {
-			for _, stage := range test.Stages {
+			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+			require.NoError(t, err)
 
+			storeID := resp.GetId()
+			for _, stage := range test.Stages {
+				// arrange: write model
 				var typedefs []*pb.TypeDefinition
 				if schemaVersion == typesystem.SchemaVersion1_1 {
 					typedefs = parser.MustParse(stage.Model)
@@ -95,6 +95,7 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 				})
 				require.NoError(t, err)
 
+				// arrange: write tuples
 				if len(stage.Tuples) > 0 {
 					_, err = client.Write(ctx, &pb.WriteRequest{
 						StoreId: storeID,
@@ -103,7 +104,9 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 					require.NoError(t, err)
 				}
 
+				// act
 				for _, assertion := range stage.Assertions {
+					// assert 1: on regular list objects endpoint
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
 						StoreId:          storeID,
 						Type:             assertion.Request.Type,
@@ -115,22 +118,58 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
 						require.Subset(t, assertion.Expectation, resp.Objects)
-
-						for _, object := range resp.Objects {
-							// each object in the response of ListObjects should return check -> true
-							checkResp, err := client.Check(ctx, &pb.CheckRequest{
-								StoreId:          storeID,
-								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-								ContextualTuples: assertion.Request.ContextualTuples,
-							})
-							require.NoError(t, err)
-							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
-						}
 					} else {
 						require.Error(t, err)
 						e, ok := status.FromError(err)
 						require.True(t, ok)
 						require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					}
+
+					// assert 2: on streaming list objects endpoint
+					done := make(chan struct{})
+					var streamedObjectIds []string
+
+					clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
+						StoreId:          storeID,
+						Type:             assertion.Request.Type,
+						Relation:         assertion.Request.Relation,
+						User:             assertion.Request.User,
+						ContextualTuples: assertion.Request.ContextualTuples,
+					}, []grpc.CallOption{}...)
+					go func() {
+						for {
+							resp, err := clientStream.Recv()
+							if err != nil {
+								break
+							}
+							streamedObjectIds = append(streamedObjectIds, resp.Object)
+						}
+						done <- struct{}{}
+					}()
+					<-done
+
+					if assertion.ErrorCode == 0 {
+						require.NoError(t, err)
+						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds)
+					} else {
+						require.Error(t, err)
+						e, ok := status.FromError(err)
+						require.True(t, ok)
+						require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					}
+
+					// assert 3: each object in the response of ListObjects should return check -> true
+					if assertion.ErrorCode != 0 {
+						continue
+					}
+					for _, object := range resp.Objects {
+						checkResp, err := client.Check(ctx, &pb.CheckRequest{
+							StoreId:          storeID,
+							TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+							ContextualTuples: assertion.Request.ContextualTuples,
+						})
+						require.NoError(t, err)
+						require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
 					}
 				}
 			}
