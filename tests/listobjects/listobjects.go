@@ -162,18 +162,17 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
 
-					if assertion.ErrorCode != 0 {
-						continue
-					}
-					// assert 3: each object in the response of ListObjects should return check -> true
-					for _, object := range resp.Objects {
-						checkResp, err := client.Check(ctx, &pb.CheckRequest{
-							StoreId:          storeID,
-							TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-							ContextualTuples: assertion.Request.ContextualTuples,
-						})
-						require.NoError(t, err)
-						require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
+					if assertion.ErrorCode == 0 {
+						// assert 3: each object in the response of ListObjects should return check -> true
+						for _, object := range resp.Objects {
+							checkResp, err := client.Check(ctx, &pb.CheckRequest{
+								StoreId:          storeID,
+								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+								ContextualTuples: assertion.Request.ContextualTuples,
+							})
+							require.NoError(t, err)
+							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
+						}
 					}
 				}
 			}
