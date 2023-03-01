@@ -13,7 +13,7 @@ install-tools: download ## Install developer tooling
 	@cd tools && go list -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
 
 .PHONY: lint
-lint:  ## Lint Go source files
+lint: install-tools ## Lint Go source files
 	@golangci-lint run
 
 .PHONY: clean
