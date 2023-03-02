@@ -75,11 +75,11 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 	ctx := context.Background()
 
 	for _, test := range testCases.Tests {
-		t.Run(test.Name, func(t *testing.T) {
-			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-			require.NoError(t, err)
+		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+		require.NoError(t, err)
 
-			storeID := resp.GetId()
+		storeID := resp.GetId()
+		t.Run(test.Name, func(t *testing.T) {
 			for _, stage := range test.Stages {
 				// arrange: write model
 				var typedefs []*pb.TypeDefinition
