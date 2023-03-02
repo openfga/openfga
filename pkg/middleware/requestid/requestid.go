@@ -17,6 +17,7 @@ const (
 	requestIDHeader   = "x-request-id"
 )
 
+// FromContext extracts the requestid from the context, if it exists.
 func FromContext(ctx context.Context) (string, bool) {
 	if md, ok := metadata.FromOutgoingContext(ctx); ok {
 		if vals := md.Get(requestIDCtxKey); len(vals) > 0 {

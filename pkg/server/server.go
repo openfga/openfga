@@ -7,13 +7,14 @@ import (
 	"strconv"
 	"time"
 
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
-	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -29,8 +30,8 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader   = "openfga-authorization-model-id"
-	AuthorizationModelIDTraceTag = "authorization_model_id"
+	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	authorizationModelIDKey    = "authorization_model_id"
 
 	checkConcurrencyLimit = 100
 )
@@ -331,7 +332,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModel", trace.WithAttributes(
-		attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(req.GetId())},
+		attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(req.GetId())},
 	))
 	defer span.End()
 
@@ -478,23 +479,28 @@ func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID
 	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
 	defer span.End()
 
+	defer func() {
+		span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(modelID)})
+		grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, modelID)
+		_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
+	}()
+
 	var err error
 	if modelID != "" {
 		if _, err := ulid.Parse(modelID); err != nil {
 			return "", serverErrors.AuthorizationModelNotFound(modelID)
 		}
-	} else {
-		if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return "", serverErrors.LatestAuthorizationModelNotFound(store)
-			}
-			return "", serverErrors.HandleError("", err)
-		}
+
+		return modelID, nil
 	}
 
-	span.SetAttributes(attribute.KeyValue{Key: AuthorizationModelIDTraceTag, Value: attribute.StringValue(modelID)})
+	if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return "", serverErrors.LatestAuthorizationModelNotFound(store)
+		}
 
-	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
+		return "", serverErrors.HandleError("", err)
+	}
 
 	return modelID, nil
 }

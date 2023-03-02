@@ -35,22 +35,6 @@ jobs:
         with:
           distribution: goreleaser
           version: latest
-          args: release --skip-publish --rm-dist --config .goreleaser-nightly.yaml
+          args: release --clean --config .goreleaser-nightly.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to Docker Hub
-        uses: docker/build-push-action@v2
-        with:
-          context: .
-          file: ./Dockerfile.goreleaser
-          push: true
-          tags: openfga/openfga:nightly
-
-      - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: openfga/openfga
-          short-description: ${{ github.event.repository.description }}

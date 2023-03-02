@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
-	"github.com/openfga/openfga/internal/middleware/requestid"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
@@ -22,21 +25,11 @@ const (
 	grpcCodeKey        = "grpc_code"
 	requestIDKey       = "request_id"
 	traceIDKey         = "trace_id"
-	storeIDKey         = "store_id"
-	modelIDKey         = "authorization_model_id"
 	rawRequestKey      = "raw_request"
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
 )
-
-type hasGetStoreID interface {
-	GetStoreId() string
-}
-
-type hasGetAuthorizationModelID interface {
-	GetAuthorizationModelId() string
-}
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
 	return interceptors.UnaryServerInterceptor(reportable(logger))
@@ -47,9 +40,10 @@ func NewStreamingLoggingInterceptor(logger logger.Logger) grpc.StreamServerInter
 }
 
 type reporter struct {
-	ctx    context.Context
-	logger logger.Logger
-	fields []zap.Field
+	ctx            context.Context
+	logger         logger.Logger
+	fields         []zap.Field
+	protomarshaler protojson.MarshalOptions
 }
 
 func (r *reporter) PostCall(err error, _ time.Duration) {
@@ -75,26 +69,28 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
-	if resp, err := json.Marshal(msg); err == nil {
-		r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+
+	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
+
+	protomsg, ok := msg.(protoreflect.ProtoMessage)
+	if ok {
+		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
+			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
+		}
 	}
 }
 
 func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
-	if m, ok := msg.(hasGetStoreID); ok {
-		r.fields = append(r.fields, zap.String(storeIDKey, m.GetStoreId()))
-	}
 
-	if m, ok := msg.(hasGetAuthorizationModelID); ok {
-		r.fields = append(r.fields, zap.String(modelIDKey, m.GetAuthorizationModelId()))
-	}
-
-	if req, err := json.Marshal(msg); err == nil {
-		r.fields = append(r.fields, zap.Any(rawRequestKey, json.RawMessage(req)))
+	protomsg, ok := msg.(protoreflect.ProtoMessage)
+	if ok {
+		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {
+			r.fields = append(r.fields, zap.Any(rawRequestKey, json.RawMessage(req)))
+		}
 	}
 }
 
-func reportable(logger logger.Logger) interceptors.CommonReportableFunc {
+func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta, isClient bool) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, c.Service),
@@ -111,10 +107,13 @@ func reportable(logger logger.Logger) interceptors.CommonReportableFunc {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
+		zapLogger := l.(*logger.ZapLogger)
+
 		return &reporter{
-			ctx:    ctx,
-			logger: logger,
-			fields: fields,
+			ctx:            ctxzap.ToContext(ctx, zapLogger.Logger),
+			logger:         l,
+			fields:         fields,
+			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
 		}, ctx
 	}
 }

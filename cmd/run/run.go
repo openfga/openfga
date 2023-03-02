@@ -17,6 +17,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -26,13 +27,13 @@ import (
 	"github.com/openfga/openfga/internal/authn/presharedkey"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/gateway"
-	mwauthn "github.com/openfga/openfga/internal/middleware/authn"
-	httpmiddleware "github.com/openfga/openfga/internal/middleware/http"
-	"github.com/openfga/openfga/internal/middleware/logging"
-	"github.com/openfga/openfga/internal/middleware/requestid"
-	"github.com/openfga/openfga/internal/middleware/storeid"
+	authnmw "github.com/openfga/openfga/internal/middleware/authn"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
+	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
+	"github.com/openfga/openfga/pkg/middleware/logging"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
 	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
@@ -469,11 +470,13 @@ func RunServer(ctx context.Context, config *Config) error {
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		grpc_validator.UnaryServerInterceptor(),
 		requestid.NewUnaryInterceptor(),
+		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		grpc_validator.StreamServerInterceptor(),
 		requestid.NewStreamingInterceptor(),
+		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
 	if config.Metrics.Enabled {
@@ -493,11 +496,11 @@ func RunServer(ctx context.Context, config *Config) error {
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(logger),
-		grpc_auth.UnaryServerInterceptor(mwauthn.AuthFunc(authenticator)),
+		grpc_auth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		grpc_auth.StreamServerInterceptor(mwauthn.AuthFunc(authenticator)),
+		grpc_auth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),

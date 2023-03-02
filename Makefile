@@ -13,7 +13,7 @@ install-tools: download ## Install developer tooling
 	@cd tools && go list -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
 
 .PHONY: lint
-lint:  ## Lint Go source files
+lint: install-tools ## Lint Go source files
 	@golangci-lint run
 
 .PHONY: clean
@@ -83,5 +83,5 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 			./cmd/openfga/...
 
 .PHONY: bench
-bench: go-generate ## Run benchmark test
-	go test ./... -bench=. -run=XXX -benchmem
+bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
+	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem

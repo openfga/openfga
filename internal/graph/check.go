@@ -371,6 +371,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		storeID := req.GetStoreID()
 		tk := req.GetTupleKey()
+		objectType := tuple.GetType(tk.GetObject())
+		relation := tk.GetRelation()
 
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
 			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
@@ -388,12 +390,37 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if t != nil && err == nil {
 				return &openfgapb.CheckResponse{Allowed: true}, nil
 			}
-
 			return &openfgapb.CheckResponse{Allowed: false}, nil
 		}
 
+		var checkFuncs []CheckHandlerFunc
+
+		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
+			checkFuncs = append(checkFuncs, fn1)
+		} else {
+			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+				typesystem.DirectRelationReference(objectType, relation),                                         //target
+				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+			)
+
+			if shouldCheckDirectTuple {
+				checkFuncs = append(checkFuncs, fn1)
+			}
+		}
+
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, tk)
+
+			var allowedUserTypeRestrictions []*openfgapb.RelationReference
+			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
+				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
+				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
+			}
+
+			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+				Object:                      tk.Object,
+				Relation:                    tk.Relation,
+				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+			})
 			if err != nil {
 				return &openfgapb.CheckResponse{Allowed: false}, err
 			}
@@ -459,7 +486,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		return union(ctx, c.concurrencyLimit, fn1, fn2)
+		checkFuncs = append(checkFuncs, fn2)
+
+		return union(ctx, c.concurrencyLimit, checkFuncs...)
 	}
 }
 

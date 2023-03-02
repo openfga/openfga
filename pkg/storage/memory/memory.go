@@ -116,6 +116,10 @@ func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, obj
 
 	uniqueObjects := make(map[string]bool, 0)
 	matches := make([]*openfgapb.Object, 0)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, t := range s.tuples[store] {
 		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
 			continue
@@ -340,7 +344,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 }
 
 // ReadUsersetTuples See storage.TupleBackend.ReadUsersetTuples
-func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	_, span := tracer.Start(ctx, "memory.ReadUsersetTuples")
 	defer span.End()
 
@@ -350,10 +354,23 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, tk 
 	var matches []*openfgapb.Tuple
 	for _, t := range s.tuples[store] {
 		if match(&openfgapb.TupleKey{
-			Object:   tk.GetObject(),
-			Relation: tk.GetRelation(),
+			Object:   filter.Object,
+			Relation: filter.Relation,
 		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
-			matches = append(matches, t)
+			if len(filter.AllowedUserTypeRestrictions) == 0 { // 1.0 model
+				matches = append(matches, t)
+				continue
+			}
+
+			// 1.1 model: see if the tuple found is of an allowed type
+			userType := tupleUtils.GetType(t.GetKey().GetUser())
+			_, userRelation := tupleUtils.SplitObjectRelation(t.GetKey().GetUser())
+			for _, allowedType := range filter.AllowedUserTypeRestrictions {
+				if allowedType.Type == userType && allowedType.GetRelation() == userRelation {
+					matches = append(matches, t)
+					continue
+				}
+			}
 		}
 	}
 
