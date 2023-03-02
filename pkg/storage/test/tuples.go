@@ -343,26 +343,58 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		var gotTupleKeys []*openfgapb.TupleKey
-		for {
-			tk, err := iter.Next()
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
+		gotTk, err := iter.Next()
+		require.NoError(t, err)
 
-				require.Fail(t, "unexpected error encountered")
-			}
-
-			gotTupleKeys = append(gotTupleKeys, tk)
+		expected := tuple.NewTupleKey("document:1", "viewer", "group:eng#member")
+		if diff := cmp.Diff(expected, gotTk, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
 		}
 
-		// Then the iterator should run out
-		_, err = gotTuples.Next()
+		_, err = iter.Next()
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
 
-		require.Len(t, gotTupleKeys, 1)
-		require.Equal(t, gotTupleKeys[0], tuple.NewTupleKey("document:1", "viewer", "group:eng#member"))
+	t.Run("reading_userset_tuples_with_filter_made_of_direct_relation_references", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tks := []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			tuple.NewTupleKey("document:1", "viewer", "users:*"),
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tks)
+		require.NoError(t, err)
+
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+				typesystem.DirectRelationReference("grouping", "member"),
+			},
+		})
+		require.NoError(t, err)
+
+		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
+		defer iter.Stop()
+
+		gotOne, err := iter.Next()
+		require.NoError(t, err)
+		gotTwo, err := iter.Next()
+		require.NoError(t, err)
+
+		expected := []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
+		}
+		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		}
+
+		_, err = iter.Next()
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
 	t.Run("reading_userset_tuples_with_filter_made_of_wildcard_relation_reference", func(t *testing.T) {
@@ -389,26 +421,58 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		var gotTupleKeys []*openfgapb.TupleKey
-		for {
-			tk, err := iter.Next()
-			if err != nil {
-				if errors.Is(err, storage.ErrIteratorDone) {
-					break
-				}
+		got, err := iter.Next()
+		require.NoError(t, err)
 
-				require.Fail(t, "unexpected error encountered")
-			}
-
-			gotTupleKeys = append(gotTupleKeys, tk)
+		expected := tuple.NewTupleKey("document:1", "viewer", "user:*")
+		if diff := cmp.Diff(expected, got, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
 		}
 
-		// Then the iterator should run out
-		_, err = gotTuples.Next()
+		_, err = iter.Next()
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
 
-		require.Len(t, gotTupleKeys, 1)
-		require.Equal(t, gotTupleKeys[0], tuple.NewTupleKey("document:1", "viewer", "user:*"))
+	t.Run("reading_userset_tuples_with_filter_made_of_mix_references", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tks := []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			tuple.NewTupleKey("document:1", "viewer", "users:*"),
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tks)
+		require.NoError(t, err)
+
+		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   "document:1",
+			Relation: "viewer",
+			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+				typesystem.DirectRelationReference("group", "member"),
+				typesystem.WildcardRelationReference("user"),
+			},
+		})
+		require.NoError(t, err)
+
+		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
+		defer iter.Stop()
+
+		gotOne, err := iter.Next()
+		require.NoError(t, err)
+		gotTwo, err := iter.Next()
+		require.NoError(t, err)
+
+		expected := []*openfgapb.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "viewer", "user:*"),
+		}
+		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		}
+
+		_, err = iter.Next()
+		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
 
