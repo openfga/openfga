@@ -35,12 +35,6 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func testRunAll(t *testing.T, engine string) {
-	testCheck(t, engine)
-	testBadAuthModelID(t, engine)
-}
-
-func testCheck(t *testing.T, engine string) {
-
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -54,29 +48,31 @@ func testCheck(t *testing.T, engine string) {
 	)
 	require.NoError(t, err)
 	defer conn.Close()
-	t.Run("testCheck", func(t *testing.T) {
 
-		RunSchema1_1CheckTests(t, pb.NewOpenFGAServiceClient(conn))
-		RunSchema1_0CheckTests(t, pb.NewOpenFGAServiceClient(conn))
-
+	t.Run("RunAll", func(t *testing.T) {
+		t.Run("testCheck", func(t *testing.T) {
+			t.Parallel()
+			testCheck(t, conn)
+		})
+		t.Run("testBadAuthModelID", func(t *testing.T) {
+			t.Parallel()
+			testBadAuthModelID(t, conn)
+		})
 	})
 }
 
-func testBadAuthModelID(t *testing.T, engine string) {
+func testCheck(t *testing.T, conn *grpc.ClientConn) {
+	t.Run("Schema1_1", func(t *testing.T) {
+		t.Parallel()
+		RunSchema1_1CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+	})
+	t.Run("Schema1_0", func(t *testing.T) {
+		t.Parallel()
+		RunSchema1_0CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+	})
+}
 
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
-	cfg.Datastore.Engine = engine
-
-	cancel := tests.StartServer(t, cfg)
-	defer cancel()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	require.NoError(t, err)
-	defer conn.Close()
+func testBadAuthModelID(t *testing.T, conn *grpc.ClientConn) {
 
 	client := pb.NewOpenFGAServiceClient(conn)
 

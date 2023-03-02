@@ -24,10 +24,6 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func testRunAll(t *testing.T, engine string) {
-	testListObjects(t, engine)
-}
-
-func testListObjects(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
@@ -41,8 +37,21 @@ func testListObjects(t *testing.T, engine string) {
 	)
 	require.NoError(t, err)
 	defer conn.Close()
-	t.Run("testListObjects", func(t *testing.T) {
+	t.Run("RunAll", func(t *testing.T) {
+		t.Run("ListObjects", func(t *testing.T) {
+			t.Parallel()
+			testListObjects(t, conn)
+		})
+	})
+}
+
+func testListObjects(t *testing.T, conn *grpc.ClientConn) {
+	t.Run("Schema1_1", func(t *testing.T) {
+		t.Parallel()
 		RunSchema1_1ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
+	})
+	t.Run("Schema1_0", func(t *testing.T) {
+		t.Parallel()
 		RunSchema1_0ListObjectsTests(t, pb.NewOpenFGAServiceClient(conn))
 	})
 }
