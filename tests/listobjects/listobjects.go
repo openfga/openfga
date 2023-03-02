@@ -118,7 +118,7 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
-						require.Subset(t, assertion.Expectation, resp.Objects)
+						require.ElementsMatch(t, assertion.Expectation, resp.Objects)
 					} else {
 						require.Error(t, err)
 						e, ok := status.FromError(err)
@@ -137,27 +137,33 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						User:             assertion.Request.User,
 						ContextualTuples: assertion.Request.ContextualTuples,
 					}, []grpc.CallOption{}...)
+					require.NoError(t, err)
+
+					var streamingErr error
+					var streamingResp *pb.StreamedListObjectsResponse
 					go func() {
 						for {
-							resp, err := clientStream.Recv()
-							if err != nil {
-								if !errors.Is(err, io.EOF) {
-									require.Failf(t, "Streaming ListObjects threw an unexpected error", err.Error())
+							streamingResp, streamingErr = clientStream.Recv()
+							if streamingErr == nil {
+								streamedObjectIds = append(streamedObjectIds, streamingResp.Object)
+							} else {
+								if errors.Is(streamingErr, io.EOF) {
+									streamingErr = nil
 								}
 								break
 							}
-							streamedObjectIds = append(streamedObjectIds, resp.Object)
+
 						}
 						done <- struct{}{}
 					}()
 					<-done
 
 					if assertion.ErrorCode == 0 {
-						require.NoError(t, err)
+						require.NoError(t, streamingErr)
 						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds)
 					} else {
-						require.Error(t, err)
-						e, ok := status.FromError(err)
+						require.Error(t, streamingErr)
+						e, ok := status.FromError(streamingErr)
 						require.True(t, ok)
 						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
