@@ -1,4 +1,4 @@
-package middleware
+package authn
 
 import (
 	"context"
