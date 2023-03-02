@@ -310,7 +310,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
 			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + "%#" + userset.GetRelation()})
+				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
 			}
 			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
 				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
