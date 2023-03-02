@@ -37,18 +37,15 @@ func contextWithHandle(ctx context.Context) context.Context {
 	return context.WithValue(ctx, storeIDCtxKey, &storeidHandle{})
 }
 
-func SetStoreIDInContext(ctx context.Context, req interface{}) error {
-	switch req := req.(type) {
-	case hasGetStoreID:
-		handle := ctx.Value(storeIDCtxKey)
-		if handle == nil {
-			return nil
-		}
+func SetStoreIDInContext(ctx context.Context, req interface{}) {
 
-		handle.(*storeidHandle).storeid = req.GetStoreId()
-		return nil
-	default:
-		return nil
+	handle := ctx.Value(storeIDCtxKey)
+	if handle == nil {
+		return
+	}
+
+	if r, ok := req.(hasGetStoreID); ok {
+		handle.(*storeidHandle).storeid = r.GetStoreId()
 	}
 }
 
@@ -78,7 +75,7 @@ func (r *reporter) PostCall(error, time.Duration) {}
 
 func (r *reporter) PostMsgSend(interface{}, error, time.Duration) {}
 
-func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
+func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
 	if m, ok := msg.(hasGetStoreID); ok {
 		storeID := m.GetStoreId()
 
