@@ -35,10 +35,9 @@ type stage struct {
 }
 
 type assertion struct {
-	Request          *pb.ListObjectsRequest
-	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
-	Expectation      []string
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	Request     *pb.ListObjectsRequest
+	Expectation []string
+	ErrorCode   int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
 
 type ListObjectsClientInterface interface {
