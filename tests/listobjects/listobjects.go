@@ -10,15 +10,12 @@ import (
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/openfga/openfga/tests"
 	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
@@ -55,16 +52,16 @@ type ListObjectsClientInterface interface {
 // RunSchema1_1ListObjectsTests is public so can be run when OpenFGA is used as a
 // library. An OpenFGA server needs to be running and the client parameter is
 // a client for the server.
-func RunSchema1_1ListObjectsTests(t *testing.T, engine string) {
-	runTests(t, typesystem.SchemaVersion1_1, engine)
+func RunSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
 // RunSchema1_0ListObjectsTests is the 1.0 version of RunSchema1_1CheckTests.
-func RunSchema1_0ListObjectsTests(t *testing.T, engine string) {
-	runTests(t, typesystem.SchemaVersion1_0, engine)
+func RunSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 
-func runTests(t *testing.T, schemaVersion string, engine string) {
+func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterface) {
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
@@ -81,32 +78,11 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 	ctx := context.Background()
 
 	for _, test := range testCases.Tests {
-		cfg := run.MustDefaultConfigWithRandomPorts()
-		cfg.Log.Level = "none"
-		cfg.Datastore.Engine = engine
-		listObjectsMaxResults := test.ListObjectsMaxResults
-		if test.ListObjectsMaxResults != 0 {
-			cfg.ListObjectsMaxResults = test.ListObjectsMaxResults
-		}
+		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+		require.NoError(t, err)
 
-		cancel := tests.StartServer(t, cfg)
-
-		conn, err := grpc.Dial(cfg.GRPC.Addr,
-			grpc.WithBlock(),
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
-		)
-		if err != nil {
-			require.FailNow(t, err.Error())
-		}
-
-		client := pb.NewOpenFGAServiceClient(conn)
-		test := test
+		storeID := resp.GetId()
 		t.Run(test.Name, func(t *testing.T) {
-			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-			require.NoError(t, err)
-
-			storeID := resp.GetId()
-
 			for _, stage := range test.Stages {
 				// arrange: write model
 				var typedefs []*pb.TypeDefinition
@@ -136,24 +112,16 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 				for _, assertion := range stage.Assertions {
 					// assert 1: on regular list objects endpoint
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
-						StoreId:  storeID,
-						Type:     assertion.Request.Type,
-						Relation: assertion.Request.Relation,
-						User:     assertion.Request.User,
-						ContextualTuples: &pb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
+						StoreId:          storeID,
+						Type:             assertion.Request.Type,
+						Relation:         assertion.Request.Relation,
+						User:             assertion.Request.User,
+						ContextualTuples: assertion.Request.ContextualTuples,
 					})
 
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
-						require.LessOrEqual(t, len(resp.Objects), int(listObjectsMaxResults))
-
-						if len(assertion.Expectation) > int(listObjectsMaxResults) {
-							require.Subset(t, assertion.Expectation, resp.Objects)
-						} else {
-							require.ElementsMatch(t, assertion.Expectation, resp.Objects)
-						}
+						require.ElementsMatch(t, assertion.Expectation, resp.Objects)
 					} else {
 						require.Error(t, err)
 						e, ok := status.FromError(err)
@@ -166,15 +134,12 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 					var streamedObjectIds []string
 
 					clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
-						StoreId:  storeID,
-						Type:     assertion.Request.Type,
-						Relation: assertion.Request.Relation,
-						User:     assertion.Request.User,
-						ContextualTuples: &pb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
+						StoreId:          storeID,
+						Type:             assertion.Request.Type,
+						Relation:         assertion.Request.Relation,
+						User:             assertion.Request.User,
+						ContextualTuples: assertion.Request.ContextualTuples,
 					}, []grpc.CallOption{}...)
-
 					require.NoError(t, err)
 
 					var streamingErr error
@@ -198,12 +163,7 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, streamingErr)
-						require.LessOrEqual(t, len(streamedObjectIds), int(listObjectsMaxResults))
-						if len(assertion.Expectation) > int(listObjectsMaxResults) {
-							require.Subset(t, assertion.Expectation, streamedObjectIds)
-						} else {
-							require.ElementsMatch(t, assertion.Expectation, streamedObjectIds)
-						}
+						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds)
 					} else {
 						require.Error(t, streamingErr)
 						e, ok := status.FromError(streamingErr)
@@ -215,11 +175,9 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 						// assert 3: each object in the response of ListObjects should return check -> true
 						for _, object := range resp.Objects {
 							checkResp, err := client.Check(ctx, &pb.CheckRequest{
-								StoreId:  storeID,
-								TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-								ContextualTuples: &pb.ContextualTupleKeys{
-									TupleKeys: assertion.ContextualTuples,
-								},
+								StoreId:          storeID,
+								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+								ContextualTuples: assertion.Request.ContextualTuples,
 							})
 							require.NoError(t, err)
 							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
@@ -227,11 +185,6 @@ func runTests(t *testing.T, schemaVersion string, engine string) {
 					}
 				}
 			}
-		})
-
-		t.Cleanup(func() {
-			cancel()
-			conn.Close()
 		})
 	}
 }
