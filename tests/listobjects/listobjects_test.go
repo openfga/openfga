@@ -1,13 +1,14 @@
 package listobjects
 
 import (
+	"testing"
+
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"testing"
 )
 
 func TestListObjectsMemory(t *testing.T) {

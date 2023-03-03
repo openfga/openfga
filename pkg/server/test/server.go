@@ -8,7 +8,6 @@ import (
 
 const (
 	defaultResolveNodeLimit = 25
-	gitHubTestDataFile      = "testdata/github.json" // relative to project root
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -51,6 +50,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
+
+	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {

@@ -22,9 +22,8 @@ import (
 
 type listObjectTests struct {
 	Tests []struct {
-		Name                  string
-		Stages                []*stage
-		ListObjectsMaxResults uint32 `yaml:"listObjectsMaxResults"`
+		Name   string
+		Stages []*stage
 	}
 }
 
@@ -36,11 +35,10 @@ type stage struct {
 }
 
 type assertion struct {
-	Request               *pb.ListObjectsRequest
-	ContextualTuples      []*pb.TupleKey `yaml:"contextualTuples"`
-	ListObjectsMaxResults uint32
-	Expectation           []string
-	ErrorCode             int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	Request          *pb.ListObjectsRequest
+	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
+	Expectation      []string
+	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
 
 type ListObjectsClientInterface interface {

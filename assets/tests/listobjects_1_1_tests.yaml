@@ -1,7 +1,6 @@
 tests:
   # https://github.com/openfga/openfga/issues/571
   - name: nil_pointer_exception
-    listObjectsMaxResults: 100
     stages:
       - model: |
           type user
@@ -33,7 +32,6 @@ tests:
               - document:c
   # https://github.com/openfga/openfga/issues/576
   - name: bug_objects_in_response_do_not_return_check_equals_true
-    listObjectsMaxResults: 100
     stages:
       - model: |
           type user
@@ -65,7 +63,6 @@ tests:
               #document:d is not expected
               - document:c
   - name: does_not_return_duplicates
-    listObjectsMaxResults: 100
     stages:
       - model: | #concurrent checks
           type user
@@ -99,50 +96,7 @@ tests:
               relation: admin
             expectation:
               - repo:1
-  - name: respects_max_results
-    listObjectsMaxResults: 2
-    stages:
-      - model: | #concurrent checks
-          type user
-          type repo
-            relations
-              define blocked: [user] as self
-              define admin: [user] as self but not blocked
-        tuples:
-          - user: user:a
-            relation: admin
-            object: repo:1
-          - user: user:a
-            relation: admin
-            object: repo:2
-          - user: user:a
-            relation: admin
-            object: repo:3
-        assertions:
-          - request:
-              user: user:a
-              type: repo
-              relation: admin
-            expectation: #any of these 3 is valid but we expect 2 results
-              - repo:1
-              - repo:2
-              - repo:3
-      - model: | #reverse expansion
-            type user
-            type repo
-              relations
-                define admin: [user] as self
-        assertions:
-          - request:
-              user: user:a
-              type: repo
-              relation: admin
-            expectation: #any of these 3 is valid but we expect 2 results
-              - repo:1
-              - repo:2
-              - repo:3
   - name: expands_wildcard_tuple
-    listObjectsMaxResults: 100
     stages:
       - model: | #concurrent checks
           type user
@@ -174,7 +128,6 @@ tests:
             expectation:
               - repo:1
   - name: considers_input_contextual_tuples
-    listObjectsMaxResults: 100
     stages:
       - model: | #concurrent checks
           type user
@@ -224,7 +177,6 @@ tests:
               - repo:2
               - repo:3
   - name: ignores_irrelevant_contextual_tuples_because_different_user
-    listObjectsMaxResults: 100
     stages:
       - model: | #concurrent checks
           type user
@@ -267,7 +219,6 @@ tests:
             expectation:
               - repo:1
   - name: ignores_irrelevant_contextual_tuples_because_different_type
-    listObjectsMaxResults: 100
     stages:
       - model: | #concurrent checks
           type user
@@ -314,7 +265,6 @@ tests:
             expectation:
               - repo:1
   - name: ignores_irrelevant_tuples_because_different_user
-    listObjectsMaxResults: 100
     stages:
       - model: | # concurrent checks
           type user
@@ -349,7 +299,6 @@ tests:
             expectation:
               - repo:1
   - name: ignores_duplicate_contextual_tuples
-    listObjectsMaxResults: 100
     stages:
       - model: | # concurrent checks
           type user
@@ -397,7 +346,6 @@ tests:
               - repo:1
               - repo:2
   - name: error_if_contextual_tuples_do_not_follow_type_restrictions
-    listObjectsMaxResults: 100
     stages:
       - model: | # concurrent checks
           type user
@@ -442,7 +390,6 @@ tests:
               relation: owner
             errorCode: 2027
   - name: error_if_unknown_type_in_request
-    listObjectsMaxResults: 100
     stages:
       - model: | # concurrent checks
           type user
@@ -468,7 +415,6 @@ tests:
               relation: owner
             errorCode: 2021 # type 'unknown' not found
   - name: error_if_unknown_relation_in_request
-    listObjectsMaxResults: 100
     stages:
       - model: | # concurrent checks
           type user
