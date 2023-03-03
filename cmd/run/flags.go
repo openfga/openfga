@@ -123,6 +123,10 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("profiler.enabled", flags.Lookup("profiler-enabled"))
 	util.MustBindEnv("profiler.enabled", "OPENFGA_PROFILER_ENABLED")
 
+	flags.String("profiler-addr", defaultConfig.Profiler.Addr, "the host:port address to serve the pprof profiler server on")
+	util.MustBindPFlag("profiler.addr", flags.Lookup("profiler-addr"))
+	util.MustBindEnv("profiler.addr", "OPENFGA_PROFILER_ADDRESS")
+
 	flags.String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
 	util.MustBindPFlag("log.format", flags.Lookup("log-format"))
 	util.MustBindEnv("log.format", "OPENFGA_LOG_FORMAT")
