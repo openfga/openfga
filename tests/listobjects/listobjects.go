@@ -35,9 +35,10 @@ type stage struct {
 }
 
 type assertion struct {
-	Request     *pb.ListObjectsRequest
-	Expectation []string
-	ErrorCode   int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	Request          *pb.ListObjectsRequest
+	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
+	Expectation      []string
+	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
 
 type ListObjectsClientInterface interface {
@@ -109,11 +110,13 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 				for _, assertion := range stage.Assertions {
 					// assert 1: on regular list objects endpoint
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
-						StoreId:          storeID,
-						Type:             assertion.Request.Type,
-						Relation:         assertion.Request.Relation,
-						User:             assertion.Request.User,
-						ContextualTuples: assertion.Request.ContextualTuples,
+						StoreId:  storeID,
+						Type:     assertion.Request.Type,
+						Relation: assertion.Request.Relation,
+						User:     assertion.Request.User,
+						ContextualTuples: &pb.ContextualTupleKeys{
+							TupleKeys: assertion.ContextualTuples,
+						},
 					})
 
 					if assertion.ErrorCode == 0 {
@@ -131,11 +134,13 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 					var streamedObjectIds []string
 
 					clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
-						StoreId:          storeID,
-						Type:             assertion.Request.Type,
-						Relation:         assertion.Request.Relation,
-						User:             assertion.Request.User,
-						ContextualTuples: assertion.Request.ContextualTuples,
+						StoreId:  storeID,
+						Type:     assertion.Request.Type,
+						Relation: assertion.Request.Relation,
+						User:     assertion.Request.User,
+						ContextualTuples: &pb.ContextualTupleKeys{
+							TupleKeys: assertion.ContextualTuples,
+						},
 					}, []grpc.CallOption{}...)
 					require.NoError(t, err)
 
@@ -172,9 +177,11 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						// assert 3: each object in the response of ListObjects should return check -> true
 						for _, object := range resp.Objects {
 							checkResp, err := client.Check(ctx, &pb.CheckRequest{
-								StoreId:          storeID,
-								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-								ContextualTuples: assertion.Request.ContextualTuples,
+								StoreId:  storeID,
+								TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+								ContextualTuples: &pb.ContextualTupleKeys{
+									TupleKeys: assertion.ContextualTuples,
+								},
 							})
 							require.NoError(t, err)
 							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
