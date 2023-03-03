@@ -54,10 +54,10 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			name:   "respects_when_schema_1_1_and_reverse_expansion_implementation",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
-type user
-type repo
-	relations
-		define admin: [user] as self
+				type user
+				type repo
+					relations
+						define admin: [user] as self
 	`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
@@ -80,11 +80,11 @@ type repo
 			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
-type user
-type org
-	relations
-		define blocked: [user] as self
-		define admin: [user] as self but not blocked
+				type user
+				type org
+					relations
+						define blocked: [user] as self
+						define admin: [user] as self but not blocked
 	`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
@@ -107,9 +107,9 @@ type org
 			name:   "respects_when_schema_1_0",
 			schema: typesystem.SchemaVersion1_0,
 			model: `
-type document
-	relations
-		define admin as self
+				type document
+					relations
+						define admin as self
 	`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:1", "admin", "bob"),
