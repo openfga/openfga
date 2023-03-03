@@ -11,15 +11,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func TestCheckMemory(t *testing.T) {
+func TestListObjectsMemory(t *testing.T) {
 	testRunAll(t, "memory")
 }
 
-func TestCheckPostgres(t *testing.T) {
+func TestListObjectsPostgres(t *testing.T) {
 	testRunAll(t, "postgres")
 }
 
-func TestCheckMySQL(t *testing.T) {
+func TestListObjectsMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
