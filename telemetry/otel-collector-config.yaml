@@ -1,9 +1,13 @@
+# How data gets into the Collector
 receivers:
+  # Data sources: traces, metrics, logs
   otlp:
     protocols:
       grpc:
 
+# How you send data to one or more backends. Configuring an exporter does not enable it.
 exporters:
+  # Data sources: traces
   jaeger:
     endpoint: jaeger:14250
     tls:
@@ -18,27 +22,37 @@ exporters:
       num_consumers: 10
       queue_size: 10000
       # this should work out to about 8M batches/second for 10s buffer
+  # Data sources: traces, metrics, logs
   logging:
     loglevel: debug
   prometheus:
     endpoint: "0.0.0.0:1234"
 
 processors:
+  # Data sources: traces, metrics, logs
   memory_limiter:
     check_interval: 1s
     limit_percentage: 30
     spike_limit_percentage: 6
+  # Data sources: traces, metrics, logs
   batch:
     timeout: 2s
     send_batch_max_size: 32768
 
+# Tasks that do not involve processing telemetry data. Configuring an extension does not enable it.
 extensions:
   memory_ballast:
+    # https://github.com/open-telemetry/opentelemetry-collector/blob/main/extension/ballastextension/README.md
     size_in_percentage: 10
 
 service:
+  extensions: [memory_ballast]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch]
+      processors: [memory_limiter, batch]
       exporters: [jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]

@@ -66,16 +66,16 @@ services:
     networks:
       - default
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "1234:1234"
+      - "4317:4317" #traces
+      - "4318:4318" #traces
+      - "1234:1234" #prometheus metrics
 
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
     command: ["--query.max-clock-skew-adjustment", "500ms"]
     ports:
-      - "16686:16686"
+      - "16686:16686" # UI
     depends_on:
       - otel-collector
     networks:
@@ -84,7 +84,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.30.3
     ports:
-      - 9090:9090
+      - 9090:9090 # UI
     volumes:
       - ./telemetry/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -96,7 +96,7 @@ services:
   grafana:
       image: grafana/grafana
       ports:
-        - 3001:3000
+        - 3001:3000 # UI
       restart: unless-stopped
       depends_on:
         prometheus:
