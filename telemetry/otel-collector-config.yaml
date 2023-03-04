@@ -25,8 +25,9 @@ exporters:
   # Data sources: traces, metrics, logs
   logging:
     loglevel: debug
-  prometheus:
+  prometheus: # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/prometheusexporter
     endpoint: "0.0.0.0:1234"
+    namespace: default
 
 processors:
   # Data sources: traces, metrics, logs
