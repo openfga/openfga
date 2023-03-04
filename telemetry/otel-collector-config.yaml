@@ -3,6 +3,8 @@ receivers:
   # Data sources: traces, metrics, logs
   otlp:
     protocols:
+      http:
+        endpoint: "0.0.0.0:4318"
       grpc:
 
 # How you send data to one or more backends. Configuring an exporter does not enable it.
