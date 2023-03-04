@@ -1,3 +1,5 @@
+# https://opentelemetry.io/docs/collector/configuration/
+
 # How data gets into the Collector
 receivers:
   # Data sources: traces, metrics, logs
@@ -28,9 +30,6 @@ exporters:
   # Data sources: traces, metrics, logs
   logging:
     loglevel: debug
-  prometheus: # https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/prometheusexporter
-    endpoint: "0.0.0.0:1234"
-    namespace: default
 
 processors:
   # Data sources: traces, metrics, logs
@@ -56,7 +55,3 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [jaeger]
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [prometheus]
