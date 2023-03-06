@@ -9,6 +9,14 @@ receivers:
         endpoint: "0.0.0.0:4318"
       grpc:
         endpoint: "0.0.0.0:4317"
+  # Data sources: metrics
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 1s
+          static_configs:
+            - targets: [ openfga:2112 ]
 
 # How you send data to one or more backends. Configuring an exporter does not enable it.
 exporters:
@@ -30,6 +38,10 @@ exporters:
   # Data sources: traces, metrics, logs
   logging:
     loglevel: debug
+  # Data sources: metrics
+  prometheus:
+    endpoint: otel-collector:1234
+    namespace: default
 
 processors:
   # Data sources: traces, metrics, logs
@@ -55,3 +67,7 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [jaeger]
+    metrics:
+      receivers: [ prometheus ]
+      processors: [ ]
+      exporters: [ prometheus ]

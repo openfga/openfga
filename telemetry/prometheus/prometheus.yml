@@ -7,4 +7,4 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - 'openfga:2112'
+          - 'otel-collector:1234'

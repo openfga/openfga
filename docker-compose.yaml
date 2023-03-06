@@ -85,6 +85,8 @@ services:
     image: prom/prometheus:v2.30.3
     ports:
       - 9090:9090 # UI
+    depends_on:
+      - otel-collector
     volumes:
       - ./telemetry/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
