@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -146,6 +148,10 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
 		ResolveNodeLimit: 25,
+		OverrideConfig: OverrideConfig{
+			AllowWriting10Models:    true,
+			AllowEvaluating10Models: true,
+		},
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -215,6 +221,10 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
 		ResolveNodeLimit: 25,
+		OverrideConfig: OverrideConfig{
+			AllowWriting10Models:    true,
+			AllowEvaluating10Models: true,
+		},
 	})
 
 	start := time.Now()
@@ -355,6 +365,10 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      25,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
+		OverrideConfig: OverrideConfig{
+			AllowWriting10Models:    true,
+			AllowEvaluating10Models: true,
+		},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -435,6 +449,10 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      25,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
+		OverrideConfig: OverrideConfig{
+			AllowWriting10Models:    true,
+			AllowEvaluating10Models: true,
+		},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -460,5 +478,75 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+	})
+}
+
+func TestObosolete(t *testing.T) {
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	data, err := os.ReadFile("testdata/github.json")
+	require.NoError(t, err)
+
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+	require.NoError(t, err)
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+	}, nil)
+	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+
+	s := Server{
+		datastore: mockDatastore,
+		transport: transport,
+		logger:    logger,
+		config: &Config{
+			ResolveNodeLimit:      25,
+			ListObjectsDeadline:   5 * time.Second,
+			ListObjectsMaxResults: 1000,
+			OverrideConfig: OverrideConfig{
+				AllowEvaluating10Models: false,
+				AllowWriting10Models:    false,
+			},
+		},
+	}
+
+	t.Run("throw_obsolete_error_in_check", func(t *testing.T) {
+		_, err = s.Check(ctx, &openfgapb.CheckRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			TupleKey: tuple.NewTupleKey(
+				"team:abc",
+				"member",
+				"user:anne"),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_listobject", func(t *testing.T) {
+		_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "team",
+			Relation:             "member",
+			User:                 "user:anne",
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code())
 	})
 }

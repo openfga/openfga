@@ -121,6 +121,10 @@ func InvalidAuthorizationModelInput(err error) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), err.Error())
 }
 
+func ObsoleteAuthorizationModel() error {
+	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), "Obsolete authorization model schema")
+}
+
 // HandleError is used to hide internal errors from users. Use `public` to return an error message to the user.
 func HandleError(public string, err error) error {
 	if errors.Is(err, storage.ErrInvalidContinuationToken) {

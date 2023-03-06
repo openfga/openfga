@@ -223,6 +223,12 @@ type Config struct {
 	Playground PlaygroundConfig
 	Profiler   ProfilerConfig
 	Metrics    MetricConfig
+
+	// AllowWriting10Models allows writing of schema 1.0 models
+	AllowWriting10Models bool
+
+	// AllowEvaluating10Models allows evaluating of schema 1.0 models
+	AllowEvaluating10Models bool
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -282,6 +288,8 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
+		AllowWriting10Models:    false,
+		AllowEvaluating10Models: false,
 	}
 }
 
@@ -571,6 +579,10 @@ func RunServer(ctx context.Context, config *Config) error {
 		ListObjectsDeadline:    config.ListObjectsDeadline,
 		ListObjectsMaxResults:  config.ListObjectsMaxResults,
 		Experimentals:          experimentals,
+		OverrideConfig: server.OverrideConfig{
+			AllowEvaluating10Models: config.AllowEvaluating10Models,
+			AllowWriting10Models:    config.AllowWriting10Models,
+		},
 	})
 
 	logger.Info(

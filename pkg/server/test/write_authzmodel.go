@@ -20,27 +20,44 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 	storeID := ulid.Make().String()
 
 	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
-	for i := 0; i < datastore.MaxTypesPerAuthorizationModel(); i++ {
+	items[0] = &openfgapb.TypeDefinition{
+		Type: "user",
+	}
+	for i := 1; i < datastore.MaxTypesPerAuthorizationModel(); i++ {
 		items[i] = &openfgapb.TypeDefinition{
 			Type: fmt.Sprintf("type%v", i),
 			Relations: map[string]*openfgapb.Userset{
 				"admin": {Userset: &openfgapb.Userset_This{}},
 			},
+			Metadata: &openfgapb.Metadata{
+				Relations: map[string]*openfgapb.RelationMetadata{
+					"admin": {
+						DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+							{
+								Type: "user",
+							},
+						},
+					},
+				},
+			},
 		}
 	}
 
 	var tests = []struct {
-		name    string
-		request *openfgapb.WriteAuthorizationModelRequest
-		err     error
+		name          string
+		request       *openfgapb.WriteAuthorizationModelRequest
+		allowSchema10 bool
+		err           error
 	}{
 		{
 			name: "fails_if_too_many_types",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				TypeDefinitions: items,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
 			},
-			err: serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesPerAuthorizationModel()),
+			allowSchema10: false,
+			err:           serverErrors.ExceededEntityLimit("type definitions in an authorization model", datastore.MaxTypesPerAuthorizationModel()),
 		},
 		{
 			name: "fails_if_a_relation_is_not_defined",
@@ -54,8 +71,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						},
 					},
 				},
+				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner"}),
+			allowSchema10: false,
+			err:           serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner"}),
 		},
 		{
 			name: "Fails_if_type_info_metadata_is_omitted_in_1.1_model",
@@ -71,9 +90,27 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
+			allowSchema10: false,
 			err: serverErrors.InvalidAuthorizationModelInput(
 				errors.New("the assignable relation 'reader' in object type 'document' must contain at least one relation type"),
 			),
+		},
+		{
+			name: "Fails_if_writing_schema_10_and_no_override",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId:       storeID,
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": typesystem.This(),
+						},
+					},
+				},
+			},
+			allowSchema10: false,
+			err:           serverErrors.ObsoleteAuthorizationModel(),
 		},
 	}
 
@@ -82,7 +119,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger, test.allowSchema10)
 			resp, err := cmd.Execute(ctx, test.request)
 			require.ErrorIs(t, err, test.err)
 

@@ -20,15 +20,17 @@ const (
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger        logger.Logger
+	datastore     storage.OpenFGADatastore
+	allowSchema10 bool
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger, allowSchema10 bool) *WriteCommand {
 	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+		logger:        logger,
+		datastore:     datastore,
+		allowSchema10: allowSchema10,
 	}
 }
 
@@ -62,6 +64,11 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	if len(writes) > 0 {
 
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		if err != nil {
+			return err
+		}
+
+		err = IsAuthorizationModelObsolete(authModel.SchemaVersion, c.allowSchema10)
 		if err != nil {
 			return err
 		}

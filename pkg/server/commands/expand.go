@@ -16,13 +16,14 @@ import (
 
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger        logger.Logger
+	datastore     storage.OpenFGADatastore
+	allowSchema10 bool
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger) *ExpandQuery {
-	return &ExpandQuery{logger: logger, datastore: datastore}
+func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger, allowSchema10 bool) *ExpandQuery {
+	return &ExpandQuery{logger: logger, datastore: datastore, allowSchema10: allowSchema10}
 }
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
@@ -45,6 +46,10 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 		}
 
 		return nil, serverErrors.HandleError("", err)
+	}
+	err = IsAuthorizationModelObsolete(model.SchemaVersion, q.allowSchema10)
+	if err != nil {
+		return nil, err
 	}
 
 	typesys := typesystem.New(model)

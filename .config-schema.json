@@ -38,6 +38,18 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "allowWriting10Models": {
+            "description": "Override to allow writing of schema 1.0 models",
+            "type": "boolean",
+            "default": false,
+            "x-env-variable": "OPENFGA_ALLOW_WRITING_1_0_MODELS"
+        },
+        "allowEvaluating10Models": {
+            "description": "Override to allow evaluating of schema 1.0 models",
+            "type": "boolean",
+            "default": false,
+            "x-env-variable": "OPENFGA_ALLOW_EVALUATING_1_0_MODELS"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",
