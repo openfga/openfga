@@ -68,6 +68,6 @@ service:
       processors: [memory_limiter, batch]
       exporters: [jaeger]
     metrics:
-      receivers: [ prometheus ]
-      processors: [ ]
-      exporters: [ prometheus ]
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus]
