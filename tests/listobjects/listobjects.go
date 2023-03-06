@@ -3,6 +3,7 @@ package listobjects
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -108,7 +109,7 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 
 				for _, assertion := range stage.ListObjectAssertions {
 					// assert 1: on regular list objects endpoint
-					t.Logf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
+					detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
 
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
 						StoreId:  storeID,
@@ -122,7 +123,7 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, err)
-						require.ElementsMatch(t, assertion.Expectation, resp.Objects)
+						require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
 
 					} else {
 						require.Error(t, err)
@@ -167,7 +168,7 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 
 					if assertion.ErrorCode == 0 {
 						require.NoError(t, streamingErr)
-						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds)
+						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
 					} else {
 						require.Error(t, streamingErr)
 						e, ok := status.FromError(streamingErr)
