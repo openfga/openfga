@@ -6,21 +6,24 @@ receivers:
   otlp:
     protocols:
       http:
-        endpoint: "0.0.0.0:4318"
+        endpoint: "otel-collector:4318"
       grpc:
-        endpoint: "0.0.0.0:4317"
+        endpoint: "otel-collector:4317"
   # Data sources: metrics
   prometheus:
     config:
       scrape_configs:
-        - job_name: otel-collector
+        - job_name: openfga/openfga
           scrape_interval: 1s
           static_configs:
             - targets: [ openfga:2112 ]
+              labels:
+                service: openfga
 
 # How you send data to one or more backends. Configuring an exporter does not enable it.
 exporters:
   # Data sources: traces
+  # TODO will be deprecated July 2023 https://github.com/open-telemetry/opentelemetry-specification/pull/2858
   jaeger:
     endpoint: jaeger:14250
     tls:
