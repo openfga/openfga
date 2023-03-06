@@ -59,9 +59,9 @@ func runTests(t *testing.T, schemaVersion string, client CheckTestClientInterfac
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidate_1_1_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidate_1_0_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_0_tests.yaml")
 	}
 	require.NoError(t, err)
 

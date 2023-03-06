@@ -3,7 +3,6 @@ package listobjects
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"testing"
 
@@ -63,9 +62,9 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidate_1_1_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidate_1_0_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_0_tests.yaml")
 	}
 	require.NoError(t, err)
 
@@ -111,9 +110,6 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 					// assert 1: on regular list objects endpoint
 					t.Logf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
 
-					contextualTuples := &pb.ContextualTupleKeys{
-						TupleKeys: assertion.ContextualTuples,
-					}
 					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
 						StoreId:  storeID,
 						Type:     assertion.Request.Type,
@@ -183,12 +179,14 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 						// assert 3: each object in the response of ListObjects should return check -> true
 						for _, object := range resp.Objects {
 							checkResp, err := client.Check(ctx, &pb.CheckRequest{
-								StoreId:          storeID,
-								TupleKey:         tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-								ContextualTuples: contextualTuples,
+								StoreId:  storeID,
+								TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+								ContextualTuples: &pb.ContextualTupleKeys{
+									TupleKeys: assertion.ContextualTuples,
+								},
 							})
 							require.NoError(t, err)
-							require.True(t, checkResp.Allowed, fmt.Sprintf("Expected Check(%s#%s@%s) to be true, got false", object, assertion.Request.Relation, assertion.Request.User))
+							require.True(t, checkResp.Allowed)
 						}
 					}
 				}
