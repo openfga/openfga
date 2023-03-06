@@ -46,15 +46,11 @@ type ListObjectsClientInterface interface {
 	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
 }
 
-// RunSchema1_1ListObjectsTests is public so can be run when OpenFGA is used as a
-// library. An OpenFGA server needs to be running and the client parameter is
-// a client for the server.
-func RunSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+func runSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
-// RunSchema1_0ListObjectsTests is the 1.0 version of RunSchema1_1CheckTests.
-func RunSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+func runSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 

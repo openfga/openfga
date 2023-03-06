@@ -43,15 +43,11 @@ type CheckTestClientInterface interface {
 	Check(ctx context.Context, in *openfgapb.CheckRequest, opts ...grpc.CallOption) (*openfgapb.CheckResponse, error)
 }
 
-// RunSchema1_1CheckTests is public so can be run when OpenFGA is used as a
-// library. An OpenFGA server needs to be running and the client parameter is
-// a client for the server.
-func RunSchema1_1CheckTests(t *testing.T, client CheckTestClientInterface) {
+func runSchema1_1CheckTests(t *testing.T, client CheckTestClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
-// RunSchema1_0CheckTests is the 1.0 version of RunSchema1_1CheckTests.
-func RunSchema1_0CheckTests(t *testing.T, client CheckTestClientInterface) {
+func runSchema1_0CheckTests(t *testing.T, client CheckTestClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 

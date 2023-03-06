@@ -69,11 +69,11 @@ func RunAllTests(t *testing.T, client CheckTestClientInterface) {
 func testCheck(t *testing.T, client CheckTestClientInterface) {
 	t.Run("Schema1_1", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_1CheckTests(t, client)
+		runSchema1_1CheckTests(t, client)
 	})
 	t.Run("Schema1_0", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_0CheckTests(t, client)
+		runSchema1_0CheckTests(t, client)
 	})
 }
 

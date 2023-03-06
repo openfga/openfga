@@ -53,10 +53,10 @@ func RunAllTests(t *testing.T, client ListObjectsClientInterface) {
 func testListObjects(t *testing.T, client ListObjectsClientInterface) {
 	t.Run("Schema1_1", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_1ListObjectsTests(t, client)
+		runSchema1_1ListObjectsTests(t, client)
 	})
 	t.Run("Schema1_0", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_0ListObjectsTests(t, client)
+		runSchema1_0ListObjectsTests(t, client)
 	})
 }
