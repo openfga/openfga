@@ -49,32 +49,35 @@ func testRunAll(t *testing.T, engine string) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	t.Run("RunAll", func(t *testing.T) {
-		t.Run("testCheck", func(t *testing.T) {
+	RunAllTests(t, pb.NewOpenFGAServiceClient(conn))
+}
+
+// RunAllTests will run all check tests
+func RunAllTests(t *testing.T, client CheckTestClientInterface) {
+	t.Run("RunAllTests", func(t *testing.T) {
+		t.Run("Check", func(t *testing.T) {
 			t.Parallel()
-			testCheck(t, conn)
+			testCheck(t, client)
 		})
-		t.Run("testBadAuthModelID", func(t *testing.T) {
+		t.Run("BadAuthModelID", func(t *testing.T) {
 			t.Parallel()
-			testBadAuthModelID(t, conn)
+			testBadAuthModelID(t, client)
 		})
 	})
 }
 
-func testCheck(t *testing.T, conn *grpc.ClientConn) {
+func testCheck(t *testing.T, client CheckTestClientInterface) {
 	t.Run("Schema1_1", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_1CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+		RunSchema1_1CheckTests(t, client)
 	})
 	t.Run("Schema1_0", func(t *testing.T) {
 		t.Parallel()
-		RunSchema1_0CheckTests(t, pb.NewOpenFGAServiceClient(conn))
+		RunSchema1_0CheckTests(t, client)
 	})
 }
 
-func testBadAuthModelID(t *testing.T, conn *grpc.ClientConn) {
-
-	client := pb.NewOpenFGAServiceClient(conn)
+func testBadAuthModelID(t *testing.T, client CheckTestClientInterface) {
 
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "bad auth id"})

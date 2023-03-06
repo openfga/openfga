@@ -349,15 +349,13 @@ type ClientInterface interface {
 	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
 }
 
-// RunTests is public so can be run when OpenFGA is used as a library. An
-// OpenFGA server needs to be running and the client parameter is a client
-// for the server.
-func RunTests(t *testing.T, client ClientInterface) {
+func runTests(t *testing.T, client ClientInterface) {
 	ctx := context.Background()
 
 	for name, test := range testCases {
 		name := name
 		test := test
+
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "write_model_test"})

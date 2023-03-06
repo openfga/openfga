@@ -73,6 +73,7 @@ func runTests(t *testing.T, schemaVersion string, client CheckTestClientInterfac
 
 	for _, test := range testCases.Tests {
 		test := test
+
 		t.Run(test.Name, func(t *testing.T) {
 			t.Parallel()
 			resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: test.Name})
