@@ -5,8 +5,6 @@ receivers:
   # Data sources: traces, metrics, logs
   otlp:
     protocols:
-      http:
-        endpoint: "otel-collector:4318"
       grpc:
         endpoint: "otel-collector:4317"
   # Data sources: metrics
@@ -23,7 +21,6 @@ receivers:
 # How you send data to one or more backends. Configuring an exporter does not enable it.
 exporters:
   # Data sources: traces
-  # TODO will be deprecated July 2023 https://github.com/open-telemetry/opentelemetry-specification/pull/2858
   jaeger:
     endpoint: jaeger:14250
     tls:
@@ -43,7 +40,7 @@ exporters:
     loglevel: debug
   # Data sources: metrics
   prometheus:
-    endpoint: otel-collector:1234
+    endpoint: otel-collector:2113
     namespace: default
 
 processors:

@@ -67,8 +67,7 @@ services:
       - default
     ports:
       - "4317:4317" #grpc OTLP receiver
-      - "4318:4318" #http OTLP receiver
-      - "1234:1234" #prometheus metrics
+      - "2113:2113" #prometheus metrics exporter
 
   jaeger:
     image: jaegertracing/all-in-one:latest
