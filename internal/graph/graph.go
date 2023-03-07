@@ -171,7 +171,9 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		var ingresses []*RelationshipIngress
 
 		// if source=document#writer
-		if target.GetType() == source.GetType() && t.ComputedUserset.GetRelation() == source.GetRelation() {
+		sourceRelMatchesRewritten := target.GetType() == source.GetType() && t.ComputedUserset.GetRelation() == source.GetRelation()
+
+		if sourceRelMatchesRewritten {
 			ingresses = append(ingresses, &RelationshipIngress{
 				Type:    ComputedUsersetIngress,
 				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
@@ -211,14 +213,15 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 			}
 
 			var directlyAssignable bool
-			matchesSourceRelation := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
-			if matchesSourceRelation {
+
+			sourceRelMatchesRewritten := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
+			if sourceRelMatchesRewritten {
 				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
 			}
 
 			// if the rewritten relation is directly assignable or matches the source, then it must
 			// be an ingress.
-			if directlyAssignable || matchesSourceRelation {
+			if directlyAssignable || sourceRelMatchesRewritten {
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
