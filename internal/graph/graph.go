@@ -167,21 +167,31 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 		return res, nil
 	case *openfgapb.Userset_ComputedUserset: // e.g. target = define viewer as writer
+
+		var ingresses []*RelationshipIngress
+
 		// if source=document#writer
 		if target.GetType() == source.GetType() && t.ComputedUserset.GetRelation() == source.GetRelation() {
-			return []*RelationshipIngress{
-				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-				},
-			}, nil
+			ingresses = append(ingresses, &RelationshipIngress{
+				Type:    ComputedUsersetIngress,
+				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+			})
 		}
-		// else, we recurse on document#writer
-		return g.findIngresses(
+
+		collected, err := g.findIngresses(
 			typesystem.DirectRelationReference(target.GetType(), t.ComputedUserset.GetRelation()),
 			source,
 			visited,
 		)
+		if err != nil {
+			return nil, err
+		}
+
+		ingresses = append(
+			ingresses,
+			collected...,
+		)
+		return ingresses, nil
 	case *openfgapb.Userset_TupleToUserset: // e.g. type document, define viewer as writer from parent
 		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               //parent
 		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() //writer
