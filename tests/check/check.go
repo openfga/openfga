@@ -25,9 +25,9 @@ type checkTests struct {
 
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
-	Model      string
-	Tuples     []*openfgapb.TupleKey
-	Assertions []*assertion
+	Model           string
+	Tuples          []*openfgapb.TupleKey
+	CheckAssertions []*assertion `yaml:"checkAssertions"`
 }
 
 type assertion struct {
@@ -59,9 +59,9 @@ func runTests(t *testing.T, schemaVersion string, client CheckTestClientInterfac
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/check_1_1_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
-		b, err = assets.EmbedTests.ReadFile("tests/check_1_0_tests.yaml")
+		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_0_tests.yaml")
 	}
 	require.NoError(t, err)
 
@@ -102,7 +102,7 @@ func runTests(t *testing.T, schemaVersion string, client CheckTestClientInterfac
 					require.NoError(t, err)
 				}
 
-				for _, assertion := range stage.Assertions {
+				for _, assertion := range stage.CheckAssertions {
 					resp, err := client.Check(ctx, &openfgapb.CheckRequest{
 						StoreId:  storeID,
 						TupleKey: assertion.Tuple,
