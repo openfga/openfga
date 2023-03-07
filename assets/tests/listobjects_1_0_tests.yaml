@@ -1,0 +1,234 @@
+tests:
+  # https://github.com/openfga/openfga/issues/576
+  - name: bug_objects_in_response_do_not_return_check_equals_true
+    stages:
+      - model: |
+          type folder
+            relations
+              define owner as self
+              define viewer as self or owner
+          type document
+            relations
+              define can_read as viewer from parent
+              define parent as self
+              define viewer as self
+        tuples:
+          - user: anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        assertions:
+          - request:
+              user: anne
+              type: document
+              relation: can_read
+            expectation:
+              #document:d is not expected
+              - document:c
+  - name: does_not_return_duplicates
+    stages:
+      - model: |
+          type repo
+            relations
+              define admin as self
+        tuples:
+          - user: a
+            relation: admin
+            object: repo:1
+          - user: '*' #tuple grants access to the same as above
+            relation: admin
+            object: repo:1
+        assertions:
+          - request:
+              user: a
+              type: repo
+              relation: admin
+            expectation:
+              - repo:1
+  - name: respects_max_results
+    stages:
+      - model: |
+          type repo
+            relations
+              define admin as self
+        tuples:
+          - user: a
+            relation: admin
+            object: repo:1
+          - user: a
+            relation: admin
+            object: repo:2
+          - user: a
+            relation: admin
+            object: repo:3
+        assertions:
+          - request:
+              user: a
+              type: repo
+              relation: admin
+            expectation: #any of these 3 is valid but we expect 2 results
+              - repo:1
+              - repo:2
+              - repo:3
+  - name: expands_wildcard_tuple
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        tuples:
+          - user: '*'
+            relation: owner
+            object: repo:1
+        assertions:
+          - request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: considers_input_contextual_tuples
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        tuples:
+          - user: a
+            relation: owner
+            object: repo:1
+        assertions:
+          - contextualTuples:
+              - user: a
+                relation: owner
+                object: repo:2
+              - user: a
+                relation: owner
+                object: repo:3
+            request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+              - repo:3
+  - name: ignores_irrelevant_contextual_tuples_because_different_user
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        tuples:
+          - user: a
+            relation: owner
+            object: repo:1
+        assertions:
+          - contextualTuples:
+              - user: b #different user
+                relation: owner
+                object: repo:2
+            request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: ignores_irrelevant_contextual_tuples_because_different_type
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+          type organization
+            relations
+              define owner as self
+        tuples:
+          - user: a
+            relation: owner
+            object: repo:1
+        assertions:
+          - contextualTuples:
+              - user: a
+                relation: owner
+                object: organization:1 #different type, should be ignored
+            request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: ignores_irrelevant_tuples_because_different_user
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        tuples:
+          - user: a
+            relation: owner
+            object: repo:1
+          - user: aa #same prefix, but different user
+            relation: owner
+            object: repo:2
+        assertions:
+          - request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: ignores_duplicate_contextual_tuples
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        tuples:
+          - user: a
+            relation: owner
+            object: repo:1
+        assertions:
+          - contextualTuples:
+              - user: a
+                relation: owner
+                object: repo:2
+              - user: a #same as above
+                relation: owner
+                object: repo:2
+            request:
+              user: a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+  - name: error_if_unknown_type_in_request
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        assertions:
+          - request:
+              user: a
+              type: unknown
+              relation: owner
+            errorCode: 2021 # type 'unknown' not found
+  - name: error_if_unknown_relation_in_request
+    stages:
+      - model: |
+          type repo
+            relations
+              define owner as self
+        assertions:
+          - request:
+              user: a
+              type: repo
+              relation: unknown
+            errorCode: 2022 # relation 'unknown' not found
