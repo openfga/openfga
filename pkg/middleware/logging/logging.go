@@ -47,6 +47,9 @@ type reporter struct {
 }
 
 func (r *reporter) PostCall(err error, _ time.Duration) {
+
+	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
+
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
 	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
 
@@ -69,8 +72,6 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
-
-	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
