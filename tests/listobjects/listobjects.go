@@ -47,15 +47,11 @@ type ListObjectsClientInterface interface {
 	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
 }
 
-// RunSchema1_1ListObjectsTests is public so can be run when OpenFGA is used as a
-// library. An OpenFGA server needs to be running and the client parameter is
-// a client for the server.
-func RunSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+func runSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
-// RunSchema1_0ListObjectsTests is the 1.0 version of RunSchema1_1CheckTests.
-func RunSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+func runSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 
@@ -74,13 +70,16 @@ func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterf
 	require.NoError(t, err)
 
 	ctx := context.Background()
-
 	for _, test := range testCases.Tests {
-		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
-		require.NoError(t, err)
+		test := test
 
-		storeID := resp.GetId()
 		t.Run(test.Name, func(t *testing.T) {
+			t.Parallel()
+			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+			require.NoError(t, err)
+
+			storeID := resp.GetId()
+
 			for _, stage := range test.Stages {
 				// arrange: write model
 				var typedefs []*pb.TypeDefinition
