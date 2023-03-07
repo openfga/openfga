@@ -54,11 +54,11 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			name:   "respects_when_schema_1_1_and_reverse_expansion_implementation",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
-				type user
-				type repo
-					relations
-						define admin: [user] as self
-	`,
+			type user
+			type repo
+			  relations
+				define admin: [user] as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -67,11 +67,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			objectType: "repo",
 			relation:   "admin",
 			contextualTuples: &openfgapb.ContextualTupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{{
-					User:     "user:alice",
-					Relation: "admin",
-					Object:   "repo:3",
-				}}},
+				TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("repo:3", "admin", "user:alice")},
+			},
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"repo:1", "repo:2", "repo:3"},
@@ -80,12 +77,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
-				type user
-				type org
-					relations
-						define blocked: [user] as self
-						define admin: [user] as self but not blocked
-	`,
+			type user
+			type org
+			  relations
+				define blocked: [user] as self
+				define admin: [user] as self but not blocked
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
 				tuple.NewTupleKey("org:2", "admin", "user:charlie"),
@@ -94,11 +91,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			objectType: "org",
 			relation:   "admin",
 			contextualTuples: &openfgapb.ContextualTupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{{
-					User:     "user:charlie",
-					Relation: "admin",
-					Object:   "org:3",
-				}}},
+				TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("org:3", "admin", "user:charlie")},
+			},
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"org:1", "org:2", "org:3"},
@@ -107,10 +101,10 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			name:   "respects_when_schema_1_0",
 			schema: typesystem.SchemaVersion1_0,
 			model: `
-				type document
-					relations
-						define admin as self
-	`,
+			type document
+			  relations
+			    define admin as self
+			`,
 			tuples: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:1", "admin", "bob"),
 				tuple.NewTupleKey("document:2", "admin", "bob"),
@@ -119,14 +113,29 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			objectType: "document",
 			relation:   "admin",
 			contextualTuples: &openfgapb.ContextualTupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{{
-					User:     "bob",
-					Relation: "admin",
-					Object:   "document:3",
-				}}},
+				TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("document:3", "admin", "bob")},
+			},
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"document:1", "document:2", "document:3"},
+		},
+		{
+			name:   "respects_when_schema_1_0_and_maxresults_is_higher_than_actual_result_length",
+			schema: typesystem.SchemaVersion1_0,
+			model: `
+			type team
+			  relations
+			    define admin as self
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("team:1", "admin", "bob"),
+			},
+			user:                   "bob",
+			objectType:             "team",
+			relation:               "admin",
+			maxResults:             2,
+			minimumResultsExpected: 1,
+			allResults:             []string{"team:1"},
 		},
 	}
 
