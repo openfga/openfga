@@ -41,7 +41,6 @@ exporters:
   # Data sources: metrics
   prometheus:
     endpoint: otel-collector:2113
-    namespace: default
 
 processors:
   # Data sources: traces, metrics, logs
