@@ -11,7 +11,7 @@ tests:
           - object: document:1
             relation: viewer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -27,6 +27,18 @@ tests:
               relation: viewer
               user: user:badger
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
 
   - name: computed_userset
     stages:
@@ -41,7 +53,7 @@ tests:
           - object: document:1
             relation: writer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -57,6 +69,19 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:aardvark
+              type: document
+              relation: writer
+            expectation:
+              - document:1
 
   - name: tuple_to_userset
     stages:
@@ -78,12 +103,19 @@ tests:
           - object: folder:x
             relation: viewer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: this_and_union
     stages:
@@ -101,7 +133,7 @@ tests:
           - object: document:2
             relation: writer
             user: user:badger
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -112,6 +144,19 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
 
   - name: this_and_intersection
     stages:
@@ -135,7 +180,7 @@ tests:
           - object: document:3
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -151,6 +196,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: this_and_exclusion_base
     stages:
@@ -174,7 +236,7 @@ tests:
           - object: document:3
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -190,6 +252,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: computed_userset_and_computed_userset
     stages:
@@ -205,12 +284,19 @@ tests:
           - object: document:1
             relation: owner
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: computed_userset_and_union
     stages:
@@ -229,7 +315,7 @@ tests:
           - object: document:2
             relation: editor
             user: user:badger
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -240,6 +326,55 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+
+  - name: simple_computeduserset_indirect_ref
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define viewer: [user] as self or viewer from parent
+              define can_view as viewer
+        tuples:
+          - user: user:anne
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
 
   - name: computed_userset_and_intersection
     stages:
@@ -264,7 +399,7 @@ tests:
           - object: document:3
             relation: editor
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -280,6 +415,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: computed_userset_and_exclusion
     stages:
@@ -304,7 +456,7 @@ tests:
           - object: document:3
             relation: editor
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -320,6 +472,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: tuple_to_userset_and_computed_userset
     stages:
@@ -342,12 +511,19 @@ tests:
           - object: folder:X
             relation: writer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: tuple_to_userset_and_tuple_to_userset
     stages:
@@ -377,12 +553,19 @@ tests:
           - object: group:G
             relation: member
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: tuple_to_userset_and_union
     stages:
@@ -409,7 +592,7 @@ tests:
           - object: folder:X
             relation: editor
             user: user:badger
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -420,6 +603,19 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: tuple_to_userset_and_intersection
     stages:
@@ -452,7 +648,7 @@ tests:
           - object: folder:X
             relation: editor
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -468,6 +664,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: tuple_to_userset_and_exclusion
     stages:
@@ -500,7 +713,7 @@ tests:
           - object: folder:X
             relation: editor
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -516,6 +729,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: union_and_tuple_to_userset
     stages:
@@ -540,7 +770,7 @@ tests:
           - object: document:1
             relation: writer
             user: user:badger
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -551,6 +781,19 @@ tests:
               relation: viewer
               user: user:badger
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: union_and_union
     stages:
@@ -573,7 +816,7 @@ tests:
           - object: document:3
             relation: owner
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -589,6 +832,25 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
 
   - name: union_and_intersection
     stages:
@@ -617,7 +879,7 @@ tests:
           - object: document:4
             relation: owner
             user: user:duck
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -638,6 +900,29 @@ tests:
               relation: viewer
               user: user:duck
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
 
   - name: union_and_exclusion
     stages:
@@ -652,7 +937,7 @@ tests:
               define viewer as writer or (editor but not owner)
         tuples:
           - object: document:1
-            relation: editor
+            relation: writer
             user: user:aardvark
           - object: document:1
             relation: editor
@@ -666,11 +951,16 @@ tests:
           - object: document:4
             relation: owner
             user: user:duck
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
+            expectation: true
+          - tuple:
+              object: document:1
+              relation: viewer
+              user: user:badger
             expectation: true
           - tuple:
               object: document:2
@@ -687,6 +977,30 @@ tests:
               relation: viewer
               user: user:duck
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
 
   - name: intersection_and_tuple_to_userset
     stages:
@@ -718,7 +1032,7 @@ tests:
           - object: document:2
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -734,6 +1048,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: intersection_and_union
     stages:
@@ -768,7 +1099,7 @@ tests:
           - object: document:5
             relation: owner
             user: user:eagle
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -794,6 +1125,34 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:eagle
+              type: document
+              relation: viewer
+            expectation:
 
   - name: intersection_and_intersection
     stages:
@@ -837,7 +1196,7 @@ tests:
           - object: document:6
             relation: owner
             user: user:fox
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -868,6 +1227,38 @@ tests:
               relation: viewer
               user: user:fox
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:eagle
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:fox
+              type: document
+              relation: viewer
+            expectation:
 
   - name: intersection_and_exclusion
     stages:
@@ -911,7 +1302,7 @@ tests:
           - object: document:6
             relation: owner
             user: user:fox
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -942,6 +1333,38 @@ tests:
               relation: viewer
               user: user:fox
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:eagle
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:fox
+              type: document
+              relation: viewer
+            expectation:
 
   - name: exclusion_and_computed_userset
     stages:
@@ -966,7 +1389,7 @@ tests:
           - object: document:3
             relation: editor
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -982,6 +1405,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: exclusion_and_tuple_to_userset_in_base
     stages:
@@ -1013,7 +1453,7 @@ tests:
           - object: document:2
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1029,6 +1469,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
 
   - name: exclusion_and_tuple_to_userset_in_subtract
     stages:
@@ -1060,7 +1517,7 @@ tests:
           - object: document:2
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1076,6 +1533,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
 
   - name: exclusion_and_union_in_base
     stages:
@@ -1116,7 +1590,7 @@ tests:
           - object: document:5
             relation: editor
             user: user:eagle
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1142,6 +1616,34 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+              - document:4
+          - request:
+              user: user:eagle
+              type: document
+              relation: viewer
+            expectation:
+              - document:5
 
   - name: exclusion_and_union_in_subtract
     stages:
@@ -1170,7 +1672,7 @@ tests:
           - object: document:3
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1186,6 +1688,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
 
   - name: exclusion_and_intersection_in_base
     stages:
@@ -1223,7 +1742,7 @@ tests:
           - object: document:5
             relation: owner
             user: user:eagle
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1249,6 +1768,33 @@ tests:
               relation: viewer
               user: user:eagle
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:eagle
+              type: document
+              relation: viewer
+            expectation:
 
   - name: exclusion_and_intersection_in_subtract
     stages:
@@ -1286,7 +1832,7 @@ tests:
           - object: document:4
             relation: writer
             user: user:duck
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1307,6 +1853,30 @@ tests:
               relation: viewer
               user: user:duck
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
+          - request:
+              user: user:duck
+              type: document
+              relation: viewer
+            expectation:
+              - document:4
 
   - name: exclusion_and_exclusion_in_base
     stages:
@@ -1335,7 +1905,7 @@ tests:
           - object: document:3
             relation: writer
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1351,6 +1921,23 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
 
   - name: exclusion_and_exclusion_in_subtract
     stages:
@@ -1385,7 +1972,7 @@ tests:
           - object: document:3
             relation: owner
             user: user:cheetah
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1401,6 +1988,24 @@ tests:
               relation: viewer
               user: user:cheetah
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:cheetah
+              type: document
+              relation: viewer
+            expectation:
+              - document:3
 
   - name: userset_as_user
     stages:
@@ -1421,7 +2026,7 @@ tests:
           - object: group:x
             relation: member
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1432,6 +2037,19 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: group:x#member
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
 
   - name: wildcard_direct
     stages:
@@ -1445,7 +2063,7 @@ tests:
           - object: document:public
             relation: viewer
             user: user:*
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:public
               relation: viewer
@@ -1456,6 +2074,19 @@ tests:
               relation: viewer
               user: user:*
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
+          - request:
+              user: user:*
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
 
   - name: prior_type_restrictions_ignored
     stages:
@@ -1469,12 +2100,19 @@ tests:
           - object: document:1
             relation: viewer
             user: user:jon
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:jon
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
       - model: |
           type user
           type employee
@@ -1482,12 +2120,18 @@ tests:
           type document
             relations
               define viewer: [employee] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:jon
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
 
   - name: wildcard_computed_userset
     stages:
@@ -1501,12 +2145,19 @@ tests:
           - object: document:public
             relation: writer
             user: user:*
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:public
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
 
   - name: check_with_invalid_tuple_in_store
     stages:
@@ -1527,23 +2178,36 @@ tests:
           - object: document:1
             relation: parent
             user: folder:x
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
       - model: |
           type user
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
               user: user:aardvark
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
 
   - name: this_with_contextual_tuples
     stages:
@@ -1553,7 +2217,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1563,6 +2227,17 @@ tests:
                 relation: viewer
                 user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+            expectation:
+              - document:1
 
   - name: computed_userset_with_contextual_tuples
     stages:
@@ -1573,7 +2248,7 @@ tests:
             relations
               define writer: [user] as self
               define viewer as writer
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1583,6 +2258,17 @@ tests:
                 relation: writer
                 user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: writer
+                user: user:aardvark
+            expectation:
+              - document:1
 
   - name: tuple_to_userset_with_contextual_tuples
     stages:
@@ -1597,7 +2283,7 @@ tests:
             relations
               define parent: [folder] as self
               define viewer as viewer from parent
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1610,6 +2296,20 @@ tests:
                 relation: viewer
                 user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: parent
+                user: folder:x
+              - object: folder:x
+                relation: viewer
+                user: user:aardvark
+            expectation:
+              - document:1
 
   - name: this_and_union_with_contextual_tuples
     stages:
@@ -1620,7 +2320,7 @@ tests:
             relations
               define writer: [user] as self
               define viewer: [user] as self or writer
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1633,6 +2333,45 @@ tests:
                 relation: writer
                 user: user:badger
             expectation: true
+          - tuple:
+              object: document:2
+              relation: viewer
+              user: user:badger
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+              - object: document:2
+                relation: writer
+                user: user:badger
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+              - object: document:2
+                relation: writer
+                user: user:badger
+            expectation:
+              - document:1
+          - request:
+              user: user:badger
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:aardvark
+              - object: document:2
+                relation: writer
+                user: user:badger
+            expectation:
+              - document:2
 
   - name: this_and_intersection_with_contextual_tuples
     stages:
@@ -1647,7 +2386,7 @@ tests:
           - object: document:1
             relation: viewer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1662,6 +2401,22 @@ tests:
                 relation: writer
                 user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: writer
+                user: user:aardvark
+            expectation:
+              - document:1
 
   - name: this_and_exclusion_base_with_contextual_tuples
     stages:
@@ -1676,7 +2431,7 @@ tests:
           - object: document:1
             relation: viewer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1691,6 +2446,22 @@ tests:
                 relation: banned
                 user: user:aardvark
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: banned
+                user: user:aardvark
+            expectation:
 
   - name: union_and_intersection_with_contextual_tuples
     stages:
@@ -1707,7 +2478,7 @@ tests:
           - object: document:1
             relation: editor
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1722,6 +2493,22 @@ tests:
                 relation: owner
                 user: user:aardvark
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: owner
+                user: user:aardvark
+            expectation:
+              - document:1
 
   - name: exclusion_and_exclusion_in_base_with_contextual_tuples
     stages:
@@ -1738,7 +2525,7 @@ tests:
           - object: document:1
             relation: writer
             user: user:aardvark
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1762,6 +2549,31 @@ tests:
                 relation: owner
                 user: user:aardvark
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: editor
+                user: user:aardvark
+            expectation:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: owner
+                user: user:aardvark
+            expectation:
 
   - name: wildcard_direct_as_contextual_tuple
     stages:
@@ -1771,7 +2583,7 @@ tests:
           type document
             relations
               define viewer: [user:*] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:public
               relation: viewer
@@ -1790,6 +2602,27 @@ tests:
                 relation: viewer
                 user: user:*
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:public
+                relation: viewer
+                user: user:*
+            expectation:
+              - document:public
+          - request:
+              user: user:*
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:public
+                relation: viewer
+                user: user:*
+            expectation:
+              - document:public
 
   - name: wildcard_computed_userset_as_contextual_tuple
     stages:
@@ -1800,7 +2633,7 @@ tests:
             relations
               define writer: [user:*] as self
               define viewer: [user] as self or writer
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:public
               relation: viewer
@@ -1810,6 +2643,18 @@ tests:
                 relation: writer
                 user: user:*
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:public
+                relation: writer
+                user: user:*
+            expectation:
+              - document:public
+
   - name: wildcard_and_userset_restriction
     stages:
       - model: |
@@ -1831,14 +2676,19 @@ tests:
           - object: group:fga
             relation: member
             user: user2:bob
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:public
               relation: viewer
               user: user2:bob
             expectation: true
-
-
+        listObjectsAssertions:
+          - request:
+              user: user2:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:public
 
   - name: wildcard_obeys_the_types_in_stages
     stages:
@@ -1855,7 +2705,7 @@ tests:
           - object: document:1
             relation: writer
             user: employee:*
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1866,6 +2716,18 @@ tests:
               relation: viewer
               user: employee:badger
             expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: employee:badger
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
       - model: |
           type user
           
@@ -1874,7 +2736,7 @@ tests:
             relations
               define writer: [user:*] as self
               define viewer: [user] as self or writer
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1885,19 +2747,30 @@ tests:
               relation: viewer
               user: employee:badger
             expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: employee:badger
+              type: document
+              relation: viewer
+            expectation:
 
   - name: validation_nil_tuple
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - errorCode: 3
 
   - name: validation_empty_tuple
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - tuple:
               object:
               relation:
@@ -1908,7 +2781,7 @@ tests:
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - tuple:
               object:
               relation: viewer
@@ -1919,7 +2792,7 @@ tests:
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - tuple:
               object: user:aardvark
               relation:
@@ -1930,7 +2803,7 @@ tests:
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - tuple:
               object: user:aardvark
               relation: viewer
@@ -1941,7 +2814,7 @@ tests:
     stages:
       - model: |
           type user
-        assertions:
+        checkAssertions:
           - tuple:
               object: user:aardvark
               relation: viewer
@@ -1955,7 +2828,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1969,7 +2842,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1983,7 +2856,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -1997,7 +2870,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2011,7 +2884,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2029,7 +2902,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2047,7 +2920,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2065,7 +2938,7 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2087,7 +2960,7 @@ tests:
             relations
               define parent: [folder] as self
               define viewer as viewer from parent
-        assertions:
+        checkAssertions:
           - tuple:
               object: document:1
               relation: viewer
@@ -2097,3 +2970,84 @@ tests:
                 relation: parent
                 user: user:*
             errorCode: 2027
+
+  - name: relations_not_defined_in_some_child_type
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self
+              define writer: [user,user:*] as self or owner
+          type document
+            relations
+              define can_read as writer from parent
+              define parent: [document,folder] as self
+              define viewer: [user,user:*] as self
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  # https://github.com/openfga/openfga/issues/576
+  - name: same_relation_name_different_type
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self
+              define viewer: [user, user:*] as self or owner
+          type document
+            relations
+              define can_read as viewer from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              #document:d is not expected
+              - document:c

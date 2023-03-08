@@ -1,4 +1,4 @@
-package middleware
+package storeid
 
 import (
 	"context"
@@ -9,25 +9,25 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestUnaryStoreIDInterceptor(t *testing.T) {
+func TestUnaryInterceptor(t *testing.T) {
 	t.Run("unary_interceptor_with_no_storeID_in_request", func(t *testing.T) {
-		interceptor := NewStoreIDInterceptor()
+		interceptor := NewUnaryInterceptor()
 
 		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 			storeID, ok := StoreIDFromContext(ctx)
-			require.False(t, ok)
+			require.True(t, ok)
 			require.Empty(t, storeID)
 
 			return nil, nil
 		}
 
-		_, err := interceptor(context.Background(), nil, nil, handler)
+		_, err := interceptor(context.Background(), nil, &grpc.UnaryServerInfo{}, handler)
 		require.NoError(t, err)
 	})
 
 	t.Run("unary_interceptor_with_storeID_in_request", func(t *testing.T) {
 		storeID := "abc"
-		interceptor := NewStoreIDInterceptor()
+		interceptor := NewUnaryInterceptor()
 
 		handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 			got, ok := StoreIDFromContext(ctx)
@@ -37,7 +37,7 @@ func TestUnaryStoreIDInterceptor(t *testing.T) {
 			return nil, nil
 		}
 
-		_, err := interceptor(context.Background(), &openfgapb.CheckRequest{StoreId: storeID}, nil, handler)
+		_, err := interceptor(context.Background(), &openfgapb.CheckRequest{StoreId: storeID}, &grpc.UnaryServerInfo{}, handler)
 		require.NoError(t, err)
 	})
 }
@@ -55,21 +55,21 @@ func (s *mockServerStream) RecvMsg(m interface{}) error {
 	return nil
 }
 
-func TestStreamingStoreIDInterceptor(t *testing.T) {
+func TestStreamingInterceptor(t *testing.T) {
 	t.Run("streaming_interceptor_with_no_GetStoreId_in_request", func(t *testing.T) {
 		handler := func(srv interface{}, stream grpc.ServerStream) error {
 			err := stream.RecvMsg(nil)
 			require.NoError(t, err)
 
 			storeID, ok := StoreIDFromContext(stream.Context())
-			require.False(t, ok)
+			require.True(t, ok)
 			require.Empty(t, storeID)
 
 			return nil
 		}
 
 		ss := &mockServerStream{ctx: context.Background()}
-		err := NewStreamingStoreIDInterceptor()(nil, ss, nil, handler)
+		err := NewStreamingInterceptor()(nil, ss, &grpc.StreamServerInfo{}, handler)
 		require.NoError(t, err)
 	})
 
@@ -86,7 +86,7 @@ func TestStreamingStoreIDInterceptor(t *testing.T) {
 		}
 
 		ss := &mockServerStream{ctx: context.Background()}
-		err := NewStreamingStoreIDInterceptor()(nil, ss, nil, handler)
+		err := NewStreamingInterceptor()(nil, ss, &grpc.StreamServerInfo{}, handler)
 		require.NoError(t, err)
 	})
 }

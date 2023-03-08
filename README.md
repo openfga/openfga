@@ -7,6 +7,7 @@
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374/badge)](https://bestpractices.coreinfrastructure.org/projects/6374)
 [![Discord Server](https://img.shields.io/discord/759188666072825867?color=7289da&logo=discord "Discord Server")](https://discord.com/channels/759188666072825867/930524706854031421)
 [![Twitter](https://img.shields.io/twitter/follow/openfga?color=%23179CF0&logo=twitter&style=flat-square "@openfga on Twitter")](https://twitter.com/openfga)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fopenfga%2Fopenfga?ref=badge_shield)
 
 A high-performance and flexible authorization/permission engine built for developers and inspired by [Google Zanzibar](https://research.google/pubs/pub48190/).
 
@@ -66,7 +67,7 @@ There are two recommended options for building OpenFGA from source code:
 
 #### Building from source with `go install`
 
-> Make sure you have Go 1.18 or later installed. See the [Go downloads](https://go.dev/dl/) page.
+> Make sure you have Go 1.19 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
 You can install from source using Go modules:
 

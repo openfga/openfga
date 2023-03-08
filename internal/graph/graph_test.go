@@ -2,12 +2,40 @@ package graph
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+)
+
+var (
+	RelationshipIngressTransformer = cmp.Transformer("Sort", func(in []*RelationshipIngress) []*RelationshipIngress {
+		out := append([]*RelationshipIngress(nil), in...) // Copy input to avoid mutating it
+
+		// Sort by Type and then by ingress and then by tupleset relation
+		sort.SliceStable(out, func(i, j int) bool {
+			if out[i].Type > out[j].Type {
+				return false
+			}
+
+			if typesystem.GetRelationReferenceAsString(out[i].Ingress) > typesystem.GetRelationReferenceAsString(out[j].Ingress) {
+				return false
+			}
+
+			if typesystem.GetRelationReferenceAsString(out[i].TuplesetRelation) > typesystem.GetRelationReferenceAsString(out[j].TuplesetRelation) {
+				return false
+			}
+
+			return true
+		})
+
+		return out
+	})
 )
 
 func TestRelationshipIngressType_String(t *testing.T) {
@@ -545,8 +573,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			target: typesystem.DirectRelationReference("document", "viewer"),
-			source: typesystem.DirectRelationReference("user", ""),
+			target:   typesystem.DirectRelationReference("document", "viewer"),
+			source:   typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{},
 		},
 		{
 			name: "ingress_through_ttu_on_non-assignable_relation",
@@ -835,6 +864,50 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "unrelated_source_and_target_relationship_involving_ttu",
+			model: `
+			type user
+
+			type folder
+				relations
+					define viewer: [user] as self
+
+			type document
+				relations
+					define can_read as viewer from parent
+					define parent: [document,folder] as self
+					define viewer: [user] as self
+			`,
+			target:   typesystem.DirectRelationReference("document", "can_read"),
+			source:   typesystem.DirectRelationReference("document", ""),
+			expected: []*RelationshipIngress{},
+		},
+		{
+			name: "simple_computeduserset_indirect_ref",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define parent: [document] as self
+			    define viewer: [user] as self or viewer from parent
+				define can_view as viewer
+			`,
+			target: typesystem.DirectRelationReference("document", "can_view"),
+			source: typesystem.DirectRelationReference("document", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("document", "can_view"),
+				},
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -851,7 +924,13 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			ingresses, err := g.RelationshipIngresses(test.target, test.source)
 			require.NoError(t, err)
 
-			require.ElementsMatch(t, test.expected, ingresses)
+			cmpOpts := []cmp.Option{
+				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
+				RelationshipIngressTransformer,
+			}
+			if diff := cmp.Diff(ingresses, test.expected, cmpOpts...); diff != "" {
+				t.Errorf("mismatch (-got +want):\n%s", diff)
+			}
 		})
 	}
 }
