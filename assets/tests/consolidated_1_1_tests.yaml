@@ -340,6 +340,42 @@ tests:
             expectation:
               - document:2
 
+  - name: simple_computeduserset_indirect_ref
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define viewer: [user] as self or viewer from parent
+              define can_view as viewer
+        tuples:
+          - user: user:anne
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+
   - name: computed_userset_and_intersection
     stages:
       - model: |

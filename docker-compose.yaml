@@ -47,10 +47,10 @@ services:
     networks:
       - default
     ports:
-      - "8080:8080"
-      - "8081:8081"
-      - "3000:3000"
-      - "2112:2112"
+      - "8080:8080" #http
+      - "8081:8081" #grpc
+      - "3000:3000" #playground
+      - "2112:2112" #prometheus metrics
     healthcheck:
       test: ["CMD", "/bin/grpc_health_probe", "-addr=openfga:8081"]
       interval: 5s
@@ -66,16 +66,15 @@ services:
     networks:
       - default
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "1234:1234"
+      - "4317:4317" #grpc OTLP receiver
+      - "2113:2113" #prometheus metrics exporter
 
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
     command: ["--query.max-clock-skew-adjustment", "500ms"]
     ports:
-      - "16686:16686"
+      - "16686:16686" # UI
     depends_on:
       - otel-collector
     networks:
@@ -84,7 +83,9 @@ services:
   prometheus:
     image: prom/prometheus:v2.30.3
     ports:
-      - 9090:9090
+      - 9090:9090 # UI
+    depends_on:
+      - otel-collector
     volumes:
       - ./telemetry/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -96,7 +97,7 @@ services:
   grafana:
       image: grafana/grafana
       ports:
-        - 3001:3000
+        - 3001:3000 # UI
       restart: unless-stopped
       depends_on:
         prometheus:
