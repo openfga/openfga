@@ -20,15 +20,21 @@ const (
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger             logger.Logger
+	datastore          storage.RelationshipTupleWriter
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(
+	datastore storage.OpenFGADatastore,
+	logger logger.Logger,
+	typsystemResolver typesystem.TypesystemResolverFunc,
+) *WriteCommand {
 	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+		logger:             logger,
+		datastore:          datastore,
+		typesystemResolver: typsystemResolver,
 	}
 }
 
@@ -61,12 +67,14 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 	if len(writes) > 0 {
 
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		typesys, err := c.typesystemResolver(ctx, store, modelID)
 		if err != nil {
+			if errors.Is(err, typesystem.ErrModelNotFound) {
+				return serverErrors.AuthorizationModelNotFound(modelID)
+			}
+
 			return err
 		}
-
-		typesys := typesystem.New(authModel)
 
 		for _, tk := range writes {
 			err := validation.ValidateTuple(typesys, tk)

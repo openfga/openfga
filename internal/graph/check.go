@@ -92,6 +92,7 @@ type checkOutcome struct {
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds               storage.RelationshipTupleReader
+	typesysResolver  typesystem.TypesystemResolverFunc
 	concurrencyLimit uint32
 }
 
@@ -99,9 +100,14 @@ type LocalChecker struct {
 // request locally and with a high degree of concurrency.
 func NewLocalChecker(
 	ds storage.RelationshipTupleReader,
+	typesysResolver typesystem.TypesystemResolverFunc,
 	concurrencyLimit uint32,
 ) *LocalChecker {
-	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit}
+	checker := &LocalChecker{
+		ds:               ds,
+		typesysResolver:  typesysResolver,
+		concurrencyLimit: concurrencyLimit,
+	}
 	return checker
 }
 
@@ -330,9 +336,9 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, ErrResolutionDepthExceeded
 	}
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
+	typesys, err := c.typesysResolver(ctx, req.GetStoreID(), req.GetAuthorizationModelID())
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve typesystem: %v", err)
 	}
 
 	object := req.GetTupleKey().GetObject()
@@ -361,9 +367,9 @@ func (c *LocalChecker) ResolveCheck(
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
-		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+		typesys, err := c.typesysResolver(ctx, req.GetStoreID(), req.GetAuthorizationModelID())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve typesystem: %v", err)
 		}
 
 		ctx, span := tracer.Start(ctx, "checkDirect")
@@ -497,9 +503,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
-		if !ok {
-			return nil, fmt.Errorf("typesystem missing in context")
+		typesys, err := c.typesysResolver(ctx, req.GetStoreID(), req.GetAuthorizationModelID())
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve typesystem: %v", err)
 		}
 
 		ctx, span := tracer.Start(ctx, "checkTTU")

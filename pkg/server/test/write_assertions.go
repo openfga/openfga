@@ -10,6 +10,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -106,7 +107,11 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			cmd := commands.NewWriteAssertionsCommand(
+				datastore,
+				logger,
+				typesystem.NewTypesystemResolver(datastore),
+			)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err := cmd.Execute(ctx, test.request)

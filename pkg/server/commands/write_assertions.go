@@ -13,17 +13,20 @@ import (
 )
 
 type WriteAssertionsCommand struct {
-	datastore storage.OpenFGADatastore
-	logger    logger.Logger
+	datastore          storage.OpenFGADatastore
+	logger             logger.Logger
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 func NewWriteAssertionsCommand(
 	datastore storage.OpenFGADatastore,
 	logger logger.Logger,
+	typesystemResolver typesystem.TypesystemResolverFunc,
 ) *WriteAssertionsCommand {
 	return &WriteAssertionsCommand{
-		datastore: datastore,
-		logger:    logger,
+		datastore:          datastore,
+		logger:             logger,
+		typesystemResolver: typesystemResolver,
 	}
 }
 
@@ -32,16 +35,14 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
 
-	model, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := w.typesystemResolver(ctx, store, modelID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
-		return nil, serverErrors.HandleError("", err)
+		return nil, err
 	}
-
-	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
 		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {

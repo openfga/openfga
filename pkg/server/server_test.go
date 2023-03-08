@@ -141,6 +141,10 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 				return nil, errors.New("some error")
 			})
 
+	typesystemResolver := typesystem.MemoizedTypesystemResolverFunc(
+		typesystem.NewTypesystemResolver(mockDatastore),
+	)
+
 	s := Server{
 		datastore: mockDatastore,
 		transport: gateway.NewNoopTransport(),
@@ -148,7 +152,12 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		config: &Config{
 			ResolveNodeLimit: 25,
 		},
-		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
+		typesystemResolver: typesystemResolver,
+		checkResolver: graph.NewLocalChecker(
+			storage.NewContextWrapper(mockDatastore),
+			typesystemResolver,
+			100,
+		),
 	}
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -212,6 +221,10 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 				return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
 			})
 
+	typesystemResolver := typesystem.MemoizedTypesystemResolverFunc(
+		typesystem.NewTypesystemResolver(mockDatastore),
+	)
+
 	s := Server{
 		datastore: mockDatastore,
 		transport: gateway.NewNoopTransport(),
@@ -219,7 +232,12 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		config: &Config{
 			ResolveNodeLimit: 25,
 		},
-		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
+		typesystemResolver: typesystemResolver,
+		checkResolver: graph.NewLocalChecker(
+			storage.NewContextWrapper(mockDatastore),
+			typesystemResolver,
+			100,
+		),
 	}
 
 	start := time.Now()
@@ -346,11 +364,18 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
-	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), store, modelID).
+		AnyTimes().
+		Return(&openfgapb.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ListObjectsByType(gomock.Any(), store, "repo").
+		AnyTimes().
+		Return(nil, errors.New("error reading from storage"))
 
 	s := Server{
 		datastore: mockDatastore,
@@ -361,6 +386,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
+		typesystemResolver: typesystem.NewTypesystemResolver(mockDatastore),
 	}
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -442,6 +468,9 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
+		typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+			typesystem.NewTypesystemResolver(mockDatastore),
+		),
 	}
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {

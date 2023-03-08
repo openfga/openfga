@@ -17,17 +17,25 @@ import (
 // ExpandQuery resolves a target TupleKey into a UsersetTree by expanding type definitions.
 type ExpandQuery struct {
 	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	datastore storage.RelationshipTupleReader
+	typesys   *typesystem.TypeSystem
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger) *ExpandQuery {
-	return &ExpandQuery{logger: logger, datastore: datastore}
+func NewExpandQuery(
+	datastore storage.OpenFGADatastore,
+	logger logger.Logger,
+	typesys *typesystem.TypeSystem,
+) *ExpandQuery {
+	return &ExpandQuery{
+		datastore: datastore,
+		logger:    logger,
+		typesys:   typesys,
+	}
 }
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
 	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	tupleKey := req.GetTupleKey()
 	object := tupleKey.GetObject()
 	relation := tupleKey.GetRelation()
@@ -38,28 +46,17 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	typesys := typesystem.New(model)
-
-	if err = validation.ValidateObject(typesys, tk); err != nil {
+	if err := validation.ValidateObject(q.typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
-	err = validation.ValidateRelation(typesys, tk)
+	err := validation.ValidateRelation(q.typesys, tk)
 	if err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
 	objectType := tupleUtils.GetType(object)
-	rel, err := typesys.GetRelation(objectType, relation)
+	rel, err := q.typesys.GetRelation(objectType, relation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return nil, serverErrors.TypeNotFound(objectType)
@@ -74,7 +71,7 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 
 	userset := rel.GetRewrite()
 
-	root, err := q.resolveUserset(ctx, store, userset, tk, typesys)
+	root, err := q.resolveUserset(ctx, store, userset, tk, q.typesys)
 	if err != nil {
 		return nil, err
 	}

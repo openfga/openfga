@@ -8,7 +8,10 @@ import (
 
 	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("pkg/typesystem")
 
 type ctxKey string
 
@@ -21,6 +24,7 @@ const (
 
 var (
 	ErrDuplicateTypes        = errors.New("an authorization model cannot contain duplicate types")
+	ErrModelNotFound         = errors.New("authorization model not found")
 	ErrInvalidSchemaVersion  = errors.New("invalid schema version")
 	ErrInvalidModel          = errors.New("invalid authorization model encountered")
 	ErrRelationUndefined     = errors.New("undefined relation")

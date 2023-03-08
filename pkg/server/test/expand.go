@@ -1983,7 +1983,11 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(
+				datastore,
+				logger,
+				typesystem.New(test.model),
+			)
 			got, err := query.Execute(ctx, test.request)
 			require.NoError(err)
 
@@ -2176,7 +2180,11 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(
+				datastore,
+				logger,
+				typesystem.New(test.model),
+			)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert

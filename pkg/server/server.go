@@ -49,7 +49,8 @@ type Server struct {
 	transport gateway.Transport
 	config    *Config
 
-	checkResolver graph.CheckResolver
+	checkResolver      graph.CheckResolver
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 type Dependencies struct {
@@ -73,13 +74,22 @@ func New(dependencies *Dependencies, config *Config) *Server {
 
 	ds := dependencies.Datastore
 
+	typesysResolverFunc := typesystem.MemoizedTypesystemResolverFunc(
+		typesystem.NewTypesystemResolver(dependencies.Datastore),
+	)
+
 	return &Server{
-		logger:        dependencies.Logger,
-		datastore:     dependencies.Datastore,
-		encoder:       dependencies.TokenEncoder,
-		transport:     dependencies.Transport,
-		config:        config,
-		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
+		logger:             dependencies.Logger,
+		datastore:          dependencies.Datastore,
+		encoder:            dependencies.TokenEncoder,
+		typesystemResolver: typesysResolverFunc,
+		transport:          dependencies.Transport,
+		config:             config,
+		checkResolver: graph.NewLocalChecker(
+			storage.NewContextualTupleDatastore(ds),
+			typesysResolverFunc,
+			checkConcurrencyLimit,
+		),
 	}
 }
 
@@ -96,23 +106,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
-
-		return nil, err
 	}
 
-	typesys := typesystem.New(model)
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	q := &commands.ListObjectsQuery{
@@ -122,6 +122,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		CheckResolver:         s.checkResolver,
+		Typesystem:            typesys,
 	}
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
@@ -153,22 +154,21 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	defer span.End()
 
 	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		return err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return serverErrors.AuthorizationModelNotFound(modelID)
 		}
-
-		return serverErrors.HandleError("", err)
 	}
 
-	typesys := typesystem.New(model)
+	resolvedModelID := typesys.GetAuthorizationModelID()
+	_ = resolvedModelID // use it
+
+	// span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
+	// grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
+	// _ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
@@ -176,7 +176,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		}
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
@@ -194,6 +193,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
 		CheckResolver:         s.checkResolver,
+		Typesystem:            typesys,
 	}
 
 	req.AuthorizationModelId = modelID
@@ -222,17 +222,14 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := commands.NewWriteCommand(s.datastore, s.logger)
+	cmd := commands.NewWriteCommand(
+		s.datastore,
+		s.logger,
+		s.typesystemResolver,
+	)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: req.GetAuthorizationModelId(),
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
@@ -252,21 +249,14 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 
 	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
-		return nil, err
 	}
-
-	typesys := typesystem.New(model)
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
@@ -278,7 +268,6 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		}
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
@@ -316,16 +305,25 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	defer span.End()
 
 	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
+		}
+
+		return nil, serverErrors.NewInternalError("", err)
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger)
+	q := commands.NewExpandQuery(
+		s.datastore,
+		s.logger,
+		typesys,
+	)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: req.GetAuthorizationModelId(),
 		TupleKey:             tk,
 	})
 }
@@ -367,17 +365,14 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
+	c := commands.NewWriteAssertionsCommand(
+		s.datastore,
+		s.logger,
+		s.typesystemResolver,
+	)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		StoreId:              req.GetStoreId(),
+		AuthorizationModelId: req.GetAuthorizationModelId(),
 		Assertions:           req.GetAssertions(),
 	})
 	if err != nil {
