@@ -27,7 +27,12 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
-        run: make bench | tee bench_output.txt
+        run: |
+          make bench | tee bench_output.txt
+          if [ $? -ne 0 ]; then
+            echo "Benchmark failed"
+            exit 1
+          fi
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
