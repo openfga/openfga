@@ -4282,3 +4282,55 @@ tests:
                 relation: observer
                 user: company:abc
             expectation:
+
+  - name: exclusion_for_some_relations
+    stages:
+      - model: |
+          type user
+          type group
+            relations
+              define member: [user] as self
+          type folder
+            relations
+              define owner: [group] as self
+              define viewer as member from owner
+          type document
+            relations
+              define banned: [user] as self
+              define owner: [folder] as self
+              define viewer as viewer from owner
+              define can_view as viewer but not banned
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:fga
+          - user: group:fga
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: owner
+            object: document:a
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: document:a
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+          - request:
+              user: user:anne
+              type: document
+              relation: can_view
+            expectation:
+              - document:a
