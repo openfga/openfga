@@ -291,6 +291,8 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 
 	var r *openfgapb.ListObjectsResponse
 
+	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		r, _ = listObjectsQuery.Execute(ctx, &openfgapb.ListObjectsRequest{
@@ -349,6 +351,8 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	var r *openfgapb.ListObjectsResponse
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
