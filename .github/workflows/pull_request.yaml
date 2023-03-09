@@ -122,6 +122,7 @@ jobs:
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
         run: |
+          set -o pipefail
           make bench | tee ${{ github.sha }}_bench_output.txt
           if [ $? -ne 0 ]; then
             echo "Benchmark failed"
