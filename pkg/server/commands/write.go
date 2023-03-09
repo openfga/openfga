@@ -22,13 +22,19 @@ const (
 type WriteCommand struct {
 	logger    logger.Logger
 	datastore storage.OpenFGADatastore
+	typesys   *typesystem.TypeSystem
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(
+	datastore storage.OpenFGADatastore,
+	logger logger.Logger,
+	typesys *typesystem.TypeSystem,
+) *WriteCommand {
 	return &WriteCommand{
-		logger:    logger,
 		datastore: datastore,
+		logger:    logger,
+		typesys:   typesys,
 	}
 }
 
@@ -50,8 +56,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
-	store := req.GetStoreId()
-	modelID := req.GetAuthorizationModelId()
 	deletes := req.GetDeletes().GetTupleKeys()
 	writes := req.GetWrites().GetTupleKeys()
 
@@ -61,22 +65,15 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 	if len(writes) > 0 {
 
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
-		if err != nil {
-			return err
-		}
-
-		typesys := typesystem.New(authModel)
-
 		for _, tk := range writes {
-			err := validation.ValidateTuple(typesys, tk)
+			err := validation.ValidateTuple(c.typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
 			}
 
 			objectType, _ := tupleUtils.SplitObject(tk.GetObject())
 
-			relation, err := typesys.GetRelation(objectType, tk.GetRelation())
+			relation, err := c.typesys.GetRelation(objectType, tk.GetRelation())
 			if err != nil {
 				if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 					return serverErrors.TypeNotFound(objectType)

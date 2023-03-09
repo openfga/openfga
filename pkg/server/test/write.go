@@ -1561,7 +1561,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, logger)
+			cmd := commands.NewWriteCommand(datastore, logger, typesystem.New(test.model))
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = test.model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)

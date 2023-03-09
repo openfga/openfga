@@ -149,6 +149,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 			ResolveNodeLimit: 25,
 		},
 		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
+		typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+			typesystem.NewTypesystemResolver(mockDatastore),
+		),
 	}
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -220,6 +223,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 			ResolveNodeLimit: 25,
 		},
 		checkResolver: graph.NewLocalChecker(storage.NewContextWrapper(mockDatastore), 100),
+		typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+			typesystem.NewTypesystemResolver(mockDatastore),
+		),
 	}
 
 	start := time.Now()
@@ -236,7 +242,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	require.Equal(t, true, checkResponse.Allowed)
 }
 
-func TestResolveAuthorizationModel(t *testing.T) {
+func TestResolveTypesystem(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
@@ -255,11 +261,14 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			datastore: mockDatastore,
 			transport: transport,
 			logger:    logger,
+			typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+				typesystem.NewTypesystemResolver(mockDatastore),
+			),
 		}
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
-		if _, err := s.resolveAuthorizationModelID(ctx, store, ""); !errors.Is(err, expectedError) {
+		if _, err := s.resolveTypesystem(ctx, store, ""); !errors.Is(err, expectedError) {
 			t.Errorf("Expected '%v' but got %v", expectedError, err)
 		}
 	})
@@ -272,19 +281,30 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		defer mockController.Finish()
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
+		mockDatastore.EXPECT().
+			FindLatestAuthorizationModelID(gomock.Any(), store).
+			Return(modelID, nil)
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), gomock.Any(), modelID).
+			Return(&openfgapb.AuthorizationModel{
+				Id: modelID,
+			}, nil)
 
 		s := Server{
 			datastore: mockDatastore,
 			transport: transport,
 			logger:    logger,
+			typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+				typesystem.NewTypesystemResolver(mockDatastore),
+			),
 		}
 
-		got, err := s.resolveAuthorizationModelID(ctx, store, "")
+		got, err := s.resolveTypesystem(ctx, store, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got != modelID {
+		if got.GetAuthorizationModelID() != modelID {
 			t.Errorf("wanted '%v', but got %v", modelID, got)
 		}
 	})
@@ -303,9 +323,12 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			datastore: mockDatastore,
 			transport: transport,
 			logger:    logger,
+			typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+				typesystem.NewTypesystemResolver(mockDatastore),
+			),
 		}
 
-		if _, err := s.resolveAuthorizationModelID(ctx, store, modelID); err.Error() != want.Error() {
+		if _, err := s.resolveTypesystem(ctx, store, modelID); err.Error() != want.Error() {
 			t.Fatalf("got '%v', want '%v'", err, want)
 		}
 	})
@@ -361,6 +384,9 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
+		typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+			typesystem.NewTypesystemResolver(mockDatastore),
+		),
 	}
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -442,6 +468,9 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
+		typesystemResolver: typesystem.MemoizedTypesystemResolverFunc(
+			typesystem.NewTypesystemResolver(mockDatastore),
+		),
 	}
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {

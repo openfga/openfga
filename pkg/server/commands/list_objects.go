@@ -34,6 +34,7 @@ type ListObjectsQuery struct {
 	ResolveNodeLimit      uint32
 	ConnectedObjects      func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- string) error
 	CheckResolver         graph.CheckResolver
+	Typesystem            *typesystem.TypeSystem
 }
 
 type listObjectsRequest interface {
@@ -57,18 +58,13 @@ func (q *ListObjectsQuery) evaluate(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
-	}
-
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateTuple(q.Typesystem, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
 	}
 
-	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	_, err := q.Typesystem.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
 			return serverErrors.TypeNotFound(targetObjectType)
@@ -81,12 +77,12 @@ func (q *ListObjectsQuery) evaluate(
 		return serverErrors.NewInternalError("", err)
 	}
 
-	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+	if err := validation.ValidateUser(q.Typesystem, req.GetUser()); err != nil {
 		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
 	handler := func() {
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+		ctx = typesystem.ContextWithTypesystem(ctx, q.Typesystem)
 		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan)
@@ -98,7 +94,7 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	if q.ConnectedObjects != nil {
-		hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
+		hasTypeInfo, err := q.Typesystem.HasTypeInfo(targetObjectType, targetRelation)
 		if err != nil {
 			q.Logger.WarnWithContext(
 				ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
@@ -107,8 +103,8 @@ func (q *ListObjectsQuery) evaluate(
 			)
 		}
 
-		containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-		containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
+		containsIntersection, _ := q.Typesystem.RelationInvolvesIntersection(targetObjectType, targetRelation)
+		containsExclusion, _ := q.Typesystem.RelationInvolvesExclusion(targetObjectType, targetRelation)
 
 		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
 		// and the model must include type info for ConnectedObjects to work.

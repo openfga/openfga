@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -23,8 +25,9 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	store := testutils.CreateRandomString(10)
 
-	githubModelReq := &openfgapb.WriteAuthorizationModelRequest{
-		StoreId: store,
+	model := &openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		Id:            ulid.Make().String(),
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "repo",
@@ -40,6 +43,9 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		},
 	}
+
+	err := datastore.WriteAuthorizationModel(context.Background(), store, model)
+	require.NoError(t, err)
 
 	var tests = []writeAssertionsTestSettings{
 		{
@@ -99,15 +105,10 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, githubModelReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
-			test.request.AuthorizationModelId = modelID.AuthorizationModelId
+			cmd := commands.NewWriteAssertionsCommand(datastore, logger, typesystem.New(model))
+			test.request.AuthorizationModelId = model.Id
 
 			_, err := cmd.Execute(ctx, test.request)
 			require.ErrorIs(t, test.err, err)

@@ -168,9 +168,9 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				ListObjectsMaxResults: test.maxResults,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
 				CheckResolver:         checker,
+				Typesystem:            typesystem.New(model),
 			}
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
 			ctx = storage.ContextWithContextualTuples(ctx, test.contextualTuples.GetTupleKeys())
 
 			// assertions
@@ -276,9 +276,11 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
+	typesys := typesystem.New(model)
+
 	connectedObjCmd := commands.ConnectedObjectsCommand{
 		Datastore:        ds,
-		Typesystem:       typesystem.New(model),
+		Typesystem:       typesys,
 		ResolveNodeLimit: defaultResolveNodeLimit,
 	}
 
@@ -287,11 +289,10 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		Logger:           logger.NewNoopLogger(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
+		Typesystem:       typesys,
 	}
 
 	var r *openfgapb.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -348,11 +349,10 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		Logger:           logger.NewNoopLogger(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
 		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
+		Typesystem:       typesystem.New(model),
 	}
 
 	var r *openfgapb.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
