@@ -53,7 +53,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 }
 
 func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.WriteRequest) error {
-	ctx, span := tracer.Start(ctx, "validateWriteRequest")
+	_, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
 	deletes := req.GetDeletes().GetTupleKeys()
