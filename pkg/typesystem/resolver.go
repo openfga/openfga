@@ -36,18 +36,29 @@ func MemoizedTypesystemResolverFunc(fn TypesystemResolverFunc) TypesystemResolve
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
 		tracer.Start(ctx, "MemoizedTypesystemResolverFunc")
 
+		var typesys *TypeSystem
+		var err error
+
+		defer func() {
+			if typesys != nil {
+				modelSchemaVersionCounter.WithLabelValues(typesys.GetSchemaVersion()).Add(1)
+			}
+		}()
+
 		// if modelID is empty always fetch the latest model and construct the typesystem from it
 		if modelID == "" {
-			return fn(ctx, storeID, modelID)
+			typesys, err = fn(ctx, storeID, modelID)
+			return typesys, err
 		}
 
 		key := fmt.Sprintf("%s/%s", storeID, modelID)
 
 		if val, found := cache.Load(key); found {
-			return val.(*TypeSystem), nil
+			typesys, err = val.(*TypeSystem), nil
+			return typesys, err
 		}
 
-		typesys, err := fn(ctx, storeID, modelID)
+		typesys, err = fn(ctx, storeID, modelID)
 		if err != nil {
 			return nil, err
 		}
@@ -91,8 +102,6 @@ func NewTypesystemResolver(reader storage.AuthorizationModelReadBackend) Typesys
 
 			return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
 		}
-
-		modelSchemaVersionCounter.WithLabelValues(model.GetSchemaVersion()).Add(1)
 
 		return New(model), nil
 	}
