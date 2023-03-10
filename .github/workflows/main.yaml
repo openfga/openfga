@@ -27,7 +27,9 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
-        run: make bench | tee bench_output.txt
+        run: |
+          set -o pipefail
+          make bench | tee bench_output.txt
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
