@@ -22,6 +22,6 @@ func NewVersionCommand() *cobra.Command {
 
 // print out the built version
 func version(_ *cobra.Command, _ []string) error {
-	log.Println("OpenFGA Version", build.Version)
+	log.Printf("OpenFGA Version %s Date %s commit id %s ", build.Version, build.Date, build.Commit)
 	return nil
 }
