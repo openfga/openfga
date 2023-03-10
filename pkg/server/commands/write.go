@@ -104,7 +104,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 		}
 	}
 
-	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
+	if err := validateNoDuplicatesAndCorrectSize(deletes, writes, c.datastore.MaxTuplesPerWrite()); err != nil {
 		return err
 	}
 
@@ -112,7 +112,11 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgapb.TupleKey, writes []*openfgapb.TupleKey) error {
+func validateNoDuplicatesAndCorrectSize(
+	deletes []*openfgapb.TupleKey,
+	writes []*openfgapb.TupleKey,
+	maxTuplesPerWrite int,
+) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {
@@ -131,8 +135,8 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgapb.T
 		tuples[key] = struct{}{}
 	}
 
-	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
-		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
+	if len(tuples) > maxTuplesPerWrite {
+		return serverErrors.ExceededEntityLimit("write operations", maxTuplesPerWrite)
 	}
 	return nil
 }

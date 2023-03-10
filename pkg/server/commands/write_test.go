@@ -24,8 +24,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		expectedError error
 	}
 
-	logger := logger.NewNoopLogger()
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -41,8 +39,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 			User:     testutils.CreateRandomString(512),
 		}
 	}
-
-	cmd := NewWriteCommand(mockDatastore, logger, nil)
 
 	tests := []test{
 		{
@@ -83,7 +79,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := cmd.validateNoDuplicatesAndCorrectSize(test.deletes, test.writes)
+			err := validateNoDuplicatesAndCorrectSize(test.deletes, test.writes, maxTuplesInWriteOp)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
