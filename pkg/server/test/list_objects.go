@@ -74,6 +74,32 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			allResults:             []string{"repo:1", "repo:2", "repo:3"},
 		},
 		{
+			name:   "respects_when_schema_1_1_and_ttu_in_model_and_reverse_expansion_implementation",
+			schema: typesystem.SchemaVersion1_1,
+			model: `
+			type user
+			type folder
+			  relations
+			    define viewer: [user] as self
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("folder:x", "viewer", "user:alice"),
+				tuple.NewTupleKey("document:1", "parent", "folder:x"),
+				tuple.NewTupleKey("document:2", "parent", "folder:x"),
+				tuple.NewTupleKey("document:3", "parent", "folder:x"),
+			},
+			user:                   "user:alice",
+			objectType:             "document",
+			relation:               "viewer",
+			maxResults:             2,
+			minimumResultsExpected: 2,
+			allResults:             []string{"document:1", "document:2", "document:3"},
+		},
+		{
 			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
@@ -161,11 +187,18 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			// act: run ListObjects
 			checker := graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit)
+			connectedObjCmd := commands.ConnectedObjectsCommand{
+				Datastore:        ds,
+				Typesystem:       typesystem.New(model),
+				ResolveNodeLimit: defaultResolveNodeLimit,
+				Limit:            test.maxResults,
+			}
 			listObjectsQuery := &commands.ListObjectsQuery{
 				Datastore:             ds,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   time.Minute,
 				ListObjectsMaxResults: test.maxResults,
+				ConnectedObjects:      connectedObjCmd.StreamedConnectedObjects,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
 				CheckResolver:         checker,
 			}

@@ -528,7 +528,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
+		foundObjectType, _ := tuple.SplitObject(foundObject)
 
 		if _, ok := foundObjectsMap.LoadOrStore(foundObject, struct{}{}); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
@@ -546,25 +546,11 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 			resultChan <- foundObject
 		}
 
-		var targetUserRef isUserRef
-		targetUserRef = &UserRefObject{
-			Object: &openfgapb.Object{
-				Type: foundObjectType,
-				Id:   foundObjectID,
+		targetUserRef := &UserRefObjectRelation{
+			ObjectRelation: &openfgapb.ObjectRelation{
+				Object:   foundObject,
+				Relation: tk.GetRelation(),
 			},
-		}
-
-		if tuple.IsTypedWildcard(foundObject) {
-			targetUserRef = &UserRefTypedWildcard{Type: foundObjectType}
-		}
-
-		if tk.GetRelation() != "" {
-			targetUserRef = &UserRefObjectRelation{
-				ObjectRelation: &openfgapb.ObjectRelation{
-					Object:   foundObject,
-					Relation: tk.GetRelation(),
-				},
-			}
 		}
 
 		subg.Go(func() error {
