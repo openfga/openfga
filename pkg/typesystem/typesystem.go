@@ -126,39 +126,37 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
-	model           *openfgapb.AuthorizationModel
+	modelID         string
 	schemaVersion   string
 	typeDefinitions map[string]*openfgapb.TypeDefinition
-}
 
-type ValidatedTypeSystem struct {
-	*TypeSystem
+	// used only for validation
+	duplicateTypes []string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
+	duplicateTypes := make([]string, 0)
 	tds := map[string]*openfgapb.TypeDefinition{}
 	for _, td := range model.GetTypeDefinitions() {
+		if _, duplicateKey := tds[td.GetType()]; duplicateKey {
+			duplicateTypes = append(duplicateTypes, td.GetType())
+		}
 		tds[td.GetType()] = td
 	}
 
 	return &TypeSystem{
-		model:           model,
+		modelID:         model.GetId(),
+		duplicateTypes:  duplicateTypes,
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 	}
 }
 
-// GetAuthorizationModel returns the underlying AuthorizationModel this TypeSystem was
-// constructed from.
-func (t *TypeSystem) GetAuthorizationModel() *openfgapb.AuthorizationModel {
-	return t.model
-}
-
 // GetAuthorizationModelID returns the id for the authorization model this
 // TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
-	return t.model.GetId()
+	return t.modelID
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
@@ -177,7 +175,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefini
 }
 
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
-	td, ok := t.typeDefinitions[objectType]
+	td, ok := t.GetTypeDefinition(objectType)
 	if !ok {
 		return nil, &ObjectTypeUndefinedError{
 			ObjectType: objectType,
@@ -633,19 +631,19 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 //     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
+func (t *TypeSystem) Validate() error {
 	schemaVersion := t.GetSchemaVersion()
 
 	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
-		return nil, ErrInvalidSchemaVersion
+		return ErrInvalidSchemaVersion
 	}
 
-	if containsDuplicateType(t.model.GetTypeDefinitions()) {
-		return nil, ErrDuplicateTypes
+	if len(t.duplicateTypes) > 0 {
+		return ErrDuplicateTypes
 	}
 
 	if err := t.validateNames(); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Validate the userset rewrites
@@ -653,44 +651,32 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 		for relation, rewrite := range td.GetRelations() {
 			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
 	if err := t.ensureNoCyclesInTupleToUsersetDefinitions(); err != nil {
-		return nil, err
+		return err
 	}
 
 	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
-		return nil, err
+		return err
 	}
 
 	if schemaVersion == SchemaVersion1_1 {
 		if err := t.validateRelationTypeRestrictions(); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return &ValidatedTypeSystem{t}, nil
-}
-
-func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
-	seen := map[string]struct{}{}
-	for _, td := range tds {
-		objectType := td.GetType()
-		if _, ok := seen[objectType]; ok {
-			return true
-		}
-		seen[objectType] = struct{}{}
-	}
-	return false
+	return nil
 }
 
 // validateNames ensures that a model doesn't have object types or relations
 // called "self" or "this"
 func (t *TypeSystem) validateNames() error {
-	for _, td := range t.model.TypeDefinitions {
+	for _, td := range t.typeDefinitions {
 		objectType := td.GetType()
 		if objectType == "self" || objectType == "this" {
 			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}

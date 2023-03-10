@@ -40,7 +40,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.model).Validate()
+			err := New(test.model).Validate()
 			require.NoError(t, err)
 		})
 	}
@@ -533,7 +533,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.model).Validate()
+			err := New(test.model).Validate()
 			require.ErrorIs(t, err, test.err)
 		})
 	}
@@ -634,7 +634,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.model).Validate()
+			err := New(test.model).Validate()
 			require.NoError(t, err)
 		})
 	}
@@ -1108,7 +1108,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.model).Validate()
+			err := New(test.model).Validate()
 			require.EqualError(t, err, test.err.Error())
 		})
 	}
