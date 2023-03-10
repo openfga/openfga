@@ -30,10 +30,6 @@ jobs:
         run: |
           set -o pipefail
           make bench | tee bench_output.txt
-          if [ $? -ne 0 ]; then
-            echo "Benchmark failed"
-            exit 1
-          fi
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
