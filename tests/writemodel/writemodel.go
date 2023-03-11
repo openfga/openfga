@@ -344,9 +344,20 @@ var testCases = map[string]struct {
 	},
 }
 
+// ClientInterface defines interface for running WriteAuthorizationModel tests
 type ClientInterface interface {
 	CreateStore(ctx context.Context, in *pb.CreateStoreRequest, opts ...grpc.CallOption) (*pb.CreateStoreResponse, error)
 	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
+}
+
+// RunAllTests will run all write model tests
+func RunAllTests(t *testing.T, client ClientInterface) {
+	t.Run("RunAllTests", func(t *testing.T) {
+		t.Run("WriteTest", func(t *testing.T) {
+			t.Parallel()
+			runTests(t, client)
+		})
+	})
 }
 
 func runTests(t *testing.T, client ClientInterface) {

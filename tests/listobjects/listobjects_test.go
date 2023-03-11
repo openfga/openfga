@@ -39,24 +39,3 @@ func testRunAll(t *testing.T, engine string) {
 	defer conn.Close()
 	RunAllTests(t, pb.NewOpenFGAServiceClient(conn))
 }
-
-// RunAllTests will invoke all list objects tests
-func RunAllTests(t *testing.T, client ListObjectsClientInterface) {
-	t.Run("RunAll", func(t *testing.T) {
-		t.Run("ListObjects", func(t *testing.T) {
-			t.Parallel()
-			testListObjects(t, client)
-		})
-	})
-}
-
-func testListObjects(t *testing.T, client ListObjectsClientInterface) {
-	t.Run("Schema1_1", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_1ListObjectsTests(t, client)
-	})
-	t.Run("Schema1_0", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_0ListObjectsTests(t, client)
-	})
-}
