@@ -127,25 +127,20 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 
 type TypeSystem struct {
 	typeDefinitions map[string]*openfgapb.TypeDefinition
-	duplicateTypes  []string
 	modelID         string
 	schemaVersion   string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
+// It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
-	duplicateTypes := make([]string, 0, len(model.GetTypeDefinitions()))
 	tds := make(map[string]*openfgapb.TypeDefinition, len(model.GetTypeDefinitions()))
 	for _, td := range model.GetTypeDefinitions() {
-		if _, duplicateKey := tds[td.GetType()]; duplicateKey {
-			duplicateTypes = append(duplicateTypes, td.GetType())
-		}
 		tds[td.GetType()] = td
 	}
 
 	return &TypeSystem{
 		modelID:         model.GetId(),
-		duplicateTypes:  duplicateTypes,
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 	}
@@ -612,7 +607,7 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 	return relations
 }
 
-// Validate validates a *TypeSystem according to the following rules:
+// NewAndValidate is like New but also validates the model according to the following rules:
 //  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
 //     a. Be valid relations on the same type in the *TypeSystem (in cases of computedUserset)
@@ -626,19 +621,20 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 //     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func (t *TypeSystem) Validate() error {
+func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
+	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
 	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
-		return ErrInvalidSchemaVersion
+		return nil, ErrInvalidSchemaVersion
 	}
 
-	if len(t.duplicateTypes) > 0 {
-		return ErrDuplicateTypes
+	if containsDuplicateType(model) {
+		return nil, ErrDuplicateTypes
 	}
 
 	if err := t.validateNames(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Validate the userset rewrites
@@ -646,26 +642,38 @@ func (t *TypeSystem) Validate() error {
 		for relation, rewrite := range td.GetRelations() {
 			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
 
 	if err := t.ensureNoCyclesInTupleToUsersetDefinitions(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if schemaVersion == SchemaVersion1_1 {
 		if err := t.validateRelationTypeRestrictions(); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	return t, nil
+}
+
+func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
+	seen := make(map[string]struct{}, len(model.GetTypeDefinitions()))
+	for _, td := range model.GetTypeDefinitions() {
+		objectType := td.GetType()
+		if _, ok := seen[objectType]; ok {
+			return true
+		}
+		seen[objectType] = struct{}{}
+	}
+	return false
 }
 
 // validateNames ensures that a model doesn't have object types or relations
