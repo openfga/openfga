@@ -126,18 +126,16 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
+	typeDefinitions map[string]*openfgapb.TypeDefinition
+	duplicateTypes  []string
 	modelID         string
 	schemaVersion   string
-	typeDefinitions map[string]*openfgapb.TypeDefinition
-
-	// used only for validation
-	duplicateTypes []string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
-	duplicateTypes := make([]string, 0)
-	tds := map[string]*openfgapb.TypeDefinition{}
+	duplicateTypes := make([]string, 0, len(model.GetTypeDefinitions()))
+	tds := make(map[string]*openfgapb.TypeDefinition, len(model.GetTypeDefinitions()))
 	for _, td := range model.GetTypeDefinitions() {
 		if _, duplicateKey := tds[td.GetType()]; duplicateKey {
 			duplicateTypes = append(duplicateTypes, td.GetType())
@@ -163,10 +161,6 @@ func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
 }
 
-func (t *TypeSystem) GetTypeDefinitions() map[string]*openfgapb.TypeDefinition {
-	return t.typeDefinitions
-}
-
 func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefinition, bool) {
 	if typeDefinition, ok := t.typeDefinitions[objectType]; ok {
 		return typeDefinition, true
@@ -174,6 +168,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefini
 	return nil, false
 }
 
+// GetRelations returns all relations in the TypeSystem for a given type
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
 	td, ok := t.GetTypeDefinition(objectType)
 	if !ok {
@@ -647,7 +642,7 @@ func (t *TypeSystem) Validate() error {
 	}
 
 	// Validate the userset rewrites
-	for _, td := range t.GetTypeDefinitions() {
+	for _, td := range t.typeDefinitions {
 		for relation, rewrite := range td.GetRelations() {
 			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
 			if err != nil {
@@ -1036,7 +1031,7 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 // is another map where key=relationName, value=list of tuple to usersets declared in that relation
 func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgapb.TupleToUserset {
 	response := make(map[string]map[string][]*openfgapb.TupleToUserset, 0)
-	for typeName, typeDef := range t.GetTypeDefinitions() {
+	for typeName, typeDef := range t.typeDefinitions {
 		response[typeName] = make(map[string][]*openfgapb.TupleToUserset, 0)
 		for relationName, relationDef := range typeDef.GetRelations() {
 			ttus := make([]*openfgapb.TupleToUserset, 0)
