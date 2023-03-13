@@ -45,7 +45,7 @@ type assertion struct {
 type ClientInterface interface {
 	check.ClientInterface
 	ListObjects(ctx context.Context, in *pb.ListObjectsRequest, opts ...grpc.CallOption) (*pb.ListObjectsResponse, error)
-	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
+	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (grpc.ClientStream, error)
 }
 
 // RunAllTests will invoke all list objects tests
@@ -172,7 +172,7 @@ func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
 					var streamingResp *pb.StreamedListObjectsResponse
 					go func() {
 						for {
-							streamingResp, streamingErr = clientStream.Recv()
+							streamingErr = clientStream.RecvMsg(streamingResp)
 							if streamingErr == nil {
 								streamedObjectIds = append(streamedObjectIds, streamingResp.Object)
 							} else {
