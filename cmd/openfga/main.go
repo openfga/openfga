@@ -16,6 +16,9 @@ func main() {
 	migrateCmd := cmd.NewMigrateCommand()
 	rootCmd.AddCommand(migrateCmd)
 
+	versionCmd := cmd.NewVersionCommand()
+	rootCmd.AddCommand(versionCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
