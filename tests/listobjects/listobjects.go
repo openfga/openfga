@@ -41,21 +41,43 @@ type assertion struct {
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
 
-type ListObjectsClientInterface interface {
-	check.CheckTestClientInterface
+// ClientInterface defines interface for running ListObjects and StreamedListObjects tests
+type ClientInterface interface {
+	check.ClientInterface
 	ListObjects(ctx context.Context, in *pb.ListObjectsRequest, opts ...grpc.CallOption) (*pb.ListObjectsResponse, error)
 	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
 }
 
-func runSchema1_1ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+// RunAllTests will invoke all list objects tests
+func RunAllTests(t *testing.T, client ClientInterface) {
+	t.Run("RunAll", func(t *testing.T) {
+		t.Run("ListObjects", func(t *testing.T) {
+			t.Parallel()
+			testListObjects(t, client)
+		})
+	})
+}
+
+func testListObjects(t *testing.T, client ClientInterface) {
+	t.Run("Schema1_1", func(t *testing.T) {
+		t.Parallel()
+		runSchema1_1ListObjectsTests(t, client)
+	})
+	t.Run("Schema1_0", func(t *testing.T) {
+		t.Parallel()
+		runSchema1_0ListObjectsTests(t, client)
+	})
+}
+
+func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_1, client)
 }
 
-func runSchema1_0ListObjectsTests(t *testing.T, client ListObjectsClientInterface) {
+func runSchema1_0ListObjectsTests(t *testing.T, client ClientInterface) {
 	runTests(t, typesystem.SchemaVersion1_0, client)
 }
 
-func runTests(t *testing.T, schemaVersion string, client ListObjectsClientInterface) {
+func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
 	var b []byte
 	var err error
 	if schemaVersion == typesystem.SchemaVersion1_1 {
