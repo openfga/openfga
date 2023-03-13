@@ -24,6 +24,7 @@ var (
 	StoreIDNotFound                        = status.Error(codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), "Store ID not found")
 	MismatchObjectType                     = status.Error(codes.Code(openfgapb.ErrorCode_query_string_type_continuation_token_mismatch), "The type in the querystring and the continuation token don't match")
 	RequestCancelled                       = status.Error(codes.Code(openfgapb.InternalErrorCode_cancelled), "Request Cancelled")
+	ObsoleteAuthorizationModel             = status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), "Obsolete authorization model schema version")
 )
 
 type InternalError struct {
@@ -119,10 +120,6 @@ func WriteFailedDueToInvalidInput(err error) error {
 
 func InvalidAuthorizationModelInput(err error) error {
 	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), err.Error())
-}
-
-func ObsoleteAuthorizationModel() error {
-	return status.Error(codes.Code(openfgapb.ErrorCode_invalid_authorization_model), "Obsolete authorization model schema")
 }
 
 // HandleError is used to hide internal errors from users. Use `public` to return an error message to the user.

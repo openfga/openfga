@@ -1213,9 +1213,7 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 					Relations: map[string]*openfgapb.RelationMetadata{
 						"viewer": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								{
-									Type: "user",
-								},
+								typesystem.DirectRelationReference("user", ""),
 							},
 						},
 					},
@@ -1242,9 +1240,7 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 					Relations: map[string]*openfgapb.RelationMetadata{
 						"editor": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								{
-									Type: "user",
-								},
+								typesystem.DirectRelationReference("user", ""),
 							},
 						},
 					},

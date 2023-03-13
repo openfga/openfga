@@ -59,20 +59,14 @@ type Dependencies struct {
 	TokenEncoder encoder.Encoder
 }
 
-// OverrideConfig allows temporary configuration to succeed even if
-// they are to be obsolete
-type OverrideConfig struct {
-	AllowWriting10Models    bool // Allow writing of model schema 1.0 even if it is being obsolete
-	AllowEvaluating10Models bool // Allow evaluating with model schema 1.0 even if it is being obsolete
-}
-
 type Config struct {
-	ResolveNodeLimit       uint32
-	ChangelogHorizonOffset int
-	ListObjectsDeadline    time.Duration
-	ListObjectsMaxResults  uint32
-	Experimentals          []ExperimentalFeatureFlag
-	OverrideConfig         OverrideConfig
+	ResolveNodeLimit              uint32
+	ChangelogHorizonOffset        int
+	ListObjectsDeadline           time.Duration
+	ListObjectsMaxResults         uint32
+	Experimentals                 []ExperimentalFeatureFlag
+	AllowWritingObsoleteModels    bool // Allow writing of model schema 1.0 even if it is being obsolete
+	AllowEvaluatingObsoleteModels bool // Allow evaluating with model schema 1.0 even if it is being obsolete
 }
 
 // New creates a new Server which uses the supplied backends
@@ -118,9 +112,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	err = commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.OverrideConfig.AllowEvaluating10Models)
-	if err != nil {
-		return nil, err
+	if commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.AllowEvaluatingObsoleteModels) {
+		return nil, serverErrors.ObsoleteAuthorizationModel
 	}
 
 	typesys := typesystem.New(model)
@@ -242,7 +235,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger, s.config.OverrideConfig.AllowEvaluating10Models)
+	cmd := commands.NewWriteCommand(s.datastore, s.logger, s.config.AllowEvaluatingObsoleteModels)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -278,9 +271,9 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		}
 		return nil, err
 	}
-	err = commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.OverrideConfig.AllowEvaluating10Models)
-	if err != nil {
-		return nil, err
+
+	if commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.AllowEvaluatingObsoleteModels) {
+		return nil, serverErrors.ObsoleteAuthorizationModel
 	}
 
 	typesys := typesystem.New(model)
@@ -339,7 +332,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger, s.config.OverrideConfig.AllowEvaluating10Models)
+	q := commands.NewExpandQuery(s.datastore, s.logger, s.config.AllowEvaluatingObsoleteModels)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -361,7 +354,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.config.OverrideConfig.AllowWriting10Models)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.config.AllowWritingObsoleteModels)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -391,7 +384,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.OverrideConfig.AllowWriting10Models)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.AllowWritingObsoleteModels)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,

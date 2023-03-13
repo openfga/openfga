@@ -183,12 +183,12 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 	util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
-	flags.Bool("allow-writing-10-models", defaultConfig.AllowWriting10Models, "allow writing of schema 1.0 models")
-	util.MustBindPFlag("allowWriting10Models", flags.Lookup("allow-writing-10-models"))
-	util.MustBindEnv("allowWriting10Models", "OPENFGA_ALLOW_WRITING_1_0_MODELS", "OPENFGA_ALLOW_WRITING_10_MODELS", "OPENFGA_ALLOWWRITING10MODELS")
+	flags.Bool("allow-writing-deprecated-models", defaultConfig.AllowWritingDeprecatedModels, "allow writing of deprecated schemas")
+	util.MustBindPFlag("allowWritingDeprecatedModels", flags.Lookup("allow-writing-deprecated-models"))
+	util.MustBindEnv("allowWritingDeprecatedModels", "OPENFGA_ALLOW_WRITING_DEPRECATED_MODELS")
 
-	flags.Bool("allow-evaluating-10-models", defaultConfig.AllowEvaluating10Models, "allow evaluating of schema 1.0 models")
-	util.MustBindPFlag("allowEvaluating10Models", flags.Lookup("allow-evaluating-10-models"))
-	util.MustBindEnv("allowEvaluating10Models", "OPENFGA_ALLOW_EVALUATING_1_0_MODELS", "OPENFGA_ALLOW_EVALUATING_10_MODELS", "OPENFGA_ALLOWEVALUATING10MODELS")
+	flags.Bool("allow-evaluating-deprecated-models", defaultConfig.AllowEvaluatingDeprecatedModels, "allow evaluating of deprecated schemas")
+	util.MustBindPFlag("allowEvaluatingDeprecatedModels", flags.Lookup("allow-evaluating-deprecated-models"))
+	util.MustBindEnv("allowEvaluatingDeprecatedModels", "OPENFGA_ALLOW_EVALUATING_DEPRECATED_MODELS")
 
 }

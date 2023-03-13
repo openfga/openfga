@@ -31,11 +31,8 @@ func NewWriteAuthorizationModelCommand(
 }
 
 // IsAuthorizationModelObsolete returns whether the model schema is allowed or it is obsolete
-func IsAuthorizationModelObsolete(schemaVersion string, allowSchema10 bool) error {
-	if !allowSchema10 && schemaVersion == typesystem.SchemaVersion1_0 {
-		return serverErrors.ObsoleteAuthorizationModel()
-	}
-	return nil
+func IsAuthorizationModelObsolete(schemaVersion string, allowSchema10 bool) bool {
+	return !allowSchema10 && schemaVersion == typesystem.SchemaVersion1_0
 }
 
 // Execute the command using the supplied request.
@@ -51,9 +48,8 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
-	err := IsAuthorizationModelObsolete(req.SchemaVersion, w.allowSchema10)
-	if err != nil {
-		return nil, err
+	if IsAuthorizationModelObsolete(req.SchemaVersion, w.allowSchema10) {
+		return nil, serverErrors.ObsoleteAuthorizationModel
 	}
 
 	model := &openfgapb.AuthorizationModel{
@@ -62,7 +58,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}
 
-	_, err = typesystem.NewAndValidate(model)
+	_, err := typesystem.NewAndValidate(model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}

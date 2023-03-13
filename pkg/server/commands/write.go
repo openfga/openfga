@@ -68,9 +68,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 			return err
 		}
 
-		err = IsAuthorizationModelObsolete(authModel.SchemaVersion, c.allowSchema10)
-		if err != nil {
-			return err
+		if IsAuthorizationModelObsolete(authModel.SchemaVersion, c.allowSchema10) {
+			return serverErrors.ObsoleteAuthorizationModel
 		}
 
 		typesys := typesystem.New(authModel)

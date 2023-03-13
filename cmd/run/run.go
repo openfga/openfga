@@ -214,6 +214,12 @@ type Config struct {
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
+	// AllowWritingDeprecatedModels allows writing of deprecated schema
+	AllowWritingDeprecatedModels bool
+
+	// AllowEvaluatingDeprecatedModels allows evaluating of deprecated schema
+	AllowEvaluatingDeprecatedModels bool
+
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
 	HTTP       HTTPConfig
@@ -223,12 +229,6 @@ type Config struct {
 	Playground PlaygroundConfig
 	Profiler   ProfilerConfig
 	Metrics    MetricConfig
-
-	// AllowWriting10Models allows writing of schema 1.0 models
-	AllowWriting10Models bool
-
-	// AllowEvaluating10Models allows evaluating of schema 1.0 models
-	AllowEvaluating10Models bool
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -288,8 +288,8 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		AllowWriting10Models:    false,
-		AllowEvaluating10Models: false,
+		AllowWritingDeprecatedModels:    false,
+		AllowEvaluatingDeprecatedModels: false,
 	}
 }
 
@@ -574,15 +574,13 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:       config.ResolveNodeLimit,
-		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
-		ListObjectsDeadline:    config.ListObjectsDeadline,
-		ListObjectsMaxResults:  config.ListObjectsMaxResults,
-		Experimentals:          experimentals,
-		OverrideConfig: server.OverrideConfig{
-			AllowEvaluating10Models: config.AllowEvaluating10Models,
-			AllowWriting10Models:    config.AllowWriting10Models,
-		},
+		ResolveNodeLimit:              config.ResolveNodeLimit,
+		ChangelogHorizonOffset:        config.ChangelogHorizonOffset,
+		ListObjectsDeadline:           config.ListObjectsDeadline,
+		ListObjectsMaxResults:         config.ListObjectsMaxResults,
+		Experimentals:                 experimentals,
+		AllowEvaluatingObsoleteModels: config.AllowEvaluatingDeprecatedModels,
+		AllowWritingObsoleteModels:    config.AllowWritingDeprecatedModels,
 	})
 
 	logger.Info(

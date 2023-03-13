@@ -861,7 +861,7 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
-		_name: "ObsoleteModel1.0",
+		_name: "Obsolete_model_1_0",
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
@@ -906,7 +906,7 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		allowSchema10: false,
-		err:           serverErrors.ObsoleteAuthorizationModel(),
+		err:           serverErrors.ObsoleteAuthorizationModel,
 	},
 	// Begin section with tests for schema version 1.1
 	{

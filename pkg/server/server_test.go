@@ -147,11 +147,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
-		OverrideConfig: OverrideConfig{
-			AllowWriting10Models:    true,
-			AllowEvaluating10Models: true,
-		},
+		ResolveNodeLimit:              25,
+		AllowWritingObsoleteModels:    true,
+		AllowEvaluatingObsoleteModels: true,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -220,11 +218,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
-		OverrideConfig: OverrideConfig{
-			AllowWriting10Models:    true,
-			AllowEvaluating10Models: true,
-		},
+		ResolveNodeLimit:              25,
+		AllowWritingObsoleteModels:    true,
+		AllowEvaluatingObsoleteModels: true,
 	})
 
 	start := time.Now()
@@ -362,13 +358,11 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-		OverrideConfig: OverrideConfig{
-			AllowWriting10Models:    true,
-			AllowEvaluating10Models: true,
-		},
+		ResolveNodeLimit:              25,
+		ListObjectsDeadline:           5 * time.Second,
+		ListObjectsMaxResults:         1000,
+		AllowWritingObsoleteModels:    true,
+		AllowEvaluatingObsoleteModels: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -446,13 +440,11 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-		OverrideConfig: OverrideConfig{
-			AllowWriting10Models:    true,
-			AllowEvaluating10Models: true,
-		},
+		ResolveNodeLimit:              25,
+		ListObjectsDeadline:           5 * time.Second,
+		ListObjectsMaxResults:         1000,
+		AllowWritingObsoleteModels:    true,
+		AllowEvaluatingObsoleteModels: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -511,13 +503,11 @@ func TestObosolete(t *testing.T) {
 		transport: transport,
 		logger:    logger,
 		config: &Config{
-			ResolveNodeLimit:      25,
-			ListObjectsDeadline:   5 * time.Second,
-			ListObjectsMaxResults: 1000,
-			OverrideConfig: OverrideConfig{
-				AllowEvaluating10Models: false,
-				AllowWriting10Models:    false,
-			},
+			ResolveNodeLimit:              25,
+			ListObjectsDeadline:           5 * time.Second,
+			ListObjectsMaxResults:         1000,
+			AllowEvaluatingObsoleteModels: false,
+			AllowWritingObsoleteModels:    false,
 		},
 	}
 

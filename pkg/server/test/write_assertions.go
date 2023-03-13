@@ -35,13 +35,8 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"reader": {Userset: &openfgapb.Userset_This{}},
-					"can_read": {
-						Userset: &openfgapb.Userset_ComputedUserset{
-							ComputedUserset: &openfgapb.ObjectRelation{
-								Relation: "reader",
-							},
-						}},
+					"reader":   {Userset: &openfgapb.Userset_This{}},
+					"can_read": typesystem.ComputedUserset("reader"),
 				},
 				Metadata: &openfgapb.Metadata{
 					Relations: map[string]*openfgapb.RelationMetadata{
@@ -68,13 +63,8 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"reader": {Userset: &openfgapb.Userset_This{}},
-					"can_read": {
-						Userset: &openfgapb.Userset_ComputedUserset{
-							ComputedUserset: &openfgapb.ObjectRelation{
-								Relation: "reader",
-							},
-						}},
+					"reader":   {Userset: &openfgapb.Userset_This{}},
+					"can_read": typesystem.ComputedUserset("reader"),
 				},
 			},
 		},
@@ -148,7 +138,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			assertModel10: true,
 			allowSchema10: false,
-			err:           serverErrors.ObsoleteAuthorizationModel(),
+			err:           serverErrors.ObsoleteAuthorizationModel,
 		},
 	}
 

@@ -110,7 +110,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			allowSchema10: false,
-			err:           serverErrors.ObsoleteAuthorizationModel(),
+			err:           serverErrors.ObsoleteAuthorizationModel,
 		},
 	}
 
