@@ -100,6 +100,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 	stopContainer := func() {
 
+		t.Logf("stopping container %s", name)
 		timeout := 5 * time.Second
 
 		err := dockerClient.ContainerStop(ctx, cont.ID, &timeout)
@@ -108,6 +109,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		}
 
 		dockerClient.Close()
+		t.Logf("stopped container %s", name)
 	}
 
 	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
@@ -121,8 +123,11 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	go func() {
 		time.Sleep(2 * time.Minute)
 
+		t.Logf("expiring container %s", name)
 		// swallow the error because by this point we've terminated
 		_ = dockerClient.ContainerStop(ctx, cont.ID, nil)
+
+		t.Logf("expired container %s", name)
 	}()
 
 	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
