@@ -126,47 +126,34 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
-	model           *openfgapb.AuthorizationModel
-	schemaVersion   string
 	typeDefinitions map[string]*openfgapb.TypeDefinition
-}
-
-type ValidatedTypeSystem struct {
-	*TypeSystem
+	modelID         string
+	schemaVersion   string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
+// It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
-	tds := map[string]*openfgapb.TypeDefinition{}
+	tds := make(map[string]*openfgapb.TypeDefinition, len(model.GetTypeDefinitions()))
 	for _, td := range model.GetTypeDefinitions() {
 		tds[td.GetType()] = td
 	}
 
 	return &TypeSystem{
-		model:           model,
+		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 	}
 }
 
-// GetAuthorizationModel returns the underlying AuthorizationModel this TypeSystem was
-// constructed from.
-func (t *TypeSystem) GetAuthorizationModel() *openfgapb.AuthorizationModel {
-	return t.model
-}
-
 // GetAuthorizationModelID returns the id for the authorization model this
 // TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
-	return t.model.GetId()
+	return t.modelID
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
-}
-
-func (t *TypeSystem) GetTypeDefinitions() map[string]*openfgapb.TypeDefinition {
-	return t.typeDefinitions
 }
 
 func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefinition, bool) {
@@ -176,8 +163,9 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefini
 	return nil, false
 }
 
+// GetRelations returns all relations in the TypeSystem for a given type
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
-	td, ok := t.typeDefinitions[objectType]
+	td, ok := t.GetTypeDefinition(objectType)
 	if !ok {
 		return nil, &ObjectTypeUndefinedError{
 			ObjectType: objectType,
@@ -619,7 +607,7 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 	return relations
 }
 
-// Validate validates a *TypeSystem according to the following rules:
+// NewAndValidate is like New but also validates the model according to the following rules:
 //  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
 //     a. Be valid relations on the same type in the *TypeSystem (in cases of computedUserset)
@@ -633,14 +621,15 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 //     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
+func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
+	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
 	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
 		return nil, ErrInvalidSchemaVersion
 	}
 
-	if containsDuplicateType(t.model.GetTypeDefinitions()) {
+	if containsDuplicateType(model) {
 		return nil, ErrDuplicateTypes
 	}
 
@@ -649,7 +638,7 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 	}
 
 	// Validate the userset rewrites
-	for _, td := range t.GetTypeDefinitions() {
+	for _, td := range t.typeDefinitions {
 		for relation, rewrite := range td.GetRelations() {
 			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
 			if err != nil {
@@ -672,12 +661,12 @@ func (t *TypeSystem) Validate() (*ValidatedTypeSystem, error) {
 		}
 	}
 
-	return &ValidatedTypeSystem{t}, nil
+	return t, nil
 }
 
-func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
-	seen := map[string]struct{}{}
-	for _, td := range tds {
+func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
+	seen := make(map[string]struct{}, len(model.GetTypeDefinitions()))
+	for _, td := range model.GetTypeDefinitions() {
 		objectType := td.GetType()
 		if _, ok := seen[objectType]; ok {
 			return true
@@ -690,7 +679,7 @@ func containsDuplicateType(tds []*openfgapb.TypeDefinition) bool {
 // validateNames ensures that a model doesn't have object types or relations
 // called "self" or "this"
 func (t *TypeSystem) validateNames() error {
-	for _, td := range t.model.TypeDefinitions {
+	for _, td := range t.typeDefinitions {
 		objectType := td.GetType()
 		if objectType == "self" || objectType == "this" {
 			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}
@@ -1050,7 +1039,7 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 // is another map where key=relationName, value=list of tuple to usersets declared in that relation
 func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgapb.TupleToUserset {
 	response := make(map[string]map[string][]*openfgapb.TupleToUserset, 0)
-	for typeName, typeDef := range t.GetTypeDefinitions() {
+	for typeName, typeDef := range t.typeDefinitions {
 		response[typeName] = make(map[string][]*openfgapb.TupleToUserset, 0)
 		for relationName, relationDef := range typeDef.GetRelations() {
 			ttus := make([]*openfgapb.TupleToUserset, 0)
