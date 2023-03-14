@@ -384,7 +384,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.AllowWriting1Dot0Models)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.AllowEvaluating1Dot0Models)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
