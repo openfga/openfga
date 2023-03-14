@@ -214,11 +214,11 @@ type Config struct {
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
-	// AllowWritingDeprecatedModels allows writing of deprecated schema
-	AllowWritingDeprecatedModels bool
+	// AllowWriting1Dot0Models allows writing of model with schema 1.0
+	AllowWriting1Dot0Models bool
 
-	// AllowEvaluatingDeprecatedModels allows evaluating of deprecated schema
-	AllowEvaluatingDeprecatedModels bool
+	// AllowEvaluating1Dot0Models allows evaluating of model with schema 1.0
+	AllowEvaluating1Dot0Models bool
 
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
@@ -288,8 +288,8 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		AllowWritingDeprecatedModels:    false,
-		AllowEvaluatingDeprecatedModels: false,
+		AllowWriting1Dot0Models:    false,
+		AllowEvaluating1Dot0Models: false,
 	}
 }
 
@@ -574,13 +574,13 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:              config.ResolveNodeLimit,
-		ChangelogHorizonOffset:        config.ChangelogHorizonOffset,
-		ListObjectsDeadline:           config.ListObjectsDeadline,
-		ListObjectsMaxResults:         config.ListObjectsMaxResults,
-		Experimentals:                 experimentals,
-		AllowEvaluatingObsoleteModels: config.AllowEvaluatingDeprecatedModels,
-		AllowWritingObsoleteModels:    config.AllowWritingDeprecatedModels,
+		ResolveNodeLimit:           config.ResolveNodeLimit,
+		ChangelogHorizonOffset:     config.ChangelogHorizonOffset,
+		ListObjectsDeadline:        config.ListObjectsDeadline,
+		ListObjectsMaxResults:      config.ListObjectsMaxResults,
+		Experimentals:              experimentals,
+		AllowEvaluating1Dot0Models: config.AllowEvaluating1Dot0Models,
+		AllowWriting1Dot0Models:    config.AllowWriting1Dot0Models,
 	})
 
 	logger.Info(

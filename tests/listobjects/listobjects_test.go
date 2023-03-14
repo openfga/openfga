@@ -27,8 +27,8 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
-	cfg.AllowWritingDeprecatedModels = true
-	cfg.AllowEvaluatingDeprecatedModels = true
+	cfg.AllowWriting1Dot0Models = true
+	cfg.AllowEvaluating1Dot0Models = true
 
 	cancel := tests.StartServer(t, cfg)
 	defer cancel()

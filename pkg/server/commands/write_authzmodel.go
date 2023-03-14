@@ -30,11 +30,6 @@ func NewWriteAuthorizationModelCommand(
 	}
 }
 
-// IsAuthorizationModelObsolete returns whether the model schema is allowed or it is obsolete
-func IsAuthorizationModelObsolete(schemaVersion string, allowSchema10 bool) bool {
-	return !allowSchema10 && schemaVersion == typesystem.SchemaVersion1_0
-}
-
 // Execute the command using the supplied request.
 func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
 	// Until this is solved: https://github.com/envoyproxy/protoc-gen-validate/issues/74
