@@ -68,9 +68,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 			return err
 		}
 
-		typesys, err := typesystem.NewAndNonObsolete(authModel, c.allowSchema10)
-		if err != nil {
-			return serverErrors.ValidationError(err)
+		typesys := typesystem.New(authModel)
+
+		if ProhibitModel1_0(typesys.GetSchemaVersion(), c.allowSchema10) {
+			return serverErrors.ValidationError(ErrObsoleteAuthorizationModel)
 		}
 
 		for _, tk := range writes {

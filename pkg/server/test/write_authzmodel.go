@@ -33,9 +33,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				Relations: map[string]*openfgapb.RelationMetadata{
 					"admin": {
 						DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-							{
-								Type: "user",
-							},
+							typesystem.DirectRelationReference("user", ""),
 						},
 					},
 				},
@@ -110,7 +108,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			allowSchema10: false,
-			err:           serverErrors.InvalidAuthorizationModelInput(typesystem.ErrObsoleteAuthorizationModel),
+			err:           serverErrors.InvalidAuthorizationModelInput(commands.ErrObsoleteAuthorizationModel),
 		},
 	}
 

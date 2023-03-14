@@ -10,6 +10,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -42,9 +43,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relations: map[string]*openfgapb.RelationMetadata{
 						"reader": {
 							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								{
-									Type: "user",
-								},
+								typesystem.DirectRelationReference("user", ""),
 							},
 						},
 					},
@@ -63,7 +62,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"reader":   {Userset: &openfgapb.Userset_This{}},
+					"reader":   typesystem.This(),
 					"can_read": typesystem.ComputedUserset("reader"),
 				},
 			},
@@ -76,11 +75,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "reader",
-						User:     "user:elbuo",
-					},
+					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -90,11 +85,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "can_read",
-						User:     "user:elbuo",
-					},
+					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -112,11 +103,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{
 					{
-						TupleKey: &openfgapb.TupleKey{
-							Object:   "repo:test",
-							Relation: "invalidrelation",
-							User:     "user:elbuo",
-						},
+						TupleKey:    tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
 						Expectation: false,
 					},
 				},
@@ -128,17 +115,13 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "reader",
-						User:     "user:elbuo",
-					},
+					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
 			assertModel10: true,
 			allowSchema10: false,
-			err:           serverErrors.ValidationError(typesystem.ErrObsoleteAuthorizationModel),
+			err:           serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel),
 		},
 	}
 

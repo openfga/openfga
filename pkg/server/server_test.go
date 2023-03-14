@@ -147,9 +147,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:           25,
-		AllowWriting1Dot0Models:    true,
-		AllowEvaluating1Dot0Models: true,
+		ResolveNodeLimit:         25,
+		AllowWriting1_0Models:    true,
+		AllowEvaluating1_0Models: true,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -218,9 +218,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:           25,
-		AllowWriting1Dot0Models:    true,
-		AllowEvaluating1Dot0Models: true,
+		ResolveNodeLimit:         25,
+		AllowWriting1_0Models:    true,
+		AllowEvaluating1_0Models: true,
 	})
 
 	start := time.Now()
@@ -358,11 +358,11 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:           25,
-		ListObjectsDeadline:        5 * time.Second,
-		ListObjectsMaxResults:      1000,
-		AllowWriting1Dot0Models:    true,
-		AllowEvaluating1Dot0Models: true,
+		ResolveNodeLimit:         25,
+		ListObjectsDeadline:      5 * time.Second,
+		ListObjectsMaxResults:    1000,
+		AllowWriting1_0Models:    true,
+		AllowEvaluating1_0Models: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -440,11 +440,11 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:           25,
-		ListObjectsDeadline:        5 * time.Second,
-		ListObjectsMaxResults:      1000,
-		AllowWriting1Dot0Models:    true,
-		AllowEvaluating1Dot0Models: true,
+		ResolveNodeLimit:         25,
+		ListObjectsDeadline:      5 * time.Second,
+		ListObjectsMaxResults:    1000,
+		AllowWriting1_0Models:    true,
+		AllowEvaluating1_0Models: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -473,7 +473,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	})
 }
 
-func TestObosolete(t *testing.T) {
+func TestObsoleteAuthorizationModels(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
@@ -503,11 +503,11 @@ func TestObosolete(t *testing.T) {
 		transport: transport,
 		logger:    logger,
 		config: &Config{
-			ResolveNodeLimit:           25,
-			ListObjectsDeadline:        5 * time.Second,
-			ListObjectsMaxResults:      1000,
-			AllowEvaluating1Dot0Models: false,
-			AllowWriting1Dot0Models:    false,
+			ResolveNodeLimit:         25,
+			ListObjectsDeadline:      5 * time.Second,
+			ListObjectsMaxResults:    1000,
+			AllowEvaluating1_0Models: false,
+			AllowWriting1_0Models:    false,
 		},
 	}
 
@@ -523,7 +523,7 @@ func TestObosolete(t *testing.T) {
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code())
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
 	t.Run("throw_obsolete_error_in_listobject", func(t *testing.T) {
@@ -537,6 +537,51 @@ func TestObosolete(t *testing.T) {
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code())
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_expand", func(t *testing.T) {
+		_, err := s.Expand(ctx, &openfgapb.ExpandRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			TupleKey: tuple.NewTupleKey("repo:openfga",
+				"reader",
+				"user:anne"),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_write", func(t *testing.T) {
+		_, err := s.Write(ctx, &openfgapb.WriteRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga/openfga",
+					"reader",
+					"user:anne"),
+			}},
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_write_assertion", func(t *testing.T) {
+		_, err := s.WriteAssertions(ctx, &openfgapb.WriteAssertionsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Assertions: []*openfgapb.Assertion{{
+				TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+				Expectation: false,
+			}},
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 }

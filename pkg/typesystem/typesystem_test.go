@@ -40,7 +40,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model, true)
+			_, err := NewAndValidate(test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -533,67 +533,11 @@ func TestInvalidRewriteValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model, true)
+			_, err := NewAndValidate(test.model)
 			require.ErrorIs(t, err, test.err)
 		})
 	}
 }
-
-func TestObsolete(t *testing.T) {
-	var tests = []struct {
-		name         string
-		model        *openfgapb.AuthorizationModel
-		allowModel10 bool
-		err          error
-	}{
-		{
-			name: "succeeds_on_a_model_1.1",
-			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
-			allowModel10: false,
-			err:          nil,
-		},
-		{
-			name: "succeeds_on_a_model_1.0_override",
-			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
-			allowModel10: true,
-			err:          nil,
-		},
-		{
-			name: "errors_on_a_model_1.0_no_override",
-			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-				},
-			},
-			allowModel10: false,
-			err:          ErrObsoleteAuthorizationModel,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model, test.allowModel10)
-			require.ErrorIs(t, err, test.err)
-		})
-	}
-}
-
 func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
@@ -690,7 +634,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model, true)
+			_, err := NewAndValidate(test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -1164,7 +1108,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model, true)
+			_, err := NewAndValidate(test.model)
 			require.EqualError(t, err, test.err.Error())
 		})
 	}

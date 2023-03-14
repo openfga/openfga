@@ -20,15 +20,14 @@ const (
 )
 
 var (
-	ErrDuplicateTypes             = errors.New("an authorization model cannot contain duplicate types")
-	ErrInvalidSchemaVersion       = errors.New("invalid schema version")
-	ErrInvalidModel               = errors.New("invalid authorization model encountered")
-	ErrRelationUndefined          = errors.New("undefined relation")
-	ErrObjectTypeUndefined        = errors.New("undefined object type")
-	ErrInvalidUsersetRewrite      = errors.New("invalid userset rewrite definition")
-	ErrReservedKeywords           = errors.New("self and this are reserved keywords")
-	ErrCycle                      = errors.New("an authorization model cannot contain a cycle")
-	ErrObsoleteAuthorizationModel = errors.New("obsolete authorization model schema version")
+	ErrDuplicateTypes        = errors.New("an authorization model cannot contain duplicate types")
+	ErrInvalidSchemaVersion  = errors.New("invalid schema version")
+	ErrInvalidModel          = errors.New("invalid authorization model encountered")
+	ErrRelationUndefined     = errors.New("undefined relation")
+	ErrObjectTypeUndefined   = errors.New("undefined object type")
+	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
+	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
+	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
 
 // ContextWithTypesystem attaches the provided TypeSystem to the parent context.
@@ -130,16 +129,6 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgapb.TypeDefinition
 	modelID         string
 	schemaVersion   string
-}
-
-// NewAndNonObsolete creates a *TypeSystem from an *openfgapb.AuthorizationModel and check whether
-// it is using an obsolete version
-func NewAndNonObsolete(model *openfgapb.AuthorizationModel, allowSchema10 bool) (*TypeSystem, error) {
-	typeSystem := New(model)
-	if typeSystem.schemaVersion == SchemaVersion1_0 && !allowSchema10 {
-		return nil, ErrObsoleteAuthorizationModel
-	}
-	return typeSystem, nil
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
@@ -632,12 +621,8 @@ func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
 //     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func NewAndValidate(model *openfgapb.AuthorizationModel, allowSchema10 bool) (*TypeSystem, error) {
-	t, err := NewAndNonObsolete(model, allowSchema10)
-	if err != nil {
-		return nil, err
-	}
-
+func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
+	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
 	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
