@@ -48,11 +48,10 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	if IsAuthorizationModelObsolete(model.SchemaVersion, q.allowSchema10) {
-		return nil, serverErrors.ObsoleteAuthorizationModel
+	typesys, err := typesystem.NewAndNonObsolete(model, q.allowSchema10)
+	if err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
-
-	typesys := typesystem.New(model)
 
 	if err = validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)

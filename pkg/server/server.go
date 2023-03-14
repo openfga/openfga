@@ -112,11 +112,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	if commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.AllowEvaluating1Dot0Models) {
-		return nil, serverErrors.ObsoleteAuthorizationModel
+	typesys, err := typesystem.NewAndNonObsolete(model, s.config.AllowEvaluating1Dot0Models)
+	if err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
-
-	typesys := typesystem.New(model)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
@@ -272,11 +271,10 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		return nil, err
 	}
 
-	if commands.IsAuthorizationModelObsolete(model.SchemaVersion, s.config.AllowEvaluating1Dot0Models) {
-		return nil, serverErrors.ObsoleteAuthorizationModel
+	typesys, err := typesystem.NewAndNonObsolete(model, s.config.AllowEvaluating1Dot0Models)
+	if err != nil {
+		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
-
-	typesys := typesystem.New(model)
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)

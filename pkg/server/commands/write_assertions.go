@@ -44,11 +44,10 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	if IsAuthorizationModelObsolete(model.SchemaVersion, w.allowSchema10) {
-		return nil, serverErrors.ObsoleteAuthorizationModel
+	typesys, err := typesystem.NewAndNonObsolete(model, w.allowSchema10)
+	if err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
-
-	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
 		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {

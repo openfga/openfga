@@ -43,17 +43,13 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		req.SchemaVersion = typesystem.SchemaVersion1_0
 	}
 
-	if IsAuthorizationModelObsolete(req.SchemaVersion, w.allowSchema10) {
-		return nil, serverErrors.ObsoleteAuthorizationModel
-	}
-
 	model := &openfgapb.AuthorizationModel{
 		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}
 
-	_, err := typesystem.NewAndValidate(model)
+	_, err := typesystem.NewAndValidate(model, w.allowSchema10)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}

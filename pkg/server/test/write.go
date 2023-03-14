@@ -906,7 +906,7 @@ var writeCommandTests = []writeCommandTest{
 			}},
 		},
 		allowSchema10: false,
-		err:           serverErrors.ObsoleteAuthorizationModel,
+		err:           serverErrors.ValidationError(typesystem.ErrObsoleteAuthorizationModel),
 	},
 	// Begin section with tests for schema version 1.1
 	{

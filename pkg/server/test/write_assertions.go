@@ -138,7 +138,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			assertModel10: true,
 			allowSchema10: false,
-			err:           serverErrors.ObsoleteAuthorizationModel,
+			err:           serverErrors.ValidationError(typesystem.ErrObsoleteAuthorizationModel),
 		},
 	}
 
