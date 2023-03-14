@@ -148,7 +148,6 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
 		ResolveNodeLimit:         25,
-		AllowWriting1_0Models:    true,
 		AllowEvaluating1_0Models: true,
 	})
 
@@ -219,7 +218,6 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
 		ResolveNodeLimit:         25,
-		AllowWriting1_0Models:    true,
 		AllowEvaluating1_0Models: true,
 	})
 
@@ -361,7 +359,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:         25,
 		ListObjectsDeadline:      5 * time.Second,
 		ListObjectsMaxResults:    1000,
-		AllowWriting1_0Models:    true,
 		AllowEvaluating1_0Models: true,
 	})
 
@@ -443,7 +440,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:         25,
 		ListObjectsDeadline:      5 * time.Second,
 		ListObjectsMaxResults:    1000,
-		AllowWriting1_0Models:    true,
 		AllowEvaluating1_0Models: true,
 	})
 
@@ -493,8 +489,18 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": typesystem.This(),
+				},
+			},
+		},
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 

@@ -45,9 +45,6 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	}
 
 	typesys := typesystem.New(model)
-	if err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
 
 	if ProhibitModel1_0(typesys.GetSchemaVersion(), w.allowSchema10) {
 		return nil, serverErrors.ValidationError(ErrObsoleteAuthorizationModel)
