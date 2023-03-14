@@ -17,12 +17,13 @@ import (
 )
 
 type writeCommandTest struct {
-	_name    string
-	model    *openfgapb.AuthorizationModel
-	tuples   []*openfgapb.TupleKey
-	request  *openfgapb.WriteRequest
-	err      error
-	response *openfgapb.WriteResponse
+	_name         string
+	model         *openfgapb.AuthorizationModel
+	tuples        []*openfgapb.TupleKey
+	request       *openfgapb.WriteRequest
+	allowSchema10 bool
+	err           error
+	response      *openfgapb.WriteResponse
 }
 
 var tk = tuple.NewTupleKey("repository:openfga/openfga", "administrator", "github|alice@openfga")
@@ -40,7 +41,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{},
+		request:       &openfgapb.WriteRequest{},
+		allowSchema10: true,
 		// output
 		err: serverErrors.InvalidWriteInput,
 	},
@@ -63,6 +65,8 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
 		},
+		allowSchema10: true,
+
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
@@ -110,6 +114,8 @@ var writeCommandTests = []writeCommandTest{
 				User:     "github|alice@openfga.com",
 			}}},
 		},
+		allowSchema10: true,
+
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
@@ -161,6 +167,7 @@ var writeCommandTests = []writeCommandTest{
 				User:     "github|alice@openfga.com",
 			}}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
@@ -226,6 +233,7 @@ var writeCommandTests = []writeCommandTest{
 				User:     "github|alice@openfga.com",
 			}}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
@@ -265,6 +273,7 @@ var writeCommandTests = []writeCommandTest{
 				User:     "github|alice@openfga.com",
 			}}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
@@ -310,6 +319,7 @@ var writeCommandTests = []writeCommandTest{
 				User:     "github|alice@openfga.com",
 			}}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.WriteToIndirectRelationError("Attempting to write directly to an indirect only relationship", &openfgapb.TupleKey{
 			Object:   "repository:openfga/openfga",
@@ -336,6 +346,7 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
@@ -359,6 +370,7 @@ var writeCommandTests = []writeCommandTest{
 			Writes:  &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
 	},
@@ -381,6 +393,7 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)),
 	},
@@ -401,6 +414,7 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -430,6 +444,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("repo:openfga", "owner", ""),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -459,6 +474,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("", "owner", "elbuo@github.com"),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(&tuple.InvalidTupleError{
 			Cause:    fmt.Errorf("invalid 'object' field format"),
@@ -486,6 +502,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("repo:openfga", "", "elbuo@github.com"),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -515,6 +532,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("repo:openfga", "undefined", "elbuo@github.com"),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -544,6 +562,7 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "ExecuteWithInvalidObjectFormatReturnsError",
@@ -565,6 +584,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("openfga", "owner", "github|jose@openfga"),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -601,6 +621,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("repo:openfga/openfga", "writer", "github|jose@openfga"),
 			}},
 		},
+		allowSchema10: true,
 		// output
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
@@ -642,6 +663,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "ExecuteSucceedsForWriteOnly",
@@ -680,6 +702,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "ExecuteSucceedsForDeleteOnly",
@@ -724,6 +747,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "ExecuteSucceedsForWriteAndDelete",
@@ -770,6 +794,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "1.0_Execute_fails_if_type_in_userset_value_was_not_found",
@@ -793,6 +818,7 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    &tuple.TypeNotFoundError{TypeName: "group"},
@@ -822,6 +848,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
+		allowSchema10: true,
+
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause: &tuple.RelationNotFoundError{
@@ -831,6 +859,54 @@ var writeCommandTests = []writeCommandTest{
 				TupleKey: tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
 			},
 		),
+	},
+	{
+		_name: "Obsolete_model_1_0",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin":  {Userset: &openfgapb.Userset_This{}},
+						"writer": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "team",
+					Relations: map[string]*openfgapb.Userset{
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+		},
+		tuples: []*openfgapb.TupleKey{
+			tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+			tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
+			}},
+			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("org:openfga", "owner", "github|yenkel@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
+			}},
+		},
+		allowSchema10: false,
+		err:           serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel),
 	},
 	// Begin section with tests for schema version 1.1
 	{
@@ -875,6 +951,7 @@ var writeCommandTests = []writeCommandTest{
 			},
 			},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "Write_fails_if_user_field_contains_a_type_that_does_not_exist",
@@ -911,6 +988,7 @@ var writeCommandTests = []writeCommandTest{
 			},
 			},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    &tuple.TypeNotFoundError{TypeName: "undefined"},
@@ -955,6 +1033,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("type 'user' is not an allowed type restriction for 'document#reader'"),
@@ -999,6 +1078,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause: &tuple.RelationNotFoundError{
@@ -1046,6 +1126,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "undefined:abc#member"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    &tuple.TypeNotFoundError{TypeName: "undefined"},
@@ -1087,6 +1168,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:bob"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "Write_fails_if_user_field_contains_a_type_that_is_not_allowed_by_the_authorization_model_(which_only_allows_group:...#member)",
@@ -1123,6 +1205,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("type 'user' is not an allowed type restriction for 'document#reader'"),
@@ -1180,6 +1263,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "Multiple_writes_succeed_if_user_fields_contain_a_type_that_is_allowed_by_the_authorization_model",
@@ -1235,6 +1319,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:def"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "Write_succeeds_if_user_is_wildcard_and_type_references_a_specific_type",
@@ -1271,6 +1356,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "user:*"),
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "Write_fails_if_user_is_a_typed_wildcard_and_the_type_restrictions_do_not_permit_it",
@@ -1307,6 +1393,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "reader", "group:*"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("the typed wildcard 'group:*' is not an allowed type restriction for 'document#reader'"),
@@ -1341,6 +1428,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
@@ -1378,6 +1466,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
@@ -1415,6 +1504,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
@@ -1452,6 +1542,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#admin"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("unexpected user 'folder:budgets#admin' with tupleset relation 'document#parent'"),
@@ -1488,6 +1579,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("document:budget", "parent", "folder:budgets#owner"), // the 'document#parent' relation isn't a tupleset so this is fine
 			}},
 		},
+		allowSchema10: true,
 	},
 	{
 		_name: "invalid_type_restriction_in_write_body",
@@ -1535,6 +1627,7 @@ var writeCommandTests = []writeCommandTest{
 				tuple.NewTupleKey("resource:bad", "writer", "group:fga"),
 			}},
 		},
+		allowSchema10: true,
 		err: serverErrors.ValidationError(
 			&tuple.InvalidTupleError{
 				Cause:    fmt.Errorf("type 'group' is not an allowed type restriction for 'resource#writer'"),
@@ -1561,7 +1654,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, logger)
+			cmd := commands.NewWriteCommand(datastore, logger, test.allowSchema10)
 			test.request.StoreId = store
 			test.request.AuthorizationModelId = test.model.Id
 			resp, gotErr := cmd.Execute(ctx, test.request)

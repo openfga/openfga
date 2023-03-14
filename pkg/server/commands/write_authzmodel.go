@@ -13,17 +13,20 @@ import (
 
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
 type WriteAuthorizationModelCommand struct {
-	backend storage.TypeDefinitionWriteBackend
-	logger  logger.Logger
+	backend       storage.TypeDefinitionWriteBackend
+	logger        logger.Logger
+	allowSchema10 bool
 }
 
 func NewWriteAuthorizationModelCommand(
 	backend storage.TypeDefinitionWriteBackend,
 	logger logger.Logger,
+	allowSchema10 bool,
 ) *WriteAuthorizationModelCommand {
 	return &WriteAuthorizationModelCommand{
-		backend: backend,
-		logger:  logger,
+		backend:       backend,
+		logger:        logger,
+		allowSchema10: allowSchema10,
 	}
 }
 
@@ -38,6 +41,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	// In the future mark this field as required in the protobufs.
 	if req.SchemaVersion == "" {
 		req.SchemaVersion = typesystem.SchemaVersion1_0
+	}
+
+	if ProhibitModel1_0(req.SchemaVersion, w.allowSchema10) {
+		return nil, serverErrors.InvalidAuthorizationModelInput(ErrObsoleteAuthorizationModel)
 	}
 
 	model := &openfgapb.AuthorizationModel{
