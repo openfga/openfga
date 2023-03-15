@@ -1202,12 +1202,26 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 		StoreId: storeID,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
 					"viewer": {Userset: &openfgapb.Userset_This{}},
 				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+							},
+						},
+					},
+				},
 			},
 		},
+
+		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
@@ -1215,12 +1229,25 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 		StoreId: storeID,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
 					"editor": {Userset: &openfgapb.Userset_This{}},
 				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+							},
+						},
+					},
+				},
 			},
 		},
+		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 

@@ -28,6 +28,8 @@ import (
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -145,7 +147,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
+		ResolveNodeLimit:         25,
+		AllowEvaluating1_0Models: true,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -214,7 +217,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
+		ResolveNodeLimit:         25,
+		AllowEvaluating1_0Models: true,
 	})
 
 	start := time.Now()
@@ -352,9 +356,10 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:         25,
+		ListObjectsDeadline:      5 * time.Second,
+		ListObjectsMaxResults:    1000,
+		AllowEvaluating1_0Models: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -432,9 +437,10 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:         25,
+		ListObjectsDeadline:      5 * time.Second,
+		ListObjectsMaxResults:    1000,
+		AllowEvaluating1_0Models: true,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -460,5 +466,128 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+	})
+}
+
+func TestObsoleteAuthorizationModels(t *testing.T) {
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	data, err := os.ReadFile("testdata/github.json")
+	require.NoError(t, err)
+
+	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
+	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
+	require.NoError(t, err)
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "team",
+				Relations: map[string]*openfgapb.Userset{
+					"member": typesystem.This(),
+				},
+			},
+		},
+	}, nil)
+	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+
+	s := Server{
+		datastore: mockDatastore,
+		transport: transport,
+		logger:    logger,
+		config: &Config{
+			ResolveNodeLimit:         25,
+			ListObjectsDeadline:      5 * time.Second,
+			ListObjectsMaxResults:    1000,
+			AllowEvaluating1_0Models: false,
+			AllowWriting1_0Models:    false,
+		},
+	}
+
+	t.Run("throw_obsolete_error_in_check", func(t *testing.T) {
+		_, err = s.Check(ctx, &openfgapb.CheckRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			TupleKey: tuple.NewTupleKey(
+				"team:abc",
+				"member",
+				"user:anne"),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_listobject", func(t *testing.T) {
+		_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "team",
+			Relation:             "member",
+			User:                 "user:anne",
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_expand", func(t *testing.T) {
+		_, err := s.Expand(ctx, &openfgapb.ExpandRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			TupleKey: tuple.NewTupleKey("repo:openfga",
+				"reader",
+				"user:anne"),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_write", func(t *testing.T) {
+		_, err := s.Write(ctx, &openfgapb.WriteRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga/openfga",
+					"reader",
+					"user:anne"),
+			}},
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("throw_obsolete_error_in_write_assertion", func(t *testing.T) {
+		_, err := s.WriteAssertions(ctx, &openfgapb.WriteAssertionsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Assertions: []*openfgapb.Assertion{{
+				TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+				Expectation: false,
+			}},
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 }
