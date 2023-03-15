@@ -13,6 +13,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -326,6 +327,8 @@ func (c *LocalChecker) ResolveCheck(
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 
+	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
+
 	if req.GetResolutionMetadata().Depth == 0 {
 		return nil, ErrResolutionDepthExceeded
 	}
@@ -375,6 +378,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		relation := tk.GetRelation()
 
 		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
+			defer span.End()
+
 			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
@@ -388,6 +394,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tk)
 
 			if t != nil && err == nil {
+				span.SetAttributes(attribute.Bool("allowed", true))
 				return &openfgapb.CheckResponse{Allowed: true}, nil
 			}
 			return &openfgapb.CheckResponse{Allowed: false}, nil
@@ -409,6 +416,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
+			defer span.End()
 
 			var allowedUserTypeRestrictions []*openfgapb.RelationReference
 			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
@@ -448,6 +457,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 				// for 1.0 models, if the user is '*' then we're done searching
 				if usersetObject == tuple.Wildcard && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
+					span.SetAttributes(attribute.Bool("allowed", true))
 					return &openfgapb.CheckResponse{Allowed: true}, nil
 				}
 
@@ -458,6 +468,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					wildcardType := tuple.GetType(usersetObject)
 
 					if tuple.GetType(tk.GetUser()) == wildcardType {
+						span.SetAttributes(attribute.Bool("allowed", true))
 						return &openfgapb.CheckResponse{Allowed: true}, nil
 					}
 
@@ -492,6 +503,29 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 	}
 }
 
+// checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
+func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset_ComputedUserset) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkComputedUserset")
+		defer span.End()
+
+		return c.dispatch(
+			ctx,
+			&ResolveCheckRequest{
+				StoreID:              req.GetStoreID(),
+				AuthorizationModelID: req.GetAuthorizationModelID(),
+				TupleKey: tuple.NewTupleKey(
+					req.TupleKey.GetObject(),
+					rewrite.ComputedUserset.GetRelation(),
+					req.TupleKey.GetUser(),
+				),
+				ResolutionMetadata: &ResolutionMetadata{
+					Depth: req.ResolutionMetadata.Depth - 1,
+				},
+			})(ctx)
+	}
+}
+
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
@@ -511,11 +545,15 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		computedRelation := rewrite.GetTupleToUserset().GetComputedUserset().GetRelation()
 
 		tk := req.GetTupleKey()
+		object := tk.GetObject()
+
+		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
+		span.SetAttributes(attribute.String("computed_relation", computedRelation))
 
 		iter, err := c.ds.Read(
 			ctx,
 			req.GetStoreID(),
-			tuple.NewTupleKey(tk.GetObject(), tuplesetRelation, ""),
+			tuple.NewTupleKey(object, tuplesetRelation, ""),
 		)
 		if err != nil {
 			return &openfgapb.CheckResponse{Allowed: false}, err
@@ -607,10 +645,8 @@ func (c *LocalChecker) checkSetOperation(
 	}
 
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		ctx, span := tracer.Start(ctx, "checkSetOperation")
+		ctx, span := tracer.Start(ctx, reducerKey)
 		defer span.End()
-
-		span.SetAttributes(attribute.String("reducer", reducerKey))
 
 		return reducer(ctx, c.concurrencyLimit, handlers...)
 	}
@@ -626,24 +662,7 @@ func (c *LocalChecker) checkRewrite(
 	case *openfgapb.Userset_This:
 		return c.checkDirect(ctx, req)
 	case *openfgapb.Userset_ComputedUserset:
-		ctx, span := tracer.Start(ctx, "checkComputedUserset")
-		defer span.End()
-
-		return c.dispatch(
-			ctx,
-			&ResolveCheckRequest{
-				StoreID:              req.GetStoreID(),
-				AuthorizationModelID: req.GetAuthorizationModelID(),
-				TupleKey: tuple.NewTupleKey(
-					req.TupleKey.GetObject(),
-					rw.ComputedUserset.GetRelation(),
-					req.TupleKey.GetUser(),
-				),
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth: req.ResolutionMetadata.Depth - 1,
-				},
-			})
-
+		return c.checkComputedUserset(ctx, req, rw)
 	case *openfgapb.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
 	case *openfgapb.Userset_Union:
