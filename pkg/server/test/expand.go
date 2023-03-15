@@ -1983,7 +1983,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore, logger, true)
 			got, err := query.Execute(ctx, test.request)
 			require.NoError(err)
 
@@ -1997,11 +1997,12 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 	tests := []struct {
-		name     string
-		model    *openfgapb.AuthorizationModel
-		tuples   []*openfgapb.TupleKey
-		request  *openfgapb.ExpandRequest
-		expected error
+		name          string
+		model         *openfgapb.AuthorizationModel
+		tuples        []*openfgapb.TupleKey
+		request       *openfgapb.ExpandRequest
+		allowSchema10 bool
+		expected      error
 	}{
 		{
 			name: "missing_object_in_request",
@@ -2017,7 +2018,8 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.InvalidExpandInput,
+			allowSchema10: true,
+			expected:      serverErrors.InvalidExpandInput,
 		},
 		{
 			name: "missing_object_id_and_type_in_request",
@@ -2034,6 +2036,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				fmt.Errorf("invalid 'object' field format"),
 			),
@@ -2053,6 +2056,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				fmt.Errorf("invalid 'object' field format"),
 			),
@@ -2071,7 +2075,8 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
-			expected: serverErrors.InvalidExpandInput,
+			allowSchema10: true,
+			expected:      serverErrors.InvalidExpandInput,
 		},
 		{
 			name: "1.0_object_type_not_found_in_model",
@@ -2088,6 +2093,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				&tuple.TypeNotFoundError{TypeName: "foo"},
 			),
@@ -2107,6 +2113,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					{Type: "repo"},
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				&tuple.TypeNotFoundError{TypeName: "foo"},
 			),
@@ -2126,6 +2133,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "baz",
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				&tuple.RelationNotFoundError{
 					TypeName: "repo",
@@ -2148,6 +2156,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 					Relation: "baz",
 				},
 			},
+			allowSchema10: true,
 			expected: serverErrors.ValidationError(
 				&tuple.RelationNotFoundError{
 					TypeName: "repo",
@@ -2176,7 +2185,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore, logger, test.allowSchema10)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert
