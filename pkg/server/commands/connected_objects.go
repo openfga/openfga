@@ -126,36 +126,36 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 
 	storeID := req.StoreID
 
-	var targetUserRef *openfgapb.RelationReference
-	var targetUserType, targetUserObj string
+	var sourceUserRef *openfgapb.RelationReference
+	var sourceUserType, sourceUserObj string
 
 	// e.g. 'user:bob'
 	if val, ok := req.User.(*UserRefObject); ok {
-		targetUserType = val.Object.GetType()
-		targetUserObj = tuple.BuildObject(targetUserType, val.Object.GetId())
-		targetUserRef = typesystem.DirectRelationReference(targetUserType, "")
+		sourceUserType = val.Object.GetType()
+		sourceUserObj = tuple.BuildObject(sourceUserType, val.Object.GetId())
+		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, "")
 	}
 
 	// e.g. 'user:*'
 	if val, ok := req.User.(*UserRefTypedWildcard); ok {
-		targetUserType = val.Type
-		targetUserRef = typesystem.WildcardRelationReference(targetUserType)
+		sourceUserType = val.Type
+		sourceUserRef = typesystem.WildcardRelationReference(sourceUserType)
 	}
 
 	// e.g. 'group:eng#member'
 	if val, ok := req.User.(*UserRefObjectRelation); ok {
-		targetUserType = tuple.GetType(val.ObjectRelation.GetObject())
-		targetUserObj = val.ObjectRelation.Object
-		targetUserRef = typesystem.DirectRelationReference(targetUserType, val.ObjectRelation.GetRelation())
+		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
+		sourceUserObj = val.ObjectRelation.Object
+		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 	}
 
-	sourceObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
+	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
 	g := graph.BuildConnectedObjectGraph(c.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
-	ingresses, err := g.RelationshipIngresses(sourceObjRef, targetUserRef)
+	ingresses, err := g.RelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
 	}
@@ -169,7 +169,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 			r := &reverseExpandRequest{
 				storeID:          storeID,
 				ingress:          innerLoopIngress,
-				sourceObjectRef:  sourceObjRef,
+				sourceObjectRef:  targetObjRef,
 				targetUserRef:    req.User,
 				contextualTuples: req.ContextualTuples,
 			}
@@ -186,7 +186,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 					Relation:   req.Relation,
 					User: &UserRefObjectRelation{
 						ObjectRelation: &openfgapb.ObjectRelation{
-							Object:   targetUserObj,
+							Object:   sourceUserObj,
 							Relation: innerLoopIngress.Ingress.GetRelation(),
 						},
 					},
