@@ -1,4 +1,4 @@
-FROM alpine
+FROM cgr.dev/chainguard/static:latest
 COPY assets /assets
 COPY openfga /
 COPY --chmod=0755 --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.15 /ko-app/grpc-health-probe /bin/grpc_health_probe
