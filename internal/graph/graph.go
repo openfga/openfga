@@ -126,18 +126,18 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 		return nil, err
 	}
 
-	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
+	return g.findIngressesWithTargetRewrite(target, source, relation.GetRewrite(), visited)
 }
 
-// findIngressesWithRewrite is what we use for recursive calls on the rewrites, particularly union where we don't
-// update the target and source, and only the rewrite.
-func (g *ConnectedObjectGraph) findIngressesWithRewrite(
+// findIngressesWithTargetRewrite is what we use for recursive calls on the targetRewrite, particularly union where we don't
+// update the target and source, and only the targetRewrite.
+func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	target *openfgapb.RelationReference,
 	source *openfgapb.RelationReference,
-	rewrite *openfgapb.Userset,
+	targetRewrite *openfgapb.Userset,
 	visited map[string]struct{},
 ) ([]*RelationshipIngress, error) {
-	switch t := rewrite.GetUserset().(type) {
+	switch t := targetRewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This: // e.g. define viewer:[user] as self
 		var res []*RelationshipIngress
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
@@ -281,7 +281,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
 			// we recurse through each child rewrite
-			childResults, err := g.findIngressesWithRewrite(target, source, child, visited)
+			childResults, err := g.findIngressesWithTargetRewrite(target, source, child, visited)
 			if err != nil {
 				return nil, err
 			}
