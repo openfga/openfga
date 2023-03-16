@@ -214,44 +214,65 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 
 			// if the computed relation on the tupleset is directly related to the source and computed relation,
 			// then it must be an ingress
+			//
+			// e.g. target=document#viewer, source=folder#viewer
+			//
+			// type folder
+			//   relations
+			//     define viewer: [user]
+			//
+			// type document
+			//   relations
+			//     define parent: [folder]
+			//     define viewer: viewer from parent
 			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 				})
-			}
+			} else {
+				directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
 
-			directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
+				// if any of the inner type restrictions of the computed relation are related to the source, then there
+				// must be an ingress
+				//
+				// e.g. target=document#viewer, source=folder#viewer
+				//
+				// type folder
+				//   relations
+				//     define viewer: [folder]
+				//
+				// type document
+				//   relations
+				//     define parent: [folder]
+				//     define viewer: viewer from parent
+				if directlyAssignable {
+					innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
+					for _, innerRelatedTypeRestriction := range innerRelatedTypes {
 
-			// if any of the inner type restrictions of the computed relation are related to the source, then there
-			// must be an ingress
-			if directlyAssignable {
-				innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
-				for _, innerRelatedTypeRestriction := range innerRelatedTypes {
-
-					if typeRestriction.GetType() == source.GetType() && innerRelatedTypeRestriction.GetType() == source.GetType() {
-						res = append(res, &RelationshipIngress{
-							Type:             TupleToUsersetIngress,
-							Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-							TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
-						})
+						if typeRestriction.GetType() == source.GetType() && innerRelatedTypeRestriction.GetType() == source.GetType() {
+							res = append(res, &RelationshipIngress{
+								Type:             TupleToUsersetIngress,
+								Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+								TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+							})
+						}
 					}
 				}
 			}
 
-			if err == nil {
-				subResults, err := g.findIngresses(
-					typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
-					source,
-					visited,
-				)
-				if err != nil {
-					return nil, err
-				}
-
-				res = append(res, subResults...)
+			subResults, err := g.findIngresses(
+				typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
+				source,
+				visited,
+			)
+			if err != nil {
+				return nil, err
 			}
+
+			res = append(res, subResults...)
+
 		}
 
 		return res, nil
