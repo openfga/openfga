@@ -284,13 +284,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			model: `
 			type user
 
-			type group
-			  relations
-			    define member: [user] as self
-
 			type folder
 			  relations
-			    define viewer: [user, group#member] as self
+			    define viewer: [user] as self
 
 			type document
 			  relations
@@ -905,6 +901,29 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				},
+			},
+		},
+		{
+			name: "follow_computed_relation_of_ttu_to_computed_userset",
+			model: `
+			type user
+			type folder
+			  relations
+				define owner: [user] as self
+				define viewer: [user] as self or owner
+			type document
+			  relations
+				define can_read as viewer from parent
+				define parent: [document, folder] as self
+				define viewer: [user] as self
+			`,
+			target: typesystem.DirectRelationReference("document", "can_read"),
+			source: typesystem.DirectRelationReference("folder", "owner"),
+			expected: []*RelationshipIngress{
+				{
+					Type:    ComputedUsersetIngress,
+					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
 				},
 			},
 		},

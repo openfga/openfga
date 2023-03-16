@@ -212,21 +212,32 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 				return nil, err
 			}
 
-			var directlyAssignable bool
-
-			sourceRelMatchesRewritten := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
-			if sourceRelMatchesRewritten {
-				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
-			}
-
-			// if the rewritten relation is directly assignable or matches the source, then it must
-			// be an ingress.
-			if directlyAssignable || sourceRelMatchesRewritten {
+			// if the computed relation on the tupleset is directly related to the source and computed relation,
+			// then it must be an ingress
+			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 				})
+			}
+
+			directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
+
+			// if any of the inner type restrictions of the computed relation are related to the source, then there
+			// must be an ingress
+			if directlyAssignable {
+				innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
+				for _, innerRelatedTypeRestriction := range innerRelatedTypes {
+
+					if typeRestriction.GetType() == source.GetType() && innerRelatedTypeRestriction.GetType() == source.GetType() {
+						res = append(res, &RelationshipIngress{
+							Type:             TupleToUsersetIngress,
+							Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+							TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+						})
+					}
+				}
 			}
 
 			if err == nil {
