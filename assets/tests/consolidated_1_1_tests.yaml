@@ -2217,216 +2217,6 @@ tests:
           type document
             relations
               define viewer: [user] as self
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-            expectation:
-              - document:1
-
-  - name: computed_userset_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user] as self
-              define viewer as writer
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: writer
-                user: user:aardvark
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: writer
-                user: user:aardvark
-            expectation:
-              - document:1
-
-  - name: tuple_to_userset_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type folder
-            relations
-              define viewer: [user] as self
-          
-          type document
-            relations
-              define parent: [folder] as self
-              define viewer as viewer from parent
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: parent
-                user: folder:x
-              - object: folder:x
-                relation: viewer
-                user: user:aardvark
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: parent
-                user: folder:x
-              - object: folder:x
-                relation: viewer
-                user: user:aardvark
-            expectation:
-              - document:1
-
-  - name: this_and_union_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user] as self
-              define viewer: [user] as self or writer
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-              - object: document:2
-                relation: writer
-                user: user:badger
-            expectation: true
-          - tuple:
-              object: document:2
-              relation: viewer
-              user: user:badger
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-              - object: document:2
-                relation: writer
-                user: user:badger
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-              - object: document:2
-                relation: writer
-                user: user:badger
-            expectation:
-              - document:1
-          - request:
-              user: user:badger
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: viewer
-                user: user:aardvark
-              - object: document:2
-                relation: writer
-                user: user:badger
-            expectation:
-              - document:2
-
-  - name: this_and_intersection_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user] as self
-              define viewer: [user] as self and writer
-        tuples:
-          - object: document:1
-            relation: viewer
-            user: user:aardvark
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            expectation: false
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: writer
-                user: user:aardvark
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            expectation:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: writer
-                user: user:aardvark
-            expectation:
-              - document:1
-
-  - name: this_and_exclusion_base_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define banned: [user] as self
-              define viewer: [user] as self but not banned
         tuples:
           - object: document:1
             relation: viewer
@@ -2437,15 +2227,6 @@ tests:
               relation: viewer
               user: user:aardvark
             expectation: true
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: banned
-                user: user:aardvark
-            expectation: false
         listObjectsAssertions:
           - request:
               user: user:aardvark
@@ -2453,207 +2234,6 @@ tests:
               relation: viewer
             expectation:
               - document:1
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: banned
-                user: user:aardvark
-            expectation:
-
-  - name: union_and_intersection_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as writer or (editor and owner)
-        tuples:
-          - object: document:1
-            relation: editor
-            user: user:aardvark
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            expectation: false
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: owner
-                user: user:aardvark
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            expectation:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: owner
-                user: user:aardvark
-            expectation:
-              - document:1
-
-  - name: exclusion_and_exclusion_in_base_with_contextual_tuples
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user] as self
-              define editor: [user] as self
-              define owner: [user] as self
-              define viewer as (writer but not editor) but not owner
-        tuples:
-          - object: document:1
-            relation: writer
-            user: user:aardvark
-        checkAssertions:
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            expectation: true
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: editor
-                user: user:aardvark
-            expectation: false
-          - tuple:
-              object: document:1
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:1
-                relation: owner
-                user: user:aardvark
-            expectation: false
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            expectation:
-              - document:1
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: editor
-                user: user:aardvark
-            expectation:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:1
-                relation: owner
-                user: user:aardvark
-            expectation:
-
-  - name: wildcard_direct_as_contextual_tuple
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define viewer: [user:*] as self
-        checkAssertions:
-          - tuple:
-              object: document:public
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:public
-                relation: viewer
-                user: user:*
-            expectation: true
-          - tuple:
-              object: document:public
-              relation: viewer
-              user: user:*
-            contextualTuples:
-              - object: document:public
-                relation: viewer
-                user: user:*
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:public
-                relation: viewer
-                user: user:*
-            expectation:
-              - document:public
-          - request:
-              user: user:*
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:public
-                relation: viewer
-                user: user:*
-            expectation:
-              - document:public
-
-  - name: wildcard_computed_userset_as_contextual_tuple
-    stages:
-      - model: |
-          type user
-          
-          type document
-            relations
-              define writer: [user:*] as self
-              define viewer: [user] as self or writer
-        checkAssertions:
-          - tuple:
-              object: document:public
-              relation: viewer
-              user: user:aardvark
-            contextualTuples:
-              - object: document:public
-                relation: writer
-                user: user:*
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:aardvark
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: document:public
-                relation: writer
-                user: user:*
-            expectation:
-              - document:public
 
   - name: wildcard_and_userset_restriction
     stages:
@@ -3048,70 +2628,6 @@ tests:
               user: user:anne
               type: document
               relation: can_read
-            expectation:
-              #document:d is not expected
-              - document:c
-
-  - name: same_relation_name_different_type_ctx
-    stages:
-      - model: |
-          type user
-          type folder
-            relations
-              define owner: [user] as self
-              define viewer: [user, user:*] as self or owner
-          type document
-            relations
-              define can_read as viewer from parent
-              define parent: [document, folder] as self
-              define viewer: [user, user:*] as self
-        tuples:
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: can_read
-              object: document:c
-            contextualTuples:
-              - user: user:anne
-                relation: owner
-                object: folder:a
-              - user: folder:a
-                relation: parent
-                object: document:c
-              - user: document:c
-                relation: parent
-                object: document:d
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: can_read
-              object: document:d
-            contextualTuples:
-              - user: user:anne
-                relation: owner
-                object: folder:a
-              - user: folder:a
-                relation: parent
-                object: document:c
-              - user: document:c
-                relation: parent
-                object: document:d
-            expectation: false
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: document
-              relation: can_read
-            contextualTuples:
-              - user: user:anne
-                relation: owner
-                object: folder:a
-              - user: folder:a
-                relation: parent
-                object: document:c
-              - user: document:c
-                relation: parent
-                object: document:d
             expectation:
               #document:d is not expected
               - document:c
@@ -4057,180 +3573,42 @@ tests:
               define parent: [document] as self
               define viewer as viewer from parent
         tuples:
+          - object: company:abc
+            relation: management
+            user: user:anne
+          - object: group:fga
+            relation: corp
+            user: company:abc
+          - object: document:a
+            relation: viewer
+            user: group:fga#member
+          - object: diagram:a
+            relation: parent
+            user: document:a
         checkAssertions:
           - tuple:
               user: user:anne
               relation: viewer
               object: document:a
-            contextualTuples:
-              - object: company:abc
-                relation: management
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
             expectation: false
           - tuple:
               user: user:anne
               relation: viewer
               object: diagram:a
-            contextualTuples:
-              - object: company:abc
-                relation: management
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
             expectation: false
         listObjectsAssertions:
           - request:
               user: user:anne
               type: document
               relation: viewer
-            contextualTuples:
-              - object: company:abc
-                relation: management
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
             expectation:
           - request:
               user: user:anne
               type: diagram
               relation: viewer
-            contextualTuples:
-              - object: company:abc
-                relation: management
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
             expectation:
 
-  - name: contextual_tuple_ref_relation
-    stages:
-      - model: |
-          type user
-          type company
-            relations
-              define admin: [user] as self
-              define management: [user] as self
-              define employee: [user] as self or admin
-          type group
-            relations
-              define corp: [company] as self
-              define member as employee from corp
-          type document
-            relations
-              define viewer: [group#member] as self
-          type diagram
-            relations
-              define parent: [document] as self
-              define viewer as viewer from parent
-        tuples:
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:a
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: diagram:a
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
-            expectation:
-              - document:a
-          - request:
-              user: user:anne
-              type: diagram
-              relation: viewer
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: group:fga
-                relation: corp
-                user: company:abc
-              - object: document:a
-                relation: viewer
-                user: group:fga#member
-              - object: diagram:a
-                relation: parent
-                user: document:a
-            expectation:
-              - diagram:a
-
-  - name: reverse_expand_ctx_relation_not_match
+  - name: reverse_expand_relation_not_match
     stages:
       - model: |
           type user
@@ -4250,37 +3628,26 @@ tests:
               define owner: [group] as self
               define viewer as member from owner or observer from owner
         tuples:
+          - object: company:abc
+            relation: employee
+            user: user:anne
+          - object: document:a
+            relation: owner
+            user: group:fga
+          - object: group:fga
+            relation: observer
+            user: company:abc
         checkAssertions:
           - tuple:
               user: user:anne
               relation: viewer
               object: document:a
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: document:a
-                relation: owner
-                user: group:fga
-              - object: group:fga
-                relation: observer
-                user: company:abc
             expectation: false
         listObjectsAssertions:
           - request:
               user: user:anne
               type: document
               relation: viewer
-            contextualTuples:
-              - object: company:abc
-                relation: employee
-                user: user:anne
-              - object: document:a
-                relation: owner
-                user: group:fga
-              - object: group:fga
-                relation: observer
-                user: company:abc
             expectation:
 
   - name: exclusion_for_some_relations

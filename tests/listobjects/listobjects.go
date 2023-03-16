@@ -112,14 +112,15 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 	client := testInformation.client
 	ctx := context.Background()
 	name := test.Name
-	if contextTupleTest {
-		name += "_ctxTuples"
-	}
 
 	if contextTupleTest && len(test.Stages) > 1 {
 		// we don't want to run special contextual tuples test for these cases
 		// as multi-stages test has expectation tuples are in system
 		return
+	}
+
+	if contextTupleTest {
+		name += "_ctxTuples"
 	}
 
 	t.Run(name, func(t *testing.T) {
@@ -156,7 +157,6 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {
-				// assert 1: on regular list objects endpoint
 				detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
 
 				ctxTuples := assertion.ContextualTuples
@@ -164,6 +164,7 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 					ctxTuples = append(ctxTuples, stage.Tuples...)
 				}
 
+				// assert 1: on regular list objects endpoint
 				resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
 					StoreId:  storeID,
 					Type:     assertion.Request.Type,
