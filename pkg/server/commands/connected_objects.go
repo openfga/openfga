@@ -155,6 +155,9 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	g := graph.BuildConnectedObjectGraph(c.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
+	span.SetAttributes(
+		attribute.String("_sourceUserRef", sourceUserRef.String()),
+		attribute.String("_targetObjRef", targetObjRef.String()))
 	ingresses, err := g.RelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
@@ -163,7 +166,8 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(maximumConcurrentChecks)
 
-	for _, ingress := range ingresses {
+	for i, ingress := range ingresses {
+		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), fmt.Sprintf("ingress %s, type %s, tupleset %s", ingress.Ingress.String(), ingress.Type.String(), ingress.TuplesetRelation.String())))
 		innerLoopIngress := ingress
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
