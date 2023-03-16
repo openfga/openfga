@@ -232,6 +232,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 				})
 			} else {
+				matchesSourceType := typeRestriction.GetType() == source.GetType()
 				directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
 
 				// if any of the inner type restrictions of the computed relation are related to the source, then there
@@ -247,11 +248,11 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 				//   relations
 				//     define parent: [folder]
 				//     define viewer: viewer from parent
-				if directlyAssignable {
+				if directlyAssignable && matchesSourceType {
 					innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
 					for _, innerRelatedTypeRestriction := range innerRelatedTypes {
 
-						if typeRestriction.GetType() == source.GetType() && innerRelatedTypeRestriction.GetType() == source.GetType() {
+						if innerRelatedTypeRestriction.GetType() == source.GetType() {
 							res = append(res, &RelationshipIngress{
 								Type:             TupleToUsersetIngress,
 								Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
