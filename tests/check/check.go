@@ -146,17 +146,17 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 	client := testInformation.client
 	name := test.Name
 
-	if contextTupleTest && len(test.Stages) > 1 {
-		// we don't want to run special contextual tuples test for these cases
-		// as multi-stages test has expectation tuples are in system
-		return
-	}
-
 	if contextTupleTest {
 		name += "_ctxTuples"
 	}
 
 	t.Run(name, func(t *testing.T) {
+		if contextTupleTest && len(test.Stages) > 1 {
+			// we don't want to run special contextual tuples test for these cases
+			// as multi-stages test has expectation tuples are in system
+			t.Skipf("multi-stages test has expectation tuples are in system")
+		}
+
 		t.Parallel()
 		ctx := context.Background()
 
