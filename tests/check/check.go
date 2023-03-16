@@ -17,11 +17,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type individualTest struct {
+	Name   string
+	Stages []*stage
+}
+
 type checkTests struct {
-	Tests []struct {
-		Name   string
-		Stages []*stage
-	}
+	Tests []individualTest
+}
+
+type testInformation struct {
+	schemaVersion string
+	client        ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -104,16 +111,17 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 }
 
 func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {
-	runTests(t, typesystem.SchemaVersion1_1, client)
+	runTests(t, testInformation{typesystem.SchemaVersion1_1, client})
 }
 
 func runSchema1_0CheckTests(t *testing.T, client ClientInterface) {
-	runTests(t, typesystem.SchemaVersion1_0, client)
+	runTests(t, testInformation{typesystem.SchemaVersion1_0, client})
 }
 
-func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
+func runTests(t *testing.T, testInformation testInformation) {
 	var b []byte
 	var err error
+	schemaVersion := testInformation.schemaVersion
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
@@ -125,63 +133,88 @@ func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
 	err = yaml.Unmarshal(b, &testCases)
 	require.NoError(t, err)
 
-	ctx := context.Background()
-
 	for _, test := range testCases.Tests {
 		test := test
+		runTest(t, test, testInformation, false)
+		runTest(t, test, testInformation, true)
 
-		t.Run(test.Name, func(t *testing.T) {
-			t.Parallel()
-			resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: test.Name})
+	}
+}
+
+func runTest(t *testing.T, test individualTest, testInformation testInformation, contextTupleTest bool) {
+	schemaVersion := testInformation.schemaVersion
+	client := testInformation.client
+	name := test.Name
+	if contextTupleTest {
+		name += "_ctxTuples"
+	}
+
+	if contextTupleTest && len(test.Stages) > 1 {
+		// we don't want to run special contextual tuples test for these cases
+		// as multi-stages test has expectation tuples are in system
+		return
+	}
+
+	t.Run(name, func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+
+		resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: name})
+		require.NoError(t, err)
+
+		storeID := resp.GetId()
+
+		for _, stage := range test.Stages {
+
+			var typedefs []*openfgapb.TypeDefinition
+			if schemaVersion == typesystem.SchemaVersion1_1 {
+				typedefs = parser.MustParse(stage.Model)
+			} else {
+				typedefs = v1parser.MustParse(stage.Model)
+			}
+
+			_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				SchemaVersion:   schemaVersion,
+				TypeDefinitions: typedefs,
+			})
 			require.NoError(t, err)
 
-			storeID := resp.GetId()
-
-			for _, stage := range test.Stages {
-
-				var typedefs []*openfgapb.TypeDefinition
-				if schemaVersion == typesystem.SchemaVersion1_1 {
-					typedefs = parser.MustParse(stage.Model)
-				} else {
-					typedefs = v1parser.MustParse(stage.Model)
-				}
-
-				_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   schemaVersion,
-					TypeDefinitions: typedefs,
+			if len(stage.Tuples) > 0 && !contextTupleTest {
+				_, err = client.Write(ctx, &openfgapb.WriteRequest{
+					StoreId: storeID,
+					Writes:  &openfgapb.TupleKeys{TupleKeys: stage.Tuples},
 				})
 				require.NoError(t, err)
 
-				if len(stage.Tuples) > 0 {
-					_, err = client.Write(ctx, &openfgapb.WriteRequest{
-						StoreId: storeID,
-						Writes:  &openfgapb.TupleKeys{TupleKeys: stage.Tuples},
-					})
-					require.NoError(t, err)
+			}
+
+			for _, assertion := range stage.CheckAssertions {
+				ctxTuples := assertion.ContextualTuples
+				if contextTupleTest {
+					ctxTuples = append(ctxTuples, stage.Tuples...)
 				}
 
-				for _, assertion := range stage.CheckAssertions {
-					resp, err := client.Check(ctx, &openfgapb.CheckRequest{
-						StoreId:  storeID,
-						TupleKey: assertion.Tuple,
-						ContextualTuples: &openfgapb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
-						Trace: true,
-					})
+				resp, err := client.Check(ctx, &openfgapb.CheckRequest{
+					StoreId:  storeID,
+					TupleKey: assertion.Tuple,
+					ContextualTuples: &openfgapb.ContextualTupleKeys{
+						TupleKeys: ctxTuples,
+					},
+					Trace: true,
+				})
 
-					if assertion.ErrorCode == 0 {
-						require.NoError(t, err)
-						require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
-					} else {
-						require.Error(t, err)
-						e, ok := status.FromError(err)
-						require.True(t, ok)
-						require.Equal(t, assertion.ErrorCode, int(e.Code()))
-					}
+				if assertion.ErrorCode == 0 {
+					require.NoError(t, err)
+					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+				} else {
+					require.Error(t, err)
+					e, ok := status.FromError(err)
+					require.True(t, ok)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()))
 				}
 			}
-		})
-	}
+		}
+	})
+
 }

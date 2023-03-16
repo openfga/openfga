@@ -2949,7 +2949,7 @@ tests:
                 user: user:*
             errorCode: 2027
 
-  - name: validation_contextual_tuples_and_wildcard_in_ttu_evaluation
+  - name: val_contextual_tuples_and_wildcard_in_ttu_evaluation
     stages:
       - model: |
           type user
