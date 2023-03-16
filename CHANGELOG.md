@@ -8,9 +8,22 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.4.1] - 2023-03-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.0...v0.4.1)
+
+
+The `v0.4.1` release includes everything in `v0.4.0` which includes breaking changes, please read the [`v0.4.0` changelog entry](#040---2023-03-15) for more details.
+
+### Fixed
+
+* Fix ListObjects not returning objects a user has access to in some cases (openfga/openfga#637)
+
 ## [0.4.0] - 2023-03-15
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.7...v0.4.0)
+
+> Note: the 0.4.0 release was held due to issues discovered after the release was cut.
 
 ### Removed
 
@@ -391,7 +404,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/openfga/openfga/releases/tag/v0.4.1
 [0.4.0]: https://github.com/openfga/openfga/releases/tag/v0.4.0
 [0.3.7]: https://github.com/openfga/openfga/releases/tag/v0.3.7
 [0.3.6]: https://github.com/openfga/openfga/releases/tag/v0.3.6
