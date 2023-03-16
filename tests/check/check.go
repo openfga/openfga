@@ -186,7 +186,6 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 					Writes:  &openfgapb.TupleKeys{TupleKeys: stage.Tuples},
 				})
 				require.NoError(t, err)
-
 			}
 
 			for _, assertion := range stage.CheckAssertions {
