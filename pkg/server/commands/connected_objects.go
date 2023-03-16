@@ -167,7 +167,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for i, ingress := range ingresses {
-		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), fmt.Sprintf("ingress %s, type %s, tupleset %s", ingress.Ingress.String(), ingress.Type.String(), ingress.TuplesetRelation.String())))
+		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
 		innerLoopIngress := ingress
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
