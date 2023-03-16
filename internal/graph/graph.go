@@ -247,7 +247,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	case *openfgapb.Userset_Union: // e.g. target = define viewer as self or writer
 		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
-			// we recurse through each child targetRewrite
+			// we recurse through each child rewrite
 			childResults, err := g.findIngressesWithTargetRewrite(target, source, child, visited)
 			if err != nil {
 				return nil, err
@@ -258,6 +258,6 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	case *openfgapb.Userset_Intersection, *openfgapb.Userset_Difference:
 		return nil, ErrNotImplemented
 	default:
-		panic("unexpected userset targetRewrite encountered")
+		panic("unexpected userset rewrite encountered")
 	}
 }
