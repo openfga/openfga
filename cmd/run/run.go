@@ -316,8 +316,8 @@ func MustDefaultConfigWithRandomPorts() *Config {
 	defer l.Close()
 	grpcPort := l.Addr().(*net.TCPAddr).Port
 
-	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
+	config.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
 
 	return config
 }
