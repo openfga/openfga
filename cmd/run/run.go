@@ -293,6 +293,18 @@ func DefaultConfig() *Config {
 	}
 }
 
+// TCPRandomPort returns a random TCP Port along with a function that releases the port.
+// It is the responsibility of the caller to release the port. Otherwise, the port will be orphaned.
+func TCPRandomPort() (int, func()) {
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	return l.Addr().(*net.TCPAddr).Port, func() {
+		l.Close()
+	}
+}
+
 // MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
 // This function may panic if somehow a random port cannot be chosen.
 func MustDefaultConfigWithRandomPorts() *Config {
@@ -302,22 +314,14 @@ func MustDefaultConfigWithRandomPorts() *Config {
 	config.Playground.Enabled = false
 	config.Metrics.Enabled = false
 
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	httpPort := l.Addr().(*net.TCPAddr).Port
+	httpPort, httpPortReleaser := TCPRandomPort()
 
-	l, err = net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	grpcPort := l.Addr().(*net.TCPAddr).Port
+	grpcPort, grpcPortReleaser := TCPRandomPort()
+	httpPortReleaser()
+	grpcPortReleaser()
 
-	config.GRPC.Addr = fmt.Sprintf("localhost:%d", grpcPort)
-	config.HTTP.Addr = fmt.Sprintf("localhost:%d", httpPort)
+	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
+	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
 
 	return config
 }

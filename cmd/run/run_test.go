@@ -14,7 +14,6 @@ import (
 	"io"
 	"log"
 	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"path"
@@ -564,25 +563,20 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	}
 }
 
-// helper function to obtain default config and extra tcp port
-func obtainDefaultConfigWithExtraPort(t *testing.T) (*Config, int) {
-	l, err := net.Listen("tcp", "")
-	require.NoError(t, err)
-	defer l.Close()
-	oidcServerPort := l.Addr().(*net.TCPAddr).Port
-	return MustDefaultConfigWithRandomPorts(), oidcServerPort
-}
-
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 
-	cfg, oidcServerPort := obtainDefaultConfigWithExtraPort(t)
+	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
+	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
 	cfg.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
+
+	// release the oidc server port after obtaining cfg ports
+	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
@@ -672,6 +666,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Port for TLS cannot be 0.0.0.0
+		cfg.HTTP.Addr = strings.ReplaceAll(cfg.HTTP.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -731,6 +727,8 @@ func TestGRPCServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Port for TLS cannot be 0.0.0.0
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
