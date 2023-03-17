@@ -39,16 +39,16 @@ var (
 )
 
 func TestRelationshipIngress_String(t *testing.T) {
-	require.Equal(t, "ingress type:\"document\"  relation:\"viewer\", type ttu, tupleset type:\"document\"  relation:\"parent\"", RelationshipIngress{
+	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type ttu, tupleset type:\"document\" relation:\"parent\"", RelationshipIngress{
 		Type:             TupleToUsersetIngress,
 		Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 		TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
 	}.String())
-	require.Equal(t, "ingress type:\"document\"  relation:\"viewer\", type computed_userset", RelationshipIngress{
+	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type computed_userset", RelationshipIngress{
 		Type:    ComputedUsersetIngress,
 		Ingress: typesystem.DirectRelationReference("document", "viewer"),
 	}.String())
-	require.Equal(t, "ingress type:\"document\"  relation:\"viewer\", type direct", RelationshipIngress{
+	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type direct", RelationshipIngress{
 		Type:    DirectIngress,
 		Ingress: typesystem.DirectRelationReference("document", "viewer"),
 	}.String())
