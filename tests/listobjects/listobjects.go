@@ -112,7 +112,7 @@ func runTest(t *testing.T, test individualTest, testInformation testInformation,
 	client := testInformation.client
 	ctx := context.Background()
 	name := test.Name
-	
+
 	if contextTupleTest {
 		name += "_ctxTuples"
 	}
