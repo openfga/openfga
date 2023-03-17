@@ -125,7 +125,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
+	if err := goose.Up(db, migrationsPath); err != nil {
 		log.Fatal(err)
 	}
 
