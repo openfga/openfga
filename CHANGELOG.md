@@ -8,6 +8,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.4.2] - 2023-03-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.1...v0.4.2)
+
+### Fixed
+* Correct migration path for mysql in `openfga migrate` (openfga/openfga#644)
+
 ## [0.4.1] - 2023-03-16
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.0...v0.4.1)
@@ -404,7 +411,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/openfga/openfga/releases/tag/v0.4.2
 [0.4.1]: https://github.com/openfga/openfga/releases/tag/v0.4.1
 [0.4.0]: https://github.com/openfga/openfga/releases/tag/v0.4.0
 [0.3.7]: https://github.com/openfga/openfga/releases/tag/v0.3.7
