@@ -20,6 +20,7 @@ import (
 
 type ConnectedObjectsRequest struct {
 	StoreID          string
+	Typesystem       *typesystem.TypeSystem
 	ObjectType       string
 	Relation         string
 	User             isUserRef
@@ -91,8 +92,8 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore        storage.OpenFGADatastore
-	Typesystem       *typesystem.TypeSystem
+	Datastore storage.OpenFGADatastore
+
 	ResolveNodeLimit uint32
 
 	// Limit limits the results yielded by the ConnectedObjects API.
@@ -152,7 +153,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
-	g := graph.BuildConnectedObjectGraph(c.Typesystem)
+	g := graph.BuildConnectedObjectGraph(req.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
 	ingresses, err := g.RelationshipIngresses(targetObjRef, sourceUserRef)
@@ -168,6 +169,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
+				typesystem:       req.Typesystem,
 				ingress:          innerLoopIngress,
 				targetObjectRef:  targetObjRef,
 				sourceUserRef:    req.User,
@@ -182,6 +184,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 				// lookup the rewritten target relation on the computed_userset ingress
 				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
+					Typesystem: req.Typesystem,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
 					User: &UserRefObjectRelation{
@@ -231,6 +234,7 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 
 type reverseExpandRequest struct {
 	storeID          string
+	typesystem       *typesystem.TypeSystem
 	ingress          *graph.RelationshipIngress
 	targetObjectRef  *openfgapb.RelationReference
 	sourceUserRef    isUserRef
@@ -389,6 +393,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
+				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
@@ -467,7 +472,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
-	publiclyAssignable, err := c.Typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
+	publiclyAssignable, err := req.typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
 	if err != nil {
 		return err
 	}
@@ -556,6 +561,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
+				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,

@@ -129,16 +129,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		CheckResolver:         s.checkResolver,
 	}
-
-	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
-
-	q.ConnectedObjects = connectObjCmd.StreamedConnectedObjects
-
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
 		StoreId:              storeID,
 		ContextualTuples:     req.GetContextualTuples(),
@@ -185,20 +175,12 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
-	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
-
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
 		Logger:                s.logger,
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
 		CheckResolver:         s.checkResolver,
 	}
 
