@@ -8,6 +8,58 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.4.2] - 2023-03-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.1...v0.4.2)
+
+### Fixed
+* Correct migration path for mysql in `openfga migrate` (openfga/openfga#644)
+
+## [0.4.1] - 2023-03-16
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.0...v0.4.1)
+
+
+The `v0.4.1` release includes everything in `v0.4.0` which includes breaking changes, please read the [`v0.4.0` changelog entry](#040---2023-03-15) for more details.
+
+### Fixed
+
+* Fix ListObjects not returning objects a user has access to in some cases (openfga/openfga#637)
+
+## [0.4.0] - 2023-03-15
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.3.7...v0.4.0)
+
+> Note: the 0.4.0 release was held due to issues discovered after the release was cut.
+
+### Removed
+
+* [BREAKING] Disable schema 1.0 support, except if appropriate flags are set (openfga/openfga#613)
+  * As of this release, OpenFGA no longer allows writing or evaluating schema `v1.0` models by default. If you need support for it for now, you can use the:
+    * `OPENFGA_ALLOW_WRITING_1_0_MODELS`: set to `true` to allow `WriteAuthorizationModel` to accept schema `v1.0` models.
+    * `OPENFGA_ALLOW_EVALUATING_1_0_MODELS`: set to `true` to allow `Check`, `Expand`, `ListObjects`, `Write` and `WriteAssertions` that target schema `v1.0` models.
+    * `ReadAuthorizationModel`, `ReadAuthorizationModels` and `ReadAssertions` are unaffected and will continue to work regardless of the target model schema version.
+  * Note that these flags will be removed and support fully dropped in a future release. Read the [Schema v1.0 Deprecation Timeline](https://openfga.dev/docs/modeling/migrating/migrating-schema-1-1#deprecation-timeline) for more details.
+
+### Added
+* Add OpenFGA version command to the CLI (openfga/openfga#625)
+* Add `timeout` flag to `migrate` command (openfga/openfga#634)
+
+### Fixed
+
+* Improve the speed of Check for 1.1 models by using type restrictions (openfga/openfga#545, openfga/openfga#596)
+* Various important fixes to the experimental ListObjects endpoint
+  * Improve readUsersets query by dropping unnecessary sorting (openfga/openfga#631, openfga/openfga#633)
+  * Fix null pointer exception if computed userset does not exist (openfga/openfga#572)
+  * Fix race condition in memory store (openfga/openfga#585)
+  * Ensure no objects returned that would not have been allowed in Checks (openfga/openfga#577)
+  * Reverse expansion with indirect computed userset relationship (openfga/openfga#611)
+  * Improved tests (openfga/openfga#582, openfga/openfga#599, openfga/openfga#601, openfga/openfga#620)
+* Tuning of OTEL parameters (openfga/openfga#570)
+* Fix tracing in Check API (openfga/openfga#627)
+* Use chainguard images in Dockerfile (openfga/openfga#628)
+
+
 ## [0.3.7] - 2023-02-21
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.6...v0.3.7)
@@ -359,7 +411,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.3.7...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/openfga/openfga/releases/tag/v0.4.2
+[0.4.1]: https://github.com/openfga/openfga/releases/tag/v0.4.1
+[0.4.0]: https://github.com/openfga/openfga/releases/tag/v0.4.0
 [0.3.7]: https://github.com/openfga/openfga/releases/tag/v0.3.7
 [0.3.6]: https://github.com/openfga/openfga/releases/tag/v0.3.6
 [0.3.5]: https://github.com/openfga/openfga/releases/tag/v0.3.5

@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
@@ -19,6 +22,7 @@ const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreURIFlag    = "datastore-uri"
 	versionFlag         = "version"
+	timeoutFlag         = "timeout"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -50,99 +54,82 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
 	version := viper.GetUint(versionFlag)
+	timeout := viper.GetDuration(timeoutFlag)
 
 	goose.SetLogger(goose.NopLogger())
 
+	var driver, dialect, migrationsPath string
 	switch engine {
 	case "memory":
 		return nil
 	case "mysql":
-		db, err := sql.Open("mysql", uri)
-		if err != nil {
-			log.Fatal("failed to parse the config from the connection uri", err)
-		}
-
-		defer func() {
-			if err := db.Close(); err != nil {
-				log.Fatal("failed to close the db", err)
-			}
-		}()
-
-		if err := goose.SetDialect("mysql"); err != nil {
-			log.Fatal("failed to initialize the migrate command", err)
-		}
-
-		goose.SetBaseFS(assets.EmbedMigrations)
-
-		if version > 0 {
-			currentVersion, err := goose.GetDBVersion(db)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			int64Version := int64(version)
-			if int64Version < currentVersion {
-				if err := goose.DownTo(db, assets.MySQLMigrationDir, int64Version); err != nil {
-					log.Fatal(err)
-				}
-			}
-
-			if err := goose.UpTo(db, assets.MySQLMigrationDir, int64Version); err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		if err := goose.Up(db, assets.MySQLMigrationDir); err != nil {
-			log.Fatal(err)
-		}
-
-		return nil
+		driver = "mysql"
+		dialect = "mysql"
+		migrationsPath = assets.MySQLMigrationDir
 	case "postgres":
-		db, err := sql.Open("pgx", uri)
-		if err != nil {
-			log.Fatal("failed to parse the config from the connection uri", err)
-		}
-
-		defer func() {
-			if err := db.Close(); err != nil {
-				log.Fatal("failed to close the db", err)
-			}
-		}()
-
-		if err := goose.SetDialect("postgres"); err != nil {
-			log.Fatal("failed to initialize the migrate command", err)
-		}
-
-		goose.SetBaseFS(assets.EmbedMigrations)
-
-		if version > 0 {
-			currentVersion, err := goose.GetDBVersion(db)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			int64Version := int64(version)
-			if int64Version < currentVersion {
-				if err := goose.DownTo(db, assets.PostgresMigrationDir, int64Version); err != nil {
-					log.Fatal(err)
-				}
-			}
-
-			if err := goose.UpTo(db, assets.PostgresMigrationDir, int64Version); err != nil {
-				log.Fatal(err)
-			}
-
-			return nil
-		}
-
-		if err := goose.Up(db, assets.PostgresMigrationDir); err != nil {
-			log.Fatal(err)
-		}
-
-		return nil
+		driver = "pgx"
+		dialect = "postgres"
+		migrationsPath = assets.PostgresMigrationDir
 	default:
 		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
+
+	db, err := sql.Open(driver, uri)
+	if err != nil {
+		log.Fatal("failed to parse the config from the connection uri", err)
+	}
+
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Fatal("failed to close the db", err)
+		}
+	}()
+
+	policy := backoff.NewExponentialBackOff()
+	policy.MaxElapsedTime = timeout
+	err = backoff.Retry(func() error {
+		err = db.PingContext(context.Background())
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, policy)
+	if err != nil {
+		log.Fatalf("failed to initialize database connection: %v", err)
+	}
+
+	if err := goose.SetDialect(dialect); err != nil {
+		log.Fatal("failed to initialize the migrate command", err)
+	}
+
+	goose.SetBaseFS(assets.EmbedMigrations)
+
+	if version > 0 {
+		currentVersion, err := goose.GetDBVersion(db)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		int64Version := int64(version)
+		if int64Version < currentVersion {
+			if err := goose.DownTo(db, migrationsPath, int64Version); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		if err := goose.UpTo(db, migrationsPath, int64Version); err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	}
+
+	if err := goose.Up(db, migrationsPath); err != nil {
+		log.Fatal(err)
+	}
+
+	return nil
 }
 
 func bindMigrateFlags(cmd *cobra.Command) {
@@ -155,5 +142,8 @@ func bindMigrateFlags(cmd *cobra.Command) {
 	util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
 
 	flags.Uint(versionFlag, 0, "`the version to migrate to. If omitted, the latest version of the schema will be used`")
-	util.MustBindPFlag("version", flags.Lookup(versionFlag))
+	util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
+
+	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
+	util.MustBindPFlag(timeoutFlag, flags.Lookup(timeoutFlag))
 }

@@ -4334,3 +4334,39 @@ tests:
               relation: can_view
             expectation:
               - document:a
+
+  - name: evaluate_userset_in_computed_relation_of_ttu
+    stages:
+      - model: |
+          type user
+          type repo
+            relations
+              define owner: [organization] as self
+              define reader as repo_admin from owner
+          type organization
+            relations
+              define member: [user] as self
+              define repo_admin: [organization#member] as self
+        tuples:
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:openfga#member
+            relation: repo_admin
+            object: organization:openfga
+          - user: user:erik
+            relation: member
+            object: organization:openfga
+        checkAssertions:
+          - tuple:
+              user: user:erik
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:erik
+              type: repo
+              relation: reader
+            expectation:
+              - repo:openfga/openfga
