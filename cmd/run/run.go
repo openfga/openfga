@@ -161,6 +161,7 @@ type TraceConfig struct {
 	Enabled     bool
 	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
 	SampleRatio float64
+	ServiceName string
 }
 
 type OTLPTraceConfig struct {
@@ -274,6 +275,7 @@ func DefaultConfig() *Config {
 				Endpoint: "0.0.0.0:4317",
 			},
 			SampleRatio: 0.2,
+			ServiceName: "openfga",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -415,7 +417,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio, config.Trace.ServiceName)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))

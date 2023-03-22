@@ -147,6 +147,10 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
 	util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
 
+	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the name of the service in traces.")
+	util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
+	util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME")
+
 	flags.Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable prometheus metrics on the '/metrics' endpoint")
 	util.MustBindPFlag("metrics.enabled", flags.Lookup("metrics-enabled"))
 	util.MustBindEnv("metrics.enabled", "OPENFGA_METRICS_ENABLED")
