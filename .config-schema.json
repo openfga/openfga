@@ -302,6 +302,12 @@
                     "type": "float",
                     "default": "0.2",
                     "x-env-variable": "OPENFGA_TRACE_SAMPLE_RATIO"
+                },
+                "serviceName": {
+                    "description": "the name of the service in traces.",
+                    "type": "string",
+                    "default": "openfga",
+                    "x-env-variable": "OPENFGA_TRACE_SERVICE_NAME"
                 }
             }
         },
