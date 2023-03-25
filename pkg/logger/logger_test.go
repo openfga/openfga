@@ -5,12 +5,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
 
-func TestMessage(t *testing.T) {
+func TestWithoutContext(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		expectedLevel zapcore.Level
@@ -47,26 +48,18 @@ func TestMessage(t *testing.T) {
 		default:
 			t.Errorf("%s: Unknown name", tc.name)
 		}
-		if logs.Len() != 1 {
-			t.Errorf("%s: Expected log length to be 1, actual %d", tc.name, logs.Len())
-		}
+		require.Equal(t, 1, logs.Len())
+
 		actualMessage := logs.All()[0]
-		if actualMessage.Message != testMessage {
-			t.Errorf("%s: Expected message to be %s, actual %s", tc.name, testMessage, actualMessage.LoggerName)
-		}
+		require.Equal(t, testMessage, actualMessage.Message)
+
 		expectedZapFields := map[string]interface{}{}
-		if !reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields) {
-			t.Errorf("%s: Expected zap fields %v actual %v", tc.name, expectedZapFields, actualMessage.ContextMap())
-		}
-		if actualMessage.Level != tc.expectedLevel {
-			t.Errorf("%s: Expected message level to be %d, actual %d", tc.name, tc.expectedLevel, actualMessage.Level)
-
-		}
-
+		require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
+		require.Equal(t, tc.expectedLevel, actualMessage.Level)
 	}
 }
 
-func TestMessageWithEmptyId(t *testing.T) {
+func TestWithContext(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		expectedLevel zapcore.Level
@@ -88,37 +81,31 @@ func TestMessageWithEmptyId(t *testing.T) {
 			expectedLevel: zapcore.ErrorLevel,
 		},
 	} {
-		observerLogger, logs := observer.New(zap.DebugLevel)
-		dut := ZapLogger{zap.New(observerLogger)}
-		const testMessage = "ABC"
-		switch tc.name {
-		case "InfoWithContext":
-			dut.InfoWithContext(context.Background(), testMessage)
-		case "DebugWithContext":
-			dut.DebugWithContext(context.Background(), testMessage)
-		case "WarnWithContext":
-			dut.WarnWithContext(context.Background(), testMessage)
-		case "ErrorWithContext":
-			dut.ErrorWithContext(context.Background(), testMessage)
-		default:
-			t.Errorf("%s: Unknown name", tc.name)
-		}
-		if logs.Len() != 1 {
-			t.Errorf("%s: Expected log length to be 1, actual %d", tc.name, logs.Len())
-		}
-		actualMessage := logs.All()[0]
-		if actualMessage.Message != testMessage {
-			t.Errorf("%s: Expected message to be %s, actual %s", tc.name, testMessage, actualMessage.LoggerName)
-		}
-		expectedZapFields := map[string]interface{}{}
-		if !reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields) {
-			t.Errorf("%s: Expected zap fields %v actual %v", tc.name, expectedZapFields, actualMessage.ContextMap())
-		}
-		if actualMessage.Level != tc.expectedLevel {
-			t.Errorf("%s: Expected message level to be %d, actual %d", tc.name, tc.expectedLevel, actualMessage.Level)
+		t.Run(tc.name, func(t *testing.T) {
+			observerLogger, logs := observer.New(zap.DebugLevel)
+			dut := ZapLogger{zap.New(observerLogger)}
+			const testMessage = "ABC"
+			switch tc.name {
+			case "InfoWithContext":
+				dut.InfoWithContext(context.Background(), testMessage)
+			case "DebugWithContext":
+				dut.DebugWithContext(context.Background(), testMessage)
+			case "WarnWithContext":
+				dut.WarnWithContext(context.Background(), testMessage)
+			case "ErrorWithContext":
+				dut.ErrorWithContext(context.Background(), testMessage)
+			default:
+				t.Errorf("%s: Unknown name", tc.name)
+			}
+			require.Equal(t, 1, logs.Len())
 
-		}
+			actualMessage := logs.All()[0]
+			require.Equal(t, testMessage, actualMessage.Message)
 
+			expectedZapFields := map[string]interface{}{}
+			require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
+			require.Equal(t, tc.expectedLevel, actualMessage.Level)
+		})
 	}
 }
 
@@ -131,13 +118,10 @@ func TestWithFields(t *testing.T) {
 	testMessage := "ABC"
 	logger.Info(testMessage)
 	actualMessage := logs.All()[0]
-	if actualMessage.Message != testMessage {
-		t.Errorf("Expected message to be %s, actual %s", testMessage, actualMessage.LoggerName)
-	}
+	require.Equal(t, testMessage, actualMessage.Message)
+
 	expectedZapFields := map[string]interface{}{
 		"TestOption": "Message",
 	}
-	if !reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields) {
-		t.Errorf("Expected zap fields %v actual %v", expectedZapFields, actualMessage.ContextMap())
-	}
+	require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
 }

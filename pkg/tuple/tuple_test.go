@@ -49,12 +49,9 @@ func TestSplitObjectId(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			td, oid := SplitObject(tc.objectID)
-			if td != tc.expectedType {
-				t.Errorf("SplitObject(%s) type was %s, want %s", tc.objectID, td, tc.expectedType)
-			}
-			if oid != tc.expectedOID {
-				t.Errorf("SplitObject(%s) object id was %s, want %s", tc.objectID, oid, tc.expectedOID)
-			}
+
+			require.Equal(t, tc.expectedType, td)
+			require.Equal(t, tc.expectedOID, oid)
 		})
 	}
 }
@@ -100,15 +97,11 @@ func TestSplitObjectRelation(t *testing.T) {
 			expectedRelation: "reader",
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			obj, rel := SplitObjectRelation(tc.objectRelation)
-			if obj != tc.expectedObject {
-				t.Errorf("SplitObjectRelation(%s) object was %s, want %s", tc.objectRelation, obj, tc.expectedObject)
-			}
-			if rel != tc.expectedRelation {
-				t.Errorf("SplitObjectRelation(%s) relation was %s, want %s", tc.objectRelation, rel, tc.expectedRelation)
-			}
+
+			require.Equal(t, tc.expectedObject, obj)
+			require.Equal(t, tc.expectedRelation, rel)
 		})
 	}
 }
@@ -139,12 +132,9 @@ func TestIsObjectRelation(t *testing.T) {
 			expected:       true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsObjectRelation(tc.objectRelation)
-			if got != tc.expected {
-				t.Errorf("IsObjectRelation(%s) = %v, want %v", tc.objectRelation, got, tc.expected)
-			}
+			require.Equal(t, tc.expected, got)
 		})
 	}
 }
@@ -179,12 +169,9 @@ func TestIsValidObject(t *testing.T) {
 			valid: false,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsValidObject(tc.name)
-			if got != tc.valid {
-				t.Errorf("IsValidObject(%s) = %v, want %v", tc.name, got, tc.valid)
-			}
+			require.Equal(t, tc.valid, got)
 		})
 	}
 }
@@ -211,12 +198,9 @@ func TestIsValidRelation(t *testing.T) {
 			valid: true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsValidRelation(tc.name)
-			if got != tc.valid {
-				t.Errorf("IsValidRelation(%s) = %v, want %v", tc.name, got, tc.valid)
-			}
+			require.Equal(t, tc.valid, got)
 		})
 	}
 }
@@ -300,12 +284,9 @@ func TestIsValidUser(t *testing.T) {
 			valid: false,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := IsValidUser(tc.name)
-			if got != tc.valid {
-				t.Errorf("IsValidUser(%s) = %v, want %v", tc.name, got, tc.valid)
-			}
+			require.Equal(t, tc.valid, got)
 		})
 	}
 }
@@ -338,9 +319,7 @@ func TestGetUsertypeFromUser(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := GetUserTypeFromUser(tc.name)
-			if got != tc.want {
-				t.Errorf("GetUserTypeFromUser(%s) = %v, want %v", tc.name, got, tc.want)
-			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -352,7 +331,7 @@ func TestGetObjectRelationAsString(t *testing.T) {
 		want  string
 	}{
 		{
-			name: "object and relation",
+			name: "object_and_relation",
 			input: &openfgav1.ObjectRelation{
 				Object:   "team:fga",
 				Relation: "member",
@@ -360,7 +339,7 @@ func TestGetObjectRelationAsString(t *testing.T) {
 			want: "team:fga#member",
 		},
 		{
-			name: "just object",
+			name: "just_object",
 			input: &openfgav1.ObjectRelation{
 				Object: "team:fga",
 			},

@@ -2,23 +2,20 @@ package errors
 
 import (
 	"errors"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestInternalErrorDontLeakInternals(t *testing.T) {
 	err := NewInternalError("public", errors.New("internal"))
 
-	if strings.Contains(err.Error(), "internal") {
-		t.Errorf("internal error is leaking internals: %v", err)
-	}
+	require.NotContains(t, err.Error(), "internal")
 }
 
 func TestInternalErrorsWithNoMessageReturnsInternalServiceError(t *testing.T) {
 	err := NewInternalError("", errors.New("internal"))
 
 	expected := InternalServerErrorMsg
-	if !strings.Contains(err.Error(), expected) {
-		t.Errorf("expected error message to contain '%s', but got '%s'", expected, err)
-	}
+	require.Contains(t, err.Error(), expected)
 }
