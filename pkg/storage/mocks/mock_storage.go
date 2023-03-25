@@ -179,6 +179,21 @@ func (m *MockRelationshipTupleReader) EXPECT() *MockRelationshipTupleReaderMockR
 	return m.recorder
 }
 
+// ListObjectsByType mocks base method.
+func (m *MockRelationshipTupleReader) ListObjectsByType(ctx context.Context, store, objectType string) (storage.ObjectIterator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListObjectsByType", ctx, store, objectType)
+	ret0, _ := ret[0].(storage.ObjectIterator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListObjectsByType indicates an expected call of ListObjectsByType.
+func (mr *MockRelationshipTupleReaderMockRecorder) ListObjectsByType(ctx, store, objectType interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListObjectsByType", reflect.TypeOf((*MockRelationshipTupleReader)(nil).ListObjectsByType), ctx, store, objectType)
+}
+
 // Read mocks base method.
 func (m *MockRelationshipTupleReader) Read(arg0 context.Context, arg1 string, arg2 *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	m.ctrl.T.Helper()
