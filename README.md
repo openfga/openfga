@@ -199,3 +199,4 @@ See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md)
 [config-doc]: https://openfga.dev/docs/getting-started/setup-openfga
 [api]: https://openfga.dev/api/service
 [prod-checklist]: https://openfga.dev/docs/getting-started/setup-openfga#production-checklist
+
