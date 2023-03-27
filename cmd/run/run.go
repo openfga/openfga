@@ -293,8 +293,8 @@ func DefaultConfig() *Config {
 	}
 }
 
-// TCPRandomPort returns a random TCP Port along with a function that releases the port.
-// It is the responsibility of the caller to release the port. Otherwise, the port will be orphaned.
+// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
+// It is the responsibility of the caller to call the release function.
 func TCPRandomPort() (int, func()) {
 	l, err := net.Listen("tcp", "")
 	if err != nil {
