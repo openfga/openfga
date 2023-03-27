@@ -29,7 +29,7 @@ type listObjectTests struct {
 	Tests []individualTest
 }
 
-type testInformation struct {
+type testParams struct {
 	schemaVersion string
 	client        ClientInterface
 }
@@ -77,17 +77,17 @@ func testListObjects(t *testing.T, client ClientInterface) {
 }
 
 func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
-	runTests(t, testInformation{typesystem.SchemaVersion1_1, client})
+	runTests(t, testParams{typesystem.SchemaVersion1_1, client})
 }
 
 func runSchema1_0ListObjectsTests(t *testing.T, client ClientInterface) {
-	runTests(t, testInformation{typesystem.SchemaVersion1_0, client})
+	runTests(t, testParams{typesystem.SchemaVersion1_0, client})
 }
 
-func runTests(t *testing.T, testInformation testInformation) {
+func runTests(t *testing.T, params testParams) {
 	var b []byte
 	var err error
-	schemaVersion := testInformation.schemaVersion
+	schemaVersion := params.schemaVersion
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
@@ -101,15 +101,15 @@ func runTests(t *testing.T, testInformation testInformation) {
 
 	for _, test := range testCases.Tests {
 		test := test
-		runTest(t, test, testInformation, false)
-		runTest(t, test, testInformation, true)
+		runTest(t, test, params, false)
+		runTest(t, test, params, true)
 
 	}
 }
 
-func runTest(t *testing.T, test individualTest, testInformation testInformation, contextTupleTest bool) {
-	schemaVersion := testInformation.schemaVersion
-	client := testInformation.client
+func runTest(t *testing.T, test individualTest, params testParams, contextTupleTest bool) {
+	schemaVersion := params.schemaVersion
+	client := params.client
 	ctx := context.Background()
 	name := test.Name
 
