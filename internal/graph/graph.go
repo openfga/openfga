@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -76,6 +77,13 @@ type RelationshipIngress struct {
 	// object reference with a target if the type of the relationship ingress is that
 	// of a TupleToUserset
 	TuplesetRelation *openfgapb.RelationReference
+}
+
+func (r RelationshipIngress) String() string {
+	if r.TuplesetRelation != nil {
+		return fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())
+	}
+	return fmt.Sprintf("ingress %s, type %s", r.Ingress.String(), r.Type.String())
 }
 
 // ConnectedObjectGraph represents a graph of relationships and the connectivity between
