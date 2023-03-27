@@ -20,7 +20,9 @@ import (
 
 const (
 	datastoreEngineFlag = "datastore-engine"
+	datastoreEngineConf = "datastore.engine"
 	datastoreURIFlag    = "datastore-uri"
+	datastoreURIConf    = "datastore-uri"
 	versionFlag         = "version"
 	timeoutFlag         = "timeout"
 )
@@ -39,6 +41,12 @@ func NewMigrateCommand() *cobra.Command {
 	configPaths := []string{"/etc/openfga", "$HOME/.openfga", "."}
 	for _, path := range configPaths {
 		viper.AddConfigPath(path)
+	}
+
+	err := viper.ReadInConfig()
+	if err == nil {
+		viper.SetDefault(datastoreEngineFlag, viper.Get(datastoreEngineConf))
+		viper.SetDefault(datastoreURIFlag, viper.Get(datastoreURIConf))
 	}
 
 	viper.SetEnvPrefix("OPENFGA")
