@@ -3,7 +3,6 @@ package graph
 import (
 	"context"
 	"sort"
-	"strings"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -72,8 +71,7 @@ func TestRelationshipIngress_String(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := strings.ReplaceAll(tc.ingress.String(), " ", "")
-			require.Equal(t, strings.ReplaceAll(tc.expected, " ", ""), actual)
+			require.Equal(t, tc.expected, tc.ingress.String())
 		})
 	}
 }
