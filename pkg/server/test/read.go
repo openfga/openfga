@@ -411,7 +411,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 					}
 
 					if responseTupleKey.User != actualTupleKey.User {
-						t.Errorf("[%s] Expected response tuple user at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
+						t.Errorf("[%s] Expected response tuple user at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.User, actualTupleKey.User)
 					}
 				}
 			}
