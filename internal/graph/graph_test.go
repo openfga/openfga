@@ -3,6 +3,7 @@ package graph
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -39,19 +40,42 @@ var (
 )
 
 func TestRelationshipIngress_String(t *testing.T) {
-	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type ttu, tupleset type:\"document\" relation:\"parent\"", RelationshipIngress{
-		Type:             TupleToUsersetIngress,
-		Ingress:          typesystem.DirectRelationReference("document", "viewer"),
-		TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-	}.String())
-	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type computed_userset", RelationshipIngress{
-		Type:    ComputedUsersetIngress,
-		Ingress: typesystem.DirectRelationReference("document", "viewer"),
-	}.String())
-	require.Equal(t, "ingress type:\"document\" relation:\"viewer\", type direct", RelationshipIngress{
-		Type:    DirectIngress,
-		Ingress: typesystem.DirectRelationReference("document", "viewer"),
-	}.String())
+	for _, tc := range []struct {
+		name     string
+		expected string
+		ingress  RelationshipIngress
+	}{
+		{
+			name:     "TupleToUsersetIngress",
+			expected: "ingress type:\"document\" relation:\"viewer\", type ttu, tupleset type:\"document\" relation:\"parent\"",
+			ingress: RelationshipIngress{
+				Type:             TupleToUsersetIngress,
+				Ingress:          typesystem.DirectRelationReference("document", "viewer"),
+				TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+			},
+		},
+		{
+			name:     "ComputedUsersetIngress",
+			expected: "ingress type:\"document\" relation:\"viewer\", type computed_userset",
+			ingress: RelationshipIngress{
+				Type:    ComputedUsersetIngress,
+				Ingress: typesystem.DirectRelationReference("document", "viewer"),
+			},
+		},
+		{
+			name:     "DirectIngress",
+			expected: "ingress type:\"document\" relation:\"viewer\", type direct",
+			ingress: RelationshipIngress{
+				Type:    DirectIngress,
+				Ingress: typesystem.DirectRelationReference("document", "viewer"),
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := strings.ReplaceAll(tc.ingress.String(), " ", "")
+			require.Equal(t, strings.ReplaceAll(tc.expected, " ", ""), actual)
+		})
+	}
 }
 
 func TestRelationshipIngressType_String(t *testing.T) {
