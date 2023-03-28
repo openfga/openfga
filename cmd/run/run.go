@@ -315,10 +315,11 @@ func MustDefaultConfigWithRandomPorts() *Config {
 	config.Metrics.Enabled = false
 
 	httpPort, httpPortReleaser := TCPRandomPort()
-
-	grpcPort, grpcPortReleaser := TCPRandomPort()
 	defer func() {
 		httpPortReleaser()
+	}()
+	grpcPort, grpcPortReleaser := TCPRandomPort()
+	defer func() {
 		grpcPortReleaser()
 	}()
 
