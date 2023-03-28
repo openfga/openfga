@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -80,10 +81,13 @@ type RelationshipIngress struct {
 }
 
 func (r RelationshipIngress) String() string {
+	val := ""
 	if r.TuplesetRelation != nil {
-		return fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())
+		val = fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())
+	} else {
+		val = fmt.Sprintf("ingress %s, type %s", r.Ingress.String(), r.Type.String())
 	}
-	return fmt.Sprintf("ingress %s, type %s", r.Ingress.String(), r.Type.String())
+	return strings.ReplaceAll(val, "  ", " ")
 }
 
 // ConnectedObjectGraph represents a graph of relationships and the connectivity between
