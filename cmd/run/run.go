@@ -315,13 +315,9 @@ func MustDefaultConfigWithRandomPorts() *Config {
 	config.Metrics.Enabled = false
 
 	httpPort, httpPortReleaser := TCPRandomPort()
-	defer func() {
-		httpPortReleaser()
-	}()
+	defer httpPortReleaser()
 	grpcPort, grpcPortReleaser := TCPRandomPort()
-	defer func() {
-		grpcPortReleaser()
-	}()
+	defer grpcPortReleaser()
 
 	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
 	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
