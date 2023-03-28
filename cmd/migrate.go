@@ -22,7 +22,7 @@ const (
 	datastoreEngineFlag = "datastore-engine"
 	datastoreEngineConf = "datastore.engine"
 	datastoreURIFlag    = "datastore-uri"
-	datastoreURIConf    = "datastore-uri"
+	datastoreURIConf    = "datastore.uri"
 	versionFlag         = "version"
 	timeoutFlag         = "timeout"
 )
