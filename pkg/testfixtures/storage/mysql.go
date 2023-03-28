@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -41,11 +42,29 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
 
-	reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
+	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+		All: true,
+	})
 	require.NoError(t, err)
 
-	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-	require.NoError(t, err)
+	foundMysqlImage := false
+	for _, image := range allImages {
+		for _, tag := range image.RepoTags {
+			if strings.Contains(tag, mySQLImage) {
+				foundMysqlImage = true
+				break
+			}
+		}
+	}
+
+	if !foundMysqlImage {
+		t.Logf("Pulling image %s", mySQLImage)
+		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
 
 	containerCfg := container.Config{
 		Env: []string{
