@@ -575,7 +575,6 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		Issuer:   localOIDCServerURL,
 	}
 
-	// release the oidc server port after obtaining cfg ports
 	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
