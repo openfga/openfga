@@ -888,4 +888,8 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.metrics.properties.enableRPCHistograms.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Metrics.EnableRPCHistograms)
+
+	val = res.Get("properties.trace.properties.serviceName.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 }

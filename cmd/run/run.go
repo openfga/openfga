@@ -417,7 +417,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio, config.Trace.ServiceName)
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
