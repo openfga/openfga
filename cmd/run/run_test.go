@@ -564,7 +564,9 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	const localOIDCServerURL = "http://localhost:8083"
+
+	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
+	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
@@ -572,6 +574,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
+
+	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
@@ -661,7 +665,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		cfg.HTTP.Addr = "localhost:54672"
+		// Port for TLS cannot be 0.0.0.0
+		cfg.HTTP.Addr = strings.ReplaceAll(cfg.HTTP.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -716,12 +721,13 @@ func TestGRPCServingTLS(t *testing.T) {
 
 		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
-		cfg.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Port for TLS cannot be 0.0.0.0
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
