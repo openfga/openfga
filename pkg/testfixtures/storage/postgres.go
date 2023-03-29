@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,11 +46,29 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
 	require.NoError(t, err)
 
-	reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+		All: true,
+	})
 	require.NoError(t, err)
 
-	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-	require.NoError(t, err)
+	foundPostgresImage := false
+	for _, image := range allImages {
+		for _, tag := range image.RepoTags {
+			if strings.Contains(tag, postgresImage) {
+				foundPostgresImage = true
+				break
+			}
+		}
+	}
+
+	if !foundPostgresImage {
+		t.Logf("Pulling image %s", postgresImage)
+		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
 
 	containerCfg := container.Config{
 		Env: []string{
