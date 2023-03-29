@@ -479,14 +479,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		grpc_validator.UnaryServerInterceptor(),
 		requestid.NewUnaryInterceptor(),
+		grpc_validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
-		grpc_validator.StreamServerInterceptor(),
 		requestid.NewStreamingInterceptor(),
+		grpc_validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
