@@ -132,7 +132,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		log.Fatal(err)
 	}
 
-	log.Println("Migration done")
+	log.Println("migration done")
 
 	return nil
 }
@@ -146,7 +146,7 @@ func bindMigrateFlags(cmd *cobra.Command) {
 	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
 	util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
 
-	flags.Uint(versionFlag, 0, "the version to migrate to. If omitted, the latest version of the schema will be used")
+	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
 	util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
 
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
