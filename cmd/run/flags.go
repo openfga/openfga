@@ -147,7 +147,7 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
 	util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
 
-	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the name of the service in traces.")
+	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
 	util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
 	util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME")
 
