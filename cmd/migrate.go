@@ -61,6 +61,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	var driver, dialect, migrationsPath string
 	switch engine {
 	case "memory":
+		log.Println("no migrations to run for `memory` datastore")
 		return nil
 	case "mysql":
 		driver = "mysql"
@@ -70,18 +71,20 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		driver = "pgx"
 		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir
+	case "":
+		return fmt.Errorf("missing datastore engine type")
 	default:
 		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 
 	db, err := sql.Open(driver, uri)
 	if err != nil {
-		log.Fatal("failed to parse the config from the connection uri", err)
+		log.Fatalf("failed to open a connection to the datastore: %v", err)
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Fatal("failed to close the db", err)
+			log.Fatalf("failed to close the datastore: %v", err)
 		}
 	}()
 
@@ -100,7 +103,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	}
 
 	if err := goose.SetDialect(dialect); err != nil {
-		log.Fatal("failed to initialize the migrate command", err)
+		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}
 
 	goose.SetBaseFS(assets.EmbedMigrations)
@@ -129,6 +132,8 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		log.Fatal(err)
 	}
 
+	log.Println("Migration done")
+
 	return nil
 }
 
@@ -141,7 +146,7 @@ func bindMigrateFlags(cmd *cobra.Command) {
 	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
 	util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
 
-	flags.Uint(versionFlag, 0, "`the version to migrate to. If omitted, the latest version of the schema will be used`")
+	flags.Uint(versionFlag, 0, "the version to migrate to. If omitted, the latest version of the schema will be used")
 	util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
 
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
