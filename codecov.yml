@@ -1,0 +1,6 @@
+# the following folders contain tests that need to be exported so that consumer modules can run them too
+ignore:
+  - "pkg/storage/test"
+  - "pkg/server/test"
+  - "pkg/testfixtures/storage"
+  - "tests"
