@@ -267,6 +267,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maximumConcurrentChecks)
 
+	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
 		object, err := iter.Next()
@@ -281,7 +282,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(ctx, combinedDatastore, object, req, objectsFound, resultsChan)
+			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
@@ -292,14 +293,12 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 
 func (q *ListObjectsQuery) internalCheck(
 	ctx context.Context,
-	combinedDatastore storage.RelationshipTupleReader,
+	checkResolver *graph.LocalChecker,
 	obj *openfgapb.Object,
 	req listObjectsRequest,
 	objectsFound *uint32,
 	resultsChan chan<- string,
 ) error {
-	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
-
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: req.GetAuthorizationModelId(),
