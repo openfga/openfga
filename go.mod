@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/cenkalti/backoff/v4 v4.2.0
-	github.com/craigpastro/openfga-dsl-parser v1.0.0
+	github.com/craigpastro/openfga-dsl-parser v0.1.1
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230320162522-6a09e98068d5
 	github.com/docker/docker v20.10.23+incompatible
 	github.com/docker/go-connections v0.4.0
