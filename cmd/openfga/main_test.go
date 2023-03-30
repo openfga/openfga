@@ -103,7 +103,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		t.Logf("stopping container %s", name)
 		timeout := 5 * time.Second
 
-		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: timeout})
+		err := dockerClient.ContainerStop(ctx, cont.ID, &timeout)
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop openfga container: %v", err)
 		}
@@ -125,7 +125,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 		t.Logf("expiring container %s", name)
 		// swallow the error because by this point we've terminated
-		_ = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{})
+		_ = dockerClient.ContainerStop(ctx, cont.ID, nil)
 
 		t.Logf("expired container %s", name)
 	}()

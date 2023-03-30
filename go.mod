@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/craigpastro/openfga-dsl-parser v1.0.0
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230320162522-6a09e98068d5
-	github.com/docker/docker v23.0.2+incompatible
+	github.com/docker/docker v20.10.23+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-sql-driver/mysql v1.7.0
 	github.com/golang-jwt/jwt/v4 v4.5.0
@@ -23,7 +23,7 @@ require (
 	github.com/karlseguin/ccache/v2 v2.0.8
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/pkg/errors v0.9.1
-	github.com/pressly/goose/v3 v3.10.0
+	github.com/pressly/goose/v3 v3.9.0
 	github.com/rs/cors v1.8.3
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
