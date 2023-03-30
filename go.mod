@@ -44,6 +44,7 @@ require (
 )
 
 require (
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.8 // indirect
 	go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50 // indirect
 )
