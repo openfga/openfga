@@ -1,0 +1,103 @@
+name: On-demand load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        required: true
+        description: SHA or branch name to deploy
+        type: string
+        default: 'main'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: AWSLoadTest
+    # needed for aws-actions/configure-aws-credentials. See https://github.com/aws-actions/configure-aws-credentials/issues/271
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Set variables
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=8 ${{ github.event.inputs.ref }})" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.event.inputs.ref }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Set AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to AWS ECR
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ secrets.OPENFGA_REGISTRY }}
+
+      - name: Build, tag, and push image to AWS ECR
+        timeout-minutes: 10
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.OPENFGA_ECR_URI }}:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: helm setup
+        uses: koslib/helm-eks-action@master
+        with:
+          command: |
+            aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.OPENFGA_EKS_CLUSTER }} --role-arn ${{ secrets.AWS_IAM_ROLE }} --kubeconfig ./kubeconfig
+            echo 'KUBE_CONFIG_DATA<<EOF' >> $GITHUB_ENV
+            echo $(cat ./kubeconfig | base64) >> $GITHUB_ENV
+            echo 'EOF' >> $GITHUB_ENV
+            kubectl config set-context arn:aws:eks:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT }}:cluster/${{ secrets.OPENFGA_EKS_CLUSTER }}
+            kubectl config get-contexts
+# RUN MANUALLY:
+#            eksctl create iamidentitymapping \
+#              --cluster ${{ secrets.OPENFGA_EKS_CLUSTER }} \
+#              --region ${{ secrets.AWS_REGION }} \
+#              --arn ${{ secrets.AWS_IAM_ROLE }} \
+#              --group system:masters \
+#              --no-duplicate-arns \
+#              --username github-action
+
+      - name: helm deploy
+        uses: koslib/helm-eks-action@master
+        env:
+          KUBE_CONFIG_DATA: ${{ env.KUBE_CONFIG_DATA }}
+        with:
+          command: |
+            helm repo add openfga https://openfga.github.io/helm-charts
+            helm repo update
+            helm install openfgabench-${{ steps.vars.outputs.sha_short }} openfga/openfga \
+              --set replicaCount=1 \
+              --set image.repository=${{ secrets.OPENFGA_ECR_URI }} \
+              --set image.tag=openfgabench-${{ steps.vars.outputs.sha_short }} \
+              --set datastore.engine=postgres \
+              --set datastore.uri="postgres://postgres:password@openfga-postgresql.default.svc.cluster.local:5432/postgres?sslmode=disable" \
+              --set postgres.enabled=true \
+              --set postgresql.auth.postgresPassword=password \
+              --set postgresql.auth.database=postgres
+
+      - name: helm destroy
+        uses: koslib/helm-eks-action@master
+        with:
+          command: |
+            helm uninstall openfgabench-${{ steps.vars.outputs.sha_short }}
