@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const default_duration = 1 * time.Minute
+const defaultDuration = 1 * time.Minute
 
 func prepareTempConfigDir(t *testing.T) string {
 	_, err := os.Stat("/etc/openfga/config.yaml")
