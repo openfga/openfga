@@ -111,6 +111,22 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err:           serverErrors.InvalidAuthorizationModelInput(commands.ErrObsoleteAuthorizationModel),
 		},
 		{
+			name: "Fails_if_writing_1_0_model_because_it_will_be_interpreted_as_1_1",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "document",
+						Relations: map[string]*openfgapb.Userset{
+							"reader": typesystem.This(),
+						},
+					},
+				},
+			},
+			allowSchema10: true,
+			err:           typesystem.AssignableRelationError("document", "reader"),
+		},
+		{
 			name: "Works_if_no_schema_version",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
