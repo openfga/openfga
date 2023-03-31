@@ -124,7 +124,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			allowSchema10: true,
-			err:           typesystem.AssignableRelationError("document", "reader"),
+			err:           serverErrors.InvalidAuthorizationModelInput(typesystem.AssignableRelationError("document", "reader")),
 		},
 		{
 			name: "Works_if_no_schema_version",
