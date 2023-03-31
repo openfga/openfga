@@ -2,7 +2,6 @@ package logger
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -54,7 +53,7 @@ func TestWithoutContext(t *testing.T) {
 		require.Equal(t, testMessage, actualMessage.Message)
 
 		expectedZapFields := map[string]interface{}{}
-		require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
+		require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 		require.Equal(t, tc.expectedLevel, actualMessage.Level)
 	}
 }
@@ -103,7 +102,7 @@ func TestWithContext(t *testing.T) {
 			require.Equal(t, testMessage, actualMessage.Message)
 
 			expectedZapFields := map[string]interface{}{}
-			require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
+			require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 			require.Equal(t, tc.expectedLevel, actualMessage.Level)
 		})
 	}
@@ -123,5 +122,5 @@ func TestWithFields(t *testing.T) {
 	expectedZapFields := map[string]interface{}{
 		"TestOption": "Message",
 	}
-	require.True(t, reflect.DeepEqual(actualMessage.ContextMap(), expectedZapFields))
+	require.Equal(t, expectedZapFields, actualMessage.ContextMap())
 }
