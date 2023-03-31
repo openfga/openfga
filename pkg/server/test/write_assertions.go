@@ -54,7 +54,8 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	githubModelReq10 := &openfgapb.WriteAuthorizationModelRequest{
-		StoreId: store,
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		StoreId:       store,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
 				Type: "user",
