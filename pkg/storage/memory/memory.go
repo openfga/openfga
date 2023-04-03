@@ -22,6 +22,7 @@ var tracer = otel.Tracer("openfga/pkg/storage/memory")
 type staticIterator struct {
 	tuples            []*openfgapb.Tuple
 	continuationToken []byte
+	mu                sync.Mutex
 }
 
 func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
@@ -47,6 +48,9 @@ func match(key *openfgapb.TupleKey, target *openfgapb.TupleKey) bool {
 }
 
 func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.tuples) == 0 {
 		return nil, storage.ErrIteratorDone
 	}
