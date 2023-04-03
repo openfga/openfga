@@ -113,14 +113,18 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, false, storage.PaginationOptions{})
+	return m.read(ctx, store, tupleKey, storage.PaginationOptions{OrderRequired: false})
 }
 
 func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, true, opts)
+	iter, err := m.read(ctx, store, tupleKey, storage.PaginationOptions{
+		PageSize:      opts.PageSize,
+		From:          opts.From,
+		OrderRequired: true,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -129,16 +133,17 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, requiresOrder bool, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
 	sb := m.stbl.
 		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
-		Where(sq.Eq{"store": store}).
-		OrderBy("ulid")
-
+		Where(sq.Eq{"store": store})
+	if opts.OrderRequired {
+		sb = sb.OrderBy("ulid")
+	}
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectType})
