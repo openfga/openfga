@@ -14,7 +14,6 @@ import (
 	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 )
 
 var tuples = []*pb.TupleKey{
@@ -38,6 +37,8 @@ func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
+	cfg.AllowWriting1_0Models = true
+	cfg.AllowEvaluating1_0Models = true
 
 	cancel := tests.StartServer(t, cfg)
 	defer cancel()
@@ -50,64 +51,6 @@ func testRunAll(t *testing.T, engine string) {
 	defer conn.Close()
 
 	RunAllTests(t, pb.NewOpenFGAServiceClient(conn))
-}
-
-// RunAllTests will run all check tests
-func RunAllTests(t *testing.T, client CheckTestClientInterface) {
-	t.Run("RunAllTests", func(t *testing.T) {
-		t.Run("Check", func(t *testing.T) {
-			t.Parallel()
-			testCheck(t, client)
-		})
-		t.Run("BadAuthModelID", func(t *testing.T) {
-			t.Parallel()
-			testBadAuthModelID(t, client)
-		})
-	})
-}
-
-func testCheck(t *testing.T, client CheckTestClientInterface) {
-	t.Run("Schema1_1", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_1CheckTests(t, client)
-	})
-	t.Run("Schema1_0", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_0CheckTests(t, client)
-	})
-}
-
-func testBadAuthModelID(t *testing.T, client CheckTestClientInterface) {
-
-	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "bad auth id"})
-	require.NoError(t, err)
-
-	storeID := resp.GetId()
-	model := `
-	type user
-
-	type doc
-	  relations
-	    define viewer: [user] as self
-	    define can_view as viewer
-	`
-	_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-		StoreId:         storeID,
-		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(model),
-	})
-	require.NoError(t, err)
-	_, err = client.Check(ctx, &pb.CheckRequest{
-		StoreId:              storeID,
-		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
-		AuthorizationModelId: "01GS89AJC3R3PFQ9BNY5ZF6Q97",
-	})
-
-	require.Error(t, err)
-	e, ok := status.FromError(err)
-	require.True(t, ok)
-	require.Equal(t, int(pb.ErrorCode_authorization_model_not_found), int(e.Code()))
 }
 
 func BenchmarkCheckMemory(b *testing.B) {

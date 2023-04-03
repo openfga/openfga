@@ -3051,3 +3051,1322 @@ tests:
             expectation:
               #document:d is not expected
               - document:c
+
+  - name: same_relation_name_different_type_ctx
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self
+              define viewer: [user, user:*] as self or owner
+          type document
+            relations
+              define can_read as viewer from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            contextualTuples:
+              - user: user:anne
+                relation: owner
+                object: folder:a
+              - user: folder:a
+                relation: parent
+                object: document:c
+              - user: document:c
+                relation: parent
+                object: document:d
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            contextualTuples:
+              - user: user:anne
+                relation: owner
+                object: folder:a
+              - user: folder:a
+                relation: parent
+                object: document:c
+              - user: document:c
+                relation: parent
+                object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            contextualTuples:
+              - user: user:anne
+                relation: owner
+                object: folder:a
+              - user: folder:a
+                relation: parent
+                object: document:c
+              - user: document:c
+                relation: parent
+                object: document:d
+            expectation:
+              #document:d is not expected
+              - document:c
+
+  - name: computed_user_indirect_ref
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define viewer: [user] as self or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_read as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user] as self
+        tuples:
+          - user: user:anne
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: computed_user_indirect_ref_extra_indirection
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [folder] as self
+              define viewer: [user] as self or owner or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_read as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: three_prong_relation
+    stages:
+      - model: |
+          type user
+          type module
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [document, module] as self
+              define viewer: [user] as self or owner or viewer from parent
+          type folder
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [module, folder] as self
+              define viewer: [user] as self or owner or viewer from parent
+          type document
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [folder, document] as self
+              define viewer: [user] as self or owner or viewer from parent
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: module:a
+          - user: module:a
+            relation: parent
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: document:a
+            relation: parent
+            object: module:b
+          - user: module:b
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:b
+          - request:
+              user: user:anne
+              type: module
+              relation: viewer
+            expectation:
+              - module:a
+              - module:b
+
+  - name: three_prong_relation_loop
+    stages:
+      - model: |
+          type user
+          type module
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [document, module] as self
+              define viewer: [user] as self or owner or viewer from parent
+          type folder
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [module, folder] as self
+              define viewer: [user] as self or owner or viewer from parent
+          type document
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [folder, document] as self
+              define viewer: [user] as self or owner or viewer from parent
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: module:a
+          - user: module:a
+            relation: parent
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: document:a
+            relation: parent
+            object: module:b
+          - user: module:b
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:b
+          - user: document:b
+            relation: parent
+            object: module:a
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:b
+          - request:
+              user: user:anne
+              type: module
+              relation: viewer
+            expectation:
+              - module:a
+              - module:b
+
+  - name: three_prong_relation_possible_exclusion
+    stages:
+      - model: |
+          type user
+          type module
+            relations
+              define owner: [user] as self or has_owned from parent
+              define parent: [document, module] as self
+              define has_owned as owner
+              define viewer: [user] as self or has_owned or viewer from parent
+          type folder
+            relations
+              define owner: [user] as self or has_owned from parent
+              define parent: [module, folder] as self
+              define has_owned as owner
+              define viewer: [user] as self or has_owned or viewer from parent
+          type document
+            relations
+              define banned: [user] as self
+              define owner: [user] as self or has_owned from parent
+              define has_owned as owner but not banned
+              define parent: [folder, document] as self
+              define viewer: [user] as self or has_owned or viewer from parent
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: module:a
+          - user: module:a
+            relation: parent
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: document:a
+          - user: document:a
+            relation: parent
+            object: module:b
+          - user: module:b
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: module:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: viewer
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+              - document:b
+          - request:
+              user: user:anne
+              type: module
+              relation: viewer
+            expectation:
+              - module:a
+              - module:b
+
+
+  - name: computed_user_multi_route
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self or owner from parent
+              define can_modify as owner
+              define parent: [folder] as self
+              define viewer: [user] as self or can_modify or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_read as can_view from parent or can_modify from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: computed_user_indirect_ref_same_rel_name
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user] as self or owner from parent
+              define parent: [folder] as self
+              define viewer: [user] as self or owner or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_view as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:anne
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: document:d
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_view
+            expectation:
+              - document:c
+              - document:d
+
+  - name: computed_user_indirect_ref_wildcard
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define viewer: [user, user:*] as self or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_read as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:*
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: computed_user_indirect_ref_extra_indirection_wildcard
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define owner: [user, user:*] as self or owner from parent
+              define parent: [folder] as self
+              define viewer: [user, user:*] as self or owner or viewer from parent
+              define can_view as viewer
+          type document
+            relations
+              define can_read as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user, user:*] as self
+        tuples:
+          - user: user:*
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: two_level_computed_user_indirect_ref
+    stages:
+      - model: |
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define viewer: [user] as self or viewer from parent
+              define can_look as viewer
+              define can_view as can_look
+
+          type document
+            relations
+              define can_read as can_view from parent
+              define parent: [document, folder] as self
+              define viewer: [user] as self
+        tuples:
+          - user: user:anne
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:b
+            relation: parent
+            object: document:c
+          - user: document:c
+            relation: parent
+            object: document:d
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:c
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: document:d
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: can_read
+            expectation:
+              - document:c
+
+  - name: ttu_and_computed_ttu
+    stages:
+      - model: |
+          type user
+          type group
+            relations
+              define member: [user] as self
+          type folder
+            relations
+              define can_view as viewer or can_view from parent
+              define parent: [folder] as self
+              define viewer: [group#member] as self
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as can_view from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:a
+            relation: parent
+            object: document:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:b
+
+  - name: ttu_and_computed_ttu_wildcard
+    stages:
+      - model: |
+          type user
+          type group
+            relations
+              define member: [user, user:*] as self
+          type folder
+            relations
+              define can_view as viewer or can_view from parent
+              define parent: [folder] as self
+              define viewer: [group#member] as self
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as can_view from parent
+        tuples:
+          - user: user:*
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:a
+            relation: parent
+            object: document:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:b
+
+  - name: ttu_ttu_and_computed_ttu
+    stages:
+      - model: |
+          type user
+          type group
+            relations
+              define member: [user] as self
+          type module
+            relations
+              define can_view as viewer or can_view from parent
+              define parent: [module] as self
+              define viewer: [group#member] as self
+          type folder
+            relations
+              define parent: [module, folder] as self
+              define can_view as can_view from parent
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as can_view from parent
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:fga
+          - user: group:fga#member
+            relation: viewer
+            object: module:a
+          - user: module:a
+            relation: parent
+            object: folder:a
+          - user: folder:a
+            relation: parent
+            object: folder:b
+          - user: folder:a
+            relation: parent
+            object: document:b
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: folder:b
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:b
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: folder
+              relation: can_view
+            expectation:
+              - folder:a
+              - folder:b
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:b
+
+  - name: contextual_tuple_ref_relation_disjoint
+    stages:
+      - model: |
+          type user
+          type company
+            relations
+              define admin: [user] as self
+              define management: [user] as self
+              define employee: [user] as self or admin
+          type group
+            relations
+              define corp: [company] as self
+              define member as employee from corp
+          type document
+            relations
+              define viewer: [group#member] as self
+          type diagram
+            relations
+              define parent: [document] as self
+              define viewer as viewer from parent
+        tuples:
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            contextualTuples:
+              - object: company:abc
+                relation: management
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation: false
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: diagram:a
+            contextualTuples:
+              - object: company:abc
+                relation: management
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: company:abc
+                relation: management
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation:
+          - request:
+              user: user:anne
+              type: diagram
+              relation: viewer
+            contextualTuples:
+              - object: company:abc
+                relation: management
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation:
+
+  - name: contextual_tuple_ref_relation
+    stages:
+      - model: |
+          type user
+          type company
+            relations
+              define admin: [user] as self
+              define management: [user] as self
+              define employee: [user] as self or admin
+          type group
+            relations
+              define corp: [company] as self
+              define member as employee from corp
+          type document
+            relations
+              define viewer: [group#member] as self
+          type diagram
+            relations
+              define parent: [document] as self
+              define viewer as viewer from parent
+        tuples:
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: diagram:a
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation:
+              - document:a
+          - request:
+              user: user:anne
+              type: diagram
+              relation: viewer
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: group:fga
+                relation: corp
+                user: company:abc
+              - object: document:a
+                relation: viewer
+                user: group:fga#member
+              - object: diagram:a
+                relation: parent
+                user: document:a
+            expectation:
+              - diagram:a
+
+  - name: reverse_expand_ctx_relation_not_match
+    stages:
+      - model: |
+          type user
+          type company
+            relations
+              define admin: [user] as self
+              define management: [user] as self
+              define employee: [user] as self or admin
+          type group
+            relations
+              define observer: [company] as self
+              define owner: [company] as self
+              define admin as admin from owner
+              define member as employee from owner
+          type document
+            relations
+              define owner: [group] as self
+              define viewer as member from owner or observer from owner
+        tuples:
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: document:a
+                relation: owner
+                user: group:fga
+              - object: group:fga
+                relation: observer
+                user: company:abc
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: company:abc
+                relation: employee
+                user: user:anne
+              - object: document:a
+                relation: owner
+                user: group:fga
+              - object: group:fga
+                relation: observer
+                user: company:abc
+            expectation:
+
+  - name: exclusion_for_some_relations
+    stages:
+      - model: |
+          type user
+          type group
+            relations
+              define member: [user] as self
+          type folder
+            relations
+              define owner: [group] as self
+              define viewer as member from owner
+          type document
+            relations
+              define banned: [user] as self
+              define owner: [folder] as self
+              define viewer as viewer from owner
+              define can_view as viewer but not banned
+        tuples:
+          - user: user:anne
+            relation: member
+            object: group:fga
+          - user: group:fga
+            relation: owner
+            object: folder:a
+          - user: folder:a
+            relation: owner
+            object: document:a
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: viewer
+              object: document:a
+            expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_view
+              object: document:a
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              type: document
+              relation: viewer
+            expectation:
+              - document:a
+          - request:
+              user: user:anne
+              type: document
+              relation: can_view
+            expectation:
+              - document:a
+
+  - name: evaluate_userset_in_computed_relation_of_ttu
+    stages:
+      - model: |
+          type user
+          type repo
+            relations
+              define owner: [organization] as self
+              define reader as repo_admin from owner
+          type organization
+            relations
+              define member: [user] as self
+              define repo_admin: [organization#member] as self
+        tuples:
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:openfga#member
+            relation: repo_admin
+            object: organization:openfga
+          - user: user:erik
+            relation: member
+            object: organization:openfga
+        checkAssertions:
+          - tuple:
+              user: user:erik
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:erik
+              type: repo
+              relation: reader
+            expectation:
+              - repo:openfga/openfga

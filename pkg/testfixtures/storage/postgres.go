@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,14 +43,35 @@ func NewPostgresTestContainer() *postgresTestContainer {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // Postgres datastore engine.
 func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	require.NoError(t, err)
 
-	reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+		All: true,
+	})
 	require.NoError(t, err)
 
-	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-	require.NoError(t, err)
+	foundPostgresImage := false
+	for _, image := range allImages {
+		for _, tag := range image.RepoTags {
+			if strings.Contains(tag, postgresImage) {
+				foundPostgresImage = true
+				break
+			}
+		}
+	}
+
+	if !foundPostgresImage {
+		t.Logf("Pulling image %s", postgresImage)
+		reader, err := dockerClient.ImagePull(context.Background(), postgresImage, types.ImagePullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
 
 	containerCfg := container.Config{
 		Env: []string{
@@ -74,14 +96,16 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	stopContainer := func() {
 
-		timeout := 5 * time.Second
+		t.Logf("stopping container %s", name)
+		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, &timeout)
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop postgres container: %v", err)
 		}
 
 		dockerClient.Close()
+		t.Logf("stopped container %s", name)
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
@@ -101,11 +125,14 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	// spin up a goroutine to survive any test panics to expire/stop the running container
 	go func() {
 		time.Sleep(expireTimeout)
+		timeoutSec := 0
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, nil)
+		t.Logf("expiring container %s", name)
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to expire postgres container: %v", err)
 		}
+		t.Logf("expired container %s", name)
 	}()
 
 	t.Cleanup(func() {

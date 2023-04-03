@@ -63,7 +63,10 @@ func (s *serverHandle) Cleanup() func() {
 func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	t.Helper()
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	require.NoError(t, err)
 
 	cmd := []string{"run"}
@@ -100,14 +103,16 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 
 	stopContainer := func() {
 
-		timeout := 5 * time.Second
+		t.Logf("stopping container %s", name)
+		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(ctx, cont.ID, &timeout)
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop openfga container: %v", err)
 		}
 
 		dockerClient.Close()
+		t.Logf("stopped container %s", name)
 	}
 
 	err = dockerClient.ContainerStart(ctx, cont.ID, types.ContainerStartOptions{})
@@ -120,9 +125,13 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
 	go func() {
 		time.Sleep(2 * time.Minute)
+		timeoutSec := 0
 
+		t.Logf("expiring container %s", name)
 		// swallow the error because by this point we've terminated
-		_ = dockerClient.ContainerStop(ctx, cont.ID, nil)
+		_ = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
+
+		t.Logf("expired container %s", name)
 	}()
 
 	containerJSON, err := dockerClient.ContainerInspect(ctx, cont.ID)
@@ -1197,12 +1206,26 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 		StoreId: storeID,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
 					"viewer": {Userset: &openfgapb.Userset_This{}},
 				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+							},
+						},
+					},
+				},
 			},
 		},
+
+		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
@@ -1210,12 +1233,25 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 		StoreId: storeID,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "document",
 				Relations: map[string]*openfgapb.Userset{
 					"editor": {Userset: &openfgapb.Userset_This{}},
 				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+							},
+						},
+					},
+				},
 			},
 		},
+		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 

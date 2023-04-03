@@ -391,7 +391,34 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to unmarshal create store response")
 
 	// create an authorization model
-	authModelPayload := strings.NewReader(`{"type_definitions":[{"type":"document","relations":{"owner":{"this":{}}}}]}`)
+	authModelPayload := strings.NewReader(`{
+  "type_definitions": [
+    {
+      "type": "user",
+      "relations": {}
+    },
+    {
+      "type": "document",
+      "relations": {
+        "owner": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "owner": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "schema_version": "1.1"
+}`)
 	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/authorization-models", httpAddr, createStoreResponse.Id), authModelPayload)
 	require.NoError(t, err, "Failed to construct create authorization model request")
 	req.Header.Set("content-type", "application/json")
@@ -400,7 +427,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	require.NoError(t, err, "Failed to execute create authorization model request")
 
 	// call one streaming endpoint
-	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "anne", "relation": "owner"}`)
+	listObjectsPayload := strings.NewReader(`{"type": "document", "user": "user:anne", "relation": "owner"}`)
 	req, err = retryablehttp.NewRequest("POST", fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", httpAddr, createStoreResponse.Id), listObjectsPayload)
 	require.NoError(t, err, "Failed to construct request")
 	req.Header.Set("content-type", "application/json")
@@ -537,7 +564,9 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-	const localOIDCServerURL = "http://localhost:8083"
+
+	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
+	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
@@ -545,6 +574,8 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
+
+	oidcServerPortReleaser()
 
 	trustedIssuerServer, err := mocks.NewMockOidcServer(localOIDCServerURL)
 	require.NoError(t, err)
@@ -634,7 +665,8 @@ func TestHTTPServingTLS(t *testing.T) {
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
-		cfg.HTTP.Addr = "localhost:54672"
+		// Port for TLS cannot be 0.0.0.0
+		cfg.HTTP.Addr = strings.ReplaceAll(cfg.HTTP.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -689,12 +721,13 @@ func TestGRPCServingTLS(t *testing.T) {
 
 		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
-		cfg.GRPC.Addr = "localhost:61235" // certificate has DNS name "localhost"
 		cfg.GRPC.TLS = &TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
+		// Port for TLS cannot be 0.0.0.0
+		cfg.GRPC.Addr = strings.ReplaceAll(cfg.GRPC.Addr, "0.0.0.0", "localhost")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -861,4 +894,8 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.metrics.properties.enableRPCHistograms.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Metrics.EnableRPCHistograms)
+
+	val = res.Get("properties.trace.properties.serviceName.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 }

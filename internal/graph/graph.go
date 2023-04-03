@@ -3,6 +3,8 @@ package graph
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -78,6 +80,16 @@ type RelationshipIngress struct {
 	TuplesetRelation *openfgapb.RelationReference
 }
 
+func (r RelationshipIngress) String() string {
+	val := ""
+	if r.TuplesetRelation != nil {
+		val = fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())
+	} else {
+		val = fmt.Sprintf("ingress %s, type %s", r.Ingress.String(), r.Type.String())
+	}
+	return strings.ReplaceAll(val, "  ", " ")
+}
+
 // ConnectedObjectGraph represents a graph of relationships and the connectivity between
 // object and relation references within the graph through direct or indirect relationships.
 // The ConnectedObjectGraph should be used to introspect what kind of relationships between
@@ -126,18 +138,18 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 		return nil, err
 	}
 
-	return g.findIngressesWithRewrite(target, source, relation.GetRewrite(), visited)
+	return g.findIngressesWithTargetRewrite(target, source, relation.GetRewrite(), visited)
 }
 
-// findIngressesWithRewrite is what we use for recursive calls on the rewrites, particularly union where we don't
-// update the target and source, and only the rewrite.
-func (g *ConnectedObjectGraph) findIngressesWithRewrite(
+// findIngressesWithTargetRewrite is what we use for recursive calls on the targetRewrite, particularly union where we don't
+// update the target and source, and only the targetRewrite.
+func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	target *openfgapb.RelationReference,
 	source *openfgapb.RelationReference,
-	rewrite *openfgapb.Userset,
+	targetRewrite *openfgapb.Userset,
 	visited map[string]struct{},
 ) ([]*RelationshipIngress, error) {
-	switch t := rewrite.GetUserset().(type) {
+	switch t := targetRewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This: // e.g. define viewer:[user] as self
 		var res []*RelationshipIngress
 		directlyRelated, _ := g.typesystem.IsDirectlyRelated(target, source)
@@ -212,35 +224,68 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 				return nil, err
 			}
 
-			var directlyAssignable bool
-
-			sourceRelMatchesRewritten := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
-			if sourceRelMatchesRewritten {
-				directlyAssignable = g.typesystem.IsDirectlyAssignable(r)
-			}
-
-			// if the rewritten relation is directly assignable or matches the source, then it must
-			// be an ingress.
-			if directlyAssignable || sourceRelMatchesRewritten {
+			// if the computed relation on the tupleset is directly related to the source and computed relation,
+			// then it must be an ingress
+			//
+			// e.g. target=document#viewer, source=folder#viewer
+			//
+			// type folder
+			//   relations
+			//     define viewer: [user]
+			//
+			// type document
+			//   relations
+			//     define parent: [folder]
+			//     define viewer: viewer from parent
+			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 				})
-			}
+			} else {
+				matchesSourceType := typeRestriction.GetType() == source.GetType()
+				directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
 
-			if err == nil {
-				subResults, err := g.findIngresses(
-					typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
-					source,
-					visited,
-				)
-				if err != nil {
-					return nil, err
+				// if any of the inner type restrictions of the computed relation are related to the source, then there
+				// must be an ingress
+				//
+				// e.g. target=document#viewer, source=folder#viewer
+				//
+				// type folder
+				//   relations
+				//     define viewer: [folder]
+				//
+				// type document
+				//   relations
+				//     define parent: [folder]
+				//     define viewer: viewer from parent
+				if directlyAssignable && matchesSourceType {
+					innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
+					for _, innerRelatedTypeRestriction := range innerRelatedTypes {
+
+						if innerRelatedTypeRestriction.GetType() == source.GetType() {
+							res = append(res, &RelationshipIngress{
+								Type:             TupleToUsersetIngress,
+								Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+								TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+							})
+						}
+					}
 				}
-
-				res = append(res, subResults...)
 			}
+
+			subResults, err := g.findIngresses(
+				typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
+				source,
+				visited,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			res = append(res, subResults...)
+
 		}
 
 		return res, nil
@@ -248,7 +293,7 @@ func (g *ConnectedObjectGraph) findIngressesWithRewrite(
 		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
 			// we recurse through each child rewrite
-			childResults, err := g.findIngressesWithRewrite(target, source, child, visited)
+			childResults, err := g.findIngressesWithTargetRewrite(target, source, child, visited)
 			if err != nil {
 				return nil, err
 			}

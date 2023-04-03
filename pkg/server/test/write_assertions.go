@@ -10,15 +10,19 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
-		_name   string
-		request *openfgapb.WriteAssertionsRequest
-		err     error
+		_name         string
+		request       *openfgapb.WriteAssertionsRequest
+		allowSchema10 bool
+		assertModel10 bool
+		err           error
 	}
 
 	store := testutils.CreateRandomString(10)
@@ -27,15 +31,40 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		StoreId: store,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
 			{
+				Type: "user",
+			},
+			{
 				Type: "repo",
 				Relations: map[string]*openfgapb.Userset{
-					"reader": {Userset: &openfgapb.Userset_This{}},
-					"can_read": {
-						Userset: &openfgapb.Userset_ComputedUserset{
-							ComputedUserset: &openfgapb.ObjectRelation{
-								Relation: "reader",
+					"reader":   {Userset: &openfgapb.Userset_This{}},
+					"can_read": typesystem.ComputedUserset("reader"),
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
 							},
-						}},
+						},
+					},
+				},
+			},
+		},
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	}
+
+	githubModelReq10 := &openfgapb.WriteAuthorizationModelRequest{
+		SchemaVersion: typesystem.SchemaVersion1_0,
+		StoreId:       store,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "repo",
+				Relations: map[string]*openfgapb.Userset{
+					"reader":   typesystem.This(),
+					"can_read": typesystem.ComputedUserset("reader"),
 				},
 			},
 		},
@@ -47,11 +76,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "reader",
-						User:     "elbuo",
-					},
+					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -61,11 +86,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgapb.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{{
-					TupleKey: &openfgapb.TupleKey{
-						Object:   "repo:test",
-						Relation: "can_read",
-						User:     "elbuo",
-					},
+					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -83,33 +104,48 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				StoreId: store,
 				Assertions: []*openfgapb.Assertion{
 					{
-						TupleKey: &openfgapb.TupleKey{
-							Object:   "repo:test",
-							Relation: "invalidrelation",
-							User:     "elbuo",
-						},
+						TupleKey:    tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
 						Expectation: false,
 					},
 				},
 			},
 			err: serverErrors.ValidationError(fmt.Errorf("relation 'repo#invalidrelation' not found")),
 		},
+		{
+			_name: "writing_assertions_obsolete",
+			request: &openfgapb.WriteAssertionsRequest{
+				StoreId: store,
+				Assertions: []*openfgapb.Assertion{{
+					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+					Expectation: false,
+				}},
+			},
+			assertModel10: true,
+			allowSchema10: false,
+			err:           serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel),
+		},
 	}
 
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
-	modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, githubModelReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	for _, test := range tests {
+
 		t.Run(test._name, func(t *testing.T) {
-			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			model := githubModelReq
+			if test.assertModel10 {
+				model = githubModelReq10
+			}
+
+			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger, true).Execute(ctx, model)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := commands.NewWriteAssertionsCommand(datastore, logger, test.allowSchema10)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
-			_, err := cmd.Execute(ctx, test.request)
+			_, err = cmd.Execute(ctx, test.request)
 			require.ErrorIs(t, test.err, err)
 		})
 	}

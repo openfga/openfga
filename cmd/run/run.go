@@ -161,6 +161,7 @@ type TraceConfig struct {
 	Enabled     bool
 	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
 	SampleRatio float64
+	ServiceName string
 }
 
 type OTLPTraceConfig struct {
@@ -213,6 +214,12 @@ type Config struct {
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
+
+	// AllowWriting1_0Models allows writing of model with schema 1.0
+	AllowWriting1_0Models bool
+
+	// AllowEvaluating1_0Models allows evaluating of model with schema 1.0
+	AllowEvaluating1_0Models bool
 
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
@@ -268,6 +275,7 @@ func DefaultConfig() *Config {
 				Endpoint: "0.0.0.0:4317",
 			},
 			SampleRatio: 0.2,
+			ServiceName: "openfga",
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -282,6 +290,20 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
+		AllowWriting1_0Models:    false,
+		AllowEvaluating1_0Models: false,
+	}
+}
+
+// TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
+// It is the responsibility of the caller to call the release function.
+func TCPRandomPort() (int, func()) {
+	l, err := net.Listen("tcp", "")
+	if err != nil {
+		panic(err)
+	}
+	return l.Addr().(*net.TCPAddr).Port, func() {
+		l.Close()
 	}
 }
 
@@ -294,19 +316,10 @@ func MustDefaultConfigWithRandomPorts() *Config {
 	config.Playground.Enabled = false
 	config.Metrics.Enabled = false
 
-	l, err := net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	httpPort := l.Addr().(*net.TCPAddr).Port
-
-	l, err = net.Listen("tcp", "")
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-	grpcPort := l.Addr().(*net.TCPAddr).Port
+	httpPort, httpPortReleaser := TCPRandomPort()
+	defer httpPortReleaser()
+	grpcPort, grpcPortReleaser := TCPRandomPort()
+	defer grpcPortReleaser()
 
 	config.GRPC.Addr = fmt.Sprintf("0.0.0.0:%d", grpcPort)
 	config.HTTP.Addr = fmt.Sprintf("0.0.0.0:%d", httpPort)
@@ -407,7 +420,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.SampleRatio)
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -468,14 +481,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		grpc_validator.UnaryServerInterceptor(),
 		requestid.NewUnaryInterceptor(),
+		grpc_validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
-		grpc_validator.StreamServerInterceptor(),
 		requestid.NewStreamingInterceptor(),
+		grpc_validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
@@ -566,11 +579,13 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:       config.ResolveNodeLimit,
-		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
-		ListObjectsDeadline:    config.ListObjectsDeadline,
-		ListObjectsMaxResults:  config.ListObjectsMaxResults,
-		Experimentals:          experimentals,
+		ResolveNodeLimit:         config.ResolveNodeLimit,
+		ChangelogHorizonOffset:   config.ChangelogHorizonOffset,
+		ListObjectsDeadline:      config.ListObjectsDeadline,
+		ListObjectsMaxResults:    config.ListObjectsMaxResults,
+		Experimentals:            experimentals,
+		AllowEvaluating1_0Models: config.AllowEvaluating1_0Models,
+		AllowWriting1_0Models:    config.AllowWriting1_0Models,
 	})
 
 	logger.Info(

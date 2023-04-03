@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,14 +39,35 @@ func NewMySQLTestContainer() *mySQLTestContainer {
 // bootstrapped implementation of the DatastoreTestContainer interface wired up for the
 // MySQL datastore engine.
 func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestContainer {
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	require.NoError(t, err)
 
-	reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
+	allImages, err := dockerClient.ImageList(context.Background(), types.ImageListOptions{
+		All: true,
+	})
 	require.NoError(t, err)
 
-	_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
-	require.NoError(t, err)
+	foundMysqlImage := false
+	for _, image := range allImages {
+		for _, tag := range image.RepoTags {
+			if strings.Contains(tag, mySQLImage) {
+				foundMysqlImage = true
+				break
+			}
+		}
+	}
+
+	if !foundMysqlImage {
+		t.Logf("Pulling image %s", mySQLImage)
+		reader, err := dockerClient.ImagePull(context.Background(), mySQLImage, types.ImagePullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
 
 	containerCfg := container.Config{
 		Env: []string{
@@ -70,14 +92,16 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	stopContainer := func() {
 
-		timeout := 5 * time.Second
+		t.Logf("stopping container %s", name)
+		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, &timeout)
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to stop mysql container: %v", err)
 		}
 
 		dockerClient.Close()
+		t.Logf("stopped container %s", name)
 	}
 
 	err = dockerClient.ContainerStart(context.Background(), cont.ID, types.ContainerStartOptions{})
@@ -97,11 +121,14 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	// spin up a goroutine to survive any test panics to expire/stop the running container
 	go func() {
 		time.Sleep(expireTimeout)
+		timeoutSec := 0
 
-		err := dockerClient.ContainerStop(context.Background(), cont.ID, nil)
+		t.Logf("expiring container %s", name)
+		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Fatalf("failed to expire mysql container: %v", err)
 		}
+		t.Logf("expired container %s", name)
 	}()
 
 	t.Cleanup(func() {

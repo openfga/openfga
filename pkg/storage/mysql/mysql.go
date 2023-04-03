@@ -293,8 +293,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
-		Where(sq.Eq{"user_type": tupleUtils.UserSet}).
-		OrderBy("ulid")
+		Where(sq.Eq{"user_type": tupleUtils.UserSet})
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
