@@ -97,7 +97,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to stop mysql container: %v", err)
+			t.Logf("failed to stop mysql container: %v", err)
 		}
 
 		dockerClient.Close()
@@ -126,7 +126,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 		t.Logf("expiring container %s", name)
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to expire mysql container: %v", err)
+			t.Logf("failed to expire mysql container: %v", err)
 		}
 		t.Logf("expired container %s", name)
 	}()

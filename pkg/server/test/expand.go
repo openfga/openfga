@@ -1989,7 +1989,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			// assert
 			if diff := cmp.Diff(test.expected, got, protocmp.Transform()); diff != "" {
-				t.Fatalf("%s: Execute() (-want, +got):\n%s", test.name, diff)
+				t.Errorf("mismatch (-want, +got):\n%s", diff)
 			}
 		})
 	}
