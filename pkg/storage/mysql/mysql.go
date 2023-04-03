@@ -113,14 +113,14 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, storage.PaginationOptions{})
+	return m.read(ctx, store, tupleKey, false, storage.PaginationOptions{})
 }
 
 func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, opts)
+	iter, err := m.read(ctx, store, tupleKey, true, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -129,7 +129,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, requiresOrder bool, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 

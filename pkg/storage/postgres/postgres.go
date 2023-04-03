@@ -114,14 +114,14 @@ func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.T
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
 
-	return p.read(ctx, store, tupleKey, storage.PaginationOptions{})
+	return p.read(ctx, store, tupleKey, false, storage.PaginationOptions{})
 }
 
 func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "postgres.ReadPage")
 	defer span.End()
 
-	iter, err := p.read(ctx, store, tupleKey, opts)
+	iter, err := p.read(ctx, store, tupleKey, true, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -130,15 +130,23 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	return iter.ToArray(opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, requiresOrder bool, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
-	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
-		From("tuple").
-		Where(sq.Eq{"store": store}).
-		OrderBy("ulid")
+	var sb sq.SelectBuilder
+	if requiresOrder {
+		sb = p.stbl.
+			Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+			From("tuple").
+			Where(sq.Eq{"store": store}).
+			OrderBy("ulid")
+	} else {
+		sb = p.stbl.
+			Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+			From("tuple").
+			Where(sq.Eq{"store": store})
+	}
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	if objectType != "" {
