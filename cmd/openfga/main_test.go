@@ -63,7 +63,10 @@ func (s *serverHandle) Cleanup() func() {
 func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	t.Helper()
 
-	dockerClient, err := client.NewClientWithOpts(client.FromEnv)
+	dockerClient, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
 	require.NoError(t, err)
 
 	cmd := []string{"run"}
@@ -101,9 +104,9 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	stopContainer := func() {
 
 		t.Logf("stopping container %s", name)
-		timeout := 5 * time.Second
+		timeoutSec := 5
 
-		err := dockerClient.ContainerStop(ctx, cont.ID, &timeout)
+		err := dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
 			t.Logf("failed to stop openfga container: %v", err)
 		}
@@ -122,10 +125,11 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	// spin up a goroutine to survive any test panics or terminations to expire/stop the running container
 	go func() {
 		time.Sleep(2 * time.Minute)
+		timeoutSec := 0
 
 		t.Logf("expiring container %s", name)
 		// swallow the error because by this point we've terminated
-		_ = dockerClient.ContainerStop(ctx, cont.ID, nil)
+		_ = dockerClient.ContainerStop(ctx, cont.ID, container.StopOptions{Timeout: &timeoutSec})
 
 		t.Logf("expired container %s", name)
 	}()
