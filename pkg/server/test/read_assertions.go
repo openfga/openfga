@@ -8,6 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -41,18 +42,11 @@ func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.StoreId = store
 			actualResponse, actualError := query.Execute(ctx, test.request.StoreId, test.request.AuthorizationModelId)
 
-			if test.expectedError != nil && test.expectedError.Error() != actualError.Error() {
-				t.Fatalf("expected '%s', got '%s'", test.expectedError, actualError)
-			}
-
-			if test.expectedResponse != nil {
-				if actualError != nil {
-					t.Fatalf("expected nil, got '%s'", actualError)
-				}
-
-				if actualResponse == nil {
-					t.Fatalf("expected '%s', got nil", test.expectedResponse)
-				}
+			if test.expectedError != nil {
+				require.ErrorIs(t, actualError, test.expectedError)
+			} else {
+				require.NoError(t, actualError)
+				require.Equal(t, test.expectedResponse, actualResponse)
 			}
 		})
 	}
