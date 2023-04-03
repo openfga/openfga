@@ -7,6 +7,7 @@ import (
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/assets"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -98,16 +99,14 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 		TypeDefinitions: parser.MustParse(model),
 	})
 	require.NoError(t, err)
+	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
 	_, err = client.Check(ctx, &openfgapb.CheckRequest{
 		StoreId:              storeID,
 		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
-		AuthorizationModelId: "01GS89AJC3R3PFQ9BNY5ZF6Q97",
+		AuthorizationModelId: badModelID,
 	})
 
-	require.Error(t, err)
-	e, ok := status.FromError(err)
-	require.True(t, ok)
-	require.Equal(t, int(openfgapb.ErrorCode_authorization_model_not_found), int(e.Code()))
+	require.ErrorIs(t, err, serverErrors.AuthorizationModelNotFound(badModelID))
 }
 
 func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {

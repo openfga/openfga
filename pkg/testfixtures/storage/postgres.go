@@ -101,7 +101,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to stop postgres container: %v", err)
+			t.Logf("failed to stop postgres container: %v", err)
 		}
 
 		dockerClient.Close()
@@ -130,7 +130,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 		t.Logf("expiring container %s", name)
 		err := dockerClient.ContainerStop(context.Background(), cont.ID, container.StopOptions{Timeout: &timeoutSec})
 		if err != nil && !client.IsErrNotFound(err) {
-			t.Fatalf("failed to expire postgres container: %v", err)
+			t.Logf("failed to expire postgres container: %v", err)
 		}
 		t.Logf("expired container %s", name)
 	}()

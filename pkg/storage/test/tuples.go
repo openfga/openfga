@@ -47,7 +47,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
 		changes, continuationToken, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{
@@ -66,7 +66,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -126,7 +126,7 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 }
@@ -219,22 +219,22 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(gotTuple.Key, tuple1, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tuple1, gotTuple.Key, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple2)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(gotTuple.Key, tuple2, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tuple2, gotTuple.Key, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple3)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(gotTuple.Key, tuple3, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tuple3, gotTuple.Key, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -303,8 +303,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		require.Len(t, gotTupleKeys, 3)
 
-		if diff := cmp.Diff(gotTupleKeys, tks[:3], cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tks[:3], gotTupleKeys, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -348,7 +348,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		expected := tuple.NewTupleKey("document:1", "viewer", "group:eng#member")
 		if diff := cmp.Diff(expected, gotTk, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		_, err = iter.Next()
@@ -390,7 +390,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
 		}
 		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		_, err = iter.Next()
@@ -426,7 +426,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		expected := tuple.NewTupleKey("document:1", "viewer", "user:*")
 		if diff := cmp.Diff(expected, got, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		_, err = iter.Next()
@@ -468,7 +468,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 		}
 		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
-			require.FailNowf(t, "mismatch (-got +want):\n%s", diff)
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
 		_, err = iter.Next()
@@ -491,8 +491,8 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Len(t, tuples0, 1)
 		require.NotEmpty(t, contToken0)
 
-		if diff := cmp.Diff(tuples0[0].Key, tk0, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tk0, tuples0[0].Key, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
 		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
@@ -500,8 +500,8 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Len(t, tuples1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tuples1[0].Key, tk1, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tk1, tuples1[0].Key, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -525,8 +525,8 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Len(t, tuple0, 1)
 		require.NotEmpty(t, contToken0)
 
-		if diff := cmp.Diff(tuple0[0].Key, tk0, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tk0, tuple0[0].Key, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
 		tuple1, contToken1, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
@@ -534,8 +534,8 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Len(t, tuple1, 1)
 		require.Empty(t, contToken1)
 
-		if diff := cmp.Diff(tuple1[0].Key, tk1, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(tk1, tuple1[0].Key, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
