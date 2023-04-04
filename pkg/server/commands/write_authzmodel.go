@@ -38,9 +38,8 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	}
 
 	// Fill in the schema version for old requests, which don't contain it, while we migrate to the new schema version.
-	// In the future mark this field as required in the protobufs.
 	if req.SchemaVersion == "" {
-		req.SchemaVersion = typesystem.SchemaVersion1_0
+		req.SchemaVersion = typesystem.SchemaVersion1_1
 	}
 
 	if ProhibitModel1_0(req.SchemaVersion, w.allowSchema10) {

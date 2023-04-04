@@ -3,6 +3,8 @@ package utils
 import (
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // Test the resolution metadata by ensuring whether forking keeps new db counter and allows using of the same counter
@@ -27,7 +29,6 @@ func TestResolutionMetadata(t *testing.T) {
 	}
 
 	wg.Wait()
-	if resolutionCounter.GetResolve() != numResolve {
-		t.Errorf("Expect resolve call to be %d, actual %d", numResolve, resolutionCounter.GetResolve())
-	}
+
+	require.EqualValues(t, numResolve, resolutionCounter.GetResolve())
 }
