@@ -34,7 +34,7 @@ func (s *pingService) PingStream(ss testpb.TestService_PingStreamServer) error {
 func TestRequestIDTestSuite(t *testing.T) {
 	s := &RequestIDTestSuite{
 		InterceptorTestSuite: &testpb.InterceptorTestSuite{
-			TestService: &pingService{&testpb.TestPingService{T: t}, t},
+			TestService: &pingService{&testpb.TestPingService{}, t},
 			ServerOpts: []grpc.ServerOption{
 				grpc.UnaryInterceptor(NewUnaryInterceptor()),
 				grpc.StreamInterceptor(NewStreamingInterceptor()),
