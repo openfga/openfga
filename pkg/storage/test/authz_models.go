@@ -31,8 +31,8 @@ func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGAD
 		got, err := datastore.ReadAuthorizationModel(ctx, storeID, model.Id)
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(got, model, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+		if diff := cmp.Diff(model, got, cmpOpts...); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -94,7 +94,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	require.NotEmpty(t, continuationToken)
 
 	if diff := cmp.Diff(model2, models[0], cmpOpts...); diff != "" {
-		t.Fatalf("mismatch (-got +want):\n%s", diff)
+		t.Fatalf("mismatch (-want +got):\n%s", diff)
 	}
 
 	models, continuationToken, err = datastore.ReadAuthorizationModels(ctx, store, storage.PaginationOptions{
@@ -106,7 +106,7 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	require.Empty(t, continuationToken)
 
 	if diff := cmp.Diff(model1, models[0], cmpOpts...); diff != "" {
-		t.Fatalf("mismatch (-got +want):\n%s", diff)
+		t.Fatalf("mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -199,7 +199,7 @@ func ReadTypeDefinitionTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(model.TypeDefinitions[0], typeDef, cmpOpts...); diff != "" {
-			t.Errorf("mismatch (-got +want):\n%s", diff)
+			t.Errorf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 }

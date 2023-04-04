@@ -11,6 +11,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -40,25 +41,15 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		t.Run(test._name, func(t *testing.T) {
 
 			query := commands.NewGetStoreQuery(datastore, logger)
-			actualResponse, actualError := query.Execute(ctx, test.request)
+			resp, err := query.Execute(ctx, test.request)
 
 			if test.err != nil {
-				if actualError == nil {
-					t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
-				}
-				if test.err.Error() != actualError.Error() {
-					t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, actualError)
-				}
-			}
-			if test.err == nil && actualError != nil {
-				t.Errorf("[%s] Did not expect an error but got one: %v", test._name, actualError)
-			}
-
-			if actualResponse == nil && test.err == nil {
-				t.Errorf("[%s] Expected non nil response, got nil", test._name)
+				require.ErrorIs(t, err, test.err)
+				require.Nil(t, resp)
 			} else {
-				if diff := cmp.Diff(actualResponse, test.expectedResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
-					t.Errorf("[%s] store mismatch (-got +want):\n%s", test._name, diff)
+				require.NoError(t, err)
+				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+					t.Errorf("store mismatch (-want +got):\n%s", diff)
 				}
 			}
 		})
@@ -66,9 +57,6 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 }
 
 func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
-
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
@@ -76,22 +64,21 @@ func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 
 	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
-	if err != nil {
-		t.Fatalf("Error creating store: %v", err)
-	}
+	require.NoError(t, err)
+
 	query := commands.NewGetStoreQuery(datastore, logger)
 	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
-
-	if actualError != nil {
-		t.Errorf("Expected no error, but got %v", actualError)
-	}
+	require.NoError(t, actualError)
 
 	expectedResponse := &openfgapb.GetStoreResponse{
 		Id:   createStoreResponse.Id,
 		Name: store,
 	}
 
-	if diff := cmp.Diff(actualResponse, expectedResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("unexpected result (-got +want):\n%s", diff)
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+
+	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }

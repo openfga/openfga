@@ -336,7 +336,7 @@ no tuple key instead.
         --datastore-engine string   (required) the database engine to run the migrations for
         --datastore-uri string      (required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')
     -h, --help                      help for migrate
-        --version uint              the version to migrate to. If omitted, the latest version of the schema will be used
+        --version uint              the version to migrate to (if omitted the latest schema will be used)
   ```
 
 ## [0.1.6] - 2022-07-27

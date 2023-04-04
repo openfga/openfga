@@ -66,8 +66,8 @@ func TestCombinedIterator(t *testing.T) {
 		testutils.TupleKeyCmpTransformer,
 	}
 
-	if diff := cmp.Diff(actual, expected, cmpOpts...); diff != "" {
-		t.Fatalf("mismatch (-got +want):\n%s", diff)
+	if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
+		t.Fatalf("mismatch (-want +got):\n%s", diff)
 	}
 }
 
