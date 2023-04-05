@@ -20,11 +20,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type individualTest struct {
+	Name   string
+	Stages []*stage
+}
+
 type listObjectTests struct {
-	Tests []struct {
-		Name   string
-		Stages []*stage
-	}
+	Tests []individualTest
+}
+
+type testParams struct {
+	schemaVersion string
+	client        ClientInterface
 }
 
 // stage is a stage of a test. All stages will be run in a single store.
@@ -70,16 +77,17 @@ func testListObjects(t *testing.T, client ClientInterface) {
 }
 
 func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
-	runTests(t, typesystem.SchemaVersion1_1, client)
+	runTests(t, testParams{typesystem.SchemaVersion1_1, client})
 }
 
 func runSchema1_0ListObjectsTests(t *testing.T, client ClientInterface) {
-	runTests(t, typesystem.SchemaVersion1_0, client)
+	runTests(t, testParams{typesystem.SchemaVersion1_0, client})
 }
 
-func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
+func runTests(t *testing.T, params testParams) {
 	var b []byte
 	var err error
+	schemaVersion := params.schemaVersion
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	} else {
@@ -91,128 +99,153 @@ func runTests(t *testing.T, schemaVersion string, client ClientInterface) {
 	err = yaml.Unmarshal(b, &testCases)
 	require.NoError(t, err)
 
-	ctx := context.Background()
 	for _, test := range testCases.Tests {
 		test := test
+		runTest(t, test, params, false)
+		runTest(t, test, params, true)
 
-		t.Run(test.Name, func(t *testing.T) {
-			t.Parallel()
-			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: test.Name})
+	}
+}
+
+func runTest(t *testing.T, test individualTest, params testParams, contextTupleTest bool) {
+	schemaVersion := params.schemaVersion
+	client := params.client
+	ctx := context.Background()
+	name := test.Name
+
+	if contextTupleTest {
+		name += "_ctxTuples"
+	}
+
+	t.Run(name, func(t *testing.T) {
+		if contextTupleTest && len(test.Stages) > 1 {
+			// we don't want to run special contextual tuples test for these cases
+			// as multi-stages test has expectation tuples are in system
+			t.Skipf("multi-stages test has expectation tuples are in system")
+		}
+
+		t.Parallel()
+		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: name})
+		require.NoError(t, err)
+
+		storeID := resp.GetId()
+
+		for _, stage := range test.Stages {
+			// arrange: write model
+			var typedefs []*pb.TypeDefinition
+			if schemaVersion == typesystem.SchemaVersion1_1 {
+				typedefs = parser.MustParse(stage.Model)
+
+			} else {
+				typedefs = v1parser.MustParse(stage.Model)
+			}
+
+			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				SchemaVersion:   schemaVersion,
+				TypeDefinitions: typedefs,
+			})
 			require.NoError(t, err)
 
-			storeID := resp.GetId()
-
-			for _, stage := range test.Stages {
-				// arrange: write model
-				var typedefs []*pb.TypeDefinition
-				if schemaVersion == typesystem.SchemaVersion1_1 {
-					typedefs = parser.MustParse(stage.Model)
-
-				} else {
-					typedefs = v1parser.MustParse(stage.Model)
-				}
-
-				_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
-					StoreId:         storeID,
-					SchemaVersion:   schemaVersion,
-					TypeDefinitions: typedefs,
+			// arrange: write tuples
+			if len(stage.Tuples) > 0 && !contextTupleTest {
+				_, err = client.Write(ctx, &pb.WriteRequest{
+					StoreId: storeID,
+					Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
 				})
 				require.NoError(t, err)
+			}
 
-				// arrange: write tuples
-				if len(stage.Tuples) > 0 {
-					_, err = client.Write(ctx, &pb.WriteRequest{
-						StoreId: storeID,
-						Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
-					})
-					require.NoError(t, err)
+			for _, assertion := range stage.ListObjectAssertions {
+				detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
+
+				ctxTuples := assertion.ContextualTuples
+				if contextTupleTest {
+					ctxTuples = append(ctxTuples, stage.Tuples...)
 				}
 
-				for _, assertion := range stage.ListObjectAssertions {
-					// assert 1: on regular list objects endpoint
-					detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
+				// assert 1: on regular list objects endpoint
+				resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
+					StoreId:  storeID,
+					Type:     assertion.Request.Type,
+					Relation: assertion.Request.Relation,
+					User:     assertion.Request.User,
+					ContextualTuples: &pb.ContextualTupleKeys{
+						TupleKeys: ctxTuples,
+					},
+				})
 
-					resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
-						StoreId:  storeID,
-						Type:     assertion.Request.Type,
-						Relation: assertion.Request.Relation,
-						User:     assertion.Request.User,
-						ContextualTuples: &pb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
-					})
-
-					if assertion.ErrorCode == 0 {
-						require.NoError(t, err)
-						require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
-
-					} else {
-						require.Error(t, err)
-						e, ok := status.FromError(err)
-						require.True(t, ok)
-						require.Equal(t, assertion.ErrorCode, int(e.Code()))
-					}
-
-					// assert 2: on streaming list objects endpoint
-					done := make(chan struct{})
-					var streamedObjectIds []string
-
-					clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
-						StoreId:  storeID,
-						Type:     assertion.Request.Type,
-						Relation: assertion.Request.Relation,
-						User:     assertion.Request.User,
-						ContextualTuples: &pb.ContextualTupleKeys{
-							TupleKeys: assertion.ContextualTuples,
-						},
-					}, []grpc.CallOption{}...)
+				if assertion.ErrorCode == 0 {
 					require.NoError(t, err)
+					require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
 
-					var streamingErr error
-					var streamingResp *pb.StreamedListObjectsResponse
-					go func() {
-						for {
-							streamingResp, streamingErr = clientStream.Recv()
-							if streamingErr == nil {
-								streamedObjectIds = append(streamedObjectIds, streamingResp.Object)
-							} else {
-								if errors.Is(streamingErr, io.EOF) {
-									streamingErr = nil
-								}
-								break
+				} else {
+					require.Error(t, err)
+					e, ok := status.FromError(err)
+					require.True(t, ok)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+				}
+
+				// assert 2: on streaming list objects endpoint
+				done := make(chan struct{})
+				var streamedObjectIds []string
+
+				clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
+					StoreId:  storeID,
+					Type:     assertion.Request.Type,
+					Relation: assertion.Request.Relation,
+					User:     assertion.Request.User,
+					ContextualTuples: &pb.ContextualTupleKeys{
+						TupleKeys: ctxTuples,
+					},
+				}, []grpc.CallOption{}...)
+				require.NoError(t, err)
+
+				var streamingErr error
+				var streamingResp *pb.StreamedListObjectsResponse
+				go func() {
+					for {
+						streamingResp, streamingErr = clientStream.Recv()
+						if streamingErr == nil {
+							streamedObjectIds = append(streamedObjectIds, streamingResp.Object)
+						} else {
+							if errors.Is(streamingErr, io.EOF) {
+								streamingErr = nil
 							}
-
+							break
 						}
-						done <- struct{}{}
-					}()
-					<-done
 
-					if assertion.ErrorCode == 0 {
-						require.NoError(t, streamingErr)
-						require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
-					} else {
-						require.Error(t, streamingErr)
-						e, ok := status.FromError(streamingErr)
-						require.True(t, ok)
-						require.Equal(t, assertion.ErrorCode, int(e.Code()))
 					}
+					done <- struct{}{}
+				}()
+				<-done
 
-					if assertion.ErrorCode == 0 {
-						// assert 3: each object in the response of ListObjects should return check -> true
-						for _, object := range resp.Objects {
-							checkResp, err := client.Check(ctx, &pb.CheckRequest{
-								StoreId:  storeID,
-								TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-								ContextualTuples: &pb.ContextualTupleKeys{
-									TupleKeys: assertion.ContextualTuples,
-								},
-							})
-							require.NoError(t, err)
-							require.True(t, checkResp.Allowed)
-						}
+				if assertion.ErrorCode == 0 {
+					require.NoError(t, streamingErr)
+					require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
+				} else {
+					require.Error(t, streamingErr)
+					e, ok := status.FromError(streamingErr)
+					require.True(t, ok)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+				}
+
+				if assertion.ErrorCode == 0 {
+					// assert 3: each object in the response of ListObjects should return check -> true
+					for _, object := range resp.Objects {
+						checkResp, err := client.Check(ctx, &pb.CheckRequest{
+							StoreId:  storeID,
+							TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+							ContextualTuples: &pb.ContextualTupleKeys{
+								TupleKeys: ctxTuples,
+							},
+						})
+						require.NoError(t, err)
+						require.True(t, checkResp.Allowed)
 					}
 				}
 			}
-		})
-	}
+		}
+	})
+
 }

@@ -5,3 +5,7 @@ ignore:
   - "tests"
   # the following folder contains helper test code
   - "pkg/testfixtures/storage"
+coverage:
+  range: 60..75
+  round: up
+  precision: 2

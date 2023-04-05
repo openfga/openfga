@@ -395,24 +395,14 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.response.Tuples != nil {
-				if len(test.response.Tuples) != len(resp.Tuples) {
-					t.Errorf("[%s] Expected response tuples length to be %d, actual %d", test._name, len(test.response.Tuples), len(resp.Tuples))
-				}
+				require.Equal(len(test.response.Tuples), len(resp.Tuples))
 
 				for i, responseTuple := range test.response.Tuples {
 					responseTupleKey := responseTuple.Key
 					actualTupleKey := resp.Tuples[i].Key
-					if responseTupleKey.Object != actualTupleKey.Object {
-						t.Errorf("[%s] Expected response tuple object at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Object, actualTupleKey.Object)
-					}
-
-					if responseTupleKey.Relation != actualTupleKey.Relation {
-						t.Errorf("[%s] Expected response tuple relation at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.Relation, actualTupleKey.Relation)
-					}
-
-					if responseTupleKey.User != actualTupleKey.User {
-						t.Errorf("[%s] Expected response tuple user at index %d length to be '%s', actual %s", test._name, i, responseTupleKey.User, actualTupleKey.User)
-					}
+					require.Equal(responseTupleKey.Object, actualTupleKey.Object)
+					require.Equal(responseTupleKey.Relation, actualTupleKey.Relation)
+					require.Equal(responseTupleKey.User, actualTupleKey.User)
 				}
 			}
 		})
@@ -632,7 +622,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	if diff := cmp.Diff(writes, receivedTuples, cmpOpts...); diff != "" {
-		t.Errorf("Tuple mismatch (-got +want):\n%s", diff)
+		t.Errorf("Tuple mismatch (-want +got):\n%s", diff)
 	}
 }
 

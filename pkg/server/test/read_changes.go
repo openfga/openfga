@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -211,38 +210,31 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 	var res *openfgapb.ReadChangesResponse
 	var err error
 	for i, test := range testCasesInOrder {
-		if i >= 1 {
-			previousTest := testCasesInOrder[i-1]
-			if previousTest.saveContinuationTokenForNextTest {
-				previousToken := res.ContinuationToken
-				test.request.ContinuationToken = previousToken
+		t.Run(test._name, func(t *testing.T) {
+			if i >= 1 {
+				previousTest := testCasesInOrder[i-1]
+				if previousTest.saveContinuationTokenForNextTest {
+					previousToken := res.ContinuationToken
+					test.request.ContinuationToken = previousToken
+				}
 			}
-		}
-		res, err = readChangesQuery.Execute(ctx, test.request)
+			res, err = readChangesQuery.Execute(ctx, test.request)
 
-		if test.expectedError == nil && err != nil {
-			t.Errorf("[%s] Expected no error but got '%s'", test._name, err)
-		}
-
-		if test.expectedError != nil && err == nil {
-			t.Errorf("[%s] Expected an error '%s' but got nothing", test._name, test.expectedError)
-		}
-
-		if test.expectedError != nil && err != nil && !strings.Contains(test.expectedError.Error(), err.Error()) {
-			t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.expectedError, err)
-		}
-
-		if res != nil {
-			if diff := cmp.Diff(res.Changes, test.expectedChanges, ignoreStateOpts, ignoreTimestampOpts, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("[%s] tuple change mismatch (-got +want):\n%s", test._name, diff)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, res)
+				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreStateOpts, ignoreTimestampOpts, cmpopts.EquateEmpty()); diff != "" {
+					t.Errorf("tuple change mismatch (-want +got):\n%s", diff)
+				}
+				if test.expectEmptyContinuationToken {
+					require.Empty(t, res.ContinuationToken)
+				} else {
+					require.NotEmpty(t, res.ContinuationToken)
+				}
 			}
-			if test.expectEmptyContinuationToken && res.ContinuationToken != "" {
-				t.Errorf("[%s] continuation token mismatch. Expected empty, got %v", test._name, res.ContinuationToken)
-			}
-			if !test.expectEmptyContinuationToken && res.ContinuationToken == "" {
-				t.Errorf("[%s] continuation token mismatch. Expected not empty, got empty", test._name)
-			}
-		}
+		})
 	}
 }
 
