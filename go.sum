@@ -100,6 +100,8 @@ github.com/cncf/xds/go v0.0.0-20211011173535-cb28da3451f1/go.mod h1:eXthEFrGJvWH
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/craigpastro/openfga-dsl-parser v0.1.1 h1:JNuM1hiFprTGC2E25FOFh2HdeTmjIfMpm2pfQ/EBPtw=
 github.com/craigpastro/openfga-dsl-parser v0.1.1/go.mod h1:ZPAN95jyrvY6/Z4SInS8uwA+a4D2UwEyaX+nRhmclK8=
+github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86 h1:FzD1FL19a/u+zHzaCeV9apQsJUQAbwG6KCqTzsfbymo=
+github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86/go.mod h1:plNzIR6DwTdb1CInxHaMfoq55vNmCII4yVgfI2hcTOw=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230403164235-b7cfde6a2253 h1:A9mtMpLedx85wRZPusnd/US6RL/6xl41fu34MTqTUQA=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230403164235-b7cfde6a2253/go.mod h1:akhSo8Ivtx3yAP4Gr6cOqiKl2pHie4CxuDgP6ku46Ds=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
