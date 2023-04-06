@@ -12,10 +12,9 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/common"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -37,7 +36,7 @@ type Postgres struct {
 
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
-func New(uri string, cfg *common.Config) (*Postgres, error) {
+func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
@@ -104,10 +103,10 @@ func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectTy
 		}).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLObjectIterator(rows), nil
+	return sqlcommon.NewSQLObjectIterator(rows), nil
 }
 
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -136,7 +135,7 @@ func (p *Postgres) ReadPage(ctx context.Context, store string, tupleKey *openfga
 	return iter.ToArray(opts)
 }
 
-func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.read")
 	defer span.End()
 
@@ -162,7 +161,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, err
 		}
@@ -174,10 +173,10 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -189,82 +188,7 @@ func (p *Postgres) Write(ctx context.Context, store string, deletes storage.Dele
 	}
 
 	now := time.Now().UTC()
-	txn, err := p.db.BeginTx(ctx, nil)
-	if err != nil {
-		return common.HandleSQLError(err)
-	}
-	defer func() {
-		_ = txn.Rollback()
-	}()
-
-	changelogBuilder := p.stbl.
-		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
-
-	deleteBuilder := p.stbl.Delete("tuple")
-
-	for _, tk := range deletes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		res, err := deleteBuilder.
-			Where(sq.Eq{
-				"store":       store,
-				"object_type": objectType,
-				"object_id":   objectID,
-				"relation":    tk.GetRelation(),
-				"_user":       tk.GetUser(),
-				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-			}).
-			RunWith(txn). // Part of a txn
-			ExecContext(ctx)
-		if err != nil {
-			return common.HandleSQLError(err, tk)
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-		}
-
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, "NOW()")
-	}
-
-	insertBuilder := p.stbl.
-		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
-
-	for _, tk := range writes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, "NOW()").
-			RunWith(txn). // Part of a txn
-			ExecContext(ctx)
-		if err != nil {
-			return common.HandleSQLError(err, tk)
-		}
-
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, "NOW()")
-	}
-
-	if len(writes) > 0 || len(deletes) > 0 {
-		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-	}
-
-	if err := txn.Commit(); err != nil {
-		return common.HandleSQLError(err)
-	}
-
-	return nil
+	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, deletes, writes, now)
 }
 
 func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
@@ -274,7 +198,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var record common.TupleRecord
+	var record sqlcommon.TupleRecord
 	err := p.stbl.
 		Select("object_type", "object_id", "relation", "_user").
 		From("tuple").
@@ -289,7 +213,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 		QueryRowContext(ctx).
 		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return record.AsTuple(), nil
@@ -328,10 +252,10 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	}
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
@@ -357,10 +281,10 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 			"_user":       targetUsersArg,
 		}).QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (p *Postgres) MaxTuplesPerWrite() int {
@@ -379,7 +303,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 			"authorization_model_id": modelID,
 		}).QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -390,7 +314,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		var marshalledTypeDef []byte
 		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
 		if err != nil {
-			return nil, common.HandleSQLError(err)
+			return nil, sqlcommon.HandleSQLError(err)
 		}
 
 		var typeDef openfgapb.TypeDefinition
@@ -402,7 +326,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	if len(typeDefs) == 0 {
@@ -441,7 +365,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		OrderBy("authorization_model_id desc")
 
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -453,7 +377,7 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -463,21 +387,21 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	for rows.Next() {
 		err = rows.Scan(&modelID)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		modelIDs = append(modelIDs, modelID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var token []byte
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > opts.PageSize {
 		numModelIDs = opts.PageSize
-		token, err = json.Marshal(common.NewContToken(modelID, ""))
+		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -512,7 +436,7 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 		QueryRowContext(ctx).
 		Scan(&modelID)
 	if err != nil {
-		return "", common.HandleSQLError(err)
+		return "", sqlcommon.HandleSQLError(err)
 	}
 
 	return modelID, nil
@@ -537,7 +461,7 @@ func (p *Postgres) ReadTypeDefinition(
 		QueryRowContext(ctx).
 		Scan(&marshalledTypeDef)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var typeDef openfgapb.TypeDefinition
@@ -582,7 +506,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 
 	_, err := sb.ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -603,7 +527,7 @@ func (p *Postgres) CreateStore(ctx context.Context, store *openfgapb.Store) (*op
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return &openfgapb.Store{
@@ -634,7 +558,7 @@ func (p *Postgres) GetStore(ctx context.Context, id string) (*openfgapb.Store, e
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return &openfgapb.Store{
@@ -655,7 +579,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 		OrderBy("id")
 
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -667,7 +591,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -678,7 +602,7 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgapb.Store{
@@ -690,11 +614,11 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
 	if len(stores) > opts.PageSize {
-		contToken, err := json.Marshal(common.NewContToken(id, ""))
+		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -714,7 +638,7 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -737,7 +661,7 @@ func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, a
 		Suffix("ON CONFLICT (store, authorization_model_id) DO UPDATE SET assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -761,7 +685,7 @@ func (p *Postgres) ReadAssertions(ctx context.Context, store, modelID string) ([
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgapb.Assertion{}, nil
 		}
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var assertions openfgapb.Assertions
@@ -792,7 +716,7 @@ func (p *Postgres) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -808,7 +732,7 @@ func (p *Postgres) ReadChanges(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -821,7 +745,7 @@ func (p *Postgres) ReadChanges(
 
 		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		changes = append(changes, &openfgapb.TupleChange{
@@ -839,7 +763,7 @@ func (p *Postgres) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(common.NewContToken(ulid, objectTypeFilter))
+	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
 	if err != nil {
 		return nil, nil, err
 	}

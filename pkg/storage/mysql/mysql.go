@@ -11,10 +11,9 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/common"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/pkg/errors"
@@ -37,7 +36,7 @@ type MySQL struct {
 
 var _ storage.OpenFGADatastore = (*MySQL)(nil)
 
-func New(uri string, cfg *common.Config) (*MySQL, error) {
+func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
@@ -103,10 +102,10 @@ func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType 
 		}).
 		QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLObjectIterator(rows), nil
+	return sqlcommon.NewSQLObjectIterator(rows), nil
 }
 
 func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
@@ -133,7 +132,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*common.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -158,7 +157,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, err
 		}
@@ -170,10 +169,10 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes, writes storage.Writes) error {
@@ -185,82 +184,8 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	}
 
 	now := time.Now().UTC()
-	txn, err := m.db.BeginTx(ctx, nil)
-	if err != nil {
-		return common.HandleSQLError(err)
-	}
-	defer func() {
-		_ = txn.Rollback()
-	}()
 
-	changelogBuilder := m.stbl.
-		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
-
-	deleteBuilder := m.stbl.Delete("tuple")
-
-	for _, tk := range deletes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		res, err := deleteBuilder.
-			Where(sq.Eq{
-				"store":       store,
-				"object_type": objectType,
-				"object_id":   objectID,
-				"relation":    tk.GetRelation(),
-				"_user":       tk.GetUser(),
-				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-			}).
-			RunWith(txn). // Part of a txn
-			ExecContext(ctx)
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		rowsAffected, err := res.RowsAffected()
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-
-		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
-		}
-
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, sq.Expr("NOW()"))
-	}
-
-	insertBuilder := m.stbl.
-		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
-
-	for _, tk := range writes {
-		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
-		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-
-		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, sq.Expr("NOW()")).
-			RunWith(txn). // Part of a txn
-			ExecContext(ctx)
-		if err != nil {
-			return common.HandleSQLError(err, tk)
-		}
-
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, sq.Expr("NOW()"))
-	}
-
-	if len(writes) > 0 || len(deletes) > 0 {
-		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn
-		if err != nil {
-			return common.HandleSQLError(err)
-		}
-	}
-
-	if err := txn.Commit(); err != nil {
-		return common.HandleSQLError(err)
-	}
-
-	return nil
+	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, sq.Expr("NOW()")), store, deletes, writes, now)
 }
 
 func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
@@ -270,7 +195,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var record common.TupleRecord
+	var record sqlcommon.TupleRecord
 	err := m.stbl.
 		Select("object_type", "object_id", "relation", "_user").
 		From("tuple").
@@ -285,7 +210,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 		QueryRowContext(ctx).
 		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return record.AsTuple(), nil
@@ -324,10 +249,10 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	}
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
@@ -353,10 +278,10 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 			"_user":       targetUsersArg,
 		}).QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return common.NewSQLTupleIterator(rows), nil
+	return sqlcommon.NewSQLTupleIterator(rows), nil
 }
 
 func (m *MySQL) MaxTuplesPerWrite() int {
@@ -375,7 +300,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 			"authorization_model_id": modelID,
 		}).QueryContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -386,7 +311,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 		var marshalledTypeDef []byte
 		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
 		if err != nil {
-			return nil, common.HandleSQLError(err)
+			return nil, sqlcommon.HandleSQLError(err)
 		}
 
 		var typeDef openfgapb.TypeDefinition
@@ -398,7 +323,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	if len(typeDefs) == 0 {
@@ -437,7 +362,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 		OrderBy("authorization_model_id desc")
 
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -449,7 +374,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -459,21 +384,21 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 	for rows.Next() {
 		err = rows.Scan(&modelID)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		modelIDs = append(modelIDs, modelID)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var token []byte
 	numModelIDs := len(modelIDs)
 	if len(modelIDs) > opts.PageSize {
 		numModelIDs = opts.PageSize
-		token, err = json.Marshal(common.NewContToken(modelID, ""))
+		token, err = json.Marshal(sqlcommon.NewContToken(modelID, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -508,7 +433,7 @@ func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string
 		QueryRowContext(ctx).
 		Scan(&modelID)
 	if err != nil {
-		return "", common.HandleSQLError(err)
+		return "", sqlcommon.HandleSQLError(err)
 	}
 
 	return modelID, nil
@@ -533,7 +458,7 @@ func (m *MySQL) ReadTypeDefinition(
 		QueryRowContext(ctx).
 		Scan(&marshalledTypeDef)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var typeDef openfgapb.TypeDefinition
@@ -578,7 +503,7 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 
 	_, err := sb.ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -591,7 +516,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 
 	txn, err := m.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 	defer func() {
 		_ = txn.Rollback()
@@ -604,7 +529,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 		RunWith(txn).
 		ExecContext(ctx)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var createdAt time.Time
@@ -617,12 +542,12 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 		QueryRowContext(ctx).
 		Scan(&id, &name, &createdAt)
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	err = txn.Commit()
 	if err != nil {
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return &openfgapb.Store{
@@ -653,7 +578,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgapb.Store, erro
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, storage.ErrNotFound
 		}
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	return &openfgapb.Store{
@@ -674,7 +599,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 		OrderBy("id")
 
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -686,7 +611,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -697,7 +622,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 		var createdAt, updatedAt time.Time
 		err := rows.Scan(&id, &name, &createdAt, &updatedAt)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		stores = append(stores, &openfgapb.Store{
@@ -709,11 +634,11 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 
 	if len(stores) > opts.PageSize {
-		contToken, err := json.Marshal(common.NewContToken(id, ""))
+		contToken, err := json.Marshal(sqlcommon.NewContToken(id, ""))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -733,7 +658,7 @@ func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 		Where(sq.Eq{"id": id}).
 		ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -756,7 +681,7 @@ func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, asse
 		Suffix("ON DUPLICATE KEY UPDATE assertions = ?", marshalledAssertions).
 		ExecContext(ctx)
 	if err != nil {
-		return common.HandleSQLError(err)
+		return sqlcommon.HandleSQLError(err)
 	}
 
 	return nil
@@ -780,7 +705,7 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 		if errors.Is(err, sql.ErrNoRows) {
 			return []*openfgapb.Assertion{}, nil
 		}
-		return nil, common.HandleSQLError(err)
+		return nil, sqlcommon.HandleSQLError(err)
 	}
 
 	var assertions openfgapb.Assertions
@@ -811,7 +736,7 @@ func (m *MySQL) ReadChanges(
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
 	}
 	if opts.From != "" {
-		token, err := common.UnmarshallContToken(opts.From)
+		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -827,7 +752,7 @@ func (m *MySQL) ReadChanges(
 
 	rows, err := sb.QueryContext(ctx)
 	if err != nil {
-		return nil, nil, common.HandleSQLError(err)
+		return nil, nil, sqlcommon.HandleSQLError(err)
 	}
 	defer rows.Close()
 
@@ -840,7 +765,7 @@ func (m *MySQL) ReadChanges(
 
 		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
 		if err != nil {
-			return nil, nil, common.HandleSQLError(err)
+			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
 		changes = append(changes, &openfgapb.TupleChange{
@@ -858,7 +783,7 @@ func (m *MySQL) ReadChanges(
 		return nil, nil, storage.ErrNotFound
 	}
 
-	contToken, err := json.Marshal(common.NewContToken(ulid, objectTypeFilter))
+	contToken, err := json.Marshal(sqlcommon.NewContToken(ulid, objectTypeFilter))
 	if err != nil {
 		return nil, nil, err
 	}

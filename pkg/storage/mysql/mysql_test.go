@@ -3,20 +3,23 @@ package mysql
 import (
 	"context"
 	"testing"
+	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/common"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
+	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := New(uri, common.NewConfig())
+	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
@@ -27,7 +30,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := New(uri, common.NewConfig())
+	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -35,24 +38,22 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	store := "store"
 	objectType := "doc"
-	userType := "user"
 	objectID1 := "object_id_1"
 	relation := "relation"
 	user1 := "user:user_1"
-	ulid1 := "zzz123"
-	insertTime1 := "2023-04-04 01:00:00"
+	firstTuple := tuple.NewTupleKey(objectType+":"+objectID1, relation, user1)
 
-	// important that the ulid2 is smaller than ulid1
 	objectID2 := "object_id_2"
 	user2 := "user:user_2"
-	ulid2 := "zzz100"
-	insertTime2 := "2023-04-04 01:00:02"
+	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
 
-	// we need to use db.ExecContext instead of using Write to control the ulid
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", store, objectType, objectID1, relation, user1, userType, ulid1, insertTime1)
+	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")), store, []*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{firstTuple}, time.Now())
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", store, objectType, objectID2, relation, user2, userType, ulid2, insertTime2)
+	// tweak time so that ULID is smaller
+	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")), store, []*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{secondTuple}, time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
 	iter, err := ds.Read(ctx, store, tuple.NewTupleKey("doc:", relation, ""))
@@ -75,7 +76,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := New(uri, common.NewConfig())
+	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -83,24 +84,22 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	store := "store"
 	objectType := "doc"
-	userType := "user"
 	objectID1 := "object_id_1"
 	relation := "relation"
 	user1 := "user:user_1"
-	ulid1 := "zzz123"
-	insertTime1 := "2023-04-04 02:00:00"
+	firstTuple := tuple.NewTupleKey(objectType+":"+objectID1, relation, user1)
 
-	// important that the ulid2 is smaller than ulid1
 	objectID2 := "object_id_2"
 	user2 := "user:user_2"
-	ulid2 := "zzz100"
-	insertTime2 := "2023-04-04 02:00:02"
+	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
 
-	// we need to use db.ExecContext instead of using Write to control the ulid
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", store, objectType, objectID1, relation, user1, userType, ulid1, insertTime1)
+	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")), store, []*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{firstTuple}, time.Now())
 	require.NoError(t, err)
 
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO tuple (store, object_type, object_id, relation, _user, user_type, ulid, inserted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", store, objectType, objectID2, relation, user2, userType, ulid2, insertTime2)
+	// tweak time so that ULID is smaller
+	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, sq.Expr("NOW()")), store, []*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{secondTuple}, time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
 	tuples, _, err := ds.ReadPage(ctx, store, tuple.NewTupleKey("doc:", relation, ""), storage.NewPaginationOptions(0, ""))

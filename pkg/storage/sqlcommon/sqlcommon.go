@@ -1,6 +1,7 @@
-package common
+package sqlcommon
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -8,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/go-sql-driver/mysql"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -273,4 +276,101 @@ func HandleSQLError(err error, args ...interface{}) error {
 	}
 
 	return fmt.Errorf("sql error: %w", err)
+}
+
+// DBInfo encapsulates DB information for use in common method
+type DBInfo struct {
+	db      *sql.DB
+	stbl    sq.StatementBuilderType
+	sqlTime interface{}
+}
+
+// NewDBInfo constructs a DBInfo objet
+func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *DBInfo {
+	return &DBInfo{
+		db:      db,
+		stbl:    stbl,
+		sqlTime: sqlTime,
+	}
+}
+
+// Write provides the common method for writing to database across sql storage
+func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.Deletes, writes storage.Writes, now time.Time) error {
+
+	txn, err := dbInfo.db.BeginTx(ctx, nil)
+	if err != nil {
+		return HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
+	changelogBuilder := dbInfo.stbl.
+		Insert("changelog").
+		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+
+	deleteBuilder := dbInfo.stbl.Delete("tuple")
+
+	for _, tk := range deletes {
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
+		res, err := deleteBuilder.
+			Where(sq.Eq{
+				"store":       store,
+				"object_type": objectType,
+				"object_id":   objectID,
+				"relation":    tk.GetRelation(),
+				"_user":       tk.GetUser(),
+				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+			}).
+			RunWith(txn). // Part of a txn
+			ExecContext(ctx)
+		if err != nil {
+			return HandleSQLError(err, tk)
+		}
+
+		rowsAffected, err := res.RowsAffected()
+		if err != nil {
+			return HandleSQLError(err)
+		}
+
+		if rowsAffected != 1 {
+			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
+		}
+
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+	}
+
+	insertBuilder := dbInfo.stbl.
+		Insert("tuple").
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+
+	for _, tk := range writes {
+		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
+		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+
+		_, err = insertBuilder.
+			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, dbInfo.sqlTime).
+			RunWith(txn). // Part of a txn
+			ExecContext(ctx)
+		if err != nil {
+			return HandleSQLError(err, tk)
+		}
+
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+	}
+
+	if len(writes) > 0 || len(deletes) > 0 {
+		_, err := changelogBuilder.RunWith(txn).ExecContext(ctx) // Part of a txn
+		if err != nil {
+			return HandleSQLError(err)
+		}
+	}
+
+	if err := txn.Commit(); err != nil {
+		return HandleSQLError(err)
+	}
+
+	return nil
 }

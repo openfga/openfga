@@ -133,7 +133,7 @@ func HandleError(public string, err error) error {
 	return NewInternalError(public, err)
 }
 
-// HandleTupleValidateError provide common routines for handling tuples validation error
+// HandleTupleValidateError provide sqlcommon routines for handling tuples validation error
 func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:

@@ -17,11 +17,11 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/common"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -46,7 +46,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := postgres.New(uri, common.NewConfig())
+	ds, err := postgres.New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -63,7 +63,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := mysql.New(uri, common.NewConfig())
+	ds, err := mysql.New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -76,7 +76,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := postgres.New(uri, common.NewConfig())
+		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
@@ -92,7 +92,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := mysql.New(uri, common.NewConfig())
+		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
