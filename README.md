@@ -201,4 +201,4 @@ See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md)
 
 ## Community Meetings
 
-Learn about our monthly community meeting [here](https://github.com/openfga/community/blob/main/community-meetings.md).
+We hold a monthly meeting to interact with the community, collaborate and receive/provide feedback. You can find more details, including the time, our agenda, and the meeting minutes [here](https://github.com/openfga/community/blob/main/community-meetings.md).
