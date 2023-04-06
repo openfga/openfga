@@ -41,7 +41,7 @@ func NewStreamingInterceptor() grpc.StreamServerInterceptor {
 }
 
 func reportable() interceptors.CommonReportableFunc {
-	return func(ctx context.Context, c interceptors.CallMeta, isClient bool) (interceptors.Reporter, context.Context) {
+	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		id, _ := uuid.NewRandom()
 		requestID := id.String()
 
