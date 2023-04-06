@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func prepareTempConfigDir(t *testing.T) string {
 	homedir := t.TempDir()
 	t.Setenv("HOME", homedir)
 
-	confdir := homedir + string(os.PathSeparator) + ".openfga"
+	confdir := filepath.Join(homedir, ".openfga")
 	require.Nil(t, os.Mkdir(confdir, 0750))
 
 	return confdir
@@ -27,7 +28,7 @@ func prepareTempConfigDir(t *testing.T) string {
 
 func prepareTempConfigFile(t *testing.T, config string) {
 	confdir := prepareTempConfigDir(t)
-	confFile, err := os.Create(confdir + string(os.PathSeparator) + "config.yaml")
+	confFile, err := os.Create(filepath.Join(confdir, "config.yaml"))
 	require.Nil(t, err)
 	_, err = confFile.WriteString(config)
 	require.Nil(t, err)
