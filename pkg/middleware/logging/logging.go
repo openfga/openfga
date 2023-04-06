@@ -92,7 +92,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 }
 
 func reportable(l logger.Logger) interceptors.CommonReportableFunc {
-	return func(ctx context.Context, c interceptors.CallMeta, isClient bool) (interceptors.Reporter, context.Context) {
+	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
 			zap.String(grpcServiceKey, c.Service),
 			zap.String(grpcMethodKey, c.Method),

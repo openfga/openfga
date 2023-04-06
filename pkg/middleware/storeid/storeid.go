@@ -89,7 +89,7 @@ func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
 }
 
 func reportable() interceptors.CommonReportableFunc {
-	return func(ctx context.Context, c interceptors.CallMeta, isClient bool) (interceptors.Reporter, context.Context) {
+	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 
 		ctx = contextWithHandle(ctx)
 
