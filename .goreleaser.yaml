@@ -90,13 +90,26 @@ release:
     owner: openfga
     name: openfga
 
+sboms:
+  - artifacts: archive
+
+signs:
+- cmd: cosign
+  stdin: '{{ .Env.COSIGN_PWD }}'
+  args:
+  - "sign-blob"
+  - "--key=cosign.key"
+  - "--output-signature=${signature}"
+  - "${artifact}"
+  - "--yes" # needed on cosign 2.0.0+
+  artifacts: all
+
+docker_signs:
+- artifacts: manifests
+  stdin: '{{ .Env.COSIGN_PWD }}'
+
 archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      386: i386
-      amd64: x86_64
+  - rlcp: true
     files:
       - assets
 
