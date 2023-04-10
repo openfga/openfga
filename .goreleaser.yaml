@@ -95,18 +95,28 @@ sboms:
 
 signs:
 - cmd: cosign
-  stdin: '{{ .Env.COSIGN_PWD }}'
+  env:
+  - COSIGN_EXPERIMENTAL=1
+  certificate: '${artifact}.pem'
   args:
-  - "sign-blob"
-  - "--key=.github/cosign.key"
-  - "--output-signature=${signature}"
-  - "${artifact}"
-  - "--yes" # needed on cosign 2.0.0+
-  artifacts: all
+    - sign-blob
+    - '--output-certificate=${certificate}'
+    - '--output-signature=${signature}'
+    - '${artifact}'
+    - "--yes" # needed on cosign 2.0.0+
+  artifacts: checksum
+  output: true
 
 docker_signs:
-- artifacts: manifests
-  stdin: '{{ .Env.COSIGN_PWD }}'
+  - cmd: cosign
+    env:
+    - COSIGN_EXPERIMENTAL=1
+    artifacts: manifests
+    output: true
+    args:
+    - 'sign'
+    - '${artifact}'
+    - "--yes" # needed on cosign 2.0.0+
 
 archives:
   - rlcp: true
