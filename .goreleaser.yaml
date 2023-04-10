@@ -98,7 +98,7 @@ signs:
   stdin: '{{ .Env.COSIGN_PWD }}'
   args:
   - "sign-blob"
-  - "--key=cosign.key"
+  - "--key=.github/cosign.key"
   - "--output-signature=${signature}"
   - "${artifact}"
   - "--yes" # needed on cosign 2.0.0+
