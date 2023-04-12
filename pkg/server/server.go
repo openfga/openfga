@@ -48,8 +48,6 @@ type Server struct {
 	encoder   encoder.Encoder
 	transport gateway.Transport
 	config    *Config
-
-	checkResolver graph.CheckResolver
 }
 
 type Dependencies struct {
@@ -73,15 +71,12 @@ type Config struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
 
-	ds := dependencies.Datastore
-
 	return &Server{
-		logger:        dependencies.Logger,
-		datastore:     dependencies.Datastore,
-		encoder:       dependencies.TokenEncoder,
-		transport:     dependencies.Transport,
-		config:        config,
-		checkResolver: graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
+		logger:    dependencies.Logger,
+		datastore: dependencies.Datastore,
+		encoder:   dependencies.TokenEncoder,
+		transport: dependencies.Transport,
+		config:    config,
 	}
 }
 
@@ -119,7 +114,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
@@ -127,7 +121,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		CheckResolver:         s.checkResolver,
 	}
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
@@ -183,7 +176,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
 		Datastore:        s.datastore,
@@ -199,7 +191,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
-		CheckResolver:         s.checkResolver,
 	}
 
 	req.AuthorizationModelId = modelID
@@ -289,9 +280,12 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-	ctx = storage.ContextWithContextualTuples(ctx, req.ContextualTuples.GetTupleKeys())
 
-	resp, err := s.checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	checkResolver := graph.NewLocalChecker(
+		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		checkConcurrencyLimit)
+
+	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		TupleKey:             req.GetTupleKey(),
