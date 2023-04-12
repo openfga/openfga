@@ -54,7 +54,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces (#652) - thanks @jmiettinen
 
 ## Fixed
-* Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This noticably improves read query performance on larger OpenFGA stores (#677)
+* Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores (#677)
 * Synchronize concurrent access to in-memory storage iterators (#587)
 * Improve error logging in the `openfga migrate` command (#663)
 * Fix middleware ordering so that `requestid` middleware is registered earlier(#662)
