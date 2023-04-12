@@ -49,6 +49,7 @@ type RelationshipTupleReader interface {
 	// or `User` (or both), must be specified in this case.
 	//
 	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
+	// There is NO guarantee on the order returned on the iterator.
 	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
