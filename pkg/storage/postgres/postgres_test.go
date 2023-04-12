@@ -62,15 +62,8 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	ctx := context.Background()
 
 	store := "store"
-	objectType := "doc"
-	objectID1 := "object_id_1"
-	relation := "relation"
-	user1 := "user:user_1"
-	firstTuple := tuple.NewTupleKey(objectType+":"+objectID1, relation, user1)
-
-	objectID2 := "object_id_2"
-	user2 := "user:user_2"
-	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
+	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
@@ -91,7 +84,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	iter, err := ds.Read(ctx,
 		store, tuple.
-			NewTupleKey("doc:", relation, ""))
+			NewTupleKey("doc:", "relation", ""))
 	defer iter.Stop()
 	require.NoError(t, err)
 
@@ -118,15 +111,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	ctx := context.Background()
 
 	store := "store"
-	objectType := "doc"
-	objectID1 := "object_id_1"
-	relation := "relation"
-	user1 := "user:user_1"
-	firstTuple := tuple.NewTupleKey(objectType+":"+objectID1, relation, user1)
-
-	objectID2 := "object_id_2"
-	user2 := "user:user_2"
-	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
+	firstTuple := tuple.NewTupleKey("doc:object_id_1", "relation", "user:user_1")
+	secondTuple := tuple.NewTupleKey("doc:object_id_2", "relation", "user:user_2")
 
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
@@ -147,7 +133,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	tuples, _, err := ds.ReadPage(ctx,
 		store,
-		tuple.NewTupleKey("doc:", relation, ""),
+		tuple.NewTupleKey("doc:", "relation", ""),
 		storage.NewPaginationOptions(0, ""))
 	require.NoError(t, err)
 
