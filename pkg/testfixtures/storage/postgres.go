@@ -151,8 +151,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", pgTestContainer.creds, pgTestContainer.addr)
 
-	goose.SetLogger(goose.NopLogger())
-
 	db, err := goose.OpenDBWithDriver("pgx", uri)
 	require.NoError(t, err)
 

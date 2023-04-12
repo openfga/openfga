@@ -15,9 +15,12 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/pressly/goose/v3"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+const latestDBVersion = 4
 
 type Config struct {
 	Logger                 logger.Logger
@@ -307,7 +310,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "operation", "ulid", "inserted_at")
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
@@ -339,26 +342,29 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		userObjectType, userObjectID, userRelation := ToUserParts(tk.GetUser())
+
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at")
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := ToUserParts(tk.GetUser())
 
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, dbInfo.sqlTime).
+			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), userObjectType, userObjectID, userRelation, id, dbInfo.sqlTime).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -373,4 +379,48 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	}
 
 	return nil
+}
+
+func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return false, err
+	}
+
+	currentVersion, err := goose.GetDBVersion(db)
+	if err != nil {
+		return false, err
+	}
+
+	if currentVersion != latestDBVersion {
+		return false, fmt.Errorf("database version is %d but expected %d", currentVersion, latestDBVersion)
+	}
+
+	return true, nil
+}
+
+func ToUserPartsFromObjectRelation(u *openfgapb.ObjectRelation) (string, string, string) {
+	user := tupleUtils.GetObjectRelationAsString(u)
+	return ToUserParts(user)
+}
+
+func ToUserParts(user string) (string, string, string) {
+	userObject, userRelation := tupleUtils.SplitObjectRelation(user) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+
+	userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
+
+	return userObjectType, userObjectID, userRelation
+}
+
+func FromUserParts(userObjectType, userObjectID, userRelation string) string {
+	user := userObjectID
+	if userObjectType != "" {
+		user = fmt.Sprintf("%s:%s", userObjectType, userObjectID)
+	}
+	if userRelation != "" {
+		user = fmt.Sprintf("%s:%s#%s", userObjectType, userObjectID, userRelation)
+	}
+	return user
 }

@@ -150,8 +150,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	err = mysql.SetLogger(goose.NopLogger())
 	require.NoError(t, err)
 
-	goose.SetLogger(goose.NopLogger())
-
 	db, err := goose.OpenDBWithDriver("mysql", uri)
 	require.NoError(t, err)
 

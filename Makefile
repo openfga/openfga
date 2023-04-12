@@ -85,3 +85,35 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
+
+.PHONY: test-migration-postgres
+test-migration-postgres:
+	{ \
+    URI=postgres://postgres:password@localhost:5432/postgres; \
+    ENGINE=postgres; \
+    TOTALTUPLES=15; \
+    docker rm -f $${ENGINE} && \
+	make start-$${ENGINE} && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 3 && \
+	go run ./scripts/loaddata.go $${ENGINE} $${URI} $${TOTALTUPLES} && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 4 && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 3; \
+	} > migration-postgres.log 2>&1
+
+.PHONY: test-migration-mysql
+test-migration-mysql:
+	{ \
+	URI='root:secret@tcp(localhost:3306)/openfga?parseTime=true'; \
+	ENGINE=mysql; \
+	TOTALTUPLES=15; \
+	docker rm -f $${ENGINE} && \
+	docker run -d --name $${ENGINE} -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8 --secure_file_priv=/tmp && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 3 && \
+	go run ./scripts/loaddata.go $${ENGINE} $${URI} $${TOTALTUPLES} && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 4 && \
+	./openfga migrate --datastore-engine $${ENGINE} --datastore-uri $${URI} --version 3; \
+	} > migration-mysql.log 2>&1
+
+
+.PHONY: test-migration
+test-migration: test-migration-mysql test-migration-postgres

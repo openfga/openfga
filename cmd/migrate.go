@@ -64,7 +64,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 
-	goose.SetLogger(goose.NopLogger())
+	goose.SetVerbose(true)
 
 	var driver, dialect, migrationsPath string
 	switch engine {
