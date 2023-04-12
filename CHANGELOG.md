@@ -29,6 +29,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     --signature https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt.sig \
     ./checksums.txt
   ```
+
   If the `checksums.txt` validation succeeds, it means the checksums included in the release were not tampered with, so we can use it to verify the hashes of other files using the `sha256sum` utility. You can then download any file you want from the release, and verify it with, for example:
 
   ```shell
