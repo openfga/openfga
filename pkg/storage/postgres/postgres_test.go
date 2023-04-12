@@ -72,16 +72,26 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	user2 := "user:user_2"
 	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
 
-	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"), store, []*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{firstTuple}, time.Now())
+	err = sqlcommon.Write(ctx,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		store,
+		[]*openfgapb.TupleKey{},
+		[]*openfgapb.TupleKey{firstTuple},
+		time.Now())
 	require.NoError(t, err)
 
 	// tweak time so that ULID is smaller
-	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"), store, []*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{secondTuple}, time.Now().Add(time.Minute*-1))
+	err = sqlcommon.Write(ctx,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		store,
+		[]*openfgapb.TupleKey{},
+		[]*openfgapb.TupleKey{secondTuple},
+		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
-	iter, err := ds.Read(ctx, store, tuple.NewTupleKey("doc:", relation, ""))
+	iter, err := ds.Read(ctx,
+		store, tuple.
+			NewTupleKey("doc:", relation, ""))
 	defer iter.Stop()
 	require.NoError(t, err)
 
@@ -118,16 +128,27 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	user2 := "user:user_2"
 	secondTuple := tuple.NewTupleKey(objectType+":"+objectID2, relation, user2)
 
-	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"), store, []*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{firstTuple}, time.Now())
+	err = sqlcommon.Write(ctx,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		store,
+		[]*openfgapb.TupleKey{},
+		[]*openfgapb.TupleKey{firstTuple},
+		time.Now())
 	require.NoError(t, err)
 
 	// tweak time so that ULID is smaller
-	err = sqlcommon.Write(ctx, sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"), store, []*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{secondTuple}, time.Now().Add(time.Minute*-1))
+	err = sqlcommon.Write(ctx,
+		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
+		store,
+		[]*openfgapb.TupleKey{},
+		[]*openfgapb.TupleKey{secondTuple},
+		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
-	tuples, _, err := ds.ReadPage(ctx, store, tuple.NewTupleKey("doc:", relation, ""), storage.NewPaginationOptions(0, ""))
+	tuples, _, err := ds.ReadPage(ctx,
+		store,
+		tuple.NewTupleKey("doc:", relation, ""),
+		storage.NewPaginationOptions(0, ""))
 	require.NoError(t, err)
 
 	require.Equal(t, 2, len(tuples))
