@@ -19,7 +19,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   Developers will be able to verify the signature of the release artifacts with the following workflow(s):
 
-  ```shel
+  ```shell
   wget https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt
 
   cosign verify-blob \
