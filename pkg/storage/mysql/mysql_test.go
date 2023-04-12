@@ -31,11 +31,10 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI()
 	ds, err := New(uri, sqlcommon.NewConfig())
+	defer ds.Close()
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	defer ds.Close()
-
 	store := "store"
 	objectType := "doc"
 	objectID1 := "object_id_1"
@@ -77,10 +76,10 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI()
 	ds, err := New(uri, sqlcommon.NewConfig())
+	defer ds.Close()
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	defer ds.Close()
 
 	store := "store"
 	objectType := "doc"
