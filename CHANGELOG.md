@@ -8,6 +8,60 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [0.4.3] - 2023-04-12
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.2...v0.4.3)
+
+## Added
+* Release artifacts are now signed and include a Software Bill of Materials (SBOM) (#683)
+
+  The SBOM (Software Bill of Materials) is included in each Github release as using [Syft](https://github.com/anchore/syft) and is exported in [SBDX](https://spdx.dev/) format.
+
+  Developers will be able to verify the signature of the release artifacts with the following workflow(s):
+
+  ```shel
+  wget https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt
+
+  cosign verify-blob \
+    --certificate-identity 'https://github.com/openfga/openfga/.github/workflows/release.yml@refs/tags/<tag>' \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    --cert https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt.pem \
+    --signature https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt.sig \
+    ./checksums.txt
+  ```
+  if the `checksums.txt` validation succeeds, it means the checksums included in the release were not tampered with, so we can use it to verify the hashes of other files using the `sha256sum` utility. You can then download any file you want from the release, and verify it with, for example:
+
+  ```shell
+  wget https://github.com/openfga/openfga/releases/download/<tag>/openfga_<version>_linux_amd64.tar.gz.sbom
+  wget https://github.com/openfga/openfga/releases/download/<tag>/openfga_<version>_linux_amd64.tar.gz
+
+  sha256sum --ignore-missing -c checksums.txt
+  ```
+  And both should say "OK".
+
+  You can then inspect the .sbom file to see the entire dependency tree of the binary.
+
+  Developers can also verify the Docker image signature. Cosign actually embeds the signature in the image manifest, so we only need the public key used to sign it in order to verify its authenticity:
+  ```shell
+  cosign verify -key cosign.pub openfga/openfga:<tag>
+  ```
+
+* `openfga migrate` now accepts reading configuration from a config file and environment variables like the `openfga run` command (#655) - thanks @suttod!
+
+* The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces (#652) - thanks @jmiettinen
+
+## Fixed
+* Postgres and MySQL implementations have been fixed to avoid ordering queries by `ulid`. This noticably improves read query performance on larger OpenFGA stores (#677)
+* Synchronize concurrent access to in-memory storage iterators (#587)
+* Improve error logging in the `openfga migrate` command (#663)
+* Fix middleware ordering so that `requestid` middleware is registered earlier(#662)
+
+## Changed
+* Bumped up to Go version 1.20 (#664)
+* Default model schema versions to 1.1 (#669)
+
+  In preparation for sunsetting support for models with schema version 1.0, the [WriteAuthorizationModel API](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) will now interpret any model provided to it as a 1.1 model if the `schema_version` field is omitted in the request. This shouldn't affect default behavior since 1.0 model support is enabled by default.
+
 ## [0.4.2] - 2023-03-17
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.1...v0.4.2)
@@ -411,7 +465,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/openfga/openfga/releases/tag/v0.4.3
 [0.4.2]: https://github.com/openfga/openfga/releases/tag/v0.4.2
 [0.4.1]: https://github.com/openfga/openfga/releases/tag/v0.4.1
 [0.4.0]: https://github.com/openfga/openfga/releases/tag/v0.4.0
