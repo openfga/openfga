@@ -9,7 +9,6 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -18,10 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
-)
-
-const (
-	checkConcurrencyLimit = 100
 )
 
 type mockStreamServer struct {
@@ -186,18 +181,15 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			require.NoError(t, err)
 
 			// act: run ListObjects
-			checker := graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit)
 			listObjectsQuery := &commands.ListObjectsQuery{
 				Datastore:             ds,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   time.Minute,
 				ListObjectsMaxResults: test.maxResults,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
-				CheckResolver:         checker,
 			}
 			typesys := typesystem.New(model)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-			ctx = storage.ContextWithContextualTuples(ctx, test.contextualTuples.GetTupleKeys())
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -366,7 +358,6 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
-		CheckResolver:    graph.NewLocalChecker(storage.NewContextualTupleDatastore(ds), checkConcurrencyLimit),
 	}
 
 	var r *openfgapb.ListObjectsResponse

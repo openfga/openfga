@@ -271,45 +271,6 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 
 	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
 
-	var tuples []*openfgapb.Tuple
-	for _, t := range req.contextualTuples {
-
-		object := t.GetObject()
-		objectType, _ := tuple.SplitObject(object)
-		if objectType != ingress.GetType() {
-			continue
-		}
-
-		if t.GetRelation() != tuplesetRelation {
-			continue
-		}
-
-		user := t.GetUser()
-
-		var sourceUserStr string
-		if val, ok := req.sourceUserRef.(*UserRefTypedWildcard); ok {
-			sourceUserStr = fmt.Sprintf("%s:*", val.Type)
-		}
-
-		if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-			sourceUserStr = val.ObjectRelation.Object
-		}
-
-		if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-			sourceUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
-		}
-
-		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.sourceUserRef.GetObjectType() {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-			continue
-		}
-
-		if t.GetUser() == sourceUserStr {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-		}
-	}
-	iter1 := storage.NewStaticTupleIterator(tuples)
-
 	var userFilter []*openfgapb.ObjectRelation
 
 	// e.g. 'user:bob'
@@ -326,17 +287,16 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+
+	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
 		Relation:   tuplesetRelation,
 		UserFilter: userFilter,
 	})
 	if err != nil {
-		iter1.Stop()
 		return err
 	}
-
-	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
@@ -433,45 +393,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	targetObjectType := req.targetObjectRef.GetType()
 	targetObjectRel := req.targetObjectRef.GetRelation()
 
-	var tuples []*openfgapb.Tuple
-	for _, t := range req.contextualTuples {
-
-		object := t.GetObject()
-		objectType, _ := tuple.SplitObject(object)
-		if objectType != ingress.GetType() {
-			continue
-		}
-
-		if t.GetRelation() != ingress.GetRelation() {
-			continue
-		}
-
-		user := t.GetUser()
-
-		var sourceUserStr string
-		if val, ok := req.sourceUserRef.(*UserRefTypedWildcard); ok {
-			sourceUserStr = fmt.Sprintf("%s:*", val.Type)
-		}
-
-		if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-			sourceUserStr = tuple.GetObjectRelationAsString(val.ObjectRelation)
-		}
-
-		if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-			sourceUserStr = fmt.Sprintf("%s:%s", val.Object.Type, val.Object.Id)
-		}
-
-		if tuple.IsTypedWildcard(user) && tuple.GetType(user) == req.sourceUserRef.GetObjectType() {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-			continue
-		}
-
-		if t.GetUser() == sourceUserStr {
-			tuples = append(tuples, &openfgapb.Tuple{Key: t})
-		}
-	}
-	iter1 := storage.NewStaticTupleIterator(tuples)
-
 	var userFilter []*openfgapb.ObjectRelation
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
@@ -508,17 +429,16 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	iter2, err := c.Datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+
+	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
 		UserFilter: userFilter,
 	})
 	if err != nil {
-		iter1.Stop()
 		return err
 	}
-
-	iter := storage.NewCombinedIterator(iter1, iter2)
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)

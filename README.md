@@ -69,7 +69,7 @@ There are two recommended options for building OpenFGA from source code:
 
 #### Building from source with `go install`
 
-> Make sure you have Go 1.19 or later installed. See the [Go downloads](https://go.dev/dl/) page.
+> Make sure you have Go 1.20 or later installed. See the [Go downloads](https://go.dev/dl/) page.
 
 You can install from source using Go modules:
 
@@ -180,7 +180,6 @@ Don't hesitate to browse the official [Documentation](https://openfga.dev/), [AP
 ### MySQL Storage engine
 The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga#mysql-limitations)
 
-
 ## Production Readiness
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
@@ -199,3 +198,7 @@ See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md)
 [config-doc]: https://openfga.dev/docs/getting-started/setup-openfga
 [api]: https://openfga.dev/api/service
 [prod-checklist]: https://openfga.dev/docs/getting-started/setup-openfga#production-checklist
+
+## Community Meetings
+
+We hold a monthly meeting to interact with the community, collaborate and receive/provide feedback. You can find more details, including the time, our agenda, and the meeting minutes [here](https://github.com/openfga/community/blob/main/community-meetings.md).

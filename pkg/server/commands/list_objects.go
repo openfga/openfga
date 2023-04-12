@@ -32,7 +32,6 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
-	CheckResolver         graph.CheckResolver
 }
 
 type listObjectsRequest interface {
@@ -261,25 +260,18 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 	defer span.End()
 	var objectsFound = new(uint32)
 
-	iter1 := storage.NewObjectIteratorFromTupleKeyIterator(storage.NewFilteredTupleKeyIterator(
-		storage.NewStaticTupleKeyIterator(req.GetContextualTuples().GetTupleKeys()),
-		func(tk *openfgapb.TupleKey) bool {
-			return tuple.GetType(tk.GetObject()) == req.GetType()
-		}))
+	combinedDatastore := storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys())
 
-	iter2, err := q.Datastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
+	iter, err := combinedDatastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
 	if err != nil {
-		iter1.Stop()
 		return err
 	}
-
-	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
-	iter := storage.NewUniqueObjectIterator(iter1, iter2)
 	defer iter.Stop()
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maximumConcurrentChecks)
 
+	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
 		object, err := iter.Next()
@@ -294,7 +286,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(ctx, object, req, objectsFound, resultsChan)
+			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan)
 		}
 
 		g.Go(checkFunction)
@@ -305,13 +297,13 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 
 func (q *ListObjectsQuery) internalCheck(
 	ctx context.Context,
+	checkResolver *graph.LocalChecker,
 	obj *openfgapb.Object,
 	req listObjectsRequest,
 	objectsFound *uint32,
 	resultsChan chan<- string,
 ) error {
-
-	resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), req.GetRelation(), req.GetUser()),
