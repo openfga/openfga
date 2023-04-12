@@ -112,18 +112,14 @@ func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
-	return m.read(ctx, store, tupleKey, storage.PaginationOptions{OrderRequired: false})
+	return m.read(ctx, store, tupleKey, nil)
 }
 
 func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
-	iter, err := m.read(ctx, store, tupleKey, storage.PaginationOptions{
-		PageSize:      opts.PageSize,
-		From:          opts.From,
-		OrderRequired: true,
-	})
+	iter, err := m.read(ctx, store, tupleKey, &opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -132,7 +128,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -140,7 +136,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
-	if opts.OrderRequired {
+	if opts != nil {
 		sb = sb.OrderBy("ulid")
 	}
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
@@ -156,14 +152,14 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	if tupleKey.GetUser() != "" {
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 	}
-	if opts.From != "" {
+	if opts != nil && opts.From != "" {
 		token, err := sqlcommon.UnmarshallContToken(opts.From)
 		if err != nil {
 			return nil, err
 		}
 		sb = sb.Where(sq.GtOrEq{"ulid": token.Ulid})
 	}
-	if opts.PageSize != 0 {
+	if opts != nil && opts.PageSize != 0 {
 		sb = sb.Limit(uint64(opts.PageSize + 1)) // + 1 is used to determine whether to return a continuation token.
 	}
 

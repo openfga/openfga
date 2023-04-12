@@ -16,9 +16,8 @@ const (
 )
 
 type PaginationOptions struct {
-	PageSize      int
-	From          string
-	OrderRequired bool
+	PageSize int
+	From     string
 }
 
 func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
@@ -28,9 +27,8 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 	}
 
 	return PaginationOptions{
-		PageSize:      pageSize,
-		From:          contToken,
-		OrderRequired: true,
+		PageSize: pageSize,
+		From:     contToken,
 	}
 }
 

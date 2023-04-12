@@ -1,4 +1,4 @@
-// Package util provides sqlcommon utilities for spf13/cobra CLI utilities
+// Package util provides common utilities for spf13/cobra CLI utilities
 // that can be used for various commands within this project.
 package util
 
