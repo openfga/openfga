@@ -11,6 +11,10 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write # publish a new github release
+      id-token: write # needed for keyless signing
     steps:
       - name: Extract Version from Tag
         id: tag_name
@@ -40,10 +44,6 @@ jobs:
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
-        permissions:
-          contents: write
-          packages: write # publish a new github release
-          id-token: write # needed for keyless signing
         with:
           distribution: goreleaser
           version: latest

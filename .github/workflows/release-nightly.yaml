@@ -10,6 +10,8 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -31,8 +33,6 @@ jobs:
       # skip publish to GitHub Releases
       - name: Run GoReleaser Nightly
         uses: goreleaser/goreleaser-action@v2
-        permissions:
-          contents: write
         with:
           distribution: goreleaser
           version: latest
