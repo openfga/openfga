@@ -39,10 +39,10 @@ import (
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/caching"
-	"github.com/openfga/openfga/pkg/storage/common"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -430,14 +430,14 @@ func RunServer(ctx context.Context, config *Config) error {
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	dsCfg := common.NewConfig(
-		common.WithLogger(logger),
-		common.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
-		common.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
-		common.WithMaxOpenConns(config.Datastore.MaxOpenConns),
-		common.WithMaxIdleConns(config.Datastore.MaxIdleConns),
-		common.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
-		common.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+	dsCfg := sqlcommon.NewConfig(
+		sqlcommon.WithLogger(logger),
+		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+		sqlcommon.WithMaxOpenConns(config.Datastore.MaxOpenConns),
+		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
+		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
+		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	)
 
 	var datastore storage.OpenFGADatastore
