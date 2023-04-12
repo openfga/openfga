@@ -56,8 +56,8 @@ func TestReadEnsureNoOrder(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI()
 	ds, err := New(uri, sqlcommon.NewConfig())
-	defer ds.Close()
 	require.NoError(t, err)
+	defer ds.Close()
 
 	ctx := context.Background()
 
@@ -88,11 +88,11 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	// we expect that objectID1 will return first because it is inserted first
 	curTuple, err := iter.Next()
 	require.NoError(t, err)
-	require.Equal(t, tuple.NewTupleKey(objectType+":"+objectID1, relation, user1), curTuple.Key)
+	require.Equal(t, firstTuple, curTuple.Key)
 
 	curTuple, err = iter.Next()
 	require.NoError(t, err)
-	require.Equal(t, tuple.NewTupleKey(objectType+":"+objectID2, relation, user2), curTuple.Key)
+	require.Equal(t, secondTuple, curTuple.Key)
 
 }
 
@@ -102,8 +102,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	uri := testDatastore.GetConnectionURI()
 	ds, err := New(uri, sqlcommon.NewConfig())
-	defer ds.Close()
 	require.NoError(t, err)
+	defer ds.Close()
 
 	ctx := context.Background()
 
@@ -132,7 +132,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 
 	require.Equal(t, 2, len(tuples))
 	// we expect that objectID2 will return first because it has a smaller ulid
-	require.Equal(t, tuple.NewTupleKey(objectType+":"+objectID2, relation, user2), tuples[0].Key)
-	require.Equal(t, tuple.NewTupleKey(objectType+":"+objectID1, relation, user1), tuples[1].Key)
+	require.Equal(t, secondTuple, tuples[0].Key)
+	require.Equal(t, firstTuple, tuples[1].Key)
 
 }
