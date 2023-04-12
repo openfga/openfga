@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write # needed for keyless signing
 
 jobs:
   goreleaser:
@@ -35,6 +36,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@v3.0.2
+      - uses: anchore/sbom-action/download-syft@v0.14.1
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2

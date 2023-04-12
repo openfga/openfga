@@ -1,8 +1,12 @@
+# https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#sample-github-actions-configuration-file
 name: Semgrep
 on:
   push:
     branches:
       - main
+
+permissions:
+  contents: read
 
 jobs:
   semgrep:
