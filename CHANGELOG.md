@@ -37,11 +37,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   sha256sum --ignore-missing -c checksums.txt
   ```
+
   And both should say "OK".
 
   You can then inspect the .sbom file to see the entire dependency tree of the binary.
 
   Developers can also verify the Docker image signature. Cosign actually embeds the signature in the image manifest, so we only need the public key used to sign it in order to verify its authenticity:
+
   ```shell
   cosign verify -key cosign.pub openfga/openfga:<tag>
   ```
@@ -51,7 +53,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces (#652) - thanks @jmiettinen
 
 ## Fixed
-* Postgres and MySQL implementations have been fixed to avoid ordering queries by `ulid`. This noticably improves read query performance on larger OpenFGA stores (#677)
+* Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This noticably improves read query performance on larger OpenFGA stores (#677)
 * Synchronize concurrent access to in-memory storage iterators (#587)
 * Improve error logging in the `openfga migrate` command (#663)
 * Fix middleware ordering so that `requestid` middleware is registered earlier(#662)
