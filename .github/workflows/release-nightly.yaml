@@ -5,8 +5,7 @@ on:
     - cron: "0 0 * * *"
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   goreleaser:
@@ -32,6 +31,8 @@ jobs:
       # skip publish to GitHub Releases
       - name: Run GoReleaser Nightly
         uses: goreleaser/goreleaser-action@v2
+        permissions:
+          contents: write
         with:
           distribution: goreleaser
           version: latest

@@ -6,9 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
-  packages: write
-  id-token: write # needed for keyless signing
+  contents: read
 
 jobs:
   goreleaser:
@@ -42,6 +40,10 @@ jobs:
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v2
+        permissions:
+          contents: write
+          packages: write # publish a new github release
+          id-token: write # needed for keyless signing
         with:
           distribution: goreleaser
           version: latest
