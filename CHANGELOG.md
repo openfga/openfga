@@ -15,7 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## Added
 * Release artifacts are now signed and include a Software Bill of Materials (SBOM) (#683)
 
-  The SBOM (Software Bill of Materials) is included in each Github release as using [Syft](https://github.com/anchore/syft) and is exported in [SBDX](https://spdx.dev/) format.
+  The SBOM (Software Bill of Materials) is included in each Github release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
 
   Developers will be able to verify the signature of the release artifacts with the following workflow(s):
 
@@ -29,7 +29,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     --signature https://github.com/openfga/openfga/releases/download/<tag>/checksums.txt.sig \
     ./checksums.txt
   ```
-  if the `checksums.txt` validation succeeds, it means the checksums included in the release were not tampered with, so we can use it to verify the hashes of other files using the `sha256sum` utility. You can then download any file you want from the release, and verify it with, for example:
+  If the `checksums.txt` validation succeeds, it means the checksums included in the release were not tampered with, so we can use it to verify the hashes of other files using the `sha256sum` utility. You can then download any file you want from the release, and verify it with, for example:
 
   ```shell
   wget https://github.com/openfga/openfga/releases/download/<tag>/openfga_<version>_linux_amd64.tar.gz.sbom
