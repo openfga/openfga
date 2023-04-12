@@ -12,14 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+        with:
+          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
+
+      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: |
             ~/.cache/go-build
@@ -36,13 +41,13 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v3
+        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: ./cache
           key: ${{ runner.os }}-go-benchmark
 
       - name: Store benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@5bbce78ef18edf5b96cb2d23e8d240b485f9dc4a # v1.16.2
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'

@@ -11,13 +11,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+        with:
+          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
+
+      - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
+      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
           go-version-file: './go.mod'
           check-latest: true
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5 # v3.4.0
         with:
           version: latest
 
@@ -25,9 +30,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+        with:
+          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
+
+      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
           go-version-file: './go.mod'
           check-latest: true
@@ -38,13 +48,13 @@ jobs:
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
       # Cache go build cache, used to speedup go test
-      - uses: actions/cache@v3
+      - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: ${{ steps.go-cache-paths.outputs.go-build }}
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
 
       # Cache go mod cache, used to speedup builds
-      - uses: actions/cache@v3
+      - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: ${{ steps.go-cache-paths.outputs.go-mod }}
           key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
@@ -53,7 +63,7 @@ jobs:
         run: make unit-test
 
       - name: upload coverage to codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@40a12dcee2df644d47232dde008099a3e9e4f865 # v3.1.2
         with:
           files: ./coverageunit.out
           verbose: true
@@ -66,9 +76,14 @@ jobs:
       runs-on: ubuntu-latest
       timeout-minutes: 15
       steps:
-        - uses: actions/checkout@v3
+        - name: Harden Runner
+          uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+          with:
+            egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
-        - uses: actions/setup-go@v3
+        - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
+
+        - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
           with:
             go-version-file: './go.mod'
             check-latest: true
@@ -79,7 +94,7 @@ jobs:
             echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
 
         # Cache go build and go mod cache, used to speedup go test
-        - uses: actions/cache@v3
+        - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
           with:
             path: |
               ${{ steps.go-cache-paths.outputs.go-mod }}
@@ -89,10 +104,10 @@ jobs:
               ${{ runner.os }}-go
 
         - name: Set up Docker Buildx
-          uses: docker/setup-buildx-action@v2
+          uses: docker/setup-buildx-action@4b4e9c3e2d4531116a6f8ba8e71fc6e2cb6e6c8c # v2.5.0
 
         # build the openfga/openfga image for the functional tests
-        - uses: docker/build-push-action@v3
+        - uses: docker/build-push-action@1104d471370f9806843c095c1db02b5a90c5f8b6 # v3.3.1
           with:
             file: Dockerfile
             push: false # don't publish the built container for functional tests
@@ -106,14 +121,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+        with:
+          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
+
+      - uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568 # v3.5.0
         with:
           go-version-file: './go.mod'
           check-latest: true
 
-      - uses: actions/cache@v3
+      - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: |
             ~/.cache/go-build
@@ -130,13 +150,13 @@ jobs:
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v3
+        uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # v3.3.1
         with:
           path: ./cache
           key: ${{ runner.os }}-go-benchmark
 
       - name: Compare benchmark result
-        uses: benchmark-action/github-action-benchmark@v1
+        uses: benchmark-action/github-action-benchmark@5bbce78ef18edf5b96cb2d23e8d240b485f9dc4a # v1.16.2
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'

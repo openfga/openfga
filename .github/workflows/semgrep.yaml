@@ -16,7 +16,12 @@ jobs:
       image: returntocorp/semgrep
     if: (github.repository_owner == 'openfga' && github.actor != 'dependabot[bot]' && github.actor != 'snyk-bot')
     steps:
-    - uses: actions/checkout@v3
+    - name: Harden Runner
+      uses: step-security/harden-runner@03bee3930647ebbf994244c21ddbc0d4933aab4f # v2.3.0
+      with:
+        egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
+
+    - uses: actions/checkout@83b7061638ee4956cf7545a6f7efe594e5ad0247 # v3.5.1
     - run: semgrep ci
       env:
         SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
