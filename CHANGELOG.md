@@ -8,6 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.0.0] - 2023-04-14
+
+[Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
+
+## Long Term Supported (LTS) Version 
+This release marks the long term supported (LTS) version for OpenFGA. Fixes will be patched against the 1.0 release train.
+
+## Fixed
+* MySQL migration script errors during downgrade (#664)
+
 ## [0.4.3] - 2023-04-12
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.2...v0.4.3)
@@ -468,7 +478,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/openfga/openfga/releases/tag/v1.0.0
 [0.4.3]: https://github.com/openfga/openfga/releases/tag/v0.4.3
 [0.4.2]: https://github.com/openfga/openfga/releases/tag/v0.4.2
 [0.4.1]: https://github.com/openfga/openfga/releases/tag/v0.4.1
