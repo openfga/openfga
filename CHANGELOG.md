@@ -12,8 +12,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Long Term Supported (LTS) Version 
-This release marks the long term supported (LTS) version for OpenFGA. Fixes will be patched against the 1.0 release train.
+## Ready for Production with Postgres 
+OpenFGA with Postgres is now considered stable and ready for production usage.
 
 ## Fixed
 * MySQL migration script errors during downgrade (#664)
