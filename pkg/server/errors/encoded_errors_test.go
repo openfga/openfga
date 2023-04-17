@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -123,21 +124,11 @@ func TestEncodedError(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			actualError := NewEncodedError(test.errorCode, test.message)
-			if actualError.HTTPStatusCode != test.expectedHTTPStatusCode {
-				t.Errorf("[%s]: http status code expect %d: actual %d", test._name, test.expectedHTTPStatusCode, actualError.HTTPStatusCode)
-			}
 
-			if actualError.Code() != test.expectedCodeString {
-				t.Errorf("[%s]: code string expect %s: actual %s", test._name, test.expectedCodeString, actualError.Code())
-			}
-
-			if actualError.CodeValue() != int32(test.expectedCode) {
-				t.Errorf("[%s]: code expect %d: actual %d", test._name, test.expectedCode, actualError.CodeValue())
-			}
-
-			if IsValidEncodedError(actualError.CodeValue()) != test.isValidEncodedError {
-				t.Errorf("[%s]: expect is valid error %v: actual %v", test._name, test.isValidEncodedError, IsValidEncodedError(actualError.CodeValue()))
-			}
+			require.Equal(t, test.expectedHTTPStatusCode, actualError.HTTPStatusCode)
+			require.Equal(t, test.expectedCodeString, actualError.Code())
+			require.Equal(t, int32(test.expectedCode), actualError.CodeValue())
+			require.Equal(t, test.isValidEncodedError, IsValidEncodedError(actualError.CodeValue()))
 		})
 	}
 }
@@ -359,9 +350,8 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			code := ConvertToEncodedErrorCode(test.status)
-			if code != test.expectedErrorCode {
-				t.Fatalf("[%s] want %d, got %d", test._name, test.expectedErrorCode, code)
-			}
+
+			require.Equal(t, test.expectedErrorCode, code)
 		})
 	}
 }
@@ -370,7 +360,6 @@ func TestSanitizeErrorMessage(t *testing.T) {
 
 	got := sanitizedMessage(`proto: (line 1:2): unknown field "foo"`) // uses a whitespace rune of U+00a0 (see https://pkg.go.dev/unicode#IsSpace)
 	expected := `(line 1:2): unknown field "foo"`
-	if got != expected {
-		t.Errorf("expected '%s', but got '%s'", expected, got)
-	}
+
+	require.Equal(t, expected, got)
 }

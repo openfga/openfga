@@ -7,6 +7,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -19,9 +20,7 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgapb.CreateStoreRequest{
 		Name: "acme",
 	})
-	if err != nil {
-		t.Fatalf("Failed to execute createStoreCmd: %s", err)
-	}
+	require.NoError(t, err)
 
 	type deleteStoreTest struct {
 		_name   string
@@ -50,16 +49,9 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 			_, err := deleteCmd.Execute(ctx, test.request)
 
 			if test.err != nil {
-				if err == nil {
-					t.Errorf("[%s] Expected error '%s', but got none", test._name, test.err)
-				}
-				if test.err.Error() != err.Error() {
-					t.Errorf("[%s] Expected error '%s', actual '%s'", test._name, test.err, err)
-				}
-			}
-
-			if err != nil {
-				t.Errorf("[%s] Expected no error but got '%v'", test._name, err)
+				require.ErrorIs(t, err, test.err)
+			} else {
+				require.NoError(t, err)
 			}
 		})
 	}

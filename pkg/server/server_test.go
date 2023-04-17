@@ -17,11 +17,11 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/common"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -46,7 +46,7 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := postgres.New(uri, common.NewConfig())
+	ds, err := postgres.New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -63,7 +63,7 @@ func TestServerWithMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI()
-	ds, err := mysql.New(uri, common.NewConfig())
+	ds, err := mysql.New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -76,7 +76,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := postgres.New(uri, common.NewConfig())
+		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
@@ -92,7 +92,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
 		uri := testDatastore.GetConnectionURI()
-		ds, err := mysql.New(uri, common.NewConfig())
+		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
@@ -258,9 +258,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
-		if _, err := s.resolveAuthorizationModelID(ctx, store, ""); !errors.Is(err, expectedError) {
-			t.Errorf("Expected '%v' but got %v", expectedError, err)
-		}
+		_, err := s.resolveAuthorizationModelID(ctx, store, "")
+		require.ErrorIs(t, err, expectedError)
 	})
 
 	t.Run("read_existing_authorization_model", func(t *testing.T) {
@@ -280,12 +279,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		}, &Config{})
 
 		got, err := s.resolveAuthorizationModelID(ctx, store, "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != modelID {
-			t.Errorf("wanted '%v', but got %v", modelID, got)
-		}
+		require.NoError(t, err)
+		require.Equal(t, modelID, got)
 	})
 
 	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
@@ -304,9 +299,8 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			Logger:    logger,
 		}, &Config{})
 
-		if _, err := s.resolveAuthorizationModelID(ctx, store, modelID); err.Error() != want.Error() {
-			t.Fatalf("got '%v', want '%v'", err, want)
-		}
+		_, err := s.resolveAuthorizationModelID(ctx, store, modelID)
+		require.Equal(t, want, err)
 	})
 }
 

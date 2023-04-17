@@ -991,7 +991,6 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 			typesys := typesystem.New(&openfgapb.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -1007,8 +1006,8 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
 				RelationshipIngressTransformer,
 			}
-			if diff := cmp.Diff(ingresses, test.expected, cmpOpts...); diff != "" {
-				t.Errorf("mismatch (-got +want):\n%s", diff)
+			if diff := cmp.Diff(test.expected, ingresses, cmpOpts...); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

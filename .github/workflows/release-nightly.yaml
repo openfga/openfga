@@ -5,12 +5,13 @@ on:
     - cron: "0 0 * * *"
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v3

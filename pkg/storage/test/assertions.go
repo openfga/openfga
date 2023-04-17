@@ -36,7 +36,7 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 
@@ -60,7 +60,7 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(assertions, gotAssertions, cmpOpts...); diff != "" {
-			t.Fatalf("mismatch (-got +want):\n%s", diff)
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 

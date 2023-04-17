@@ -1,0 +1,15 @@
+ignore:
+  # the following folders contain tests that need to be exported so that consumer modules can run them with their own storage implementation
+  - "pkg/storage/test"
+  - "pkg/server/test"
+  - "tests"
+  # the following folder contains helper test code
+  - "pkg/testfixtures/storage"
+coverage:
+  range: 60..75
+  round: up
+  precision: 2
+  status:
+    project:
+      default:
+        target: 76%
