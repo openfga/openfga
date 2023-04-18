@@ -13,7 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.0...v1.0.1)
 
 ## Fixed
-* Correct permission and location for gRPC health probe in Docker image (#667)
+* Correct permission and location for gRPC health probe in Docker image (#697)
 
 ## [1.0.0] - 2023-04-14
 
