@@ -12,7 +12,7 @@ type DatastoreTestContainer interface {
 	GetConnectionURI() string
 
 	// GetDatabaseVersion returns the last migration applied (e.g. 3) when the container was created
-	GetDatabaseVersion() int64
+	GetDatabaseSchemaVersion() int64
 }
 
 type memoryTestContainer struct{}
@@ -21,7 +21,7 @@ func (m memoryTestContainer) GetConnectionURI() string {
 	return ""
 }
 
-func (m memoryTestContainer) GetDatabaseVersion() int64 {
+func (m memoryTestContainer) GetDatabaseSchemaVersion() int64 {
 	return 1
 }
 

@@ -40,7 +40,7 @@ func NewPostgresTestContainer() *postgresTestContainer {
 	return &postgresTestContainer{}
 }
 
-func (p *postgresTestContainer) GetDatabaseVersion() int64 {
+func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
 	return p.version
 }
 

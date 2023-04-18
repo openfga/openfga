@@ -36,7 +36,7 @@ func NewMySQLTestContainer() *mySQLTestContainer {
 	return &mySQLTestContainer{}
 }
 
-func (m *mySQLTestContainer) GetDatabaseVersion() int64 {
+func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
 	return m.version
 }
 

@@ -39,7 +39,7 @@ func TestMigrate(t *testing.T) {
 	defer ds.Close()
 
 	// going from version 3 to 4 when migration #4 doesn't exist is a no-op
-	version := testDatastore.GetDatabaseVersion() + 1
+	version := testDatastore.GetDatabaseSchemaVersion() + 1
 
 	migrateCommand := cmd.NewMigrateCommand()
 
