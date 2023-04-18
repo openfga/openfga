@@ -29,14 +29,19 @@ var (
 )
 
 type postgresTestContainer struct {
-	addr  string
-	creds string
+	addr    string
+	creds   string
+	version int64
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
 // for Postgres.
 func NewPostgresTestContainer() *postgresTestContainer {
 	return &postgresTestContainer{}
+}
+
+func (p *postgresTestContainer) GetDatabaseVersion() int64 {
+	return p.version
 }
 
 // RunPostgresTestContainer runs a Postgres container, connects to it, and returns a
@@ -168,6 +173,11 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
 	require.NoError(t, err)
+
+	version, err := goose.GetDBVersion(db)
+	require.NoError(t, err)
+	pgTestContainer.version = version
+
 	err = db.Close()
 	require.NoError(t, err)
 

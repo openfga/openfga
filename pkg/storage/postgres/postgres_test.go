@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -24,6 +26,29 @@ func TestPostgresDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
+}
+
+func TestMigrate(t *testing.T) {
+	engine := "postgres"
+	// starts the container and runs migration up to the latest migration version available
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+
+	uri := testDatastore.GetConnectionURI()
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	version := testDatastore.GetDatabaseVersion()
+
+	migrateCommand := cmd.NewMigrateCommand()
+
+	for version > 0 {
+		t.Logf("downgrading to version %d", version)
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
+		err = migrateCommand.Execute()
+		require.NoError(t, err)
+		version--
+	}
 }
 
 func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
