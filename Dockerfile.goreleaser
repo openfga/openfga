@@ -1,5 +1,5 @@
 FROM cgr.dev/chainguard/static:latest
 COPY assets /assets
 COPY openfga /
-COPY --chmod=0755 --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.16 /ko-app/grpc-health-probe /bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.16 /ko-app/grpc-health-probe /usr/local/bin/grpc_health_probe
 ENTRYPOINT ["/openfga"]
