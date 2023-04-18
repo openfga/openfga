@@ -116,13 +116,20 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
-	if targetVersion > 0 {
-		currentVersion, err := goose.GetDBVersion(db)
-		if err != nil {
+	currentVersion, err := goose.GetDBVersion(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("current version %d", currentVersion)
+
+	if targetVersion == 0 {
+		log.Println("running all migrations")
+		if err := goose.Up(db, migrationsPath); err != nil {
 			log.Fatal(err)
 		}
-		log.Printf("current version %d, migrating to %d", currentVersion, targetVersion)
-
+	} else {
+		log.Printf("migrating to %d", targetVersion)
 		targetInt64Version := int64(targetVersion)
 		if targetInt64Version < currentVersion {
 			if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
@@ -136,15 +143,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 			log.Println("nothing to do")
 			return nil
 		}
-
-		log.Println("migration done")
-
-		return nil
-	}
-
-	// no target version specified, will apply all migrations available
-	if err := goose.Up(db, migrationsPath); err != nil {
-		log.Fatal(err)
 	}
 
 	log.Println("migration done")

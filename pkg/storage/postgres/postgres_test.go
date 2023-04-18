@@ -38,12 +38,13 @@ func TestMigrate(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 
-	version := testDatastore.GetDatabaseVersion()
+	// going from version 3 to 4 when migration #4 doesn't exist is a no-op
+	version := testDatastore.GetDatabaseVersion() + 1
 
 	migrateCommand := cmd.NewMigrateCommand()
 
-	for version > 0 {
-		t.Logf("downgrading to version %d", version)
+	for version >= 0 {
+		t.Logf("migrating to version %d", version)
 		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
 		err = migrateCommand.Execute()
 		require.NoError(t, err)
