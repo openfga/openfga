@@ -12,10 +12,11 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
-	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 	"strings"
 	"syscall"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
