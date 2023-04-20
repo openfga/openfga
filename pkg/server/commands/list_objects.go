@@ -32,7 +32,6 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
-	ConnectedObjects      func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- string) error
 }
 
 type listObjectsRequest interface {
@@ -96,63 +95,68 @@ func (q *ListObjectsQuery) evaluate(
 		close(resultsChan)
 	}
 
-	if q.ConnectedObjects != nil {
-		hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
-		if err != nil {
-			q.Logger.WarnWithContext(
-				ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
-				zap.String("store_id", req.GetStoreId()),
-				zap.String("object_type", targetObjectType),
-			)
+	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
+	if err != nil {
+		q.Logger.WarnWithContext(
+			ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
+			zap.String("store_id", req.GetStoreId()),
+			zap.String("object_type", targetObjectType),
+		)
+	}
+
+	containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
+	containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
+
+	// ConnectedObjects currently only supports models that do not include intersection and exclusion,
+	// and the model must include type info for ConnectedObjects to work.
+	if !containsIntersection && !containsExclusion && hasTypeInfo {
+		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
+
+		userObjType, userObjID := tuple.SplitObject(userObj)
+
+		var targetUserRef isUserRef
+		targetUserRef = &UserRefObject{
+			Object: &openfgapb.Object{
+				Type: userObjType,
+				Id:   userObjID,
+			},
 		}
 
-		containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-		containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
+		if tuple.IsTypedWildcard(userObj) {
+			targetUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+		}
 
-		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
-		// and the model must include type info for ConnectedObjects to work.
-		if !containsIntersection && !containsExclusion && hasTypeInfo {
-			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
-
-			userObjType, userObjID := tuple.SplitObject(userObj)
-
-			var targetUserRef isUserRef
-			targetUserRef = &UserRefObject{
-				Object: &openfgapb.Object{
-					Type: userObjType,
-					Id:   userObjID,
+		if userRel != "" {
+			targetUserRef = &UserRefObjectRelation{
+				ObjectRelation: &openfgapb.ObjectRelation{
+					Object:   userObj,
+					Relation: userRel,
 				},
 			}
+		}
 
-			if tuple.IsTypedWildcard(userObj) {
-				targetUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+		handler = func() {
+			span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
+
+			connectObjCmd := &ConnectedObjectsCommand{
+				Datastore:        q.Datastore,
+				ResolveNodeLimit: q.ResolveNodeLimit,
+				Limit:            q.ListObjectsMaxResults,
 			}
 
-			if userRel != "" {
-				targetUserRef = &UserRefObjectRelation{
-					ObjectRelation: &openfgapb.ObjectRelation{
-						Object:   userObj,
-						Relation: userRel,
-					},
-				}
+			err = connectObjCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+				StoreID:          req.GetStoreId(),
+				Typesystem:       typesys,
+				ObjectType:       targetObjectType,
+				Relation:         targetRelation,
+				User:             targetUserRef,
+				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+			}, resultsChan)
+			if err != nil {
+				errChan <- err
 			}
 
-			handler = func() {
-				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
-
-				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
-					StoreID:          req.GetStoreId(),
-					ObjectType:       targetObjectType,
-					Relation:         targetRelation,
-					User:             targetUserRef,
-					ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-				}, resultsChan)
-				if err != nil {
-					errChan <- err
-				}
-
-				close(resultsChan)
-			}
+			close(resultsChan)
 		}
 	}
 

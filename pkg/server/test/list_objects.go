@@ -181,18 +181,11 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			require.NoError(t, err)
 
 			// act: run ListObjects
-			connectedObjCmd := commands.ConnectedObjectsCommand{
-				Datastore:        ds,
-				Typesystem:       typesystem.New(model),
-				ResolveNodeLimit: defaultResolveNodeLimit,
-				Limit:            test.maxResults,
-			}
 			listObjectsQuery := &commands.ListObjectsQuery{
 				Datastore:             ds,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   time.Minute,
 				ListObjectsMaxResults: test.maxResults,
-				ConnectedObjects:      connectedObjCmd.StreamedConnectedObjects,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
 			}
 			typesys := typesystem.New(model)
@@ -301,17 +294,10 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
-	connectedObjCmd := commands.ConnectedObjectsCommand{
-		Datastore:        ds,
-		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: defaultResolveNodeLimit,
-	}
-
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
-		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
 	}
 
 	var r *openfgapb.ListObjectsResponse
