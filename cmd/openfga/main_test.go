@@ -40,7 +40,7 @@ import (
 
 const (
 	baseFunctionalTestImage = "openfga/openfga:functionaltest"
-	customImage             = "openfga/openfga:feat-split-user-column"
+	customImage             = "openfga/openfga:feat-split-user-column-part2"
 	defaultIpAddressInLinux = "172.17.0.1" // https://stackoverflow.com/q/65497331
 )
 
@@ -256,9 +256,9 @@ func TestDatastoreMigrations(t *testing.T) {
 			MigrateDatastoreToVersion4Test(t, engine)
 		}
 	})
-	t.Run("TestMigrateDatastoreToVersion5", func(t *testing.T) {
+	t.Run("TestMigrateDatastoreToVersion6", func(t *testing.T) {
 		for _, engine := range engines {
-			MigrateDatastoreToVersion5Test(t, engine)
+			MigrateDatastoreToVersion6Test(t, engine)
 		}
 	})
 }
@@ -397,23 +397,23 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 	})
 }
 
-func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
+func MigrateDatastoreToVersion6Test(t *testing.T, engine string) {
 	t.Run(engine, func(t *testing.T) {
 		store := ulid.Make().String()
 		t.Logf("start the database container and run migrations up to the latest migration version available")
 		testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 		uri := testDatastore.GetConnectionURI(true)
 
-		t.Logf("migrate database down to version 4")
+		t.Logf("migrate database down to version 5")
 		migrateCommand := cmd.NewMigrateCommand()
-		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(4)})
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(5)})
 		err := migrateCommand.Execute()
 		require.NoError(t, err)
 
-		t.Logf("start openfga on branch feat-split-user-column and wait for it to be ready")
+		t.Logf("start openfga on branch feat-split-user-column-part2 and wait for it to be ready")
 		// this is a hack to have the networking work in Github Actions
 		datastoreConnectionURI := strings.Replace(uri, "localhost", defaultIpAddressInLinux, -1)
-		tester, err := newOpenFGATester(t, "openfga/openfga:feat-split-user-column", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
+		tester, err := newOpenFGATester(t, "openfga/openfga:feat-split-user-column-part2", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
 		require.NoError(t, err)
 		defer tester.Cleanup()
 
@@ -448,8 +448,8 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		})
 		require.NoError(t, err)
 
-		t.Logf("migrate database up to version 5")
-		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(5)})
+		t.Logf("migrate database up to version 6")
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(6)})
 		err = migrateCommand.Execute()
 		require.NoError(t, err)
 

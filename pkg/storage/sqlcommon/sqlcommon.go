@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const latestDBVersion = 5
+const latestDBVersion = 6
 
 type Config struct {
 	Username               string
@@ -118,7 +118,6 @@ type TupleRecord struct {
 	ObjectType     string
 	ObjectID       string
 	Relation       string
-	User           string
 	UserObjectType string
 	UserObjectID   string
 	UserRelation   string
@@ -183,7 +182,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 	}
 
 	var record TupleRecord
-	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.UserObjectType, &record.UserObjectID, &record.UserRelation, &record.Ulid, &record.InsertedAt)
+	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.UserObjectType, &record.UserObjectID, &record.UserRelation, &record.Ulid, &record.InsertedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +326,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "operation", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "operation", "ulid", "inserted_at")
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
@@ -342,8 +341,6 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 				"object_type":      objectType,
 				"object_id":        objectID,
 				"relation":         tk.GetRelation(),
-				"_user":            tk.GetUser(),
-				"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 				"user_object_type": userObjectType,
 				"user_object_id":   userObjectID,
 				"user_relation":    userRelation,
@@ -363,12 +360,12 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at")
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
@@ -376,14 +373,14 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), userObjectType, userObjectID, userRelation, id, dbInfo.sqlTime).
+			Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID, userRelation, id, dbInfo.sqlTime).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {

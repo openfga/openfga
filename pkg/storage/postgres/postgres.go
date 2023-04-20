@@ -163,7 +163,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	defer span.End()
 
 	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -182,7 +182,6 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgapb.T
 	}
 	if tupleKey.GetUser() != "" {
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
-		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 		sb = sb.Where(sq.Eq{"user_object_type": userObjectType})
 		sb = sb.Where(sq.Eq{"user_object_id": userObjectID})
 		sb = sb.Where(sq.Eq{"user_relation": userRelation})
@@ -223,26 +222,23 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
 
 	var record sqlcommon.TupleRecord
 	err := p.stbl.
-		Select("object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation").
+		Select("object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation").
 		From("tuple").
 		Where(sq.Eq{
 			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
 			"relation":         tupleKey.GetRelation(),
-			"_user":            tupleKey.GetUser(),
-			"user_type":        userType,
 			"user_object_type": userObjectType,
 			"user_object_id":   userObjectID,
 			"user_relation":    userRelation,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.UserObjectType, &record.UserObjectID, &record.UserRelation)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.UserObjectType, &record.UserObjectID, &record.UserRelation)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -254,10 +250,9 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
-		Where(sq.Eq{"store": store}).
-		Where(sq.Eq{"user_type": tupleUtils.UserSet})
+		Where(sq.Eq{"store": store})
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
@@ -298,7 +293,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserPartsFromObjectRelation(u)
 
 		rows, err := p.stbl.
-			Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+			Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 			From("tuple").
 			Where(sq.Eq{
 				"store":            store,

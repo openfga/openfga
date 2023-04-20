@@ -150,7 +150,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	defer span.End()
 
 	sb := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -168,7 +168,6 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	}
 	if tupleKey.GetUser() != "" {
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
-		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
 		sb = sb.Where(sq.Eq{"user_object_type": userObjectType})
 		sb = sb.Where(sq.Eq{"user_object_id": userObjectID})
 		sb = sb.Where(sq.Eq{"user_relation": userRelation})
@@ -210,26 +209,23 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	defer span.End()
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
-	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
 
 	var record sqlcommon.TupleRecord
 	err := m.stbl.
-		Select("object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation").
+		Select("object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation").
 		From("tuple").
 		Where(sq.Eq{
 			"store":            store,
 			"object_type":      objectType,
 			"object_id":        objectID,
 			"relation":         tupleKey.GetRelation(),
-			"_user":            tupleKey.GetUser(),
-			"user_type":        userType,
 			"user_object_type": userObjectType,
 			"user_object_id":   userObjectID,
 			"user_relation":    userRelation,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.UserObjectType, &record.UserObjectID, &record.UserRelation)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.UserObjectType, &record.UserObjectID, &record.UserRelation)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -241,10 +237,9 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
-	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
-		Where(sq.Eq{"store": store}).
-		Where(sq.Eq{"user_type": tupleUtils.UserSet})
+		Where(sq.Eq{"store": store})
 
 	objectType, objectID := tupleUtils.SplitObject(filter.Object)
 	if objectType != "" {
@@ -285,7 +280,7 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 		userObjectType, userObjectID, userRelation := tupleUtils.ToUserPartsFromObjectRelation(u)
 
 		rows, err := m.stbl.
-			Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+			Select("store", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 			From("tuple").
 			Where(sq.Eq{
 				"store":            store,
