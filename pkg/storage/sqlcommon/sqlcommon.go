@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const latestDBVersion = 4
+const latestDBVersion = 5
 
 type Config struct {
 	Username               string
