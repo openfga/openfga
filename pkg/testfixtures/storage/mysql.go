@@ -25,14 +25,19 @@ const (
 )
 
 type mySQLTestContainer struct {
-	addr  string
-	creds string
+	addr    string
+	creds   string
+	version int64
 }
 
 // NewMySQLTestContainer returns an implementation of the DatastoreTestContainer interface
 // for MySQL.
 func NewMySQLTestContainer() *mySQLTestContainer {
 	return &mySQLTestContainer{}
+}
+
+func (m *mySQLTestContainer) GetDatabaseSchemaVersion() int64 {
+	return m.version
 }
 
 // RunMySQLTestContainer runs a MySQL container, connects to it, and returns a
@@ -167,6 +172,10 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	err = goose.Up(db, assets.MySQLMigrationDir)
 	require.NoError(t, err)
+	version, err := goose.GetDBVersion(db)
+	require.NoError(t, err)
+	mySQLTestContainer.version = version
+
 	err = db.Close()
 	require.NoError(t, err)
 
