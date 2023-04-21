@@ -91,7 +91,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
-		storeId       string
+		storeID       string
 		deletes       []*openfgapb.TupleKey
 		writes        []*openfgapb.TupleKey
 		expectedError error
