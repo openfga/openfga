@@ -53,6 +53,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	defer span.End()
 
 	store := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if store == "" {
+		return serverErrors.NonExistentStoreID
+	}
 	modelID := req.GetAuthorizationModelId()
 	deletes := req.GetDeletes().GetTupleKeys()
 	writes := req.GetWrites().GetTupleKeys()
