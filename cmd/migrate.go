@@ -61,7 +61,7 @@ func NewMigrateCommand() *cobra.Command {
 func runMigration(_ *cobra.Command, _ []string) error {
 	engine := viper.GetString(datastoreEngineFlag)
 	uri := viper.GetString(datastoreURIFlag)
-	version := viper.GetUint(versionFlag)
+	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 
 	goose.SetLogger(goose.NopLogger())
@@ -116,28 +116,33 @@ func runMigration(_ *cobra.Command, _ []string) error {
 
 	goose.SetBaseFS(assets.EmbedMigrations)
 
-	if version > 0 {
-		currentVersion, err := goose.GetDBVersion(db)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		int64Version := int64(version)
-		if int64Version < currentVersion {
-			if err := goose.DownTo(db, migrationsPath, int64Version); err != nil {
-				log.Fatal(err)
-			}
-		}
-
-		if err := goose.UpTo(db, migrationsPath, int64Version); err != nil {
-			log.Fatal(err)
-		}
-
-		return nil
+	currentVersion, err := goose.GetDBVersion(db)
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	if err := goose.Up(db, migrationsPath); err != nil {
-		log.Fatal(err)
+	log.Printf("current version %d", currentVersion)
+
+	if targetVersion == 0 {
+		log.Println("running all migrations")
+		if err := goose.Up(db, migrationsPath); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		log.Printf("migrating to %d", targetVersion)
+		targetInt64Version := int64(targetVersion)
+		if targetInt64Version < currentVersion {
+			if err := goose.DownTo(db, migrationsPath, targetInt64Version); err != nil {
+				log.Fatal(err)
+			}
+		} else if targetInt64Version > currentVersion {
+			if err := goose.UpTo(db, migrationsPath, targetInt64Version); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			log.Println("nothing to do")
+			return nil
+		}
 	}
 
 	log.Println("migration done")
