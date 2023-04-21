@@ -660,6 +660,58 @@ func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateStore is slightly different between Postgres and MySQL
+func (m *MySQL) UpdateStore(ctx context.Context, id string, name string) (*openfgapb.Store, error) {
+	ctx, span := tracer.Start(ctx, "mysql.UpdateStore")
+	defer span.End()
+
+	txn, err := m.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+	defer func() {
+		_ = txn.Rollback()
+	}()
+
+	_, err = m.stbl.
+		Update("store").
+		Set("name", name).
+		Set("updated_at", sq.Expr("NOW()")).
+		Where(sq.Eq{"id": id}).
+		RunWith(txn).
+		ExecContext(ctx)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	var newName string
+	var createdAt, updatedAt time.Time
+
+	err = m.stbl.
+		Select("name", "created_at", "updated_at").
+		From("store").
+		Where(sq.Eq{"id": id}).
+		RunWith(txn).
+		QueryRowContext(ctx).
+		Scan(&newName, &createdAt, &updatedAt)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	return &openfgapb.Store{
+		Id:        id,
+		Name:      newName,
+		CreatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(createdAt),
+	}, nil
+
+}
+
 // WriteAssertions is slightly different between Postgres and MySQL
 func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
 	ctx, span := tracer.Start(ctx, "mysql.WriteAssertions")

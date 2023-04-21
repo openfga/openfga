@@ -629,6 +629,18 @@ func (s *MemoryBackend) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
+func (s *MemoryBackend) UpdateStore(ctx context.Context, id string, name string) (*openfgapb.Store, error) {
+	_, span := tracer.Start(ctx, "memory.UpdateStore")
+	defer span.End()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := timestamppb.New(time.Now().UTC())
+	s.stores[id].Name = name
+	s.stores[id].UpdatedAt = now
+	return s.stores[id], nil
+}
+
 func (s *MemoryBackend) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
 	_, span := tracer.Start(ctx, "memory.WriteAssertions")
 	defer span.End()

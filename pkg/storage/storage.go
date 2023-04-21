@@ -172,6 +172,7 @@ type AuthorizationModelBackend interface {
 type StoresBackend interface {
 	CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error)
 	DeleteStore(ctx context.Context, id string) error
+	UpdateStore(ctx context.Context, id string, name string) (*openfgapb.Store, error)
 	GetStore(ctx context.Context, id string) (*openfgapb.Store, error)
 	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgapb.Store, []byte, error)
 }

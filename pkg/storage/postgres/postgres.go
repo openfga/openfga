@@ -638,6 +638,34 @@ func (p *Postgres) DeleteStore(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateStore is slightly different between Postgres and MySQL
+func (p *Postgres) UpdateStore(ctx context.Context, id string, name string) (*openfgapb.Store, error) {
+	ctx, span := tracer.Start(ctx, "postgres.UpdateStore")
+	defer span.End()
+
+	var createdAt, updatedAt time.Time
+
+	err := p.stbl.
+		Update("store").
+		Set("name", name).
+		Set("updated_at", "NOW()").
+		Where(sq.Eq{"id": id}).
+		Suffix("RETURNING created_at, updated_at").
+		QueryRowContext(ctx).
+		Scan(&name, &createdAt, &updatedAt)
+	if err != nil {
+		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	return &openfgapb.Store{
+		Id:        id,
+		Name:      name,
+		CreatedAt: timestamppb.New(createdAt),
+		UpdatedAt: timestamppb.New(updatedAt),
+	}, nil
+
+}
+
 // WriteAssertions is slightly different between Postgres and MySQL
 func (p *Postgres) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
 	ctx, span := tracer.Start(ctx, "postgres.WriteAssertions")

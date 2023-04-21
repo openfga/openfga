@@ -430,6 +430,21 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgapb.CreateStoreRequ
 	return res, nil
 }
 
+func (s *Server) UpdateStore(ctx context.Context, req *openfgapb.UpdateStoreRequest) (*openfgapb.UpdateStoreResponse, error) {
+	ctx, span := tracer.Start(ctx, "UpdateStore")
+	defer span.End()
+
+	cmd := commands.NewUpdateStoreCommand(s.datastore, s.logger)
+	res, err := cmd.Execute(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	s.transport.SetHeader(ctx, httpmiddleware.XHttpCode, strconv.Itoa(http.StatusOK))
+
+	return res, nil
+}
+
 func (s *Server) DeleteStore(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, "DeleteStore")
 	defer span.End()

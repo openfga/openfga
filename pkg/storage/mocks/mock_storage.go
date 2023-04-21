@@ -674,6 +674,21 @@ func (mr *MockStoresBackendMockRecorder) ListStores(ctx, paginationOptions inter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListStores", reflect.TypeOf((*MockStoresBackend)(nil).ListStores), ctx, paginationOptions)
 }
 
+// UpdateStore mocks base method.
+func (m *MockStoresBackend) UpdateStore(ctx context.Context, id, name string) (*openfgav1.Store, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStore", ctx, id, name)
+	ret0, _ := ret[0].(*openfgav1.Store)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateStore indicates an expected call of UpdateStore.
+func (mr *MockStoresBackendMockRecorder) UpdateStore(ctx, id, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStore", reflect.TypeOf((*MockStoresBackend)(nil).UpdateStore), ctx, id, name)
+}
+
 // MockAssertionsBackend is a mock of AssertionsBackend interface.
 type MockAssertionsBackend struct {
 	ctrl     *gomock.Controller
@@ -1084,6 +1099,21 @@ func (m *MockOpenFGADatastore) ReadUsersetTuples(ctx context.Context, store stri
 func (mr *MockOpenFGADatastoreMockRecorder) ReadUsersetTuples(ctx, store, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadUsersetTuples", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadUsersetTuples), ctx, store, filter)
+}
+
+// UpdateStore mocks base method.
+func (m *MockOpenFGADatastore) UpdateStore(ctx context.Context, id, name string) (*openfgav1.Store, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateStore", ctx, id, name)
+	ret0, _ := ret[0].(*openfgav1.Store)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateStore indicates an expected call of UpdateStore.
+func (mr *MockOpenFGADatastoreMockRecorder) UpdateStore(ctx, id, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateStore", reflect.TypeOf((*MockOpenFGADatastore)(nil).UpdateStore), ctx, id, name)
 }
 
 // Write mocks base method.
