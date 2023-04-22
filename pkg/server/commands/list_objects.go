@@ -197,9 +197,8 @@ func (q *ListObjectsQuery) Execute(
 
 		case <-timeoutCtx.Done():
 			q.Logger.WarnWithContext(
-				ctx, fmt.Sprintf("list objects timeout with relation '%s'", req.Relation),
-				zap.String("store_id", req.GetStoreId()),
-				zap.String("object_type", req.Type),
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
 			)
 			return &openfgapb.ListObjectsResponse{
 				Objects: objects,
@@ -250,9 +249,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 		case <-timeoutCtx.Done():
 			q.Logger.WarnWithContext(
-				ctx, fmt.Sprintf("streamed list objects timeout with relation '%s'", req.Relation),
-				zap.String("store_id", req.GetStoreId()),
-				zap.String("object_type", req.Type),
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
 			)
 			return nil
 

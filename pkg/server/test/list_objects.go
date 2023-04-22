@@ -43,7 +43,7 @@ type listObjectsTestCase struct {
 	maxResults             uint32
 	minimumResultsExpected uint32
 	listObjectsDeadline    time.Duration // 1 minute if not set
-	dsSlowTime             time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
+	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
 }
 
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
@@ -164,7 +164,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			// should not return any useful data as it times out
 			// however, there should not be any error
-			name:   "list_objects_timeout",
+			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
 			type user
@@ -176,17 +176,15 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
 			},
-			user:       "user:alice",
-			objectType: "repo",
-			relation:   "admin",
-			contextualTuples: &openfgapb.ContextualTupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("repo:3", "admin", "user:alice")},
-			},
+			user:                   "user:alice",
+			objectType:             "repo",
+			relation:               "admin",
 			maxResults:             2,
 			minimumResultsExpected: 0,
-			allResults:             []string{},
-			listObjectsDeadline:    1 * time.Second,
-			dsSlowTime:             2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
+			// We expect empty array to be returned as list object will timeout due to readTuplesDelay > listObjectsDeadline
+			allResults:          []string{},
+			listObjectsDeadline: 1 * time.Second,
+			readTuplesDelay:     2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
 		},
 	}
 
@@ -218,8 +216,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			}
 
 			datastore := ds
-			if test.dsSlowTime > 0 {
-				datastore = mocks.NewMockSlowDataStorage(ds, test.dsSlowTime)
+			if test.readTuplesDelay > 0 {
+				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
 			listObjectsQuery := &commands.ListObjectsQuery{

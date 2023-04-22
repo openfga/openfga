@@ -8,19 +8,18 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// SlowDataStorage is a proxy to the actual ds except the Reads are slow time by the sleepTime
+// SlowDataStorage is a proxy to the actual ds except the Reads are slow time by the readTuplesDelay
 // This allows simulating list objection condition that times out
 type SlowDataStorage struct {
-	sleepTime time.Duration
-	ds        storage.OpenFGADatastore
+	readTuplesDelay time.Duration
+	ds              storage.OpenFGADatastore
 }
 
-// NewMockSlowDataStorage returns SlowDataStorage which is a proxy to the actual ds except the Reads are slow time by the sleepTime
-// This allows simulating list objection condition that times out
-func NewMockSlowDataStorage(ds storage.OpenFGADatastore, sleepTime time.Duration) storage.OpenFGADatastore {
+// NewMockSlowDataStorage returns a wrapper of a datastore that adds artificial delays into the reads of tuples
+func NewMockSlowDataStorage(ds storage.OpenFGADatastore, readTuplesDelay time.Duration) storage.OpenFGADatastore {
 	return &SlowDataStorage{
-		sleepTime: sleepTime,
-		ds:        ds,
+		readTuplesDelay: readTuplesDelay,
+		ds:              ds,
 	}
 }
 
@@ -31,12 +30,12 @@ func (m *SlowDataStorage) ListObjectsByType(ctx context.Context, store string, o
 }
 
 func (m *SlowDataStorage) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	time.Sleep(m.sleepTime)
+	time.Sleep(m.readTuplesDelay)
 	return m.ds.Read(ctx, store, key)
 }
 
 func (m *SlowDataStorage) ReadPage(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	time.Sleep(m.sleepTime)
+	time.Sleep(m.readTuplesDelay)
 	return m.ds.ReadPage(ctx, store, key, paginationOptions)
 }
 
@@ -49,12 +48,12 @@ func (m *SlowDataStorage) Write(ctx context.Context, store string, deletes stora
 }
 
 func (m *SlowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	time.Sleep(m.sleepTime)
+	time.Sleep(m.readTuplesDelay)
 	return m.ds.ReadUserTuple(ctx, store, key)
 }
 
 func (m *SlowDataStorage) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
-	time.Sleep(m.sleepTime)
+	time.Sleep(m.readTuplesDelay)
 	return m.ds.ReadUsersetTuples(ctx, store, filter)
 }
 
@@ -63,7 +62,7 @@ func (m *SlowDataStorage) ReadStartingWithUser(
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
-	time.Sleep(m.sleepTime)
+	time.Sleep(m.readTuplesDelay)
 	return m.ds.ReadStartingWithUser(ctx, store, filter)
 }
 
