@@ -106,14 +106,14 @@ func TestValidateWriteRequest(t *testing.T) {
 	tests := []test{
 		{
 			name:          "nil_for_deletes_and_writes",
-			storeId:       "abcd123",
+			storeID:       "abcd123",
 			deletes:       nil,
 			writes:        nil,
 			expectedError: serverErrors.InvalidWriteInput,
 		},
 		{
 			name:    "write_failure_with_invalid_user",
-			storeId: "abcd123",
+			storeID: "abcd123",
 			deletes: []*openfgapb.TupleKey{},
 			writes:  []*openfgapb.TupleKey{badItem},
 			expectedError: serverErrors.ValidationError(
@@ -125,7 +125,7 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:    "delete_failure_with_invalid_user",
-			storeId: "abcd123",
+			storeID: "abcd123",
 			deletes: []*openfgapb.TupleKey{badItem},
 			writes:  []*openfgapb.TupleKey{},
 			expectedError: serverErrors.ValidationError(
@@ -137,7 +137,7 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:          "write_failure_with_nonexistent_store",
-			storeId:       "",
+			storeID:       "",
 			deletes:       []*openfgapb.TupleKey{},
 			writes:        []*openfgapb.TupleKey{},
 			expectedError: serverErrors.NonExistentStoreID,
@@ -161,7 +161,7 @@ func TestValidateWriteRequest(t *testing.T) {
 
 			ctx := context.Background()
 			req := &openfgapb.WriteRequest{
-				StoreId: test.storeId,
+				StoreId: test.storeID,
 				Writes:  &openfgapb.TupleKeys{TupleKeys: test.writes},
 				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
 			}
