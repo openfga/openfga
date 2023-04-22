@@ -74,15 +74,29 @@ func NewRunCommand() *cobra.Command {
 	return cmd
 }
 
+// DataStoreEngine type to define different engine types
+type DatastoreEngine string
+
+// Types of Datastore Engines
+const (
+	Memory   DatastoreEngine = "memory"
+	Postgres DatastoreEngine = "postgres"
+	Mysql    DatastoreEngine = "mysql"
+)
+
+// String func to convert DatastoreEngine type to string
+func (e DatastoreEngine) String() string {
+	return string(e)
+}
+
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   string
+	Engine   DatastoreEngine
 	URI      string
 	Username string
 	Password string
-
 	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
 	// old keys. The storage cache is used to cache query results for various static resources
 	// such as type definitions.
@@ -349,7 +363,31 @@ func ReadConfig() (*Config, error) {
 	return config, nil
 }
 
+func verifyDatastoreEngine(URI string, Engine DatastoreEngine) error {
+	var URIType string
+	URITokens := strings.Split(URI, ":")
+	if len(URITokens) != 0 {
+		URIType = URITokens[0]
+	}
+	switch URIType {
+	case "postgresql":
+		if Engine != Postgres {
+			return fmt.Errorf("config 'Engine' must be of (%s)", string(Postgres))
+		}
+	case "mysqlx":
+		if Engine != Mysql {
+			return fmt.Errorf("config 'Engine' must be of (%s)", string(Mysql))
+		}
+
+	}
+	return nil
+}
+
 func VerifyConfig(cfg *Config) error {
+	if err := verifyDatastoreEngine(cfg.Datastore.URI, cfg.Datastore.Engine); err != nil {
+		return err
+	}
+
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}

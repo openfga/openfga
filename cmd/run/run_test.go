@@ -283,6 +283,15 @@ func TestVerifyConfig(t *testing.T) {
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
 	})
+
+	t.Run("incorrect datastore engine specified", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.URI = "postgresql://localhost:5432"
+		cfg.Datastore.Engine = Mysql
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
@@ -791,7 +800,7 @@ func TestDefaultConfig(t *testing.T) {
 
 	val := res.Get("properties.datastore.properties.engine.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.Datastore.Engine)
+	require.Equal(t, val.String(), cfg.Datastore.Engine.String())
 
 	val = res.Get("properties.datastore.properties.maxCacheSize.default")
 	require.True(t, val.Exists())
