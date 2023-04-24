@@ -146,12 +146,6 @@ type AuthorizationModelReadBackend interface {
 	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
 }
 
-// TypeDefinitionReadBackend Provides a Read interface for managing type definitions.
-type TypeDefinitionReadBackend interface {
-	// ReadTypeDefinition Read the store authorization model corresponding to `id` + `objectType`.
-	ReadTypeDefinition(ctx context.Context, store, id string, objectType string) (*openfgapb.TypeDefinition, error)
-}
-
 // TypeDefinitionWriteBackend Provides a write interface for managing typed definition.
 type TypeDefinitionWriteBackend interface {
 	// MaxTypesPerAuthorizationModel returns the maximum number of items allowed for type definitions
@@ -165,7 +159,6 @@ type TypeDefinitionWriteBackend interface {
 // AuthorizationModelBackend provides an R/W interface for managing type definition.
 type AuthorizationModelBackend interface {
 	AuthorizationModelReadBackend
-	TypeDefinitionReadBackend
 	TypeDefinitionWriteBackend
 }
 

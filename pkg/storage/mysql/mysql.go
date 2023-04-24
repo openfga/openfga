@@ -435,36 +435,6 @@ func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string
 	return modelID, nil
 }
 
-func (m *MySQL) ReadTypeDefinition(
-	ctx context.Context,
-	store, modelID, objectType string,
-) (*openfgapb.TypeDefinition, error) {
-	ctx, span := tracer.Start(ctx, "mysql.ReadTypeDefinition")
-	defer span.End()
-
-	var marshalledTypeDef []byte
-	err := m.stbl.
-		Select("type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-			"type":                   objectType,
-		}).
-		QueryRowContext(ctx).
-		Scan(&marshalledTypeDef)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	var typeDef openfgapb.TypeDefinition
-	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-		return nil, err
-	}
-
-	return &typeDef, nil
-}
-
 func (m *MySQL) MaxTypesPerAuthorizationModel() int {
 	return m.maxTypesPerModelField
 }

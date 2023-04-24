@@ -436,36 +436,6 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	return modelID, nil
 }
 
-func (p *Postgres) ReadTypeDefinition(
-	ctx context.Context,
-	store, modelID, objectType string,
-) (*openfgapb.TypeDefinition, error) {
-	ctx, span := tracer.Start(ctx, "postgres.ReadTypeDefinition")
-	defer span.End()
-
-	var marshalledTypeDef []byte
-	err := p.stbl.
-		Select("type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-			"type":                   objectType,
-		}).
-		QueryRowContext(ctx).
-		Scan(&marshalledTypeDef)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	var typeDef openfgapb.TypeDefinition
-	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-		return nil, err
-	}
-
-	return &typeDef, nil
-}
-
 func (p *Postgres) MaxTypesPerAuthorizationModel() int {
 	return p.maxTypesPerModelField
 }
