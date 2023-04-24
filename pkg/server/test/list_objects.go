@@ -162,8 +162,6 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			allResults:             []string{"team:1"},
 		},
 		{
-			// should not return any useful data as it times out
-			// however, there should not be any error
 			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
