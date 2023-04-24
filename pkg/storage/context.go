@@ -8,8 +8,11 @@ import (
 )
 
 // ContextTracerWrapper is a wrapper around a datastore that passes a new
-// context to the underlying datastore methods. It must be the first wrapper
-// around the datastore if traces are to work properly.
+// context to the underlying datastore methods.
+// This is so that if the context gets cancelled (e.g by the client), the underlying database connection isn't closed.
+// So, we let outstanding queries run their course even if the context gets cancelled to avoid database connection churning.
+//
+// ContextTracerWrapper must be the first wrapper around the datastore if traces are to work properly.
 type ContextTracerWrapper struct {
 	OpenFGADatastore
 }
@@ -64,4 +67,11 @@ func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store s
 	defer cancel()
 
 	return c.OpenFGADatastore.ReadStartingWithUser(queryCtx, store, opts)
+}
+
+func (c *ContextTracerWrapper) ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error) {
+	queryCtx, cancel := queryContext(ctx)
+	defer cancel()
+
+	return c.OpenFGADatastore.ListObjectsByType(queryCtx, store, objectType)
 }
