@@ -54,7 +54,7 @@ type RelationshipTupleReader interface {
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
-	// There is NO guarantee on the order returned on the list.
+	// The tuples returned are ordered by ULID.
 	ReadPage(
 		ctx context.Context,
 		store string,
