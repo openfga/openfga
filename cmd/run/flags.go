@@ -202,5 +202,4 @@ func bindRunFlags(command *cobra.Command) {
 	flags.Bool("allow-evaluating-1.0-models", defaultConfig.AllowEvaluating1_0Models, "allow evaluating of models with 1.0 schema")
 	util.MustBindPFlag("allowEvaluating1_0Models", flags.Lookup("allow-evaluating-1.0-models"))
 	util.MustBindEnv("allowEvaluating1_0Models", "OPENFGA_ALLOW_EVALUATING_1_0_MODELS")
-
 }
