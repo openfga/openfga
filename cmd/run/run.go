@@ -401,7 +401,7 @@ func VerifyConfig(cfg *Config) error {
 	return nil
 }
 
-func run(cmd *cobra.Command, _ []string) {
+func run(_ *cobra.Command, _ []string) {
 	config, err := ReadConfig()
 	if err != nil {
 		panic(err)
