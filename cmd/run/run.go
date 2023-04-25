@@ -363,7 +363,7 @@ func ReadConfig() (*Config, error) {
 	return config, nil
 }
 
-func verifyDatastoreEngine(URI string, Engine DatastoreEngine) error {
+func VerifyDatastoreEngine(URI string, Engine DatastoreEngine) error {
 	var URIType string
 	URITokens := strings.Split(URI, ":")
 	if len(URITokens) != 0 {
@@ -384,7 +384,7 @@ func verifyDatastoreEngine(URI string, Engine DatastoreEngine) error {
 }
 
 func VerifyConfig(cfg *Config) error {
-	if err := verifyDatastoreEngine(cfg.Datastore.URI, cfg.Datastore.Engine); err != nil {
+	if err := VerifyDatastoreEngine(cfg.Datastore.URI, cfg.Datastore.Engine); err != nil {
 		return err
 	}
 

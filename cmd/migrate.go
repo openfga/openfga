@@ -12,6 +12,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
@@ -63,6 +64,10 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
+
+	if err := run.VerifyDatastoreEngine(uri, run.DatastoreEngine(engine)); err != nil {
+		return err
+	}
 
 	goose.SetLogger(goose.NopLogger())
 
