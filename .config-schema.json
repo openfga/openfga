@@ -114,7 +114,7 @@
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
                 "username": {
-                    "description": "The connection username to use to connect to the datastore (overwrites any username provided in the connection uri).",
+                    "description": "The connection username to connect to the datastore (overwrites any username provided in the connection uri).",
                     "type": "string",
                     "x-env-variable": "OPENFGA_DATASTORE_USERNAME"
                 },
