@@ -91,6 +91,14 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("datastore.uri", flags.Lookup("datastore-uri"))
 	util.MustBindEnv("datastore.uri", "OPENFGA_DATASTORE_URI")
 
+	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
+	util.MustBindPFlag("datastore.username", flags.Lookup("datastore-username"))
+	util.MustBindEnv("datastore.username", "OPENFGA_DATASTORE_USERNAME")
+
+	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
+	util.MustBindPFlag("datastore.password", flags.Lookup("datastore-password"))
+	util.MustBindEnv("datastore.password", "OPENFGA_DATASTORE_PASSWORD")
+
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
 	util.MustBindPFlag("datastore.maxCacheSize", flags.Lookup("datastore-max-cache-size"))
 	util.MustBindEnv("datastore.maxCacheSize", "OPENFGA_DATASTORE_MAX_CACHE_SIZE", "OPENFGA_DATASTORE_MAXCACHESIZE")

@@ -113,6 +113,16 @@
                     ],
                     "x-env-variable": "OPENFGA_DATASTORE_URI"
                 },
+                "username": {
+                    "description": "The username for the connection to the datastore. If provided it will overwrite any username provided in the connection string.",
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_DATASTORE_USERNAME"
+                },
+                "password": {
+                    "description": "The password for the connection to the datastore. If provided it will overwrite any password provided in the connection string.",
+                    "type": "string",
+                    "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
+                },
                 "maxCacheSize": {
                     "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
                     "type": "integer",

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,6 +38,38 @@ type Postgres struct {
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
+
+	// Is username or password explicitly provided?
+	if cfg.Username != "" || cfg.Password != "" {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse postgres connection uri: %w", err)
+		}
+
+		// Username always set to some value
+		username := ""
+		if cfg.Username != "" {
+			username = cfg.Username
+		} else if parsed.User != nil {
+			username = parsed.User.Username()
+		}
+
+		// Only set password if one was provided in either source
+		if cfg.Password != "" {
+			parsed.User = url.UserPassword(username, cfg.Password)
+		} else if parsed.User != nil {
+			if password, ok := parsed.User.Password(); ok {
+				parsed.User = url.UserPassword(username, password)
+			} else {
+				parsed.User = url.User(username)
+			}
+		} else {
+			parsed.User = url.User(username)
+		}
+
+		uri = parsed.String()
+	}
+
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)

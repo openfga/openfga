@@ -45,8 +45,25 @@ func init() {
 func TestServerWithPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := postgres.New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(false)
+	ds, err := postgres.New(
+		uri,
+		sqlcommon.NewConfig(
+			sqlcommon.WithUsername(testDatastore.GetUsername()),
+			sqlcommon.WithPassword(testDatastore.GetPassword()),
+		),
+	)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -62,8 +79,25 @@ func TestServerWithMemoryDatastore(t *testing.T) {
 func TestServerWithMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := mysql.New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(false)
+	ds, err := mysql.New(
+		uri,
+		sqlcommon.NewConfig(
+			sqlcommon.WithUsername(testDatastore.GetUsername()),
+			sqlcommon.WithPassword(testDatastore.GetPassword()),
+		),
+	)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -75,7 +109,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
-		uri := testDatastore.GetConnectionURI()
+		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
@@ -91,7 +125,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
-		uri := testDatastore.GetConnectionURI()
+		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
