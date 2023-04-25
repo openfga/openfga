@@ -39,14 +39,12 @@ var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 
-	// Is username or password explicitly provided?
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse postgres connection uri: %w", err)
 		}
 
-		// Username always set to some value
 		username := ""
 		if cfg.Username != "" {
 			username = cfg.Username
@@ -54,7 +52,6 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 			username = parsed.User.Username()
 		}
 
-		// Only set password if one was provided in either source
 		if cfg.Password != "" {
 			parsed.User = url.UserPassword(username, cfg.Password)
 		} else if parsed.User != nil {
