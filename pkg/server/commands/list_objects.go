@@ -194,6 +194,16 @@ func (q *ListObjectsQuery) Execute(
 
 	for {
 		select {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return &openfgapb.ListObjectsResponse{
+				Objects: objects,
+			}, nil
+
 		case objectID, ok := <-resultsChan:
 			if !ok {
 				return &openfgapb.ListObjectsResponse{
@@ -236,6 +246,14 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 	for {
 		select {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return nil
+
 		case object, ok := <-resultsChan:
 			if !ok {
 				// Channel closed! No more results.
