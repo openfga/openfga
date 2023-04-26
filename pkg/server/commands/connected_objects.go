@@ -91,7 +91,7 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore        storage.OpenFGADatastore
+	Datastore        storage.RelationshipTupleReader
 	Typesystem       *typesystem.TypeSystem
 	ResolveNodeLimit uint32
 
@@ -99,10 +99,22 @@ type ConnectedObjectsCommand struct {
 	Limit uint32
 }
 
+type ConditionalResultStatus int
+
+const (
+	RequiresFurtherEvalStatus ConditionalResultStatus = iota
+	NoFurtherEvalStatus
+)
+
+type ConnectedObjectsResult struct {
+	Object       string
+	ResultStatus ConditionalResultStatus
+}
+
 func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -158,7 +170,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	span.SetAttributes(
 		attribute.String("_sourceUserRef", sourceUserRef.String()),
 		attribute.String("_targetObjRef", targetObjRef.String()))
-	ingresses, err := g.RelationshipIngresses(targetObjRef, sourceUserRef)
+	ingresses, err := g.PrunedRelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
 	}
@@ -215,7 +227,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string, // object string (e.g. document:1)
+	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
 ) error {
 	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
@@ -244,7 +256,7 @@ type reverseExpandRequest struct {
 func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -326,7 +338,15 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 				break
 			}
 
-			resultChan <- foundObject
+			resultStatus := NoFurtherEvalStatus
+			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
+				resultStatus = RequiresFurtherEvalStatus
+			}
+
+			resultChan <- &ConnectedObjectsResult{
+				Object:       foundObject,
+				ResultStatus: resultStatus,
+			}
 		}
 
 		var sourceUserRef isUserRef
@@ -367,7 +387,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -467,7 +487,15 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 				break
 			}
 
-			resultChan <- foundObject
+			resultStatus := NoFurtherEvalStatus
+			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
+				resultStatus = RequiresFurtherEvalStatus
+			}
+
+			resultChan <- &ConnectedObjectsResult{
+				Object:       foundObject,
+				ResultStatus: resultStatus,
+			}
 		}
 
 		sourceUserRef := &UserRefObjectRelation{

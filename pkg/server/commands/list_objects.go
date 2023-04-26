@@ -32,7 +32,8 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
-	ConnectedObjects      func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- string) error
+	ConnectedObjects      func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- *ConnectedObjectsResult) error
+	CheckResolver         graph.CheckResolver
 }
 
 type listObjectsRequest interface {
@@ -106,12 +107,8 @@ func (q *ListObjectsQuery) evaluate(
 			)
 		}
 
-		containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-		containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
-
-		// ConnectedObjects currently only supports models that do not include intersection and exclusion,
-		// and the model must include type info for ConnectedObjects to work.
-		if !containsIntersection && !containsExclusion && hasTypeInfo {
+		// ConnectedObjects currently only supports models that include type info.
+		if hasTypeInfo {
 			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
 			userObjType, userObjID := tuple.SplitObject(userObj)
@@ -138,7 +135,43 @@ func (q *ListObjectsQuery) evaluate(
 			}
 
 			handler = func() {
+
 				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
+
+				connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
+
+				var objectsFound = new(uint32)
+
+				go func() {
+
+					defer close(resultsChan)
+
+					for res := range connectedObjectsResChan {
+
+						if res.ResultStatus != RequiresFurtherEvalStatus {
+							resultsChan <- res.Object
+							continue
+						}
+
+						resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+							StoreID:              req.GetStoreId(),
+							AuthorizationModelID: req.GetAuthorizationModelId(),
+							TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+							ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+							ResolutionMetadata: &graph.ResolutionMetadata{
+								Depth: q.ResolveNodeLimit,
+							},
+						})
+						if err != nil {
+							errChan <- err
+							return // is this the right thing here?
+						}
+
+						if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
+							resultsChan <- res.Object
+						}
+					}
+				}()
 
 				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:          req.GetStoreId(),
@@ -146,12 +179,12 @@ func (q *ListObjectsQuery) evaluate(
 					Relation:         targetRelation,
 					User:             targetUserRef,
 					ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-				}, resultsChan)
+				}, connectedObjectsResChan)
 				if err != nil {
 					errChan <- err
 				}
 
-				close(resultsChan)
+				close(connectedObjectsResChan)
 			}
 		}
 	}

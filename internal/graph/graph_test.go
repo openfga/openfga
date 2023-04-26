@@ -51,22 +51,25 @@ func TestRelationshipIngress_String(t *testing.T) {
 				Type:             TupleToUsersetIngress,
 				Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 				TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+				Condition:        NoFurtherEvalCondition,
 			},
 		},
 		{
 			name:     "ComputedUsersetIngress",
 			expected: "ingress type:\"document\" relation:\"viewer\", type computed_userset",
 			ingress: RelationshipIngress{
-				Type:    ComputedUsersetIngress,
-				Ingress: typesystem.DirectRelationReference("document", "viewer"),
+				Type:      ComputedUsersetIngress,
+				Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+				Condition: NoFurtherEvalCondition,
 			},
 		},
 		{
 			name:     "DirectIngress",
 			expected: "ingress type:\"document\" relation:\"viewer\", type direct",
 			ingress: RelationshipIngress{
-				Type:    DirectIngress,
-				Ingress: typesystem.DirectRelationReference("document", "viewer"),
+				Type:      DirectIngress,
+				Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+				Condition: NoFurtherEvalCondition,
 			},
 		},
 	} {
@@ -82,6 +85,117 @@ func TestRelationshipIngressType_String(t *testing.T) {
 	require.Equal(t, "computed_userset", ComputedUsersetIngress.String())
 	require.Equal(t, "ttu", TupleToUsersetIngress.String())
 	require.Equal(t, "undefined", RelationshipIngressType(4).String())
+}
+
+func TestPrunedRelationshipIngresses(t *testing.T) {
+
+	tests := []struct {
+		name     string
+		model    string
+		target   *openfgapb.RelationReference
+		source   *openfgapb.RelationReference
+		expected []*RelationshipIngress
+	}{
+		// {
+		// 	name: "basic_intersection",
+		// 	model: `
+		// 	type user
+
+		// 	type document
+		// 	  relations
+		// 	    define allowed: [user] as self
+		// 	    define viewer: [user] as self and allowed
+		// 	`,
+		// 	target: typesystem.DirectRelationReference("document", "viewer"),
+		// 	source: typesystem.DirectRelationReference("user", ""),
+		// 	expected: []*RelationshipIngress{
+		// 		{
+		// 			Type:      DirectIngress,
+		// 			Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+		// 			Condition: RequiresFurtherEvalCondition,
+		// 		},
+		// 	},
+		// },
+		// {
+		// 	name: "basic_intersection_through_ttu_1",
+		// 	model: `
+		// 	type user
+
+		// 	type folder
+		// 	  relations
+		// 	    define allowed: [user] as self
+		// 	    define viewer: [user] as self and allowed
+
+		// 	type document
+		// 	  relations
+		// 	  	define parent: [folder] as self
+		// 	    define viewer as viewer from parent
+		// 	`,
+		// 	target: typesystem.DirectRelationReference("document", "viewer"),
+		// 	source: typesystem.DirectRelationReference("user", ""),
+		// 	expected: []*RelationshipIngress{
+		// 		{
+		// 			Type:      DirectIngress,
+		// 			Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+		// 			Condition: RequiresFurtherEvalCondition,
+		// 		},
+		// 	},
+		// },
+		{
+			name: "basic_intersection_through_ttu_2",
+			model: `
+			type user
+
+			type organization
+			  relations
+			    define allowed: [user] as self
+			    define viewer: [user] as self and allowed
+
+			type folder
+			  relations
+			    define parent: [organization] as self
+			    define viewer as viewer from parent
+
+			type document
+			  relations
+			  	define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("folder", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        RequiresFurtherEvalCondition,
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			typedefs := parser.MustParse(test.model)
+			typesys := typesystem.New(&openfgapb.AuthorizationModel{
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+			})
+
+			g := BuildConnectedObjectGraph(typesys)
+
+			ingresses, err := g.PrunedRelationshipIngresses(test.target, test.source)
+			require.NoError(t, err)
+
+			cmpOpts := []cmp.Option{
+				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
+				RelationshipIngressTransformer,
+			}
+			if diff := cmp.Diff(test.expected, ingresses, cmpOpts...); diff != "" {
+				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
@@ -111,12 +225,14 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "editor"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -134,8 +250,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "editor"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -161,16 +278,19 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -192,16 +312,19 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "editor"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -222,8 +345,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -241,8 +365,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -281,12 +406,14 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -312,8 +439,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("group", "member"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -338,6 +466,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -360,8 +489,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -378,8 +508,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -400,8 +531,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("organization", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("organization", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -418,8 +550,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -449,8 +582,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -468,8 +602,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "editor"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -505,12 +640,14 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "relation1"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "relation1"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "relation4"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "relation4"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -528,8 +665,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "relation2"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "relation2"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -550,8 +688,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -576,16 +715,19 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("document", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("team", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("team", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -631,6 +773,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "view"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -651,8 +794,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("organization", "viewer"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("organization", "can_view"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("organization", "can_view"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -676,6 +820,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "view"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -703,8 +848,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("organization", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("organization", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("organization", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -728,24 +874,29 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("trial", "viewer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("trial", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("trial", "editor"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("trial", "editor"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("trial", "owner"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("trial", "owner"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("team", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("team", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("team", "admin"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("team", "admin"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -769,8 +920,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("team", "admin"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("team", "member"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("team", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -788,8 +940,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("team", "admin"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("team", "member"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("team", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -811,8 +964,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("group", "manager"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -838,8 +992,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("group", "member"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("group", "member"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -868,6 +1023,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("org", "dept_member"),
 					TuplesetRelation: typesystem.DirectRelationReference("org", "dept"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -893,8 +1049,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("org", "dept_member"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    DirectIngress,
-					Ingress: typesystem.DirectRelationReference("resource", "writer"),
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("resource", "writer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -932,13 +1089,15 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("document", "viewer"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("document", "can_view"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "can_view"),
+					Condition: NoFurtherEvalCondition,
 				},
 				{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -960,8 +1119,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			source: typesystem.DirectRelationReference("folder", "owner"),
 			expected: []*RelationshipIngress{
 				{
-					Type:    ComputedUsersetIngress,
-					Ingress: typesystem.DirectRelationReference("folder", "viewer"),
+					Type:      ComputedUsersetIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
 				},
 			},
 		},
@@ -984,6 +1144,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
 					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
 				},
 			},
 		},

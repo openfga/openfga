@@ -1939,6 +1939,24 @@ func TestRewriteContainsIntersection(t *testing.T) {
 			rr:       DirectRelationReference("folder", "viewer"),
 			expected: true,
 		},
+		{
+			name: "nested_intersection_1",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self
+			    define viewer: [user] as self and allowed
+
+			type document
+			  relations
+			    define parent: [folder] as self
+				define viewer as viewer from parent
+			`,
+			rr:       DirectRelationReference("document", "viewer"),
+			expected: true,
+		},
 	}
 
 	for _, test := range tests {

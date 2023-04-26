@@ -9,6 +9,7 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -194,6 +195,10 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				ListObjectsMaxResults: test.maxResults,
 				ConnectedObjects:      connectedObjCmd.StreamedConnectedObjects,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
+				CheckResolver: graph.NewLocalChecker(
+					storage.NewCombinedTupleReader(ds, test.contextualTuples.GetTupleKeys()),
+					100,
+				),
 			}
 			typesys := typesystem.New(model)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)

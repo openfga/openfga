@@ -121,10 +121,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		CheckResolver: graph.NewLocalChecker(
+			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+			checkConcurrencyLimit,
+		),
 	}
 
 	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
+		Datastore:        storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 		Typesystem:       typesys,
 		ResolveNodeLimit: s.config.ResolveNodeLimit,
 		Limit:            s.config.ListObjectsMaxResults,
@@ -191,6 +195,10 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
+		CheckResolver: graph.NewLocalChecker(
+			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+			checkConcurrencyLimit,
+		),
 	}
 
 	req.AuthorizationModelId = modelID
@@ -283,7 +291,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit)
+		checkConcurrencyLimit,
+	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
