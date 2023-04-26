@@ -190,6 +190,8 @@ OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https:/
 
 The OpenFGA team will do its best to address all production issues with high priority.
 
+You can learn about more organizations using OpenFGA in production [here](https://github.com/openfga/community/blob/main/ADOPTERS.md). If your organization is using OpenFGA in production please consider adding it to the list.
+
 ## Contributing
 
 See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md).
