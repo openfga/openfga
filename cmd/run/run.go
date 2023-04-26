@@ -414,6 +414,13 @@ func run(_ *cobra.Command, _ []string) {
 }
 
 func readCertificate(ctx context.Context, certPath, keyPath string) (*certwatcher.CertWatcher, error) {
+	if _, err := os.Stat(certPath); err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(keyPath); err != nil {
+		return nil, err
+	}
+
 	watcher, err := certwatcher.New(certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -546,7 +553,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		watcher, err := readCertificate(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
 		if err != nil {
-			logger.Info("abcde")
+			logger.Error("unable to read GRPC TLS certificate", zap.Error(err))
 			return err
 		}
 
