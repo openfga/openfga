@@ -413,7 +413,7 @@ func run(_ *cobra.Command, _ []string) {
 	}
 }
 
-func readCertificate(ctx context.Context, certPath, keyPath string) (*certwatcher.CertWatcher, error) {
+func newCertWatcher(ctx context.Context, logger *logger.ZapLogger, certPath, keyPath string) (*certwatcher.CertWatcher, error) {
 	if _, err := os.Stat(certPath); err != nil {
 		return nil, err
 	}
@@ -428,6 +428,8 @@ func readCertificate(ctx context.Context, certPath, keyPath string) (*certwatche
 
 	go func() {
 		if err := watcher.Start(ctx); err != nil {
+			logger.Fatal("unable to start watcher", zap.Error(err))
+			return
 		}
 	}()
 
@@ -550,8 +552,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	if config.GRPC.TLS.Enabled {
-
-		watcher, err := readCertificate(ctx, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
+		watcher, err := newCertWatcher(ctx, logger, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
 		if err != nil {
 			logger.Error("unable to read GRPC TLS certificate", zap.Error(err))
 			return err
@@ -709,7 +710,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 
 		if config.HTTP.TLS.Enabled {
-			watcher, err := readCertificate(ctx, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
+			watcher, err := newCertWatcher(ctx, logger, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
 			if err != nil {
 				return err
 			}
