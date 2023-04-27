@@ -42,14 +42,16 @@ func TestUpdateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			resp, err := updateCmd.Execute(ctx, test.request)
-			require.NoError(t, err)
-
-			require.Equal(t, createStoreResponse.Id, resp.Id)
-			require.Equal(t, createStoreResponse.CreatedAt, resp.CreatedAt)
-			require.Less(t, createStoreResponse.UpdatedAt, resp.UpdatedAt)
-			require.NotEqual(t, createStoreResponse.Name, resp.Name)
-			require.Equal(t, resp.Name, test.request.Name)
-
+			if test.err != nil {
+				require.ErrorIs(t, err, test.err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, createStoreResponse.Id, resp.Id)
+				require.Equal(t, createStoreResponse.CreatedAt, resp.CreatedAt)
+				require.Less(t, createStoreResponse.UpdatedAt, resp.UpdatedAt)
+				require.NotEqual(t, createStoreResponse.Name, resp.Name)
+				require.Equal(t, resp.Name, test.request.Name)
+			}
 		})
 	}
 }
