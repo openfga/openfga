@@ -669,8 +669,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			logger.Info("xyz")
-			logger.Fatal("mmm", zap.Error(err))
+			logger.Fatal("", zap.Error(err))
 		}
 		defer conn.Close()
 
@@ -718,7 +717,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 
 		go func() {
-			if err := httpServer.Serve(listener); err != http.ErrServerClosed {
+			if err := httpServer.Serve(listener); err != nil {
 				logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 			}
 		}()
