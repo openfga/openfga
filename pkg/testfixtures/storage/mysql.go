@@ -21,13 +21,14 @@ import (
 )
 
 const (
-	mySQLImage = "mysql:latest"
+	mySQLImage = "mysql:8"
 )
 
 type mySQLTestContainer struct {
-	addr    string
-	creds   string
-	version int64
+	addr     string
+	version  int64
+	username string
+	password string
 }
 
 // NewMySQLTestContainer returns an implementation of the DatastoreTestContainer interface
@@ -141,11 +142,12 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	})
 
 	mySQLTestContainer := &mySQLTestContainer{
-		addr:  fmt.Sprintf("localhost:%s", p[0].HostPort),
-		creds: "root:secret",
+		addr:     fmt.Sprintf("localhost:%s", p[0].HostPort),
+		username: "root",
+		password: "secret",
 	}
 
-	uri := fmt.Sprintf("%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.creds, mySQLTestContainer.addr)
+	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
 
 	err = mysql.SetLogger(goose.NopLogger())
 	require.NoError(t, err)
@@ -183,11 +185,24 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 }
 
 // GetConnectionURI returns the mysql connection uri for the running mysql test container.
-func (m *mySQLTestContainer) GetConnectionURI() string {
+func (m *mySQLTestContainer) GetConnectionURI(includeCredentials bool) string {
+	creds := ""
+	if includeCredentials {
+		creds = fmt.Sprintf("%s:%s@", m.username, m.password)
+	}
+
 	return fmt.Sprintf(
-		"%s@tcp(%s)/%s?parseTime=true",
-		m.creds,
+		"%stcp(%s)/%s?parseTime=true",
+		creds,
 		m.addr,
 		"defaultdb",
 	)
+}
+
+func (m *mySQLTestContainer) GetUsername() string {
+	return m.username
+}
+
+func (m *mySQLTestContainer) GetPassword() string {
+	return m.password
 }

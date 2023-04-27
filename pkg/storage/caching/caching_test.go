@@ -18,33 +18,35 @@ func TestCache(t *testing.T) {
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 	defer cachingBackend.Close()
 
-	storeID := ulid.Make().String()
-	objectType := "documents"
-	typeDefinition := &openfgapb.TypeDefinition{Type: objectType}
-
 	model := &openfgapb.AuthorizationModel{
-		Id:              ulid.Make().String(),
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{typeDefinition},
+		Id:            ulid.Make().String(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "documents",
+				Relations: map[string]*openfgapb.Userset{
+					"admin": typesystem.This(),
+				},
+			},
+		},
 	}
+	storeID := ulid.Make().String()
 
 	err := memoryBackend.WriteAuthorizationModel(ctx, storeID, model)
 	require.NoError(t, err)
 
+	// check that first hit to cache -> miss
 	gotModel, err := cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
 
+	// check what's stored inside the cache
 	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
 	cachedModel := cachingBackend.cache.Get(modelKey).Value().(*openfgapb.AuthorizationModel)
 	require.Equal(t, model, cachedModel)
 
-	gotTypeDef, err := cachingBackend.ReadTypeDefinition(ctx, storeID, model.Id, objectType)
+	// check that second hit to cache -> hit
+	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
-	require.Equal(t, typeDefinition, gotTypeDef)
-
-	typeDefKey := fmt.Sprintf("%s:%s:%s", storeID, model.Id, objectType)
-	cachedTypeDef := cachingBackend.cache.Get(typeDefKey).Value().(*openfgapb.TypeDefinition)
-	require.Equal(t, typeDefinition, cachedTypeDef)
-
+	require.Equal(t, model, gotModel)
 }

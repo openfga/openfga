@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,6 +38,35 @@ type Postgres struct {
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
+
+	if cfg.Username != "" || cfg.Password != "" {
+		parsed, err := url.Parse(uri)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse postgres connection uri: %w", err)
+		}
+
+		username := ""
+		if cfg.Username != "" {
+			username = cfg.Username
+		} else if parsed.User != nil {
+			username = parsed.User.Username()
+		}
+
+		if cfg.Password != "" {
+			parsed.User = url.UserPassword(username, cfg.Password)
+		} else if parsed.User != nil {
+			if password, ok := parsed.User.Password(); ok {
+				parsed.User = url.UserPassword(username, password)
+			} else {
+				parsed.User = url.User(username)
+			}
+		} else {
+			parsed.User = url.User(username)
+		}
+
+		uri = parsed.String()
+	}
+
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
@@ -434,36 +464,6 @@ func (p *Postgres) FindLatestAuthorizationModelID(ctx context.Context, store str
 	}
 
 	return modelID, nil
-}
-
-func (p *Postgres) ReadTypeDefinition(
-	ctx context.Context,
-	store, modelID, objectType string,
-) (*openfgapb.TypeDefinition, error) {
-	ctx, span := tracer.Start(ctx, "postgres.ReadTypeDefinition")
-	defer span.End()
-
-	var marshalledTypeDef []byte
-	err := p.stbl.
-		Select("type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-			"type":                   objectType,
-		}).
-		QueryRowContext(ctx).
-		Scan(&marshalledTypeDef)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	var typeDef openfgapb.TypeDefinition
-	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-		return nil, err
-	}
-
-	return &typeDef, nil
 }
 
 func (p *Postgres) MaxTypesPerAuthorizationModel() int {

@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,8 @@ type listObjectsTestCase struct {
 	allResults             []string //all the results. the server may return less
 	maxResults             uint32
 	minimumResultsExpected uint32
+	listObjectsDeadline    time.Duration // 1 minute if not set
+	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
 }
 
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
@@ -158,6 +161,29 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			minimumResultsExpected: 1,
 			allResults:             []string{"team:1"},
 		},
+		{
+			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
+			schema: typesystem.SchemaVersion1_1,
+			model: `
+			type user
+			type repo
+			  relations
+				define admin: [user] as self
+			`,
+			tuples: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
+				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
+			},
+			user:                   "user:alice",
+			objectType:             "repo",
+			relation:               "admin",
+			maxResults:             2,
+			minimumResultsExpected: 0,
+			// We expect empty array to be returned as list object will timeout due to readTuplesDelay > listObjectsDeadline
+			allResults:          []string{},
+			listObjectsDeadline: 1 * time.Second,
+			readTuplesDelay:     2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
+		},
 	}
 
 	for _, test := range testCases {
@@ -181,18 +207,22 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			require.NoError(t, err)
 
 			// act: run ListObjects
-			connectedObjCmd := commands.ConnectedObjectsCommand{
-				Datastore:        ds,
-				Typesystem:       typesystem.New(model),
-				ResolveNodeLimit: defaultResolveNodeLimit,
-				Limit:            test.maxResults,
+
+			listObjectsDeadline := time.Minute
+			if test.listObjectsDeadline > 0 {
+				listObjectsDeadline = test.listObjectsDeadline
 			}
+
+			datastore := ds
+			if test.readTuplesDelay > 0 {
+				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
+			}
+
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             ds,
+				Datastore:             datastore,
 				Logger:                logger.NewNoopLogger(),
-				ListObjectsDeadline:   time.Minute,
+				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
-				ConnectedObjects:      connectedObjCmd.StreamedConnectedObjects,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
 			}
 			typesys := typesystem.New(model)
@@ -301,17 +331,10 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
-	connectedObjCmd := commands.ConnectedObjectsCommand{
-		Datastore:        ds,
-		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: defaultResolveNodeLimit,
-	}
-
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
 		ResolveNodeLimit: defaultResolveNodeLimit,
-		ConnectedObjects: connectedObjCmd.StreamedConnectedObjects,
 	}
 
 	var r *openfgapb.ListObjectsResponse

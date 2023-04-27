@@ -81,8 +81,10 @@ func NewRunCommand() *cobra.Command {
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine string
-	URI    string
+	Engine   string
+	URI      string
+	Username string
+	Password string
 
 	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
 	// old keys. The storage cache is used to cache query results for various static resources
@@ -457,6 +459,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	dsCfg := sqlcommon.NewConfig(
+		sqlcommon.WithUsername(config.Datastore.Username),
+		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithLogger(logger),
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
