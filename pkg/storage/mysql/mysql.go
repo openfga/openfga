@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -37,6 +38,23 @@ type MySQL struct {
 var _ storage.OpenFGADatastore = (*MySQL)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
+
+	if cfg.Username != "" || cfg.Password != "" {
+		dsnCfg, err := mysql.ParseDSN(uri)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse mysql connection dsn: %w", err)
+		}
+
+		if cfg.Username != "" {
+			dsnCfg.User = cfg.Username
+		}
+		if cfg.Password != "" {
+			dsnCfg.Passwd = cfg.Password
+		}
+
+		uri = dsnCfg.FormatDSN()
+	}
+
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
@@ -433,36 +451,6 @@ func (m *MySQL) FindLatestAuthorizationModelID(ctx context.Context, store string
 	}
 
 	return modelID, nil
-}
-
-func (m *MySQL) ReadTypeDefinition(
-	ctx context.Context,
-	store, modelID, objectType string,
-) (*openfgapb.TypeDefinition, error) {
-	ctx, span := tracer.Start(ctx, "mysql.ReadTypeDefinition")
-	defer span.End()
-
-	var marshalledTypeDef []byte
-	err := m.stbl.
-		Select("type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-			"type":                   objectType,
-		}).
-		QueryRowContext(ctx).
-		Scan(&marshalledTypeDef)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	var typeDef openfgapb.TypeDefinition
-	if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-		return nil, err
-	}
-
-	return &typeDef, nil
 }
 
 func (m *MySQL) MaxTypesPerAuthorizationModel() int {

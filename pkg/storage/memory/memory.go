@@ -442,17 +442,6 @@ func findAuthorizationModelByID(id string, configurations map[string]*Authorizat
 	return nsc, true
 }
 
-// definitionByType returns the definition of the objectType if it exists in the authorization model
-func definitionByType(authorizationModel *openfgapb.AuthorizationModel, objectType string) (*openfgapb.TypeDefinition, bool) {
-	for _, td := range authorizationModel.GetTypeDefinitions() {
-		if td.GetType() == objectType {
-			return td, true
-		}
-	}
-
-	return nil, false
-}
-
 // ReadAuthorizationModel See storage.AuthorizationModelBackend.ReadAuthorizationModel
 func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgapb.AuthorizationModel, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModel")
@@ -546,30 +535,6 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 		return "", storage.ErrNotFound
 	}
 	return nsc.Id, nil
-}
-
-// ReadTypeDefinition See storage.TypeDefinitionReadBackend.ReadTypeDefinition
-func (s *MemoryBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgapb.TypeDefinition, error) {
-	_, span := tracer.Start(ctx, "memory.ReadTypeDefinition")
-	defer span.End()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	tm, ok := s.authorizationModels[store]
-	if !ok {
-		telemetry.TraceError(span, storage.ErrNotFound)
-		return nil, storage.ErrNotFound
-	}
-
-	if nsc, ok := findAuthorizationModelByID(id, tm); ok {
-		if ns, ok := definitionByType(nsc, objectType); ok {
-			return ns, nil
-		}
-	}
-
-	telemetry.TraceError(span, storage.ErrNotFound)
-	return nil, storage.ErrNotFound
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel

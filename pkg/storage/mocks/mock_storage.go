@@ -390,44 +390,6 @@ func (mr *MockAuthorizationModelReadBackendMockRecorder) ReadAuthorizationModels
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelReadBackend)(nil).ReadAuthorizationModels), ctx, store, options)
 }
 
-// MockTypeDefinitionReadBackend is a mock of TypeDefinitionReadBackend interface.
-type MockTypeDefinitionReadBackend struct {
-	ctrl     *gomock.Controller
-	recorder *MockTypeDefinitionReadBackendMockRecorder
-}
-
-// MockTypeDefinitionReadBackendMockRecorder is the mock recorder for MockTypeDefinitionReadBackend.
-type MockTypeDefinitionReadBackendMockRecorder struct {
-	mock *MockTypeDefinitionReadBackend
-}
-
-// NewMockTypeDefinitionReadBackend creates a new mock instance.
-func NewMockTypeDefinitionReadBackend(ctrl *gomock.Controller) *MockTypeDefinitionReadBackend {
-	mock := &MockTypeDefinitionReadBackend{ctrl: ctrl}
-	mock.recorder = &MockTypeDefinitionReadBackendMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockTypeDefinitionReadBackend) EXPECT() *MockTypeDefinitionReadBackendMockRecorder {
-	return m.recorder
-}
-
-// ReadTypeDefinition mocks base method.
-func (m *MockTypeDefinitionReadBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgav1.TypeDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadTypeDefinition", ctx, store, id, objectType)
-	ret0, _ := ret[0].(*openfgav1.TypeDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadTypeDefinition indicates an expected call of ReadTypeDefinition.
-func (mr *MockTypeDefinitionReadBackendMockRecorder) ReadTypeDefinition(ctx, store, id, objectType interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTypeDefinition", reflect.TypeOf((*MockTypeDefinitionReadBackend)(nil).ReadTypeDefinition), ctx, store, id, objectType)
-}
-
 // MockTypeDefinitionWriteBackend is a mock of TypeDefinitionWriteBackend interface.
 type MockTypeDefinitionWriteBackend struct {
 	ctrl     *gomock.Controller
@@ -560,21 +522,6 @@ func (m *MockAuthorizationModelBackend) ReadAuthorizationModels(ctx context.Cont
 func (mr *MockAuthorizationModelBackendMockRecorder) ReadAuthorizationModels(ctx, store, options interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadAuthorizationModels", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).ReadAuthorizationModels), ctx, store, options)
-}
-
-// ReadTypeDefinition mocks base method.
-func (m *MockAuthorizationModelBackend) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgav1.TypeDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadTypeDefinition", ctx, store, id, objectType)
-	ret0, _ := ret[0].(*openfgav1.TypeDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadTypeDefinition indicates an expected call of ReadTypeDefinition.
-func (mr *MockAuthorizationModelBackendMockRecorder) ReadTypeDefinition(ctx, store, id, objectType interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTypeDefinition", reflect.TypeOf((*MockAuthorizationModelBackend)(nil).ReadTypeDefinition), ctx, store, id, objectType)
 }
 
 // WriteAuthorizationModel mocks base method.
@@ -1054,21 +1001,6 @@ func (m *MockOpenFGADatastore) ReadStartingWithUser(ctx context.Context, store s
 func (mr *MockOpenFGADatastoreMockRecorder) ReadStartingWithUser(ctx, store, filter interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadStartingWithUser", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadStartingWithUser), ctx, store, filter)
-}
-
-// ReadTypeDefinition mocks base method.
-func (m *MockOpenFGADatastore) ReadTypeDefinition(ctx context.Context, store, id, objectType string) (*openfgav1.TypeDefinition, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadTypeDefinition", ctx, store, id, objectType)
-	ret0, _ := ret[0].(*openfgav1.TypeDefinition)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadTypeDefinition indicates an expected call of ReadTypeDefinition.
-func (mr *MockOpenFGADatastoreMockRecorder) ReadTypeDefinition(ctx, store, id, objectType interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadTypeDefinition", reflect.TypeOf((*MockOpenFGADatastore)(nil).ReadTypeDefinition), ctx, store, id, objectType)
 }
 
 // ReadUserTuple mocks base method.

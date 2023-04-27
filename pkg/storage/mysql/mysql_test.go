@@ -20,7 +20,7 @@ import (
 func TestMySQLDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -32,7 +32,7 @@ func TestMigrate(t *testing.T) {
 	// starts the container and runs migration up to the latest migration version available
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -55,7 +55,7 @@ func TestMigrate(t *testing.T) {
 func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -103,7 +103,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
