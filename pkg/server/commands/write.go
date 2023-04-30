@@ -53,7 +53,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 	defer span.End()
 	store := req.GetStoreId()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := c.datastore.GetStore(ctx, store); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

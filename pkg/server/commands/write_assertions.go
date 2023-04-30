@@ -36,7 +36,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	assertions := req.GetAssertions()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is , can't write to invalid/empty store
 	if _, err := w.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

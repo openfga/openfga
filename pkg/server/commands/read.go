@@ -39,7 +39,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := q.datastore.GetStore(ctx, store); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

@@ -84,7 +84,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetType()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -153,7 +153,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	storeID := req.GetStoreId()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -252,7 +252,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -333,7 +333,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 	storeID := req.GetStoreId()
 
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -363,7 +363,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -382,7 +382,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -408,7 +408,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -427,7 +427,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -462,7 +462,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -487,7 +487,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	defer span.End()
 
 	storeID := req.GetStoreId()
-	// Check if store is empty, can't write to empty store
+	// Check if store is invalid/empty, can't write to invalid/empty store
 	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
