@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/openfga/openfga/cmd/exec_common"
 	"log"
 	"strings"
 	"time"
@@ -12,7 +13,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
@@ -60,27 +60,30 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(_ *cobra.Command, _ []string) error {
-	engine := viper.GetString(datastoreEngineFlag)
+	engine, err := exec_common.NewDatastoreEngine(viper.GetString(datastoreEngineFlag))
+	if err != nil {
+		return err
+	}
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
 
-	if err := run.VerifyDatastoreEngine(uri, run.DatastoreEngine(engine)); err != nil {
+	if err := exec_common.VerifyDatastoreEngine(uri, *engine); err != nil {
 		return err
 	}
 
 	goose.SetLogger(goose.NopLogger())
 
 	var driver, dialect, migrationsPath string
-	switch engine {
-	case "memory":
+	switch *engine {
+	case exec_common.Memory:
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
-	case "mysql":
+	case exec_common.MySQL:
 		driver = "mysql"
 		dialect = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
-	case "postgres":
+	case exec_common.Postgres:
 		driver = "pgx"
 		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir

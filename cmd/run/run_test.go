@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/cmd/exec_common"
 	"io"
 	"log"
 	"math/big"
@@ -284,10 +285,19 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("correct datastore engine specified", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.URI = "postgresql://localhost:5432"
+		cfg.Datastore.Engine = exec_common.Postgres
+
+		err := VerifyConfig(cfg)
+		require.NoError(t, err)
+	})
+
 	t.Run("incorrect datastore engine specified", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Datastore.URI = "postgresql://localhost:5432"
-		cfg.Datastore.Engine = Mysql
+		cfg.Datastore.Engine = exec_common.MySQL
 
 		err := VerifyConfig(cfg)
 		require.Error(t, err)

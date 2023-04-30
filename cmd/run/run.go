@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/cmd/exec_common"
 	"html/template"
 	"net"
 	"net/http"
@@ -74,26 +75,11 @@ func NewRunCommand() *cobra.Command {
 	return cmd
 }
 
-// DataStoreEngine type to define different engine types
-type DatastoreEngine string
-
-// Types of Datastore Engines
-const (
-	Memory   DatastoreEngine = "memory"
-	Postgres DatastoreEngine = "postgres"
-	Mysql    DatastoreEngine = "mysql"
-)
-
-// String func to convert DatastoreEngine type to string
-func (e DatastoreEngine) String() string {
-	return string(e)
-}
-
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   DatastoreEngine
+	Engine   exec_common.DatastoreEngine
 	URI      string
 	Username string
 	Password string
@@ -363,28 +349,8 @@ func ReadConfig() (*Config, error) {
 	return config, nil
 }
 
-func VerifyDatastoreEngine(URI string, Engine DatastoreEngine) error {
-	var URIType string
-	URITokens := strings.Split(URI, ":")
-	if len(URITokens) != 0 {
-		URIType = URITokens[0]
-	}
-	switch URIType {
-	case "postgresql":
-		if Engine != Postgres {
-			return fmt.Errorf("config 'Engine' must be of (%s)", string(Postgres))
-		}
-	case "mysqlx":
-		if Engine != Mysql {
-			return fmt.Errorf("config 'Engine' must be of (%s)", string(Mysql))
-		}
-
-	}
-	return nil
-}
-
 func VerifyConfig(cfg *Config) error {
-	if err := VerifyDatastoreEngine(cfg.Datastore.URI, cfg.Datastore.Engine); err != nil {
+	if err := exec_common.VerifyDatastoreEngine(cfg.Datastore.URI, cfg.Datastore.Engine); err != nil {
 		return err
 	}
 
