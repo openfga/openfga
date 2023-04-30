@@ -84,6 +84,16 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	storeID := req.GetStoreId()
 	targetObjectType := req.GetType()
 
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
 		attribute.String("object_type", targetObjectType),
 		attribute.String("relation", req.GetRelation()),
@@ -142,6 +152,16 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	defer span.End()
 
 	storeID := req.GetStoreId()
+
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return serverErrors.StoreIDNotFound
+			}
+			return serverErrors.HandleError("", err)
+		}
+	}
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -232,6 +252,16 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -268,7 +298,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		checkConcurrencyLimit)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
+		StoreID:              storeID,
 		AuthorizationModelID: req.GetAuthorizationModelId(),
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
@@ -303,6 +333,16 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 	storeID := req.GetStoreId()
 
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -322,6 +362,17 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 	))
 	defer span.End()
 
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -329,6 +380,17 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgapb.Read
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.WriteAuthorizationModelRequest) (*openfgapb.WriteAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
+
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.config.AllowWriting1_0Models)
 	res, err := c.Execute(ctx, req)
@@ -345,6 +407,17 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgapb.Rea
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
@@ -354,6 +427,15 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	defer span.End()
 
 	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
 
 	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
@@ -379,6 +461,17 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -392,6 +485,17 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 		attribute.KeyValue{Key: "type", Value: attribute.StringValue(req.GetType())},
 	))
 	defer span.End()
+
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := s.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
 
 	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
 	return q.Execute(ctx, req)

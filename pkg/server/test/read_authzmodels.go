@@ -160,3 +160,24 @@ func TestReadAuthorizationModelsInvalidContinuationToken(t *testing.T, datastore
 	})
 	require.ErrorIs(err, serverErrors.InvalidContinuationToken)
 }
+
+func TestReadAuthorizationModelsInvalidStoreID(t *testing.T, datastore storage.OpenFGADatastore) {
+	require := require.New(t)
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	store := ""
+
+	model := &openfgapb.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_0,
+		TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "repo"}},
+	}
+	err := datastore.WriteAuthorizationModel(ctx, store, model)
+	require.NoError(err)
+
+	_, err = commands.NewReadAuthorizationModelsQuery(datastore, logger, encoder.NewBase64Encoder()).Execute(ctx, &openfgapb.ReadAuthorizationModelsRequest{
+		StoreId:           store,
+		ContinuationToken: "foo",
+	})
+	require.ErrorIs(err, serverErrors.StoreIDNotFound)
+}

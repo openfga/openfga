@@ -140,7 +140,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			storeID:       "",
 			deletes:       []*openfgapb.TupleKey{},
 			writes:        []*openfgapb.TupleKey{},
-			expectedError: serverErrors.NonExistentStoreID,
+			expectedError: serverErrors.StoreIDNotFound,
 		},
 	}
 

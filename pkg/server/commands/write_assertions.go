@@ -35,6 +35,17 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
 
+	storeID := req.GetStoreId()
+	// Check if store is empty, can't write to empty store
+	if _, err := w.datastore.GetStore(ctx, storeID); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
 	model, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

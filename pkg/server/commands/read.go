@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/openfga/openfga/pkg/encoder"
@@ -37,6 +38,16 @@ func NewReadQuery(datastore storage.OpenFGADatastore, logger logger.Logger, enco
 func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
+
+	// Check if store is empty, can't write to empty store
+	if _, err := q.datastore.GetStore(ctx, store); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.StoreIDNotFound
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
 
 	// Restrict our reads due to some compatibility issues in one of our storage implementations.
 	if tk != nil {
