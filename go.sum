@@ -102,15 +102,13 @@ github.com/craigpastro/openfga-dsl-parser v0.1.1 h1:JNuM1hiFprTGC2E25FOFh2HdeTmj
 github.com/craigpastro/openfga-dsl-parser v0.1.1/go.mod h1:ZPAN95jyrvY6/Z4SInS8uwA+a4D2UwEyaX+nRhmclK8=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86 h1:FzD1FL19a/u+zHzaCeV9apQsJUQAbwG6KCqTzsfbymo=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86/go.mod h1:plNzIR6DwTdb1CInxHaMfoq55vNmCII4yVgfI2hcTOw=
-github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230403164235-b7cfde6a2253 h1:A9mtMpLedx85wRZPusnd/US6RL/6xl41fu34MTqTUQA=
-github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230403164235-b7cfde6a2253/go.mod h1:akhSo8Ivtx3yAP4Gr6cOqiKl2pHie4CxuDgP6ku46Ds=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/docker/distribution v2.8.1+incompatible h1:Q50tZOPR6T/hjNsyc9g8/syEs6bk8XXApsHjKukMl68=
 github.com/docker/distribution v2.8.1+incompatible/go.mod h1:J2gT2udsDAN96Uj4KfcMRqY0/ypR+oyYUYmja8H+y+w=
-github.com/docker/docker v23.0.2+incompatible h1:q81C2qQ/EhPm8COZMUGOQYh4qLv4Xu6CXELJ3WK/mlU=
-github.com/docker/docker v23.0.2+incompatible/go.mod h1:eEKB0N0r5NX/I1kEveEz05bcu8tLC/8azJZsviup8Sk=
+github.com/docker/docker v23.0.5+incompatible h1:DaxtlTJjFSnLOXVNUBU1+6kXGz2lpDoEAH6QoxaSg8k=
+github.com/docker/docker v23.0.5+incompatible/go.mod h1:eEKB0N0r5NX/I1kEveEz05bcu8tLC/8azJZsviup8Sk=
 github.com/docker/go-connections v0.4.0 h1:El9xVISelRB7BuFusrZozjnkIM5YnzCViNKohAFqRJQ=
 github.com/docker/go-connections v0.4.0/go.mod h1:Gbd7IOopHjR8Iph03tsViu4nIes5XhDvyHbTtUxmeec=
 github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=
