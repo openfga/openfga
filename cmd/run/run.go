@@ -416,13 +416,6 @@ func run(_ *cobra.Command, _ []string) {
 }
 
 func newCertWatcher(ctx context.Context, logger *logger.ZapLogger, certPath, keyPath string) (*certwatcher.CertWatcher, error) {
-	if _, err := os.Stat(certPath); err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(keyPath); err != nil {
-		return nil, err
-	}
-
 	watcher, err := certwatcher.New(certPath, keyPath)
 	if err != nil {
 		return nil, err
