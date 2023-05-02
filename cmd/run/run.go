@@ -722,7 +722,9 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		go func() {
 			if err := httpServer.Serve(listener); err != nil {
-				logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+				if !errors.Is(err, http.ErrServerClosed) {
+					logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+				}
 			}
 		}()
 		logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
