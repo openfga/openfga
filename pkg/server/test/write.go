@@ -634,6 +634,47 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
+		_name: "ExecuteReturnsErrorIfAuthModelNotFound",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin":  {Userset: &openfgapb.Userset_This{}},
+						"writer": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "org",
+					Relations: map[string]*openfgapb.Userset{
+						"owner": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+				{
+					Type: "team",
+					Relations: map[string]*openfgapb.Userset{
+						"member": {Userset: &openfgapb.Userset_This{}},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			AuthorizationModelId: "01GZFXJ2XPAF8FBHDKJ83XAJQP",
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
+				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
+			}},
+		},
+		allowSchema10: true,
+		err:           serverErrors.AuthorizationModelNotFound("01GZFXJ2XPAF8FBHDKJ83XAJQP"),
+	},
+	{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
 		model: &openfgapb.AuthorizationModel{
@@ -1656,7 +1697,9 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			cmd := commands.NewWriteCommand(datastore, logger, test.allowSchema10)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			if test.request.AuthorizationModelId == "" {
+				test.request.AuthorizationModelId = test.model.Id
+			}
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
 			require.ErrorIs(gotErr, test.err)
