@@ -126,23 +126,45 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
+	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgapb.TypeDefinition
-	modelID         string
-	schemaVersion   string
+	// [objectType] => [relationName] => relation
+	relations     map[string]map[string]*openfgapb.Relation
+	modelID       string
+	schemaVersion string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	tds := make(map[string]*openfgapb.TypeDefinition, len(model.GetTypeDefinitions()))
+	relations := make(map[string]map[string]*openfgapb.Relation, len(model.GetTypeDefinitions()))
+
 	for _, td := range model.GetTypeDefinitions() {
 		tds[td.GetType()] = td
+		tdRelations := make(map[string]*openfgapb.Relation, len(td.GetRelations()))
+
+		for relation, rewrite := range td.GetRelations() {
+			r := &openfgapb.Relation{
+				Name:     relation,
+				Rewrite:  rewrite,
+				TypeInfo: &openfgapb.RelationTypeInfo{},
+			}
+
+			if metadata, ok := td.GetMetadata().GetRelations()[relation]; ok {
+				r.TypeInfo.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
+			}
+
+			tdRelations[relation] = r
+		}
+		relations[td.GetType()] = tdRelations
 	}
 
 	return &TypeSystem{
 		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
+		relations:       relations,
 	}
 }
 
@@ -165,7 +187,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefini
 
 // GetRelations returns all relations in the TypeSystem for a given type
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
-	td, ok := t.GetTypeDefinition(objectType)
+	_, ok := t.GetTypeDefinition(objectType)
 	if !ok {
 		return nil, &ObjectTypeUndefinedError{
 			ObjectType: objectType,
@@ -173,23 +195,7 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Rela
 		}
 	}
 
-	relations := map[string]*openfgapb.Relation{}
-
-	for relation, rewrite := range td.GetRelations() {
-		r := &openfgapb.Relation{
-			Name:     relation,
-			Rewrite:  rewrite,
-			TypeInfo: &openfgapb.RelationTypeInfo{},
-		}
-
-		if metadata, ok := td.GetMetadata().GetRelations()[relation]; ok {
-			r.TypeInfo.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
-		}
-
-		relations[relation] = r
-	}
-
-	return relations, nil
+	return t.relations[objectType], nil
 }
 
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relation, error) {
