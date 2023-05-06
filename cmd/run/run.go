@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
 
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -412,6 +415,22 @@ func run(_ *cobra.Command, _ []string) {
 	}
 }
 
+func newCertWatcher(ctx context.Context, logger *logger.ZapLogger, certPath, keyPath string) (*certwatcher.CertWatcher, error) {
+	watcher, err := certwatcher.New(certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	go func() {
+		if err := watcher.Start(ctx); err != nil {
+			logger.Fatal("unable to start watcher", zap.Error(err))
+			return
+		}
+	}()
+
+	return watcher, nil
+}
+
 func RunServer(ctx context.Context, config *Config) error {
 	if err := VerifyConfig(config); err != nil {
 		return err
@@ -530,14 +549,15 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	if config.GRPC.TLS.Enabled {
-		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
-			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-		}
-		creds, err := credentials.NewServerTLSFromFile(config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
+		watcher, err := newCertWatcher(ctx, logger, config.GRPC.TLS.CertPath, config.GRPC.TLS.KeyPath)
 		if err != nil {
+			logger.Error("unable to read GRPC TLS certificate", zap.Error(err))
 			return err
 		}
 
+		creds := credentials.NewTLS(&tls.Config{
+			GetCertificate: watcher.GetCertificate,
+		})
 		opts = append(opts, grpc.Creds(creds))
 
 		logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
@@ -680,18 +700,24 @@ func RunServer(ctx context.Context, config *Config) error {
 			}).Handler(mux),
 		}
 
-		go func() {
-			var err error
-			if config.HTTP.TLS.Enabled {
-				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
-					logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
-				}
-				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
-			} else {
-				err = httpServer.ListenAndServe()
+		listener, err := net.Listen("tcp", config.HTTP.Addr)
+		if err != nil {
+			return err
+		}
+
+		if config.HTTP.TLS.Enabled {
+			watcher, err := newCertWatcher(ctx, logger, config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
+			if err != nil {
+				return err
 			}
-			if err != http.ErrServerClosed {
-				logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+			listener = tls.NewListener(listener, &tls.Config{GetCertificate: watcher.GetCertificate})
+		}
+
+		go func() {
+			if err := httpServer.Serve(listener); err != nil {
+				if !errors.Is(err, http.ErrServerClosed) {
+					logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+				}
 			}
 		}()
 		logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))

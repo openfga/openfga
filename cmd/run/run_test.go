@@ -689,6 +689,21 @@ func TestHTTPServingTLS(t *testing.T) {
 		_, err := client.Get(fmt.Sprintf("https://%s/healthz", cfg.HTTP.Addr))
 		require.NoError(t, err)
 	})
+
+	t.Run("enable_HTTP_TLS_is_true_,but_with_missing_cert_file,_will_fail", func(t *testing.T) {
+		cfg := MustDefaultConfigWithRandomPorts()
+		cfg.HTTP.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "/tmp/missing-cert",
+			KeyPath:  "/tmp/missing-key",
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := RunServer(ctx, cfg)
+		require.Error(t, err)
+	})
 }
 
 func TestGRPCServingTLS(t *testing.T) {
@@ -743,6 +758,22 @@ func TestGRPCServingTLS(t *testing.T) {
 		creds := credentials.NewClientTLSFromCert(certPool, "")
 
 		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
+	})
+
+	t.Run("enable_GRPC_TLS_is_true_,but_with_missing_cert_file,_will_fail", func(t *testing.T) {
+		cfg := MustDefaultConfigWithRandomPorts()
+		cfg.HTTP.Enabled = false
+		cfg.GRPC.TLS = &TLSConfig{
+			Enabled:  true,
+			CertPath: "/tmp/missing-cert",
+			KeyPath:  "/tmp/missing-key",
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := RunServer(ctx, cfg)
+		require.Error(t, err)
 	})
 }
 
