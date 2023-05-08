@@ -118,6 +118,34 @@ docker_signs:
     - '${artifact}'
     - "--yes" # needed on cosign 2.0.0+
 
+brews:
+  - tap:
+      owner: openfga
+      name: homebrew-tap
+      pull_request:
+        enabled: true
+    homepage: "https://openfga.dev/"
+    description: "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar."
+    license: "Apache-2.0"
+    folder: "Formula"
+    url_template: "https://github.com/openfga/openfga/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    download_strategy: CurlDownloadStrategy
+
+    # update the head formula on each release
+    custom_block: |
+      head "https://github.com/openfga/openfga.git", :branch => "main"
+    dependencies:
+      - name: go
+        type: optional
+      - name: git
+    install: |
+      bin.install "openfga"
+      bash_completion.install "completions/openfga.bash" => "goreleaser"
+      zsh_completion.install "completions/openfga.zsh" => "_goreleaser"
+      fish_completion.install "completions/openfga.fish"
+    test: |
+      system "#{bin}/openfga version"
+
 archives:
   - rlcp: true
     files:
