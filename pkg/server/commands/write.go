@@ -65,6 +65,9 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return serverErrors.AuthorizationModelNotFound(modelID)
+			}
 			return err
 		}
 
