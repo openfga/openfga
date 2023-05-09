@@ -54,6 +54,7 @@ type RelationshipTupleReader interface {
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
+	// The tuples returned are ordered by ULID.
 	ReadPage(
 		ctx context.Context,
 		store string,
@@ -76,6 +77,7 @@ type RelationshipTupleReader interface {
 	//	object=document:1, relation=viewer, allowedTypesForUser=[group#member]
 	// this method would return the tuple (document:doc1, viewer, group:eng#member)
 	// If allowedTypesForUser is empty, both tuples would be returned.
+	// There is NO guarantee on the order returned on the iterator.
 	ReadUsersetTuples(
 		ctx context.Context,
 		store string,
@@ -92,6 +94,7 @@ type RelationshipTupleReader interface {
 	//
 	// ReverseReadTuples for ['user:jon', 'group:eng#member'] filtered by 'document#viewer' would
 	// return ['document:doc1#viewer@user:jon', 'document:doc2#viewer@group:eng#member'].
+	// There is NO guarantee on the order returned on the iterator.
 	ReadStartingWithUser(
 		ctx context.Context,
 		store string,
@@ -101,6 +104,7 @@ type RelationshipTupleReader interface {
 	// ListObjectsByType returns all the objects of a specific type.
 	// You can assume that the type has already been validated.
 	// The result can't have duplicate elements.
+	// There is NO guarantee on the order returned on the iterator.
 	ListObjectsByType(
 		ctx context.Context,
 		store string,
@@ -146,12 +150,6 @@ type AuthorizationModelReadBackend interface {
 	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
 }
 
-// TypeDefinitionReadBackend Provides a Read interface for managing type definitions.
-type TypeDefinitionReadBackend interface {
-	// ReadTypeDefinition Read the store authorization model corresponding to `id` + `objectType`.
-	ReadTypeDefinition(ctx context.Context, store, id string, objectType string) (*openfgapb.TypeDefinition, error)
-}
-
 // TypeDefinitionWriteBackend Provides a write interface for managing typed definition.
 type TypeDefinitionWriteBackend interface {
 	// MaxTypesPerAuthorizationModel returns the maximum number of items allowed for type definitions
@@ -165,7 +163,6 @@ type TypeDefinitionWriteBackend interface {
 // AuthorizationModelBackend provides an R/W interface for managing type definition.
 type AuthorizationModelBackend interface {
 	AuthorizationModelReadBackend
-	TypeDefinitionReadBackend
 	TypeDefinitionWriteBackend
 }
 

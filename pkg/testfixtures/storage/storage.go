@@ -9,18 +9,36 @@ type DatastoreTestContainer interface {
 
 	// GetConnectionURI returns a connection string to the datastore instance running inside
 	// the container.
-	GetConnectionURI() string
+	GetConnectionURI(includeCredentials bool) string
+
+	// GetDatabaseVersion returns the last migration applied (e.g. 3) when the container was created
+	GetDatabaseSchemaVersion() int64
+
+	GetUsername() string
+	GetPassword() string
 }
 
 type memoryTestContainer struct{}
 
-func (m memoryTestContainer) GetConnectionURI() string {
+func (m memoryTestContainer) GetConnectionURI(includeCredentials bool) string {
 	return ""
 }
 
+func (m memoryTestContainer) GetUsername() string {
+	return ""
+}
+
+func (m memoryTestContainer) GetPassword() string {
+	return ""
+}
+
+func (m memoryTestContainer) GetDatabaseSchemaVersion() int64 {
+	return 1
+}
+
 // RunDatastoreTestContainer constructs and runs a specifc DatastoreTestContainer for the provided
-// datastore engine. The resources used by the test engine will be cleaned up after the test
-// has finished.
+// datastore engine. If applicable, it also runs all existing database migrations.
+// The resources used by the test engine will be cleaned up after the test has finished.
 func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContainer {
 	switch engine {
 	case "mysql":

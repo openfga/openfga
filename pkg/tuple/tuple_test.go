@@ -260,7 +260,11 @@ func TestIsValidUser(t *testing.T) {
 			valid: true,
 		},
 		{
-			name:  "document:10",
+			name:  "user:*",
+			valid: true,
+		},
+		{
+			name:  "user:10",
 			valid: true,
 		},
 		{
@@ -301,11 +305,15 @@ func TestGetUsertypeFromUser(t *testing.T) {
 			want: User,
 		},
 		{
-			name: "document:10",
+			name: "user:10",
 			want: User,
 		},
 		{
 			name: "*",
+			want: UserSet,
+		},
+		{
+			name: "user:*",
 			want: UserSet,
 		},
 		{

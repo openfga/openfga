@@ -29,14 +29,20 @@ var (
 )
 
 type postgresTestContainer struct {
-	addr  string
-	creds string
+	addr     string
+	version  int64
+	username string
+	password string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
 // for Postgres.
 func NewPostgresTestContainer() *postgresTestContainer {
 	return &postgresTestContainer{}
+}
+
+func (p *postgresTestContainer) GetDatabaseSchemaVersion() int64 {
+	return p.version
 }
 
 // RunPostgresTestContainer runs a Postgres container, connects to it, and returns a
@@ -140,11 +146,12 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	})
 
 	pgTestContainer := &postgresTestContainer{
-		addr:  fmt.Sprintf("localhost:%s", m[0].HostPort),
-		creds: "postgres:secret",
+		addr:     fmt.Sprintf("localhost:%s", m[0].HostPort),
+		username: "postgres",
+		password: "secret",
 	}
 
-	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", pgTestContainer.creds, pgTestContainer.addr)
+	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", pgTestContainer.username, pgTestContainer.password, pgTestContainer.addr)
 
 	goose.SetLogger(goose.NopLogger())
 
@@ -168,6 +175,11 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 
 	err = goose.Up(db, assets.PostgresMigrationDir)
 	require.NoError(t, err)
+
+	version, err := goose.GetDBVersion(db)
+	require.NoError(t, err)
+	pgTestContainer.version = version
+
 	err = db.Close()
 	require.NoError(t, err)
 
@@ -175,11 +187,24 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 }
 
 // GetConnectionURI returns the postgres connection uri for the running postgres test container.
-func (p *postgresTestContainer) GetConnectionURI() string {
+func (p *postgresTestContainer) GetConnectionURI(includeCredentials bool) string {
+	creds := ""
+	if includeCredentials {
+		creds = fmt.Sprintf("%s:%s@", p.username, p.password)
+	}
+
 	return fmt.Sprintf(
-		"postgres://%s@%s/%s?sslmode=disable",
-		p.creds,
+		"postgres://%s%s/%s?sslmode=disable",
+		creds,
 		p.addr,
 		"defaultdb",
 	)
+}
+
+func (p *postgresTestContainer) GetUsername() string {
+	return p.username
+}
+
+func (p *postgresTestContainer) GetPassword() string {
+	return p.password
 }

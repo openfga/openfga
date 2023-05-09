@@ -15,7 +15,7 @@ A high-performance and flexible authorization/permission engine built for develo
 
 OpenFGA is designed to make it easy for developers to model their application permissions and add and integrate fine-grained authorization into their applications.
 
-It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL and MySQL.
+It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL 14 and MySQL 8.
 
 It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. 
 
@@ -189,6 +189,8 @@ OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is n
 OpenFGA's MySQL Storage Adapter was contributed to OpenFGA by [@twintag](https://github.com/twintag), who are using it in a production environment. Auth0 is not using it in a production environment.
 
 The OpenFGA team will do its best to address all production issues with high priority.
+
+You can learn about more organizations using OpenFGA in production [here](https://github.com/openfga/community/blob/main/ADOPTERS.md). If your organization is using OpenFGA in production please consider adding it to the list.
 
 ## Contributing
 

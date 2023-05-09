@@ -20,6 +20,8 @@ import (
 )
 
 type Config struct {
+	Username               string
+	Password               string
 	Logger                 logger.Logger
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
@@ -31,6 +33,18 @@ type Config struct {
 }
 
 type DatastoreOption func(*Config)
+
+func WithUsername(username string) DatastoreOption {
+	return func(config *Config) {
+		config.Username = username
+	}
+}
+
+func WithPassword(password string) DatastoreOption {
+	return func(config *Config) {
+		config.Password = password
+	}
+}
 
 func WithLogger(l logger.Logger) DatastoreOption {
 	return func(cfg *Config) {
