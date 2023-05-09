@@ -638,25 +638,34 @@ var writeCommandTests = []writeCommandTest{
 		// state
 		model: &openfgapb.AuthorizationModel{
 			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
+			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
 				{
 					Type: "repo",
 					Relations: map[string]*openfgapb.Userset{
 						"admin":  {Userset: &openfgapb.Userset_This{}},
 						"writer": {Userset: &openfgapb.Userset_This{}},
 					},
-				},
-				{
-					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"owner": {Userset: &openfgapb.Userset_This{}},
-					},
-				},
-				{
-					Type: "team",
-					Relations: map[string]*openfgapb.Userset{
-						"member": {Userset: &openfgapb.Userset_This{}},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"admin": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+							"writer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -665,13 +674,11 @@ var writeCommandTests = []writeCommandTest{
 		request: &openfgapb.WriteRequest{
 			AuthorizationModelId: "01GZFXJ2XPAF8FBHDKJ83XAJQP",
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("org:openfga", "owner", "github|jose@openfga"),
-				tuple.NewTupleKey("repo:openfga/openfga", "admin", "github|jose@openfga"),
-				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
-				tuple.NewTupleKey("team:openfga/iam", "member", "iaco@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "user:github|jon@openfga"),
 			}},
 		},
-		allowSchema10: true,
+		allowSchema10: false,
 		err:           serverErrors.AuthorizationModelNotFound("01GZFXJ2XPAF8FBHDKJ83XAJQP"),
 	},
 	{
