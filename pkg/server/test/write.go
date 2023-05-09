@@ -634,6 +634,54 @@ var writeCommandTests = []writeCommandTest{
 		),
 	},
 	{
+		_name: "ExecuteReturnsErrorIfAuthModelNotFound",
+		// state
+		model: &openfgapb.AuthorizationModel{
+			Id:            ulid.Make().String(),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "repo",
+					Relations: map[string]*openfgapb.Userset{
+						"admin":  {Userset: &openfgapb.Userset_This{}},
+						"writer": {Userset: &openfgapb.Userset_This{}},
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"admin": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+							"writer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									{
+										Type: "user",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// input
+		request: &openfgapb.WriteRequest{
+			AuthorizationModelId: "01GZFXJ2XPAF8FBHDKJ83XAJQP",
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
+				tuple.NewTupleKey("repo:openfga/openfga", "writer", "user:github|jon@openfga"),
+			}},
+		},
+		allowSchema10: false,
+		err:           serverErrors.AuthorizationModelNotFound("01GZFXJ2XPAF8FBHDKJ83XAJQP"),
+	},
+	{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
 		model: &openfgapb.AuthorizationModel{
@@ -1656,7 +1704,9 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			cmd := commands.NewWriteCommand(datastore, logger, test.allowSchema10)
 			test.request.StoreId = store
-			test.request.AuthorizationModelId = test.model.Id
+			if test.request.AuthorizationModelId == "" {
+				test.request.AuthorizationModelId = test.model.Id
+			}
 			resp, gotErr := cmd.Execute(ctx, test.request)
 
 			require.ErrorIs(gotErr, test.err)
