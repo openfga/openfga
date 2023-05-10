@@ -182,11 +182,13 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		close(resultChan)
 	}()
 
+	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
 			if result.err != nil {
-				return &openfgapb.CheckResponse{Allowed: false}, result.err
+				err = result.err
+				continue
 			}
 
 			if result.resp.GetAllowed() {
@@ -195,6 +197,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+
+	if err != nil {
+		return &openfgapb.CheckResponse{Allowed: false}, err
 	}
 
 	return &openfgapb.CheckResponse{Allowed: false}, nil
@@ -215,12 +221,13 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		close(resultChan)
 	}()
 
+	var err error
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
-
 			if result.err != nil {
-				return &openfgapb.CheckResponse{Allowed: false}, result.err
+				err = result.err
+				continue
 			}
 
 			if !result.resp.GetAllowed() {
@@ -229,6 +236,10 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+
+	if err != nil {
+		return &openfgapb.CheckResponse{Allowed: false}, err
 	}
 
 	return &openfgapb.CheckResponse{Allowed: true}, nil
