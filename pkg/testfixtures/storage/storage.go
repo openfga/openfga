@@ -2,6 +2,13 @@ package storage
 
 import (
 	"testing"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/mysql"
+	"github.com/openfga/openfga/pkg/storage/postgres"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/stretchr/testify/require"
 )
 
 // DatastoreTestContainer represents a runnable container for testing specific datastore engines.
@@ -51,4 +58,27 @@ func RunDatastoreTestContainer(t testing.TB, engine string) DatastoreTestContain
 		t.Fatalf("'%s' engine is not supported by RunDatastoreTestContainer", engine)
 		return nil
 	}
+}
+
+func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
+	testDatastore := RunDatastoreTestContainer(t, engine)
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	var ds storage.OpenFGADatastore
+	var err error
+
+	switch engine {
+	case "memory":
+		ds = memory.New(10, 24)
+	case "postgres":
+		ds, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "mysql":
+		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+	default:
+		t.Fatalf("'%s' is not a supported datastore engine", engine)
+	}
+	require.NoError(t, err)
+
+	return ds
 }
