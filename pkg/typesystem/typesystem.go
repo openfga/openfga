@@ -587,32 +587,6 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 	return false, nil
 }
 
-// allRelations returns all relations in the TypeSystem
-func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
-	relations := map[string]*openfgapb.Relation{}
-
-	for _, td := range t.typeDefinitions {
-		relationMetadata := td.GetMetadata().GetRelations()
-
-		for relation, rewrite := range td.GetRelations() {
-			var typeInfo *openfgapb.RelationTypeInfo
-			if md, ok := relationMetadata[relation]; ok {
-				typeInfo = &openfgapb.RelationTypeInfo{
-					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
-				}
-			}
-
-			relations[relation] = &openfgapb.Relation{
-				Name:     relation,
-				Rewrite:  rewrite,
-				TypeInfo: typeInfo,
-			}
-		}
-	}
-
-	return relations
-}
-
 // NewAndValidate is like New but also validates the model according to the following rules:
 //  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
@@ -733,6 +707,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
 
 		if t.GetSchemaVersion() == SchemaVersion1_1 {
+			// for 1.1 models, relation `computedUserset` has to be defined in one of the types declared by the tupleset's list of allowed types
 			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 			for _, rr := range userTypes {
 				if _, err := t.GetRelation(rr.GetType(), computedUserset); err == nil {
@@ -742,9 +717,13 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 
 			return fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes)
 		} else {
-			if _, ok := t.allRelations()[computedUserset]; !ok {
-				return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+			// for 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model
+			for typeName := range t.relations {
+				if _, err := t.GetRelation(typeName, computedUserset); err == nil {
+					return nil
+				}
 			}
+			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 		}
 	case *openfgapb.Userset_Union:
 		for _, child := range r.Union.GetChild() {
