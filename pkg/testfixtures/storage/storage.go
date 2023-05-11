@@ -11,7 +11,7 @@ type DatastoreTestContainer interface {
 	// the container.
 	GetConnectionURI(includeCredentials bool) string
 
-	// GetDatabaseVersion returns the last migration applied (e.g. 3) when the container was created
+	// GetDatabaseSchemaVersion returns the last migration applied (e.g. 3) when the container was created
 	GetDatabaseSchemaVersion() int64
 
 	GetUsername() string
