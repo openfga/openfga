@@ -21,8 +21,8 @@ receivers:
 # How you send data to one or more backends. Configuring an exporter does not enable it.
 exporters:
   # Data sources: traces
-  jaeger:
-    endpoint: jaeger:14250
+  otlp:
+    endpoint: jaeger:4317
     tls:
       insecure: true
     retry_on_failure:
@@ -65,7 +65,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [jaeger]
+      exporters: [otlp]
     metrics:
       receivers: [prometheus]
       processors: [batch]

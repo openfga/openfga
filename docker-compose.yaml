@@ -73,8 +73,11 @@ services:
     image: jaegertracing/all-in-one:latest
     container_name: jaeger
     command: ["--query.max-clock-skew-adjustment", "500ms"]
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686" # UI
+      - "4317" # OTLP gRPC default port
     depends_on:
       - otel-collector
     networks:
