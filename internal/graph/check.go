@@ -199,11 +199,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		}
 	}
 
-	if err != nil {
-		return &openfgapb.CheckResponse{Allowed: false}, err
-	}
-
-	return &openfgapb.CheckResponse{Allowed: false}, nil
+	return &openfgapb.CheckResponse{Allowed: false}, err
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
