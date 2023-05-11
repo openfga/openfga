@@ -20,15 +20,6 @@ jobs:
           cache-dependency-path: './go.sum'
           check-latest: true
 
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-v1
-
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
         run: |
