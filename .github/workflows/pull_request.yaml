@@ -12,9 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
           check-latest: true
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
@@ -27,27 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
           check-latest: true
 
       - id: go-cache-paths
         run: |
           echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
           echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-      # Cache go build cache, used to speedup go test
-      - uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-build }}
-          key: ${{ runner.os }}-go-build-${{ hashFiles('**/go.sum') }}
-
-      # Cache go mod cache, used to speedup builds
-      - uses: actions/cache@v3
-        with:
-          path: ${{ steps.go-cache-paths.outputs.go-mod }}
-          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
 
       - name: Unit Tests
         run: make unit-test
@@ -71,25 +61,16 @@ jobs:
       steps:
         - uses: actions/checkout@v3
 
-        - uses: actions/setup-go@v3
+        - uses: actions/setup-go@v4
           with:
             go-version-file: './go.mod'
+            cache-dependency-path: './go.sum'
             check-latest: true
 
         - id: go-cache-paths
           run: |
             echo "go-build=$(go env GOCACHE)" >> $GITHUB_OUTPUT
             echo "go-mod=$(go env GOMODCACHE)" >> $GITHUB_OUTPUT
-
-        # Cache go build and go mod cache, used to speedup go test
-        - uses: actions/cache@v3
-          with:
-            path: |
-              ${{ steps.go-cache-paths.outputs.go-mod }}
-              ${{ steps.go-cache-paths.outputs.go-build }}
-            key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-            restore-keys: |
-              ${{ runner.os }}-go
 
         - name: Set up Docker Buildx
           uses: docker/setup-buildx-action@v2
@@ -111,19 +92,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v4
         with:
           go-version-file: './go.mod'
+          cache-dependency-path: './go.sum'
           check-latest: true
-
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-v1-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-v1
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
