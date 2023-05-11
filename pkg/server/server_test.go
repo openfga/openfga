@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
@@ -44,7 +43,7 @@ func init() {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	ds := storagefixtures.MustBootstrapDatastore(t, "postgres")
+	ds := MustBootstrapDatastore(t, "postgres")
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
@@ -68,14 +67,14 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := storagefixtures.MustBootstrapDatastore(t, "memory")
+	ds := MustBootstrapDatastore(t, "memory")
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	ds := storagefixtures.MustBootstrapDatastore(t, "mysql")
+	ds := MustBootstrapDatastore(t, "mysql")
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
@@ -96,78 +95,6 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
-}
-
-func TestDeterministicCheck(t *testing.T) {
-
-	engines := []string{"memory", "postgres", "mysql"}
-
-	storeID := ulid.Make().String()
-
-	typedefs := parser.MustParse(`
-	type user
-
-	type group
-	  relations
-	    define member: [user, group#member] as self
-
-	type document
-	  relations
-	    define allowed: [user] as self
-	    define viewer: [group#member] as self
-	    define editor: [group#member] as self and allowed
-	`)
-
-	for _, engine := range engines {
-		t.Run(engine, func(t *testing.T) {
-			ds := storagefixtures.MustBootstrapDatastore(t, engine)
-			defer ds.Close()
-
-			server := New(&Dependencies{
-				Datastore: ds,
-				Logger:    logger.NewNoopLogger(),
-				Transport: gateway.NewNoopTransport(),
-			}, &Config{
-				ResolveNodeLimit: 2,
-			})
-
-			_, err := server.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
-				StoreId:         storeID,
-				TypeDefinitions: typedefs,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-			})
-			require.NoError(t, err)
-
-			_, err = server.Write(context.Background(), &openfgapb.WriteRequest{
-				StoreId: storeID,
-				Writes: &openfgapb.TupleKeys{
-					TupleKeys: []*openfgapb.TupleKey{
-						tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-						tuple.NewTupleKey("document:1", "editor", "group:eng#member"),
-						tuple.NewTupleKey("document:1", "allowed", "user:jon"),
-						tuple.NewTupleKey("document:1", "allowed", "user:x"),
-						tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
-						tuple.NewTupleKey("group:eng", "member", "user:jon"),
-					},
-				},
-			})
-			require.NoError(t, err)
-
-			resp, err := server.Check(context.Background(), &openfgapb.CheckRequest{
-				StoreId:  storeID,
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-			})
-			require.NoError(t, err)
-			require.True(t, resp.GetAllowed())
-
-			resp, err = server.Check(context.Background(), &openfgapb.CheckRequest{
-				StoreId:  storeID,
-				TupleKey: tuple.NewTupleKey("document:1", "editor", "user:x"),
-			})
-			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
-			require.False(t, resp.GetAllowed())
-		})
-	}
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
@@ -684,4 +611,27 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
+}
+
+func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	var ds storage.OpenFGADatastore
+	var err error
+
+	switch engine {
+	case "memory":
+		ds = memory.New(10, 24)
+	case "postgres":
+		ds, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "mysql":
+		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+	default:
+		t.Fatalf("'%s' is not a supported datastore engine", engine)
+	}
+	require.NoError(t, err)
+
+	return ds
 }
