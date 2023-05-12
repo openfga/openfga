@@ -254,9 +254,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				<-done
 
 				require.NoError(t, err)
-				require.LessOrEqual(t, len(streamedObjectIds), int(test.maxResults))
 				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
-				require.Subset(t, test.allResults, streamedObjectIds)
+				require.ElementsMatch(t, test.allResults, streamedObjectIds)
 			})
 
 			t.Run("regular_endpoint", func(t *testing.T) {

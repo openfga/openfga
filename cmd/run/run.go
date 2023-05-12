@@ -197,9 +197,9 @@ type Config struct {
 	// ListObjects endpoints. It cannot be larger than HTTPConfig.UpstreamTimeout.
 	ListObjectsDeadline time.Duration
 
-	// ListObjectsMaxResults defines the maximum number of ListObjects results to accumulate
-	// before the server will respond. This is to protect the server from misuse of the
-	// ListObjects endpoints.
+	// ListObjectsMaxResults defines the maximum number of results to accumulate
+	// before the non-streaming ListObjects API will respond to the client.
+	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
