@@ -21,11 +21,13 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		tuple.NewTupleKey("document:1", "editor", "group:eng#member"),
-		tuple.NewTupleKey("document:1", "allowed", "user:jon"),
-		tuple.NewTupleKey("document:1", "allowed", "user:x"),
+		tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
+		tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
+		tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+		tuple.NewTupleKey("document:2", "allowed", "user:x"),
 		tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
 		tuple.NewTupleKey("group:eng", "member", "user:jon"),
+		tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
 	})
 	require.NoError(t, err)
 
@@ -41,7 +43,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	type document
 	  relations
 	    define allowed: [user] as self
-	    define viewer: [group#member] as self
+	    define viewer: [group#member] as self or editor
 	    define editor: [group#member] as self and allowed
 	    
 	`)
@@ -64,7 +66,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:1", "editor", "user:x"),
+		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
 		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
 	})
 	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
