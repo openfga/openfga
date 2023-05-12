@@ -117,7 +117,7 @@ jobs:
             helm repo update
             helm install openfgabench-${{ steps.vars.outputs.sha_short }} openfga/openfga-benchmark \
               --set Nparam=${{ github.event.inputs.N }} \
-              --set Mparam=${{ github.event.inputs.M }}\
+              --set Mparam=${{ github.event.inputs.M }} \
               --set Kparam=${{ github.event.inputs.K }} \
               --set testCase=${{ github.event.inputs.testCase }} \
               --set replicaCount=1 \
