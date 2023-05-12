@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
 	listObjectsOptimizedKey = "list_objects_optimized"
 )
@@ -230,7 +231,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 ) error {
 
 	maxResults := uint32(math.MaxUint32)
-	resultsChan := make(chan string)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
+	resultsChan := make(chan string, streamedBufferSize)
 
 	errChan := make(chan error)
 
