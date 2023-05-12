@@ -33,7 +33,7 @@ jobs:
 
       # skip publish to GitHub Releases
       - name: Run GoReleaser Nightly
-        uses: goreleaser/goreleaser-action@b953231f81b8dfd023c58e0854a721e35037f28b # v2.9.1
+        uses: goreleaser/goreleaser-action@f82d6c1c344bcacabba2c841718984797f664a6b # v4.2.0
         with:
           distribution: goreleaser
           version: latest
