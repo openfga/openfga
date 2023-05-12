@@ -43,11 +43,7 @@ func init() {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := postgres.New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
+	ds := MustBootstrapDatastore(t, "postgres")
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
@@ -71,17 +67,14 @@ func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := memory.New(10, 24)
+	ds := MustBootstrapDatastore(t, "memory")
 	defer ds.Close()
+
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := mysql.New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
+	ds := MustBootstrapDatastore(t, "mysql")
 	defer ds.Close()
 
 	test.RunAllTests(t, ds)
@@ -618,4 +611,27 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
+}
+
+func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	var ds storage.OpenFGADatastore
+	var err error
+
+	switch engine {
+	case "memory":
+		ds = memory.New(10, 24)
+	case "postgres":
+		ds, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "mysql":
+		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+	default:
+		t.Fatalf("'%s' is not a supported datastore engine", engine)
+	}
+	require.NoError(t, err)
+
+	return ds
 }
