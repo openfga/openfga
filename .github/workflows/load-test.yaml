@@ -115,7 +115,7 @@ jobs:
           command: |
             helm repo add openfga https://openfga.github.io/helm-charts
             helm repo update
-            helm install openfgabench-${{ steps.vars.outputs.sha_short }} openfga/openfga-benchmark \
+            helm install openfgabench-${{ steps.vars.outputs.sha_short }} openfga/benchmark \
               --set Nparam=${{ github.event.inputs.N }} \
               --set Mparam=${{ github.event.inputs.M }} \
               --set Kparam=${{ github.event.inputs.K }} \
