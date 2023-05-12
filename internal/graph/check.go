@@ -93,7 +93,6 @@ type checkOutcome struct {
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds               storage.RelationshipTupleReader
-	datastoreFunc    func() storage.RelationshipTupleReader
 	typesysResolver  typesystem.TypesystemResolverFunc
 	concurrencyLimit uint32
 }
