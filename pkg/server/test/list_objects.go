@@ -224,9 +224,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
+				TypesystemResolver:    typesystem.MemoizedTypesystemResolverFunc(datastore),
 			}
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -332,14 +331,13 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:          ds,
+		Logger:             logger.NewNoopLogger(),
+		ResolveNodeLimit:   defaultResolveNodeLimit,
+		TypesystemResolver: typesystem.MemoizedTypesystemResolverFunc(ds),
 	}
 
 	var r *openfgapb.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -392,14 +390,13 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:          ds,
+		Logger:             logger.NewNoopLogger(),
+		ResolveNodeLimit:   defaultResolveNodeLimit,
+		TypesystemResolver: typesystem.MemoizedTypesystemResolverFunc(ds),
 	}
 
 	var r *openfgapb.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

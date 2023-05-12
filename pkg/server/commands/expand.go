@@ -19,11 +19,23 @@ type ExpandQuery struct {
 	logger        logger.Logger
 	datastore     storage.OpenFGADatastore
 	allowSchema10 bool
+
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger, allowSchema10 bool) *ExpandQuery {
-	return &ExpandQuery{logger: logger, datastore: datastore, allowSchema10: allowSchema10}
+func NewExpandQuery(
+	datastore storage.OpenFGADatastore,
+	logger logger.Logger,
+	typesysResolver typesystem.TypesystemResolverFunc,
+	allowSchema10 bool,
+) *ExpandQuery {
+	return &ExpandQuery{
+		logger:             logger,
+		datastore:          datastore,
+		typesystemResolver: typesysResolver,
+		allowSchema10:      allowSchema10,
+	}
 }
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
@@ -39,16 +51,14 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := q.typesystemResolver(ctx, store, modelID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	typesys := typesystem.New(model)
 
 	if ProhibitModel1_0(typesys.GetSchemaVersion(), q.allowSchema10) {
 		return nil, serverErrors.ValidationError(ErrObsoleteAuthorizationModel)

@@ -1702,7 +1702,12 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, logger, test.allowSchema10)
+			cmd := commands.NewWriteCommand(
+				datastore,
+				logger,
+				typesystem.MemoizedTypesystemResolverFunc(datastore),
+				test.allowSchema10,
+			)
 			test.request.StoreId = store
 			if test.request.AuthorizationModelId == "" {
 				test.request.AuthorizationModelId = test.model.Id

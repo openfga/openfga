@@ -10,8 +10,6 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
-	"github.com/openfga/openfga/internal/graph"
-	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -48,6 +46,8 @@ type Server struct {
 	encoder   encoder.Encoder
 	transport gateway.Transport
 	config    *Config
+
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 type Dependencies struct {
@@ -71,112 +71,16 @@ type Config struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
 
+	typesysResolverFunc := typesystem.MemoizedTypesystemResolverFunc(dependencies.Datastore)
+
 	return &Server{
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		logger:             dependencies.Logger,
+		datastore:          dependencies.Datastore,
+		encoder:            dependencies.TokenEncoder,
+		transport:          dependencies.Transport,
+		config:             config,
+		typesystemResolver: typesysResolverFunc,
 	}
-}
-
-func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-	storeID := req.GetStoreId()
-	targetObjectType := req.GetType()
-
-	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
-		attribute.String("object_type", targetObjectType),
-		attribute.String("relation", req.GetRelation()),
-		attribute.String("user", req.GetUser()),
-	))
-	defer span.End()
-
-	modelID := req.GetAuthorizationModelId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
-	if err != nil {
-		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-
-		return nil, err
-	}
-
-	typesys := typesystem.New(model)
-
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-	}
-	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
-		StoreId:              storeID,
-		ContextualTuples:     req.GetContextualTuples(),
-		AuthorizationModelId: modelID,
-		Type:                 targetObjectType,
-		Relation:             req.Relation,
-		User:                 req.User,
-	})
-}
-
-func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
-	ctx := srv.Context()
-	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
-		attribute.String("object_type", req.GetType()),
-		attribute.String("relation", req.GetRelation()),
-		attribute.String("user", req.GetUser()),
-	))
-	defer span.End()
-
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
-		}
-
-		return serverErrors.HandleError("", err)
-	}
-
-	typesys := typesystem.New(model)
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-	}
-
-	req.AuthorizationModelId = modelID
-	return q.ExecuteStreamed(ctx, req, srv)
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
@@ -208,111 +112,12 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
+	cmd := commands.NewWriteCommand(s.datastore, s.logger, s.typesystemResolver, s.config.AllowEvaluating1_0Models)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
-	})
-}
-
-func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openfgapb.CheckResponse, error) {
-	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
-		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
-		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
-		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
-	))
-	defer span.End()
-
-	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
-		return nil, serverErrors.InvalidCheckInput
-	}
-
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-		return nil, err
-	}
-
-	typesys := typesystem.New(model)
-
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
-	}
-
-	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
-		return nil, serverErrors.ValidationError(err)
-	}
-
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return nil, serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	checkResolver := graph.NewLocalChecker(
-		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit)
-
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
-		TupleKey:             req.GetTupleKey(),
-		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.config.ResolveNodeLimit,
-		},
-	})
-	if err != nil {
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
-			return nil, serverErrors.AuthorizationModelResolutionTooComplex
-		}
-
-		return nil, serverErrors.HandleError("", err)
-	}
-
-	res := &openfgapb.CheckResponse{
-		Allowed: resp.Allowed,
-	}
-
-	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
-	return res, nil
-}
-
-func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
-	tk := req.GetTupleKey()
-	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
-		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
-		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
-		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
-	))
-	defer span.End()
-
-	storeID := req.GetStoreId()
-
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
-	if err != nil {
-		return nil, err
-	}
-
-	q := commands.NewExpandQuery(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
-	return q.Execute(ctx, &openfgapb.ExpandRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey:             tk,
 	})
 }
 
@@ -360,7 +165,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.typesystemResolver, s.config.AllowEvaluating1_0Models)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,

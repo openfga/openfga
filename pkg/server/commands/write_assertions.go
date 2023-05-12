@@ -13,20 +13,23 @@ import (
 )
 
 type WriteAssertionsCommand struct {
-	datastore     storage.OpenFGADatastore
-	logger        logger.Logger
-	allowSchema10 bool
+	datastore          storage.OpenFGADatastore
+	logger             logger.Logger
+	typesystemResolver typesystem.TypesystemResolverFunc
+	allowSchema10      bool
 }
 
 func NewWriteAssertionsCommand(
 	datastore storage.OpenFGADatastore,
 	logger logger.Logger,
+	typesystemResolver typesystem.TypesystemResolverFunc,
 	allowSchema10 bool,
 ) *WriteAssertionsCommand {
 	return &WriteAssertionsCommand{
-		datastore:     datastore,
-		logger:        logger,
-		allowSchema10: allowSchema10,
+		datastore:          datastore,
+		logger:             logger,
+		typesystemResolver: typesystemResolver,
+		allowSchema10:      allowSchema10,
 	}
 }
 
@@ -35,16 +38,14 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
 
-	model, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := w.typesystemResolver(ctx, store, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
 		return nil, serverErrors.HandleError("", err)
 	}
-
-	typesys := typesystem.New(model)
 
 	if ProhibitModel1_0(typesys.GetSchemaVersion(), w.allowSchema10) {
 		return nil, serverErrors.ValidationError(ErrObsoleteAuthorizationModel)

@@ -32,6 +32,8 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
 	ResolveNodeLimit      uint32
+
+	TypesystemResolver typesystem.TypesystemResolverFunc
 }
 
 type listObjectsRequest interface {
@@ -46,6 +48,7 @@ type listObjectsRequest interface {
 func (q *ListObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
+	typesys *typesystem.TypeSystem,
 	resultsChan chan<- string,
 	errChan chan<- error,
 ) error {
@@ -54,11 +57,6 @@ func (q *ListObjectsQuery) evaluate(
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
-
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
-	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
@@ -84,7 +82,6 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	handler := func() {
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan)
@@ -139,18 +136,19 @@ func (q *ListObjectsQuery) evaluate(
 			span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
 
 			connectObjCmd := &ConnectedObjectsCommand{
-				Datastore:        q.Datastore,
-				ResolveNodeLimit: q.ResolveNodeLimit,
-				Limit:            q.ListObjectsMaxResults,
+				Datastore:          q.Datastore,
+				ResolveNodeLimit:   q.ResolveNodeLimit,
+				Limit:              q.ListObjectsMaxResults,
+				TypesystemResolver: q.TypesystemResolver,
 			}
 
 			err = connectObjCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
-				StoreID:          req.GetStoreId(),
-				Typesystem:       typesys,
-				ObjectType:       targetObjectType,
-				Relation:         targetRelation,
-				User:             targetUserRef,
-				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				StoreID:              req.GetStoreId(),
+				AuthorizationModelID: req.GetAuthorizationModelId(),
+				ObjectType:           targetObjectType,
+				Relation:             targetRelation,
+				User:                 targetUserRef,
+				ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
 			}, resultsChan)
 			if err != nil {
 				errChan <- err
@@ -171,6 +169,18 @@ func (q *ListObjectsQuery) Execute(
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
+	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
+
+	typesys, err := q.TypesystemResolver(ctx, storeID, modelID)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
+		}
+
+		return nil, serverErrors.HandleError("", err)
+	}
+
 	resultsChan := make(chan string, 1)
 	if q.ListObjectsMaxResults > 0 {
 		resultsChan = make(chan string, q.ListObjectsMaxResults)
@@ -185,7 +195,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err = q.evaluate(timeoutCtx, req, typesys, resultsChan, errChan)
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +235,18 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	srv openfgapb.OpenFGAService_StreamedListObjectsServer,
 ) error {
 
+	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
+
+	typesys, err := q.TypesystemResolver(ctx, storeID, modelID)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return serverErrors.AuthorizationModelNotFound(modelID)
+		}
+
+		return serverErrors.HandleError("", err)
+	}
+
 	resultsChan := make(chan string, 1)
 	if q.ListObjectsMaxResults > 0 {
 		resultsChan = make(chan string, q.ListObjectsMaxResults)
@@ -239,7 +261,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err = q.evaluate(timeoutCtx, req, typesys, resultsChan, errChan)
 	if err != nil {
 		return err
 	}
@@ -289,7 +311,7 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maximumConcurrentChecks)
 
-	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
+	checkResolver := graph.NewLocalChecker(combinedDatastore, q.TypesystemResolver, maximumConcurrentChecks)
 	// iterate over all object IDs in the store and check if the user has relation with each
 	for {
 		object, err := iter.Next()

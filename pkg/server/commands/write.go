@@ -20,17 +20,24 @@ const (
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger        logger.Logger
-	datastore     storage.OpenFGADatastore
-	allowSchema10 bool
+	logger             logger.Logger
+	datastore          storage.OpenFGADatastore
+	typesystemResolver typesystem.TypesystemResolverFunc
+	allowSchema10      bool
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger, allowSchema10 bool) *WriteCommand {
+func NewWriteCommand(
+	datastore storage.OpenFGADatastore,
+	logger logger.Logger,
+	typesystemResolver typesystem.TypesystemResolverFunc,
+	allowSchema10 bool,
+) *WriteCommand {
 	return &WriteCommand{
-		logger:        logger,
-		datastore:     datastore,
-		allowSchema10: allowSchema10,
+		logger:             logger,
+		datastore:          datastore,
+		typesystemResolver: typesystemResolver,
+		allowSchema10:      allowSchema10,
 	}
 }
 
@@ -63,15 +70,14 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 	if len(writes) > 0 {
 
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		typesys, err := c.typesystemResolver(ctx, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return serverErrors.AuthorizationModelNotFound(modelID)
 			}
-			return err
-		}
 
-		typesys := typesystem.New(authModel)
+			return serverErrors.HandleError("", err)
+		}
 
 		if ProhibitModel1_0(typesys.GetSchemaVersion(), c.allowSchema10) {
 			return serverErrors.ValidationError(ErrObsoleteAuthorizationModel)

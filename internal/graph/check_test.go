@@ -1,0 +1,73 @@
+package graph
+
+import (
+	"context"
+	"testing"
+
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/stretchr/testify/require"
+	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
+)
+
+func TestResolveCheckDeterministic(t *testing.T) {
+
+	ds := memory.New(10, 24)
+
+	storeID := ulid.Make().String()
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
+		tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
+		tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+		tuple.NewTupleKey("document:2", "allowed", "user:x"),
+		tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
+		tuple.NewTupleKey("group:eng", "member", "user:jon"),
+		tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
+	})
+	require.NoError(t, err)
+
+	checker := NewLocalChecker(ds, typesystem.MemoizedTypesystemResolverFunc(ds), 100)
+
+	typedefs := parser.MustParse(`
+	type user
+
+	type group
+	  relations
+	    define member: [user, group#member] as self
+
+	type document
+	  relations
+	    define allowed: [user] as self
+	    define viewer: [group#member] as self or editor
+	    define editor: [group#member] as self and allowed
+	    
+	`)
+
+	err = ds.WriteAuthorizationModel(context.Background(), storeID, &openfgav1.AuthorizationModel{
+		Id:              ulid.Make().String(),
+		TypeDefinitions: typedefs,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+
+	resp, err := checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
+
+	resp, err = checker.ResolveCheck(context.Background(), &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
+		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+	})
+	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+	require.Nil(t, resp)
+}

@@ -11,6 +11,7 @@ import (
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -41,7 +42,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger, true)
+	cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore), true)
 
 	tests := []test{
 		{
@@ -142,7 +143,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger, true)
+			cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore), true)
 
 			if len(test.writes) > 0 {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)

@@ -19,12 +19,12 @@ import (
 )
 
 type ConnectedObjectsRequest struct {
-	StoreID          string
-	Typesystem       *typesystem.TypeSystem
-	ObjectType       string
-	Relation         string
-	User             isUserRef
-	ContextualTuples []*openfgapb.TupleKey
+	StoreID              string
+	AuthorizationModelID string
+	ObjectType           string
+	Relation             string
+	User                 isUserRef
+	ContextualTuples     []*openfgapb.TupleKey
 }
 
 type isUserRef interface {
@@ -98,11 +98,14 @@ type ConnectedObjectsCommand struct {
 
 	// Limit limits the results yielded by the ConnectedObjects API.
 	Limit uint32
+
+	TypesystemResolver typesystem.TypesystemResolverFunc
 }
 
 func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
+	typesys *typesystem.TypeSystem,
 	resultChan chan<- string,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
@@ -126,6 +129,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	}
 
 	storeID := req.StoreID
+	modelID := req.AuthorizationModelID
 
 	var sourceUserRef *openfgapb.RelationReference
 	var sourceUserType, sourceUserObj string
@@ -153,7 +157,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
-	g := graph.BuildConnectedObjectGraph(req.Typesystem)
+	g := graph.BuildConnectedObjectGraph(typesys)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
 	span.SetAttributes(
@@ -173,7 +177,6 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
-				typesystem:       req.Typesystem,
 				ingress:          innerLoopIngress,
 				targetObjectRef:  targetObjRef,
 				sourceUserRef:    req.User,
@@ -182,15 +185,15 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 
 			switch innerLoopIngress.Type {
 			case graph.DirectIngress:
-				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
+				return c.reverseExpandDirect(subgctx, r, typesys, resultChan, foundObjectsMap, foundCount)
 			case graph.ComputedUsersetIngress:
 
 				// lookup the rewritten target relation on the computed_userset ingress
 				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
-					StoreID:    storeID,
-					Typesystem: req.Typesystem,
-					ObjectType: req.ObjectType,
-					Relation:   req.Relation,
+					StoreID:              storeID,
+					AuthorizationModelID: modelID,
+					ObjectType:           req.ObjectType,
+					Relation:             req.Relation,
 					User: &UserRefObjectRelation{
 						ObjectRelation: &openfgapb.ObjectRelation{
 							Object:   sourceUserObj,
@@ -198,10 +201,10 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 						},
 					},
 					ContextualTuples: req.ContextualTuples,
-				}, resultChan, foundObjectsMap, foundCount)
+				}, typesys, resultChan, foundObjectsMap, foundCount)
 
 			case graph.TupleToUsersetIngress:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
+				return c.reverseExpandTupleToUserset(subgctx, r, typesys, resultChan, foundObjectsMap, foundCount)
 			default:
 				return fmt.Errorf("unsupported ingress type")
 			}
@@ -227,18 +230,26 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	))
 	defer span.End()
 
+	typesys, err := c.TypesystemResolver(ctx, req.StoreID, req.AuthorizationModelID)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			return serverErrors.AuthorizationModelNotFound(req.AuthorizationModelID)
+		}
+
+		return serverErrors.HandleError("", err)
+	}
+
 	var foundCount *uint32
 	if c.Limit > 0 {
 		foundCount = new(uint32)
 	}
 
 	var foundObjects sync.Map
-	return c.streamedConnectedObjects(ctx, req, resultChan, &foundObjects, foundCount)
+	return c.streamedConnectedObjects(ctx, req, typesys, resultChan, &foundObjects, foundCount)
 }
 
 type reverseExpandRequest struct {
 	storeID          string
-	typesystem       *typesystem.TypeSystem
 	ingress          *graph.RelationshipIngress
 	targetObjectRef  *openfgapb.RelationReference
 	sourceUserRef    isUserRef
@@ -248,6 +259,7 @@ type reverseExpandRequest struct {
 func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
+	typesys *typesystem.TypeSystem,
 	resultChan chan<- string,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
@@ -357,12 +369,11 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
-				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
+			}, typesys, resultChan, foundObjectsMap, foundCount)
 		})
 	}
 
@@ -372,6 +383,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
+	typesys *typesystem.TypeSystem,
 	resultChan chan<- string,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
@@ -397,7 +409,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
-	publiclyAssignable, err := req.typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
+	publiclyAssignable, err := typesys.IsPubliclyAssignable(ingress, targetUserObjectType)
 	if err != nil {
 		return err
 	}
@@ -485,12 +497,11 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
-				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
+			}, typesys, resultChan, foundObjectsMap, foundCount)
 		})
 	}
 

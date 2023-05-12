@@ -140,7 +140,12 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger, true).Execute(ctx, model)
 			require.NoError(t, err)
 
-			cmd := commands.NewWriteAssertionsCommand(datastore, logger, test.allowSchema10)
+			cmd := commands.NewWriteAssertionsCommand(
+				datastore,
+				logger,
+				typesystem.MemoizedTypesystemResolverFunc(datastore),
+				test.allowSchema10,
+			)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
 			_, err = cmd.Execute(ctx, test.request)
