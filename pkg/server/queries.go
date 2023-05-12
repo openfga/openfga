@@ -83,11 +83,6 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	return res, nil
 }
 
-type DecoratedCheckResolver struct {
-	checker graph.CheckResolver
-	ds      storage.OpenFGADatastore
-}
-
 func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*openfgapb.ExpandResponse, error) {
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
