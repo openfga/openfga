@@ -128,8 +128,8 @@ jobs:
               --set postgres.enabled=true \
               --set postgresql.auth.postgresPassword=password \
               --set postgresql.auth.database=postgres \
-              --set openfga.postgresql.primary.resources.requests.memory="2Gi" \ 
-              --set openfga.postgresql.primary.resources.requests.cpu="1.0" \
+              --set postgresql.primary.resources.requests.memory="2Gi" \ 
+              --set postgresql.primary.resources.requests.cpu="1.0" \
               --set openfga.resources.requests.memory="1Gi" \ 
               --set openfga.resources.requests.cpu="500m"
 
