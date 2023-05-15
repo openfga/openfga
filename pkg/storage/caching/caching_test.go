@@ -42,7 +42,7 @@ func TestCache(t *testing.T) {
 
 	// check what's stored inside the cache
 	modelKey := fmt.Sprintf("%s:%s", storeID, model.Id)
-	cachedModel := cachingBackend.cache.Get(modelKey).Value().(*openfgapb.AuthorizationModel)
+	cachedModel := cachingBackend.cache.Get(modelKey).Value()
 	require.Equal(t, model, cachedModel)
 
 	// check that second hit to cache -> hit
