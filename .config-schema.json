@@ -32,7 +32,7 @@
             "x-env-variable": "OPENFGA_LIST_OBJECTS_DEADLINE"
         },
         "listObjectsMaxResults": {
-            "description": "The maximum results to return in the non-streaming ListObjects API response",
+            "description": "The maximum results to return in the non-streaming ListObjects API response. If 0, all results can be returned",
             "type": "integer",
             "minimum": 0,
             "default": 1000,
