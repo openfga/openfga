@@ -20,7 +20,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2
 	github.com/hashicorp/go-retryablehttp v0.7.2
 	github.com/jackc/pgx/v5 v5.3.1
-	github.com/karlseguin/ccache/v2 v2.0.8
+	github.com/karlseguin/ccache/v3 v3.0.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/pressly/goose/v3 v3.10.0
 	github.com/rs/cors v1.8.3
