@@ -10,7 +10,7 @@ require (
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.0-20230110230133-e2e9547a2b86
 	github.com/docker/docker v23.0.5+incompatible
 	github.com/docker/go-connections v0.4.0
-	github.com/go-sql-driver/mysql v1.7.0
+	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/golang/mock v1.6.0
 	github.com/google/go-cmp v0.5.9
