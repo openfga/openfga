@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
@@ -131,7 +132,15 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "anne")
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define reader: [user] as self
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:anne")
 	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
@@ -143,15 +152,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": typesystem.This(),
-					},
-				},
-			},
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -174,8 +176,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:         25,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit: 25,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -193,7 +194,15 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "*")
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define reader: [user:*] as self
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:*")
 	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
@@ -205,15 +214,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": typesystem.This(),
-					},
-				},
-			},
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -244,8 +246,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:         25,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit: 25,
 	})
 
 	start := time.Now()
@@ -377,10 +378,9 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:         25,
-		ListObjectsDeadline:      5 * time.Second,
-		ListObjectsMaxResults:    1000,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -458,10 +458,9 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:         25,
-		ListObjectsDeadline:      5 * time.Second,
-		ListObjectsMaxResults:    1000,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -490,7 +489,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	})
 }
 
-func TestObsoleteAuthorizationModels(t *testing.T) {
+func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
@@ -530,15 +529,13 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		transport: transport,
 		logger:    logger,
 		config: &Config{
-			ResolveNodeLimit:         25,
-			ListObjectsDeadline:      5 * time.Second,
-			ListObjectsMaxResults:    1000,
-			AllowEvaluating1_0Models: false,
-			AllowWriting1_0Models:    false,
+			ResolveNodeLimit:      25,
+			ListObjectsDeadline:   5 * time.Second,
+			ListObjectsMaxResults: 1000,
 		},
 	}
 
-	t.Run("throw_obsolete_error_in_check", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err = s.Check(ctx, &openfgapb.CheckRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -553,7 +550,7 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_listobject", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_list_objects", func(t *testing.T) {
 		_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -567,7 +564,7 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_expand", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_expand", func(t *testing.T) {
 		_, err := s.Expand(ctx, &openfgapb.ExpandRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -581,7 +578,7 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_write", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_write", func(t *testing.T) {
 		_, err := s.Write(ctx, &openfgapb.WriteRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -597,7 +594,7 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_write_assertion", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_write_assertion", func(t *testing.T) {
 		_, err := s.WriteAssertions(ctx, &openfgapb.WriteAssertionsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,

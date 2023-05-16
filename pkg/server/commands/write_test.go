@@ -41,7 +41,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger, true)
+	cmd := NewWriteCommand(mockDatastore, logger)
 
 	tests := []test{
 		{
@@ -142,7 +142,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger, true)
+			cmd := NewWriteCommand(mockDatastore, logger)
 
 			if len(test.writes) > 0 {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)

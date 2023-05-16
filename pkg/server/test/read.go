@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/oklog/ulid/v2"
@@ -14,6 +15,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -35,25 +37,27 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-						},
-					},
-				},
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type team
+
+				type repo
+				  relations
+				    define owner: [team] as self
+				    define admin: [user] as self
+				`),
 			},
 			tuples: []*openfgapb.TupleKey{
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose",
+					User:     "user:github|jose",
 				},
 				{
 					Object:   "repo:openfga/openfga",
 					Relation: "owner",
-					User:     "team/iam",
+					User:     "team:iam",
 				},
 			},
 			// input
@@ -61,7 +65,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				TupleKey: &openfgapb.TupleKey{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
-					User:     "github|jose",
+					User:     "user:github|jose",
 				},
 			},
 			// output
@@ -71,7 +75,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 						Key: &openfgapb.TupleKey{
 							Object:   "repo:openfga/openfga",
 							Relation: "admin",
-							User:     "github|jose",
+							User:     "user:github|jose",
 						},
 					},
 				},
@@ -82,54 +86,32 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			// state
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
-							"admin": {},
-							"owner": {},
-						},
-					},
-				},
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type repo
+				  relations
+				    define admin: [user] as self
+					define owner: [user] as self
+				`),
 			},
 			tuples: []*openfgapb.TupleKey{
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "admin",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfga",
-					Relation: "owner",
-					User:     "github|jose",
-				},
-				{
-					Object:   "repo:openfga/openfgapb",
-					Relation: "owner",
-					User:     "github|jose",
-				},
+				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose"),
+				tuple.NewTupleKey("repo:openfga/openfga", "owner", "user:github|jose"),
 			},
 			// input
 			request: &openfgapb.ReadRequest{
 				TupleKey: &openfgapb.TupleKey{
 					Object: "repo:openfga/openfga",
-					User:   "github|jose",
+					User:   "user:github|jose",
 				},
 			},
 			// output
 			response: &openfgapb.ReadResponse{
 				Tuples: []*openfgapb.Tuple{
-					{Key: &openfgapb.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "admin",
-						User:     "github|jose",
-					}},
-					{Key: &openfgapb.TupleKey{
-						Object:   "repo:openfga/openfga",
-						Relation: "owner",
-						User:     "github|jose",
-					}},
+					{Key: tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose")},
+					{Key: tuple.NewTupleKey("repo:openfga/openfga", "owner", "user:github|jose")},
 				},
 			},
 		},
