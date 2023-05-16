@@ -94,9 +94,9 @@ func (q *ListObjectsQuery) evaluate(
 		if err != nil {
 			errChan <- err
 			close(errChan)
+		} else {
+			close(resultsChan)
 		}
-
-		close(resultsChan)
 	}
 
 	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
@@ -159,9 +159,9 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 				close(errChan)
+			} else {
+				close(resultsChan)
 			}
-
-			close(resultsChan)
 		}
 	}
 
@@ -213,14 +213,14 @@ func (q *ListObjectsQuery) Execute(
 			}, nil
 
 		case objectID, ok := <-resultsChan:
-			if !ok {
+			if !ok { //channel was closed and no new values are available
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil
 			}
 			objects = append(objects, objectID)
 		case genericError, ok := <-errChan:
-			if ok {
+			if ok { //a value is available
 				return nil, serverErrors.NewInternalError("", genericError)
 			}
 		}
