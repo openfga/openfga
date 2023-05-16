@@ -90,6 +90,7 @@ func (q *ListObjectsQuery) evaluate(
 		err = q.performChecks(ctx, req, resultsChan, maxResults)
 		if err != nil {
 			errChan <- err
+			close(errChan)
 		}
 
 		close(resultsChan)
@@ -155,6 +156,7 @@ func (q *ListObjectsQuery) evaluate(
 			}, resultsChan)
 			if err != nil {
 				errChan <- err
+				close(errChan)
 			}
 
 			close(resultsChan)
@@ -185,13 +187,14 @@ func (q *ListObjectsQuery) Execute(
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	maxResults := q.ListObjectsMaxResults
 	resultsChan := make(chan string, 1)
+	maxResults := q.ListObjectsMaxResults
 	if maxResults > 0 {
 		resultsChan = make(chan string, maxResults)
 	}
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -260,7 +263,8 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan string, streamedBufferSize)
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
