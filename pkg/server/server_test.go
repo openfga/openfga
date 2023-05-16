@@ -348,7 +348,7 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 }
 
 // This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
-func BenchmarkListObjects(b *testing.B) {
+func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
