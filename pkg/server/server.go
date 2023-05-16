@@ -105,6 +105,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
+	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
 	typesys := typesystem.New(model)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -237,6 +241,10 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 		return nil, err
+	}
+
+	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
 	typesys := typesystem.New(model)

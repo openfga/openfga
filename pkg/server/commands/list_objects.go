@@ -93,6 +93,8 @@ func (q *ListObjectsQuery) evaluate(
 		err = q.performChecks(ctx, req, resultsChan, maxResults)
 		if err != nil {
 			errChan <- err
+			close(errChan)
+			return
 		}
 
 		close(resultsChan)
@@ -157,6 +159,8 @@ func (q *ListObjectsQuery) evaluate(
 			}, resultsChan)
 			if err != nil {
 				errChan <- err
+				close(errChan)
+				return
 			}
 
 			close(resultsChan)

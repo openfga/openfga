@@ -358,18 +358,18 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	data, err := os.ReadFile("testdata/github.json")
-	require.NoError(t, err)
-
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
-	require.NoError(t, err)
-
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type repo
+		  relations
+		    define allowed: [user] as self
+		    define viewer: [user] as self and allowed
+		`),
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
@@ -388,8 +388,8 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
-			User:                 "bob",
+			Relation:             "viewer",
+			User:                 "user:bob",
 		})
 
 		require.Nil(t, res)
@@ -397,12 +397,12 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	})
 
 	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
-			User:                 "bob",
+			Relation:             "viewer",
+			User:                 "user:bob",
 		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
