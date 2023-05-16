@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/ccache/v2"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/storage"
 )
@@ -27,7 +27,7 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 // The memoized resolver function is safe for concurrent use.
 func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
 
-	cache := ccache.New(ccache.Configure())
+	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
 		tracer.Start(ctx, "MemoizedTypesystemResolverFunc")
@@ -54,9 +54,7 @@ func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend
 
 		item := cache.Get(key)
 		if item != nil {
-			if typesys, ok := item.Value().(*TypeSystem); ok {
-				return typesys, nil
-			}
+			return item.Value(), nil
 		}
 
 		model, err := reader.ReadAuthorizationModel(ctx, storeID, modelID)

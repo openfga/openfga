@@ -59,8 +59,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
