@@ -20,7 +20,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	storeID := ulid.Make().String()
-	modelID := ulid.Make().String()
+	modelID1 := ulid.Make().String()
+	modelID2 := ulid.Make().String()
 
 	typedefs := parser.MustParse(`
 	type user
@@ -29,22 +30,46 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	    define viewer: [user] as self
 	`)
 
-	mockDatastore.EXPECT().
-		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
-		Return(&openfgav1.AuthorizationModel{
-			SchemaVersion:   SchemaVersion1_1,
-			TypeDefinitions: typedefs,
-		}, nil)
+	gomock.InOrder(
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID1).
+			Return(&openfgav1.AuthorizationModel{
+				Id:              modelID1,
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+			}, nil),
+
+		mockDatastore.EXPECT().
+			FindLatestAuthorizationModelID(gomock.Any(), storeID).
+			Return(modelID2, nil),
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID2).
+			Return(&openfgav1.AuthorizationModel{
+				Id:              modelID2,
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: typedefs,
+			}, nil),
+	)
 
 	resolver := MemoizedTypesystemResolverFunc(
 		mockDatastore,
 	)
 
-	typesys, err := resolver(context.Background(), storeID, modelID)
+	typesys, err := resolver(context.Background(), storeID, modelID1)
 	require.NoError(t, err)
 	require.NotNil(t, typesys)
 
 	relation, err := typesys.GetRelation("document", "viewer")
+	require.NoError(t, err)
+	require.NotNil(t, relation)
+
+	typesys, err = resolver(context.Background(), storeID, "")
+	require.NoError(t, err)
+	require.NotNil(t, typesys)
+	require.Equal(t, modelID2, typesys.GetAuthorizationModelID())
+
+	relation, err = typesys.GetRelation("document", "viewer")
 	require.NoError(t, err)
 	require.NotNil(t, relation)
 }
