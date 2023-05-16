@@ -191,7 +191,7 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("listObjectsDeadline", flags.Lookup("listObjects-deadline"))
 	util.MustBindEnv("listObjectsDeadline", "OPENFGA_LIST_OBJECTS_DEADLINE", "OPENFGA_LISTOBJECTSDEADLINE")
 
-	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses")
+	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 	util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 	util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 }
