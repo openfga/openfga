@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
@@ -358,18 +359,21 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	data, err := os.ReadFile("testdata/github.json")
-	require.NoError(b, err)
+	typedefs := parser.MustParse(`
+    type user
+    type org
 
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
-	require.NoError(b, err)
+    type repo
+        relations
+            define blocked: [user] as self
+            define owner: [org] as self but not blocked
+    `)
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
@@ -391,7 +395,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
 			Relation:             "owner",
-			User:                 "bob",
+			User:                 "user:bob",
 		})
 
 		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
@@ -401,7 +405,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
 			Relation:             "owner",
-			User:                 "bob",
+			User:                 "user:bob",
 		}, NewMockStreamServer())
 
 		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
