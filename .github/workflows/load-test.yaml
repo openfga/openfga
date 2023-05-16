@@ -38,14 +38,15 @@ on:
           - 7
           - 8
 
+# needed for aws-actions/configure-aws-credentials. See https://github.com/aws-actions/configure-aws-credentials/issues/271
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: AWSLoadTest
-    # needed for aws-actions/configure-aws-credentials. See https://github.com/aws-actions/configure-aws-credentials/issues/271
-    permissions:
-      id-token: write
-      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
