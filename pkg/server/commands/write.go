@@ -72,7 +72,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 
 		typesys, err := c.typesystemResolver(ctx, store, modelID)
 		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
+			if errors.Is(err, typesystem.ErrModelNotFound) {
 				return serverErrors.AuthorizationModelNotFound(modelID)
 			}
 

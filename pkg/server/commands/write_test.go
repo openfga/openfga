@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
@@ -134,6 +135,9 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 	}
 
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			logger := logger.NewNoopLogger()
@@ -143,17 +147,19 @@ func TestValidateWriteRequest(t *testing.T) {
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
+
 			cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore), true)
 
 			if len(test.writes) > 0 {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{}, nil)
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(&openfgapb.AuthorizationModel{}, nil)
 			}
 
 			ctx := context.Background()
 			req := &openfgapb.WriteRequest{
-				StoreId: "abcd123",
-				Writes:  &openfgapb.TupleKeys{TupleKeys: test.writes},
-				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Writes:               &openfgapb.TupleKeys{TupleKeys: test.writes},
+				Deletes:              &openfgapb.TupleKeys{TupleKeys: test.deletes},
 			}
 
 			err := cmd.validateWriteRequest(ctx, req)
