@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
@@ -347,6 +348,71 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 	return nil
 }
 
+// This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
+func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+
+	typedefs := parser.MustParse(`
+    type user
+    type org
+
+    type repo
+        relations
+            define blocked: [user] as self
+            define owner: [org] as self but not blocked
+    `)
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
+	}, nil)
+	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+
+	s := New(&Dependencies{
+		Datastore: mockDatastore,
+		Transport: transport,
+		Logger:    logger,
+	}, &Config{
+		ResolveNodeLimit:         25,
+		ListObjectsDeadline:      5 * time.Second,
+		ListObjectsMaxResults:    1000,
+		AllowEvaluating1_0Models: true,
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "owner",
+			User:                 "user:bob",
+		})
+
+		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+
+		err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "owner",
+			User:                 "user:bob",
+		}, NewMockStreamServer())
+
+		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+	}
+}
+
+// This test ensures that when the data storage fails, ListObjects v0 throws an error
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -409,6 +475,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	})
 }
 
+// This test ensures that when the data storage fails, ListObjects v1 throws an error
 func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()

@@ -94,8 +94,8 @@ func (q *ListObjectsQuery) evaluate(
 		if err != nil {
 			errChan <- err
 			close(errChan)
+			return
 		}
-
 		close(resultsChan)
 	}
 
@@ -159,8 +159,8 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 				close(errChan)
+				return
 			}
-
 			close(resultsChan)
 		}
 	}
@@ -212,15 +212,15 @@ func (q *ListObjectsQuery) Execute(
 				Objects: objects,
 			}, nil
 
-		case objectID, ok := <-resultsChan:
-			if !ok {
+		case objectID, channelOpen := <-resultsChan:
+			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil
 			}
 			objects = append(objects, objectID)
-		case genericError, ok := <-errChan:
-			if ok {
+		case genericError, valueAvailable := <-errChan:
+			if valueAvailable {
 				return nil, serverErrors.NewInternalError("", genericError)
 			}
 		}
