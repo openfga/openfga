@@ -94,9 +94,9 @@ func (q *ListObjectsQuery) evaluate(
 		if err != nil {
 			errChan <- err
 			close(errChan)
-		} else {
-			close(resultsChan)
+			return
 		}
+		close(resultsChan)
 	}
 
 	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
@@ -159,9 +159,9 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				errChan <- err
 				close(errChan)
-			} else {
-				close(resultsChan)
+				return
 			}
+			close(resultsChan)
 		}
 	}
 
