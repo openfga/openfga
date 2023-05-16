@@ -382,10 +382,9 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:         25,
-		ListObjectsDeadline:      5 * time.Second,
-		ListObjectsMaxResults:    1000,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
 	})
 
 	b.ResetTimer()
