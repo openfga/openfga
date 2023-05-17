@@ -217,12 +217,6 @@ type Config struct {
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
 
-	// AllowWriting1_0Models allows writing of model with schema 1.0
-	AllowWriting1_0Models bool
-
-	// AllowEvaluating1_0Models allows evaluating of model with schema 1.0
-	AllowEvaluating1_0Models bool
-
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
 	HTTP       HTTPConfig
@@ -292,8 +286,6 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		AllowWriting1_0Models:    false,
-		AllowEvaluating1_0Models: false,
 	}
 }
 
@@ -583,13 +575,11 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:         config.ResolveNodeLimit,
-		ChangelogHorizonOffset:   config.ChangelogHorizonOffset,
-		ListObjectsDeadline:      config.ListObjectsDeadline,
-		ListObjectsMaxResults:    config.ListObjectsMaxResults,
-		Experimentals:            experimentals,
-		AllowEvaluating1_0Models: config.AllowEvaluating1_0Models,
-		AllowWriting1_0Models:    config.AllowWriting1_0Models,
+		ResolveNodeLimit:       config.ResolveNodeLimit,
+		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+		ListObjectsDeadline:    config.ListObjectsDeadline,
+		ListObjectsMaxResults:  config.ListObjectsMaxResults,
+		Experimentals:          experimentals,
 	})
 
 	logger.Info(

@@ -70,18 +70,10 @@ func testListObjects(t *testing.T, client ClientInterface) {
 		t.Parallel()
 		runSchema1_1ListObjectsTests(t, client)
 	})
-	t.Run("Schema1_0", func(t *testing.T) {
-		t.Parallel()
-		runSchema1_0ListObjectsTests(t, client)
-	})
 }
 
 func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
 	runTests(t, testParams{typesystem.SchemaVersion1_1, client})
-}
-
-func runSchema1_0ListObjectsTests(t *testing.T, client ClientInterface) {
-	runTests(t, testParams{typesystem.SchemaVersion1_0, client})
 }
 
 func runTests(t *testing.T, params testParams) {
@@ -90,8 +82,6 @@ func runTests(t *testing.T, params testParams) {
 	schemaVersion := params.schemaVersion
 	if schemaVersion == typesystem.SchemaVersion1_1 {
 		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
-	} else {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_0_tests.yaml")
 	}
 	require.NoError(t, err)
 

@@ -122,39 +122,19 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			allResults:             []string{"org:1", "org:2", "org:3"},
 		},
 		{
-			name:   "respects_when_schema_1_0",
-			schema: typesystem.SchemaVersion1_0,
+			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
+			schema: typesystem.SchemaVersion1_1,
 			model: `
-			type document
-			  relations
-			    define admin as self
-			`,
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "admin", "bob"),
-				tuple.NewTupleKey("document:2", "admin", "bob"),
-			},
-			user:       "bob",
-			objectType: "document",
-			relation:   "admin",
-			contextualTuples: &openfgapb.ContextualTupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{tuple.NewTupleKey("document:3", "admin", "bob")},
-			},
-			maxResults:             2,
-			minimumResultsExpected: 2,
-			allResults:             []string{"document:1", "document:2", "document:3"},
-		},
-		{
-			name:   "respects_when_schema_1_0_and_maxresults_is_higher_than_actual_result_length",
-			schema: typesystem.SchemaVersion1_0,
-			model: `
+			type user
+
 			type team
 			  relations
-			    define admin as self
+			    define admin: [user] as self
 			`,
 			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("team:1", "admin", "bob"),
+				tuple.NewTupleKey("team:1", "admin", "user:bob"),
 			},
-			user:                   "bob",
+			user:                   "user:bob",
 			objectType:             "team",
 			relation:               "admin",
 			maxResults:             2,
@@ -358,17 +338,19 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	ctx := context.Background()
 	store := ulid.Make().String()
 
+	typedefs := parser.MustParse(`
+	type user
+
+	type document
+	  relations
+	    define allowed: [user] as self
+	    define viewer: [user] as self and allowed
+	`)
+
 	model := &openfgapb.AuthorizationModel{
-		Id:            ulid.Make().String(),
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "document",
-				Relations: map[string]*openfgapb.Userset{
-					"viewer": typesystem.This(),
-				},
-			},
-		},
+		Id:              ulid.Make().String(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
 	}
 	err := ds.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(b, err)
@@ -377,11 +359,15 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	for i := 0; i < 100; i++ {
 		var tuples []*openfgapb.TupleKey
 
-		for j := 0; j < ds.MaxTuplesPerWrite(); j++ {
+		for j := 0; j < ds.MaxTuplesPerWrite()/2; j++ {
 			obj := fmt.Sprintf("document:%s", strconv.Itoa(n))
 			user := fmt.Sprintf("user:%s", strconv.Itoa(n))
 
-			tuples = append(tuples, tuple.NewTupleKey(obj, "viewer", user))
+			tuples = append(
+				tuples,
+				tuple.NewTupleKey(obj, "viewer", user),
+				tuple.NewTupleKey(obj, "allowed", user),
+			)
 
 			n += 1
 		}

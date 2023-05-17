@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -46,31 +47,14 @@ func TestSuccessfulReadAuthorizationModelQuery(t *testing.T, datastore storage.O
 			storeID: ulid.Make().String(),
 			model: &openfgapb.AuthorizationModel{
 				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {
-								Userset: &openfgapb.Userset_This{},
-							},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define reader: [user] as self
+				`),
 			},
 		},
 	}
@@ -132,7 +116,7 @@ func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore
 	t.Run("writing_without_any_type_definitions_does_not_write_anything", func(t *testing.T) {
 		model := &openfgapb.AuthorizationModel{
 			Id:              ulid.Make().String(),
-			SchemaVersion:   typesystem.SchemaVersion1_0,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: []*openfgapb.TypeDefinition{},
 		}
 
