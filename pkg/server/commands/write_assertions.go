@@ -41,11 +41,11 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	typesys := typesystem.New(model)
-
-	if typesys.GetSchemaVersion() != typesystem.SchemaVersion1_1 {
+	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
 		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
+
+	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
 		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {

@@ -93,7 +93,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				type repo
 				  relations
 				    define admin: [user] as self
-					define owner: [user] as self
+				    define owner: [user] as self
 				`),
 			},
 			tuples: []*openfgapb.TupleKey{

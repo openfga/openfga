@@ -34,7 +34,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		type repo
 		  relations
 		    define reader: [user] as self
-			define can_read as reader
+		    define can_read as reader
 		`),
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}

@@ -360,13 +360,12 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	defer mockController.Finish()
 
 	typedefs := parser.MustParse(`
-    type user
-    type org
+	type user
 
-    type repo
-        relations
-            define blocked: [user] as self
-            define owner: [org] as self but not blocked
+	type repo
+	  relations
+	    define allowed: [user] as self
+	    define viewer: [user] as self and allowed
     `)
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
@@ -393,7 +392,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
+			Relation:             "viewer",
 			User:                 "user:bob",
 		})
 
@@ -403,7 +402,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
+			Relation:             "viewer",
 			User:                 "user:bob",
 		}, NewMockStreamServer())
 
