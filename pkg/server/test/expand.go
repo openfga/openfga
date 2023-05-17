@@ -2164,6 +2164,25 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			),
 		},
+		{
+			name: "invalid storeId",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{Type: "repo"},
+				},
+			},
+			request: &openfgapb.ExpandRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object:   "repo:bar",
+					Relation: "baz",
+				},
+				StoreId: "",
+			},
+			allowSchema10: true,
+			expected:      serverErrors.StoreIDNotFound,
+		},
 	}
 
 	require := require.New(t)

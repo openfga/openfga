@@ -52,6 +52,8 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	)
 
 	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
+
+	t.Run("TestReadAuthorizationModelsInvalidStoreID", func(t *testing.T) { TestReadAuthorizationModelsInvalidStoreID(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {

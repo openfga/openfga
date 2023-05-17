@@ -51,8 +51,17 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.WriteRequest) error {
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
-
 	store := req.GetStoreId()
+
+	// Check if store is invalid/empty, can't write to invalid/empty store
+	if _, err := c.datastore.GetStore(ctx, store); err != nil {
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return serverErrors.StoreIDNotFound
+			}
+			return serverErrors.HandleError("", err)
+		}
+	}
 	modelID := req.GetAuthorizationModelId()
 	deletes := req.GetDeletes().GetTupleKeys()
 	writes := req.GetWrites().GetTupleKeys()

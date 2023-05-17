@@ -29,6 +29,14 @@ func TestReadAssertionQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				Assertions:           []*openfgapb.Assertion{},
 			},
 		},
+		{
+			_name:   "ReturnsAssertionModelNotFound",
+			request: &openfgapb.ReadAssertionsRequest{StoreId: "", AuthorizationModelId: "test"},
+			expectedResponse: &openfgapb.ReadAssertionsResponse{
+				AuthorizationModelId: "test",
+				Assertions:           []*openfgapb.Assertion{},
+			},
+		},
 	}
 
 	ctx := context.Background()

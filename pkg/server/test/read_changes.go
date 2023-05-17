@@ -201,6 +201,23 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 		readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder, 2)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
+
+	t.Run("read_changes_with_invalid_storeId", func(t *testing.T) {
+		testCases := []testCase{
+			{
+				_name: "when_the_store_id_is_invalid",
+				request: &openfgapb.ReadChangesRequest{
+					StoreId: "",
+				},
+				expectedChanges:              nil,
+				expectEmptyContinuationToken: true,
+				expectedError:                serverErrors.StoreIDNotFound,
+			},
+		}
+
+		readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder, 2)
+		runTests(t, ctx, testCases, readChangesQuery)
+	})
 }
 
 func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) {

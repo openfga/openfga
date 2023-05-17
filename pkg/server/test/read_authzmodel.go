@@ -103,6 +103,14 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 
 	var tests = []readAuthorizationModelQueryTest{
 		{
+			_name: "ReturnsStoreIDNotFoundIfStoreNotFound",
+			request: &openfgapb.ReadAuthorizationModelRequest{
+				StoreId: "",
+				Id:      "123",
+			},
+			expectedError: serverErrors.StoreIDNotFound,
+		},
+		{
 			_name: "ReturnsAuthorizationModelNotFoundIfAuthorizationModelNotInDatabase",
 			request: &openfgapb.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),

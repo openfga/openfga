@@ -540,6 +540,29 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				ContinuationToken: "foo",
 			},
 		},
+		{
+			_name: "ExecuteErrorsIfContinuationTokenIsBad",
+			model: &openfgapb.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_0,
+				TypeDefinitions: []*openfgapb.TypeDefinition{
+					{
+						Type: "repo",
+						Relations: map[string]*openfgapb.Userset{
+							"admin":  {},
+							"writer": {},
+						},
+					},
+				},
+			},
+			request: &openfgapb.ReadRequest{
+				TupleKey: &openfgapb.TupleKey{
+					Object: "repo:openfga/openfga",
+				},
+				ContinuationToken: "foo",
+				StoreId:           "",
+			},
+		},
 	}
 
 	require := require.New(t)
