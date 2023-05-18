@@ -29,7 +29,7 @@ func NewDatastoreEngine(engine string) (*DatastoreEngine, error) {
 		}
 	}
 	if !isValid {
-		return nil, fmt.Errorf("invalid datastore engine (%s)", engine)
+		return nil, fmt.Errorf("invalid datastore engine '(%s)'", engine)
 	}
 	return &validEngine, nil
 }
@@ -39,14 +39,10 @@ func VerifyDatastoreEngine(uri string, engine DatastoreEngine) error {
 	URITokens := strings.Split(uri, ":")
 	if len(URITokens) > 1 {
 		URIType = URITokens[0]
-		switch URIType {
-		case "postgresql":
+		// For now adding check for 'postgres'
+		if URIType == "postgresql" || URIType == "postgres" {
 			if engine != Postgres {
 				return fmt.Errorf("config 'Engine' must be (%s)", Postgres.String())
-			}
-		case "mysqlx":
-			if engine != MySQL {
-				return fmt.Errorf("config 'Engine' must be (%s)", MySQL.String())
 			}
 		}
 	}

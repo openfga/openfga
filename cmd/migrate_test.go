@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,18 +88,11 @@ func TestConfigIsMerged(t *testing.T) {
 
 func TestDatastoreURIIsVerified(t *testing.T) {
 	config := `datastore:
-    engine: mysqlx
     uri: postgres://postgres:password@127.0.0.1:5432/postgres
 `
 	prepareTempConfigFile(t, config)
 
 	migrateCmd := NewMigrateCommand()
-	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "mysqlx", viper.GetString(datastoreEngineFlag))
-		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
-		require.Equal(t, uint(0), viper.GetUint(versionFlag))
-		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		return nil
-	}
-	require.Nil(t, migrateCmd.Execute())
+	err := migrateCmd.Execute()
+	require.Error(t, errors.New("invalid datastore engine '(postgres)'"), err)
 }

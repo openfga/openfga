@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"github.com/openfga/openfga/cmd/exec_common"
 	"log"
 	"strings"
@@ -87,10 +86,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 		driver = "pgx"
 		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir
-	case "":
-		return fmt.Errorf("missing datastore engine type")
-	default:
-		return fmt.Errorf("unknown datastore engine type: %s", engine)
 	}
 
 	db, err := sql.Open(driver, uri)
