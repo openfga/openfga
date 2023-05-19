@@ -63,6 +63,10 @@ func (q *ListObjectsQuery) evaluate(
 		panic("typesystem missing in context")
 	}
 
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
