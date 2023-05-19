@@ -628,6 +628,20 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
+	t.Run("invalid_schema_error_in_streamed_list_objects", func(t *testing.T) {
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "team",
+			Relation:             "member",
+			User:                 "user:anne",
+		}, NewMockStreamServer())
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
 	t.Run("invalid_schema_error_in_expand", func(t *testing.T) {
 		_, err := s.Expand(ctx, &openfgapb.ExpandRequest{
 			StoreId:              store,

@@ -105,10 +105,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
 	typesys := typesystem.New(model)
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
