@@ -765,38 +765,38 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 }
 
-//func TestHTTPServerDisabled(t *testing.T) {
-//	cfg := MustDefaultConfigWithRandomPorts()
-//	cfg.HTTP.Enabled = false
-//
-//	ctx, cancel := context.WithCancel(context.Background())
-//	defer cancel()
-//
-//	go func() {
-//		if err := RunServer(ctx, cfg); err != nil {
-//			log.Fatal(err)
-//		}
-//	}()
-//
-//	_, err := http.Get("http://localhost:8080/healthz")
-//	require.Error(t, err)
-//	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
-//}
-//
-//func TestHTTPServerEnabled(t *testing.T) {
-//	cfg := MustDefaultConfigWithRandomPorts()
-//
-//	ctx, cancel := context.WithCancel(context.Background())
-//	defer cancel()
-//
-//	go func() {
-//		if err := RunServer(ctx, cfg); err != nil {
-//			log.Fatal(err)
-//		}
-//	}()
-//
-//	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-//}
+func TestHTTPServerDisabled(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.HTTP.Enabled = false
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := RunServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	_, err := http.Get("http://localhost:8080/healthz")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "dial tcp [::1]:8080: connect: connection refused")
+}
+
+func TestHTTPServerEnabled(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := RunServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+}
 
 func TestDefaultConfig(t *testing.T) {
 	cfg, err := ReadConfig()
