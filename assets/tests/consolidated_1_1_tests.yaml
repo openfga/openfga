@@ -2378,6 +2378,12 @@ tests:
               relation:
               user: user:badger
             errorCode: 2009
+        listObjectsAssertions:
+          - request:
+              user: user
+              type: user
+              relation:
+            errorCode: 3
 
   - name: validation_empty_user
     stages:
@@ -2389,6 +2395,12 @@ tests:
               relation: viewer
               user:
             errorCode: 2009
+        listObjectsAssertions:
+          - request:
+              user:
+              type: user
+              relation: viewer
+            errorCode: 3
 
   - name: validation_relation_not_in_model
     stages:
@@ -2400,6 +2412,26 @@ tests:
               relation: viewer
               user: user:badger
             errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: user:badger
+              type: user
+              relation: viewer
+            errorCode: 2022
+
+  - name: validation_type_not_in_model
+    stages:
+      - model: |
+          type user
+          type document
+             relations
+               define viewer: [user] as self
+        listObjectsAssertions:
+          - request:
+              user: user:badger
+              type: group #non-existent
+              relation: viewer
+            errorCode: 2021
 
   - name: validation_user_type_not_in_model
     stages:
@@ -2413,6 +2445,12 @@ tests:
               object: document:1
               relation: viewer
               user: folder:x
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: folder:x
+              type: document
+              relation: viewer
             errorCode: 2000
 
   - name: validation_userset_type_not_in_model
@@ -2428,6 +2466,12 @@ tests:
               relation: viewer
               user: folder:x#writer
             errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: folder:x#writer
+              type: document
+              relation: viewer
+            errorCode: 2000
 
   - name: validation_userset_relation_not_in_model
     stages:
@@ -2441,6 +2485,12 @@ tests:
               object: document:1
               relation: viewer
               user: document:x#writer
+            errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: document:x#writer
+              type: document
+              relation: viewer
             errorCode: 2000
 
   - name: validation_user_invalid
@@ -2456,6 +2506,12 @@ tests:
               relation: viewer
               user: a:b:c
             errorCode: 2000
+        listObjectsAssertions:
+          - request:
+              user: a:b:c
+              type: document
+              relation: viewer
+            errorCode: 2000
 
   - name: validation_invalid_object_type_in_contextual_tuple
     stages:
@@ -2470,7 +2526,17 @@ tests:
               relation: viewer
               user: user:aardvark
             contextualTuples:
-              - object: folder:x
+              - object: folder:x #invalid
+                relation: viewer
+                user: user:aardvark
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: folder:x #invalid
                 relation: viewer
                 user: user:aardvark
             errorCode: 2027
@@ -2489,7 +2555,17 @@ tests:
               user: user:aardvark
             contextualTuples:
               - object: document:1
-                relation: writer
+                relation: writer #invalid
+                user: user:aardvark
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: writer #invalid
                 user: user:aardvark
             errorCode: 2027
 
@@ -2508,7 +2584,17 @@ tests:
             contextualTuples:
               - object: document:1
                 relation: viewer
-                user: employee:aardvark
+                user: employee:aardvark #invalid
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: employee:aardvark #invalid
             errorCode: 2027
 
   - name: validation_invalid_wildcard_in_contextual_tuple
@@ -2526,7 +2612,17 @@ tests:
             contextualTuples:
               - object: document:1
                 relation: viewer
-                user: user:*
+                user: user:* #invalid
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: viewer
+                user: user:* #invalid
             errorCode: 2027
 
   - name: val_contextual_tuples_and_wildcard_in_ttu_evaluation
@@ -2548,7 +2644,17 @@ tests:
             contextualTuples:
               - object: document:1
                 relation: parent
-                user: user:*
+                user: user:* #invalid
+            errorCode: 2027
+        listObjectsAssertions:
+          - request:
+              user: user:aardvark
+              type: document
+              relation: viewer
+            contextualTuples:
+              - object: document:1
+                relation: parent
+                user: user:* #invalid
             errorCode: 2027
 
   - name: relations_not_defined_in_some_child_type
