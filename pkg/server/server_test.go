@@ -31,7 +31,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func init() {
@@ -563,13 +562,6 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	data, err := os.ReadFile("testdata/github.json")
-	require.NoError(t, err)
-
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
-	require.NoError(t, err)
-
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
@@ -600,7 +592,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	}
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
-		_, err = s.Check(ctx, &openfgapb.CheckRequest{
+		_, err := s.Check(ctx, &openfgapb.CheckRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			TupleKey: tuple.NewTupleKey(
@@ -615,7 +607,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	})
 
 	t.Run("invalid_schema_error_in_list_objects", func(t *testing.T) {
-		_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+		_, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "team",
