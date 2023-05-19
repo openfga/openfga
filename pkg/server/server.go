@@ -153,12 +153,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	typesys := typesystem.New(model)
 
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	q := &commands.ListObjectsQuery{
