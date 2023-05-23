@@ -30,7 +30,8 @@ func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
-		tracer.Start(ctx, "MemoizedTypesystemResolverFunc")
+		ctx, span := tracer.Start(ctx, "MemoizedTypesystemResolverFunc")
+		defer span.End()
 
 		var err error
 
