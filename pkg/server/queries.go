@@ -38,8 +38,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		}
 	}
 
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
@@ -99,7 +99,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger, s.typesystemResolver, s.config.AllowEvaluating1_0Models)
+	q := commands.NewExpandQuery(s.datastore, s.logger, s.typesystemResolver)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -128,8 +128,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		}
 	}
 
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
 	q := &commands.ListObjectsQuery{

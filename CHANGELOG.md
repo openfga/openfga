@@ -8,6 +8,24 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.1.0] - 2023-05-15
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.0.1...v1.1.0)
+
+## Added
+* Streaming ListObjects has no limit in number of results returned ([#733](https://github.com/openfga/openfga/pull/733))
+* Add Homebrew release stage to goreleaser's release process ([#716](https://github.com/openfga/openfga/pull/716))
+
+## Fixed
+* Avoid DB connection churning in unoptimized ListObjects ([#711](https://github.com/openfga/openfga/pull/711))
+* Ensure ListObjects respects configurable ListObjectsDeadline ([#704](https://github.com/openfga/openfga/pull/704))
+* In Write, throw 400 instead of 500 error if auth model ID not found ([#725](https://github.com/openfga/openfga/pull/725))
+* Performance improvements when loading the authorization model ([#726](https://github.com/openfga/openfga/pull/726))
+* Ensure Check evaluates deterministically on the eval boundary case ([#732](https://github.com/openfga/openfga/pull/732))
+
+## Changed
+* [BREAKING] The flags to turn on writing and evaluation of `v1.0` models have been dropped ([#763](https://github.com/openfga/openfga/pull/763))
+
 ## [1.0.1] - 2023-04-18
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.0...v1.0.1)
@@ -485,7 +503,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/openfga/openfga/releases/tag/v1.1.0
 [1.0.1]: https://github.com/openfga/openfga/releases/tag/v1.0.1
 [1.0.0]: https://github.com/openfga/openfga/releases/tag/v1.0.0
 [0.4.3]: https://github.com/openfga/openfga/releases/tag/v0.4.3

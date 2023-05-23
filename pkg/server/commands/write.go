@@ -23,7 +23,6 @@ type WriteCommand struct {
 	logger             logger.Logger
 	datastore          storage.OpenFGADatastore
 	typesystemResolver typesystem.TypesystemResolverFunc
-	allowSchema10      bool
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
@@ -31,13 +30,11 @@ func NewWriteCommand(
 	datastore storage.OpenFGADatastore,
 	logger logger.Logger,
 	typesystemResolver typesystem.TypesystemResolverFunc,
-	allowSchema10 bool,
 ) *WriteCommand {
 	return &WriteCommand{
 		logger:             logger,
 		datastore:          datastore,
 		typesystemResolver: typesystemResolver,
-		allowSchema10:      allowSchema10,
 	}
 }
 
@@ -79,8 +76,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 			return serverErrors.HandleError("", err)
 		}
 
-		if ProhibitModel1_0(typesys.GetSchemaVersion(), c.allowSchema10) {
-			return serverErrors.ValidationError(ErrObsoleteAuthorizationModel)
+		if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 		}
 
 		for _, tk := range writes {

@@ -61,6 +61,10 @@ func (q *ListObjectsQuery) evaluate(
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	}
+
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)

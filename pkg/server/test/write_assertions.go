@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -18,56 +19,24 @@ import (
 
 func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
-		_name         string
-		request       *openfgapb.WriteAssertionsRequest
-		allowSchema10 bool
-		assertModel10 bool
-		err           error
+		_name   string
+		request *openfgapb.WriteAssertionsRequest
+		err     error
 	}
 
 	store := testutils.CreateRandomString(10)
 
 	githubModelReq := &openfgapb.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "user",
-			},
-			{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader":   {Userset: &openfgapb.Userset_This{}},
-					"can_read": typesystem.ComputedUserset("reader"),
-				},
-				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationMetadata{
-						"reader": {
-							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-								typesystem.DirectRelationReference("user", ""),
-							},
-						},
-					},
-				},
-			},
-		},
-		SchemaVersion: typesystem.SchemaVersion1_1,
-	}
+		TypeDefinitions: parser.MustParse(`
+		type user
 
-	githubModelReq10 := &openfgapb.WriteAuthorizationModelRequest{
-		SchemaVersion: typesystem.SchemaVersion1_0,
-		StoreId:       store,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
-			{
-				Type: "user",
-			},
-			{
-				Type: "repo",
-				Relations: map[string]*openfgapb.Userset{
-					"reader":   typesystem.This(),
-					"can_read": typesystem.ComputedUserset("reader"),
-				},
-			},
-		},
+		type repo
+		  relations
+		    define reader: [user] as self
+		    define can_read as reader
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 
 	var tests = []writeAssertionsTestSettings{
@@ -111,19 +80,6 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			err: serverErrors.ValidationError(fmt.Errorf("relation 'repo#invalidrelation' not found")),
 		},
-		{
-			_name: "writing_assertions_obsolete",
-			request: &openfgapb.WriteAssertionsRequest{
-				StoreId: store,
-				Assertions: []*openfgapb.Assertion{{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
-					Expectation: false,
-				}},
-			},
-			assertModel10: true,
-			allowSchema10: false,
-			err:           serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel),
-		},
 	}
 
 	ctx := context.Background()
@@ -133,18 +89,14 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
-			if test.assertModel10 {
-				model = githubModelReq10
-			}
 
-			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger, true).Execute(ctx, model)
+			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, model)
 			require.NoError(t, err)
 
 			cmd := commands.NewWriteAssertionsCommand(
 				datastore,
 				logger,
 				typesystem.MemoizedTypesystemResolverFunc(datastore),
-				test.allowSchema10,
 			)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 

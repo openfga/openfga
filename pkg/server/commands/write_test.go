@@ -43,7 +43,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore), true)
+	cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore))
 
 	tests := []test{
 		{
@@ -148,10 +148,12 @@ func TestValidateWriteRequest(t *testing.T) {
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 
-			cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore), true)
+			cmd := NewWriteCommand(mockDatastore, logger, typesystem.MemoizedTypesystemResolverFunc(mockDatastore))
 
 			if len(test.writes) > 0 {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).Return(&openfgapb.AuthorizationModel{}, nil)
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{
+					SchemaVersion: typesystem.SchemaVersion1_1,
+				}, nil)
 			}
 
 			ctx := context.Background()

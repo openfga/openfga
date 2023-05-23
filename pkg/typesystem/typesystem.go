@@ -16,8 +16,8 @@ var tracer = otel.Tracer("pkg/typesystem")
 type ctxKey string
 
 const (
-	SchemaVersion1_0 = "1.0"
-	SchemaVersion1_1 = "1.1"
+	SchemaVersion1_0 string = "1.0"
+	SchemaVersion1_1 string = "1.1"
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
 )
@@ -33,6 +33,15 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
+
+func IsSchemaVersionSupported(version string) bool {
+	switch version {
+	case SchemaVersion1_1:
+		return true
+	default:
+		return false
+	}
+}
 
 // ContextWithTypesystem attaches the provided TypeSystem to the parent context.
 func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
@@ -609,7 +618,7 @@ func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
 	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
-	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
+	if !IsSchemaVersionSupported(schemaVersion) {
 		return nil, ErrInvalidSchemaVersion
 	}
 
@@ -719,7 +728,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 				}
 			}
 
-			return fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes)
+			return errors.Join(ErrRelationUndefined, fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes))
 		} else {
 			// for 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model
 			for typeName := range t.relations {
