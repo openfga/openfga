@@ -564,6 +564,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
+	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -662,6 +664,18 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		e, ok := status.FromError(err)
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("invalid_schema_error_in_write_model", func(t *testing.T) {
+		_, err := s.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:         store,
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: parser.MustParse(`type repo`),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code(), err)
 	})
 
 	t.Run("invalid_schema_error_in_write_assertion", func(t *testing.T) {
