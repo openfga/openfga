@@ -61,6 +61,7 @@ func TestConfigFileValuesAreParsed(t *testing.T) {
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
+		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
