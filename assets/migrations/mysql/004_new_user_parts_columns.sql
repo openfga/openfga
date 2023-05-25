@@ -8,9 +8,9 @@ ALTER TABLE tuple
     ADD COLUMN user_object_id VARCHAR(145),
     ADD COLUMN user_relation VARCHAR(145);
 
--- jon becomes (..., jon, ...)
--- user:jon becomes (user, jon, ...)
--- team:* becomes (team, *, ...)
+-- jon becomes (, jon, )
+-- user:jon becomes (user, jon, )
+-- team:* becomes (team, *, )
 -- group:eng#member becomes (group, eng, member)
 UPDATE tuple SET
          user_object_type = (CASE
@@ -53,9 +53,9 @@ ALTER TABLE changelog
     ADD COLUMN user_object_id VARCHAR(145),
     ADD COLUMN user_relation VARCHAR(145);
 
--- jon becomes (..., jon, ...)
--- user:jon becomes (user, jon, ...)
--- team:* becomes (team, *, ...)
+-- jon becomes (, jon, )
+-- user:jon becomes (user, jon,)
+-- team:* becomes (team, *, )
 -- group:eng#member becomes (group, eng, member)
 UPDATE changelog SET
          user_object_type = (CASE

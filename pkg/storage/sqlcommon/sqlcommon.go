@@ -342,7 +342,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		userObjectType, userObjectID, userRelation := ToUserParts(tk.GetUser())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
@@ -354,7 +354,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
-		userObjectType, userObjectID, userRelation := ToUserParts(tk.GetUser())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		_, err = insertBuilder.
 			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), userObjectType, userObjectID, userRelation, id, dbInfo.sqlTime).
@@ -399,28 +399,4 @@ func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
 	}
 
 	return true, nil
-}
-
-func ToUserPartsFromObjectRelation(u *openfgapb.ObjectRelation) (string, string, string) {
-	user := tupleUtils.GetObjectRelationAsString(u)
-	return ToUserParts(user)
-}
-
-func ToUserParts(user string) (string, string, string) {
-	userObject, userRelation := tupleUtils.SplitObjectRelation(user) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
-
-	userObjectType, userObjectID := tupleUtils.SplitObject(userObject)
-
-	return userObjectType, userObjectID, userRelation
-}
-
-func FromUserParts(userObjectType, userObjectID, userRelation string) string {
-	user := userObjectID
-	if userObjectType != "" {
-		user = fmt.Sprintf("%s:%s", userObjectType, userObjectID)
-	}
-	if userRelation != "" {
-		user = fmt.Sprintf("%s:%s#%s", userObjectType, userObjectID, userRelation)
-	}
-	return user
 }

@@ -154,3 +154,27 @@ func IsTypedWildcard(s string) bool {
 
 	return false
 }
+
+func ToUserPartsFromObjectRelation(u *openfgapb.ObjectRelation) (string, string, string) {
+	user := GetObjectRelationAsString(u)
+	return ToUserParts(user)
+}
+
+func ToUserParts(user string) (string, string, string) {
+	userObject, userRelation := SplitObjectRelation(user) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
+
+	userObjectType, userObjectID := SplitObject(userObject)
+
+	return userObjectType, userObjectID, userRelation
+}
+
+func FromUserParts(userObjectType, userObjectID, userRelation string) string {
+	user := userObjectID
+	if userObjectType != "" {
+		user = fmt.Sprintf("%s:%s", userObjectType, userObjectID)
+	}
+	if userRelation != "" {
+		user = fmt.Sprintf("%s:%s#%s", userObjectType, userObjectID, userRelation)
+	}
+	return user
+}

@@ -9,31 +9,33 @@ ALTER TABLE tuple
     ADD COLUMN IF NOT EXISTS user_object_id TEXT,
     ADD COLUMN IF NOT EXISTS user_relation TEXT;
 
--- jon becomes (..., jon, ...)
--- user:jon becomes (user, jon, ...)
--- team:* becomes (team, *, ...)
+-- jon becomes (, jon, )
+-- user:jon becomes (user, jon,)
+-- team:* becomes (team, *, )
 -- group:eng#member becomes (group, eng, member)
 -- +goose StatementBegin
-CREATE OR REPLACE FUNCTION set_new_columns() RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION set_user_columns() RETURNS TRIGGER AS $$
 BEGIN
         NEW.user_object_type = (CASE
                                     WHEN position(':' in NEW._user) > 0 THEN split_part(NEW._user, ':', 1)
                                     ELSE ''
-            END),
+            END);
 
         NEW.user_object_id = (CASE
                                   WHEN position('#' in NEW._user) > 0 THEN split_part(split_part(NEW._user, ':', -1), '#', 1)
                                   ELSE split_part(NEW._user, ':', -1)
-            END),
+            END);
 
         NEW.user_relation = (CASE
                                  WHEN position('#' in NEW._user) > 0 THEN split_part(NEW._user, '#', -1)
                                  ELSE ''
             END);
+        RETURN NEW;
 END;
 $$ language 'plpgsql';
 -- +goose StatementEnd
 
+-- Existing tuples will get the new columns
 UPDATE tuple SET
      user_object_type = (CASE
                              WHEN position(':' in _user) > 0 THEN split_part(_user, ':', 1)
@@ -48,12 +50,11 @@ UPDATE tuple SET
                           ELSE ''
          END);
 
+-- Future tuples will get the new columns
 CREATE TRIGGER migrate_user_column
-    BEFORE UPDATE ON tuple
+    BEFORE UPDATE OR INSERT ON tuple
     FOR EACH ROW
-    EXECUTE FUNCTION set_new_columns();
-
-ALTER TABLE tuple ADD CONSTRAINT unique_tuple UNIQUE(store, object_type, object_id, relation, user_object_type, user_object_id, user_relation);
+    EXECUTE FUNCTION set_user_columns();
 
 -- +goose StatementBegin
 CREATE INDEX CONCURRENTLY idx_tuple_partial_userset_v2 ON tuple (store, object_type, object_id, relation, user_object_type, user_relation) WHERE user_relation != '' OR user_object_id = '*';
@@ -67,10 +68,11 @@ ALTER TABLE changelog
     ADD COLUMN IF NOT EXISTS user_object_id TEXT,
     ADD COLUMN IF NOT EXISTS user_relation TEXT;
 
--- jon becomes (..., jon, ...)
--- user:jon becomes (user, jon, ...)
--- team:* becomes (team, *, ...)
+-- jon becomes (, jon, )
+-- user:jon becomes (user, jon, )
+-- team:* becomes (team, *, )
 -- group:eng#member becomes (group, eng, member)
+-- Existing changelogs will get the new columns
 UPDATE changelog SET
      user_object_type = (CASE
         WHEN position(':' in _user) > 0 THEN split_part(_user, ':', 1)
@@ -85,10 +87,11 @@ UPDATE changelog SET
         ELSE ''
     END);
 
+-- Future changelogs will get the new columns
 CREATE TRIGGER migrate_user_column
-    BEFORE UPDATE ON changelog
+    BEFORE UPDATE OR INSERT ON changelog
     FOR EACH ROW
-    EXECUTE FUNCTION set_new_columns();
+    EXECUTE FUNCTION set_user_columns();
 
 -- +goose Down
 
@@ -100,7 +103,6 @@ DROP INDEX CONCURRENTLY idx_tuple_partial_user_v2;
 -- +goose StatementEnd
 
 ALTER TABLE tuple
-    DROP CONSTRAINT IF EXISTS unique_tuple,
     DROP COLUMN IF EXISTS user_object_type,
     DROP COLUMN IF EXISTS user_object_id,
     DROP COLUMN IF EXISTS user_relation;

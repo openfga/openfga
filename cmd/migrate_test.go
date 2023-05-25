@@ -43,6 +43,7 @@ func TestNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
+		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
