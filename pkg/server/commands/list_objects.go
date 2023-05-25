@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 )
 
 const (
+	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
 	listObjectsOptimizedKey = "list_objects_optimized"
 )
@@ -48,6 +50,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- string,
 	errChan chan<- error,
+	maxResults uint32,
 ) error {
 
 	span := trace.SpanFromContext(ctx)
@@ -58,6 +61,10 @@ func (q *ListObjectsQuery) evaluate(
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		panic("typesystem missing in context")
+	}
+
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
@@ -87,11 +94,12 @@ func (q *ListObjectsQuery) evaluate(
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
-		err = q.performChecks(ctx, req, resultsChan)
+		err = q.performChecks(ctx, req, resultsChan, maxResults)
 		if err != nil {
 			errChan <- err
+			close(errChan)
+			return
 		}
-
 		close(resultsChan)
 	}
 
@@ -141,7 +149,7 @@ func (q *ListObjectsQuery) evaluate(
 			connectObjCmd := &ConnectedObjectsCommand{
 				Datastore:        q.Datastore,
 				ResolveNodeLimit: q.ResolveNodeLimit,
-				Limit:            q.ListObjectsMaxResults,
+				Limit:            maxResults,
 			}
 
 			err = connectObjCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
@@ -154,8 +162,9 @@ func (q *ListObjectsQuery) evaluate(
 			}, resultsChan)
 			if err != nil {
 				errChan <- err
+				close(errChan)
+				return
 			}
-
 			close(resultsChan)
 		}
 	}
@@ -165,18 +174,21 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-// Execute the ListObjectsQuery, returning a list of object IDs
+// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.ListObjectsMaxResults
+// or until q.ListObjectsDeadline is hit, whichever happens first.
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
 	resultsChan := make(chan string, 1)
-	if q.ListObjectsMaxResults > 0 {
-		resultsChan = make(chan string, q.ListObjectsMaxResults)
+	maxResults := q.ListObjectsMaxResults
+	if maxResults > 0 {
+		resultsChan = make(chan string, maxResults)
 	}
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -185,7 +197,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -194,33 +206,46 @@ func (q *ListObjectsQuery) Execute(
 
 	for {
 		select {
-		case objectID, ok := <-resultsChan:
-			if !ok {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return &openfgapb.ListObjectsResponse{
+				Objects: objects,
+			}, nil
+
+		case objectID, channelOpen := <-resultsChan:
+			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil
 			}
 			objects = append(objects, objectID)
-		case genericError, ok := <-errChan:
-			if ok {
+		case genericError, valueAvailable := <-errChan:
+			if valueAvailable {
 				return nil, serverErrors.NewInternalError("", genericError)
 			}
 		}
 	}
 }
 
+// ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
+// It ignores the value of q.ListObjectsMaxResults and returns all available results
+// until q.ListObjectsDeadline is hit
 func (q *ListObjectsQuery) ExecuteStreamed(
 	ctx context.Context,
 	req *openfgapb.StreamedListObjectsRequest,
 	srv openfgapb.OpenFGAService_StreamedListObjectsServer,
 ) error {
 
-	resultsChan := make(chan string, 1)
-	if q.ListObjectsMaxResults > 0 {
-		resultsChan = make(chan string, q.ListObjectsMaxResults)
-	}
+	maxResults := uint32(math.MaxUint32)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
+	resultsChan := make(chan string, streamedBufferSize)
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -229,13 +254,21 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
 	if err != nil {
 		return err
 	}
 
 	for {
 		select {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return nil
+
 		case object, ok := <-resultsChan:
 			if !ok {
 				// Channel closed! No more results.
@@ -255,7 +288,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	}
 }
 
-func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string) error {
+func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string, maxResults uint32) error {
 	ctx, span := tracer.Start(ctx, "performChecks")
 	defer span.End()
 	var objectsFound = new(uint32)
@@ -281,12 +314,12 @@ func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsReq
 			}
 			break
 		}
-		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
+		if atomic.LoadUint32(objectsFound) >= maxResults {
 			break
 		}
 
 		checkFunction := func() error {
-			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan)
+			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan, maxResults)
 		}
 
 		g.Go(checkFunction)
@@ -302,6 +335,7 @@ func (q *ListObjectsQuery) internalCheck(
 	req listObjectsRequest,
 	objectsFound *uint32,
 	resultsChan chan<- string,
+	maxResults uint32,
 ) error {
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
@@ -318,7 +352,7 @@ func (q *ListObjectsQuery) internalCheck(
 		return nil
 	}
 
-	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
+	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
 		resultsChan <- tuple.ObjectKey(obj)
 	}
 

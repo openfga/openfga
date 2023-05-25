@@ -94,23 +94,6 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "Fails_if_writing_schema_10_and_no_override",
-			request: &openfgapb.WriteAuthorizationModelRequest{
-				StoreId:       storeID,
-				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": typesystem.This(),
-						},
-					},
-				},
-			},
-			allowSchema10: false,
-			err:           serverErrors.InvalidAuthorizationModelInput(commands.ErrObsoleteAuthorizationModel),
-		},
-		{
 			name: "Fails_if_writing_1_0_model_because_it_will_be_interpreted_as_1_1",
 			request: &openfgapb.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -159,7 +142,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger, test.allowSchema10)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
 			resp, err := cmd.Execute(ctx, test.request)
 			require.ErrorIs(t, err, test.err)
 

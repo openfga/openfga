@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/ccache/v2"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -16,7 +16,7 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
-	cache *ccache.Cache
+	cache *ccache.Cache[*openfgapb.AuthorizationModel]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches *openfgapb.AuthorizationModel
@@ -24,7 +24,7 @@ type cachedOpenFGADatastore struct {
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
-		cache:            ccache.New(ccache.Configure().MaxSize(int64(maxSize))),
+		cache:            ccache.New(ccache.Configure[*openfgapb.AuthorizationModel]().MaxSize(int64(maxSize))),
 	}
 }
 
@@ -33,7 +33,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
-		return cachedEntry.Value().(*openfgapb.AuthorizationModel), nil
+		return cachedEntry.Value(), nil
 	}
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)

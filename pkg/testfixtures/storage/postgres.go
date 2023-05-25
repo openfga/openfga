@@ -29,9 +29,10 @@ var (
 )
 
 type postgresTestContainer struct {
-	addr    string
-	creds   string
-	version int64
+	addr     string
+	version  int64
+	username string
+	password string
 }
 
 // NewPostgresTestContainer returns an implementation of the DatastoreTestContainer interface
@@ -145,11 +146,12 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	})
 
 	pgTestContainer := &postgresTestContainer{
-		addr:  fmt.Sprintf("localhost:%s", m[0].HostPort),
-		creds: "postgres:secret",
+		addr:     fmt.Sprintf("localhost:%s", m[0].HostPort),
+		username: "postgres",
+		password: "secret",
 	}
 
-	uri := fmt.Sprintf("postgres://%s@%s/defaultdb?sslmode=disable", pgTestContainer.creds, pgTestContainer.addr)
+	uri := fmt.Sprintf("postgres://%s:%s@%s/defaultdb?sslmode=disable", pgTestContainer.username, pgTestContainer.password, pgTestContainer.addr)
 
 	goose.SetLogger(goose.NopLogger())
 
@@ -185,11 +187,24 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 }
 
 // GetConnectionURI returns the postgres connection uri for the running postgres test container.
-func (p *postgresTestContainer) GetConnectionURI() string {
+func (p *postgresTestContainer) GetConnectionURI(includeCredentials bool) string {
+	creds := ""
+	if includeCredentials {
+		creds = fmt.Sprintf("%s:%s@", p.username, p.password)
+	}
+
 	return fmt.Sprintf(
-		"postgres://%s@%s/%s?sslmode=disable",
-		p.creds,
+		"postgres://%s%s/%s?sslmode=disable",
+		creds,
 		p.addr,
 		"defaultdb",
 	)
+}
+
+func (p *postgresTestContainer) GetUsername() string {
+	return p.username
+}
+
+func (p *postgresTestContainer) GetPassword() string {
+	return p.password
 }

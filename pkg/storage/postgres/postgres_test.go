@@ -30,7 +30,7 @@ import (
 func TestPostgresDatastore(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -42,7 +42,7 @@ func TestMigrate(t *testing.T) {
 	// starts the container and runs migration up to the latest migration version available
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -67,7 +67,7 @@ func TestMigrateVersion4(t *testing.T) {
 
 	t.Logf("start the database container and run migrations up to the latest migration version available")
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 
 	t.Logf("migrate down to version 3")
 	migrateCommand := cmd.NewMigrateCommand()
@@ -119,7 +119,7 @@ func TestMigrateVersion4(t *testing.T) {
 func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 
@@ -144,7 +144,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()
@@ -193,7 +193,7 @@ func TestReadEnsureNoOrder(t *testing.T) {
 func TestReadPageEnsureOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
+	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	defer ds.Close()

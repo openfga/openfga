@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
@@ -30,7 +31,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func init() {
@@ -43,10 +43,23 @@ func init() {
 }
 
 func TestServerWithPostgresDatastore(t *testing.T) {
+	ds := MustBootstrapDatastore(t, "postgres")
+	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithPostgresDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
-	uri := testDatastore.GetConnectionURI()
-	ds, err := postgres.New(uri, sqlcommon.NewConfig())
+	uri := testDatastore.GetConnectionURI(false)
+	ds, err := postgres.New(
+		uri,
+		sqlcommon.NewConfig(
+			sqlcommon.WithUsername(testDatastore.GetUsername()),
+			sqlcommon.WithPassword(testDatastore.GetPassword()),
+		),
+	)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -54,16 +67,30 @@ func TestServerWithPostgresDatastore(t *testing.T) {
 }
 
 func TestServerWithMemoryDatastore(t *testing.T) {
-	ds := memory.New(10, 24)
+	ds := MustBootstrapDatastore(t, "memory")
 	defer ds.Close()
+
 	test.RunAllTests(t, ds)
 }
 
 func TestServerWithMySQLDatastore(t *testing.T) {
+	ds := MustBootstrapDatastore(t, "mysql")
+	defer ds.Close()
+
+	test.RunAllTests(t, ds)
+}
+
+func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
-	uri := testDatastore.GetConnectionURI()
-	ds, err := mysql.New(uri, sqlcommon.NewConfig())
+	uri := testDatastore.GetConnectionURI(false)
+	ds, err := mysql.New(
+		uri,
+		sqlcommon.NewConfig(
+			sqlcommon.WithUsername(testDatastore.GetUsername()),
+			sqlcommon.WithPassword(testDatastore.GetPassword()),
+		),
+	)
 	require.NoError(t, err)
 	defer ds.Close()
 
@@ -75,7 +102,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
-		uri := testDatastore.GetConnectionURI()
+		uri := testDatastore.GetConnectionURI(true)
 		ds, err := postgres.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
@@ -91,7 +118,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	b.Run("BenchmarkMySQLDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "mysql")
 
-		uri := testDatastore.GetConnectionURI()
+		uri := testDatastore.GetConnectionURI(true)
 		ds, err := mysql.New(uri, sqlcommon.NewConfig())
 		require.NoError(b, err)
 		defer ds.Close()
@@ -104,7 +131,15 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "anne")
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define reader: [user] as self
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:anne")
 	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
@@ -116,15 +151,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": typesystem.This(),
-					},
-				},
-			},
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -147,8 +175,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:         25,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit: 25,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -166,7 +193,15 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "*")
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define reader: [user:*] as self
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:*")
 	tuple := &openfgapb.Tuple{Key: tk}
 
 	mockController := gomock.NewController(t)
@@ -178,15 +213,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "repo",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": typesystem.This(),
-					},
-				},
-			},
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
 		}, nil)
 
 	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
@@ -217,8 +245,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit:         25,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit: 25,
 	})
 
 	start := time.Now()
@@ -320,6 +347,69 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 	return nil
 }
 
+// This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
+func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	transport := gateway.NewNoopTransport()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(b)
+	defer mockController.Finish()
+
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define allowed: [user] as self
+	    define viewer: [user] as self and allowed
+    `)
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
+	}, nil)
+	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+
+	s := New(&Dependencies{
+		Datastore: mockDatastore,
+		Transport: transport,
+		Logger:    logger,
+	}, &Config{
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
+	})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		})
+
+		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+
+		err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		}, NewMockStreamServer())
+
+		require.ErrorIs(b, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+	}
+}
+
+// This test ensures that when the data storage fails, ListObjects v0 throws an error
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -330,18 +420,18 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	data, err := os.ReadFile("testdata/github.json")
-	require.NoError(t, err)
-
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
-	require.NoError(t, err)
-
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
-		SchemaVersion:   typesystem.SchemaVersion1_0,
-		TypeDefinitions: gitHubTypeDefinitions.GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type repo
+		  relations
+		    define allowed: [user] as self
+		    define viewer: [user] as self and allowed
+		`),
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
@@ -350,10 +440,9 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:         25,
-		ListObjectsDeadline:      5 * time.Second,
-		ListObjectsMaxResults:    1000,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -361,8 +450,8 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
-			User:                 "bob",
+			Relation:             "viewer",
+			User:                 "user:bob",
 		})
 
 		require.Nil(t, res)
@@ -370,18 +459,19 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	})
 
 	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "repo",
-			Relation:             "owner",
-			User:                 "bob",
+			Relation:             "viewer",
+			User:                 "user:bob",
 		}, NewMockStreamServer())
 
 		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 	})
 }
 
+// This test ensures that when the data storage fails, ListObjects v1 throws an error
 func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -431,10 +521,9 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:         25,
-		ListObjectsDeadline:      5 * time.Second,
-		ListObjectsMaxResults:    1000,
-		AllowEvaluating1_0Models: true,
+		ResolveNodeLimit:      25,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -463,7 +552,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	})
 }
 
-func TestObsoleteAuthorizationModels(t *testing.T) {
+func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 	transport := gateway.NewNoopTransport()
@@ -473,14 +562,9 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	data, err := os.ReadFile("testdata/github.json")
-	require.NoError(t, err)
-
-	var gitHubTypeDefinitions openfgapb.WriteAuthorizationModelRequest
-	err = protojson.Unmarshal(data, &gitHubTypeDefinitions)
-	require.NoError(t, err)
-
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
@@ -503,16 +587,14 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		transport: transport,
 		logger:    logger,
 		config: &Config{
-			ResolveNodeLimit:         25,
-			ListObjectsDeadline:      5 * time.Second,
-			ListObjectsMaxResults:    1000,
-			AllowEvaluating1_0Models: false,
-			AllowWriting1_0Models:    false,
+			ResolveNodeLimit:      25,
+			ListObjectsDeadline:   5 * time.Second,
+			ListObjectsMaxResults: 1000,
 		},
 	}
 
-	t.Run("throw_obsolete_error_in_check", func(t *testing.T) {
-		_, err = s.Check(ctx, &openfgapb.CheckRequest{
+	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
+		_, err := s.Check(ctx, &openfgapb.CheckRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			TupleKey: tuple.NewTupleKey(
@@ -526,8 +608,8 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_listobject", func(t *testing.T) {
-		_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+	t.Run("invalid_schema_error_in_list_objects", func(t *testing.T) {
+		_, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Type:                 "team",
@@ -540,7 +622,21 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_expand", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_streamed_list_objects", func(t *testing.T) {
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "team",
+			Relation:             "member",
+			User:                 "user:anne",
+		}, NewMockStreamServer())
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+	})
+
+	t.Run("invalid_schema_error_in_expand", func(t *testing.T) {
 		_, err := s.Expand(ctx, &openfgapb.ExpandRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -554,7 +650,7 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_write", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_write", func(t *testing.T) {
 		_, err := s.Write(ctx, &openfgapb.WriteRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -570,7 +666,19 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
 
-	t.Run("throw_obsolete_error_in_write_assertion", func(t *testing.T) {
+	t.Run("invalid_schema_error_in_write_model", func(t *testing.T) {
+		_, err := s.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+			StoreId:         store,
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: parser.MustParse(`type repo`),
+		})
+		require.Error(t, err)
+		e, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.Code(openfgapb.ErrorCode_invalid_authorization_model), e.Code(), err)
+	})
+
+	t.Run("invalid_schema_error_in_write_assertion", func(t *testing.T) {
 		_, err := s.WriteAssertions(ctx, &openfgapb.WriteAssertionsRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
@@ -584,4 +692,27 @@ func TestObsoleteAuthorizationModels(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
 	})
+}
+
+func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+
+	uri := testDatastore.GetConnectionURI(true)
+
+	var ds storage.OpenFGADatastore
+	var err error
+
+	switch engine {
+	case "memory":
+		ds = memory.New(10, 24)
+	case "postgres":
+		ds, err = postgres.New(uri, sqlcommon.NewConfig())
+	case "mysql":
+		ds, err = mysql.New(uri, sqlcommon.NewConfig())
+	default:
+		t.Fatalf("'%s' is not a supported datastore engine", engine)
+	}
+	require.NoError(t, err)
+
+	return ds
 }

@@ -4,16 +4,9 @@
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
-.PHONY: download
-download:
-	@cd tools/ && go mod download
-
-.PHONY: install-tools
-install-tools: download ## Install developer tooling
-	@cd tools && go list -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
-
 .PHONY: lint
-lint: install-tools ## Lint Go source files
+lint: ## Lint Go source files
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@golangci-lint run
 
 .PHONY: clean
@@ -54,6 +47,14 @@ migrate-mysql: build ## Run MySQL migrations
 .PHONY: run-mysql
 run-mysql: build ## Run the OpenFGA server with MySQL storage
 	./openfga run --datastore-engine mysql --datastore-uri 'root:secret@tcp(localhost:3306)/openfga?parseTime=true'
+
+.PHONY: download
+download:
+	@cd tools/ && go mod download
+
+.PHONY: install-tools
+install-tools: download ## Install developer tooling
+	@cd tools && go list -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
 
 .PHONY: go-generate
 go-generate: install-tools
