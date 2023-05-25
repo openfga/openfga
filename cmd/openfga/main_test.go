@@ -170,8 +170,7 @@ func newOpenFGATester(t *testing.T, openfgaImage string, args ...string) (OpenFG
 	}
 	grpcPort := m[0].HostPort
 
-	// give time for the database migrations to run
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
