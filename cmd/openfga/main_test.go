@@ -336,7 +336,7 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 		require.NoError(t, err)
 
 		t.Logf("start openfga 1.1.0 and wait for it to be ready")
-		datastoreConnectionURI := strings.Replace(uri, "localhost", "host.docker.internal", -1)
+		datastoreConnectionURI := strings.Replace(uri, "localhost", "172.17.0.1", -1)
 		tester, err := newOpenFGATester(t, "openfga/openfga:v1.1.0", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
 		require.NoError(t, err)
 		defer tester.Cleanup()
