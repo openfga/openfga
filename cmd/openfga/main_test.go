@@ -329,7 +329,7 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 		uri := testDatastore.GetConnectionURI(true)
 
-		t.Logf("migrate down to version 3")
+		t.Logf("migrate database down to version 3")
 		migrateCommand := cmd.NewMigrateCommand()
 		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(3)})
 		err := migrateCommand.Execute()
@@ -348,7 +348,7 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 
 		client := openfgapb.NewOpenFGAServiceClient(conn)
 
-		t.Logf("writing authorization model")
+		t.Logf("write authorization model")
 		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 			StoreId: store,
 			TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -384,12 +384,12 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 		})
 		require.NoError(t, err)
 
-		t.Logf("downgrade database to version 3")
+		t.Logf("migrate database up to version 4")
 		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(4)})
 		err = migrateCommand.Execute()
 		require.NoError(t, err)
 
-		t.Logf("writing another tuple")
+		t.Logf("write another tuple")
 		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
 			StoreId: store,
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
