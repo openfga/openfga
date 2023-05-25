@@ -6,6 +6,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,6 +20,8 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/cmd"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -31,6 +36,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+const (
+	baseFunctionalTestImage = "openfga/openfga:functionaltest"
 )
 
 type OpenFGATester interface {
@@ -60,7 +69,7 @@ func (s *serverHandle) Cleanup() func() {
 // newOpenFGATester spins up an openfga container with the default service ports
 // exposed for testing purposes. Before running functional tests it is assumed
 // the openfga/openfga container is already built and available to the docker engine.
-func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
+func newOpenFGATester(t *testing.T, openfgaImage string, args ...string) (OpenFGATester, error) {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
@@ -68,6 +77,15 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		client.WithAPIVersionNegotiation(),
 	)
 	require.NoError(t, err)
+
+	if openfgaImage != baseFunctionalTestImage {
+		t.Logf("Pulling image %s", openfgaImage)
+		reader, err := dockerClient.ImagePull(context.Background(), openfgaImage, types.ImagePullOptions{})
+		require.NoError(t, err)
+
+		_, err = io.Copy(io.Discard, reader) // consume the image pull output to make sure it's done
+		require.NoError(t, err)
+	}
 
 	cmd := []string{"run"}
 	cmd = append(cmd, args...)
@@ -79,7 +97,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 			nat.Port("8081/tcp"): {},
 			nat.Port("3000/tcp"): {},
 		},
-		Image: "openfga/openfga:functionaltest",
+		Image: openfgaImage,
 		Cmd:   cmd,
 	}
 
@@ -151,7 +169,8 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	}
 	grpcPort := m[0].HostPort
 
-	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	// give time for the database migrations to run
+	timeoutCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
 	creds := insecure.NewCredentials()
@@ -209,7 +228,7 @@ func TestFunctionalGRPC(t *testing.T) {
 
 	// tester can be shared across tests that aren't impacted
 	// by shared state
-	tester, err := newOpenFGATester(t)
+	tester, err := newOpenFGATester(t, baseFunctionalTestImage)
 	require.NoError(err)
 	defer tester.Cleanup()
 
@@ -229,8 +248,17 @@ func TestFunctionalGRPC(t *testing.T) {
 	t.Run("TestReadAuthorizationModels", func(t *testing.T) { GRPCReadAuthorizationModelsTest(t, tester) })
 }
 
+func TestDatastoreMigrations(t *testing.T) {
+	engines := []string{"postgres", "mysql"}
+	t.Run("TestMigrateDatastoreToVersion4", func(t *testing.T) {
+		for _, engine := range engines {
+			MigrateDatastoreToVersion4Test(t, engine)
+		}
+	})
+}
+
 func TestGRPCWithPresharedKey(t *testing.T) {
-	tester, err := newOpenFGATester(t, "--authn-method", "preshared", "--authn-preshared-keys", "key1,key2")
+	tester, err := newOpenFGATester(t, baseFunctionalTestImage, "--authn-method", "preshared", "--authn-preshared-keys", "key1,key2")
 	require.NoError(t, err)
 	defer tester.Cleanup()
 
@@ -292,6 +320,90 @@ func connect(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 	require.NoError(t, err)
 
 	return conn
+}
+
+func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
+	t.Run(engine, func(t *testing.T) {
+		store := ulid.Make().String()
+		t.Logf("start the database container and run migrations up to the latest migration version available")
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+		uri := testDatastore.GetConnectionURI(true)
+
+		t.Logf("migrate down to version 3")
+		migrateCommand := cmd.NewMigrateCommand()
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(3)})
+		err := migrateCommand.Execute()
+		require.NoError(t, err)
+
+		t.Logf("start openfga 1.1.0 and wait for it to be ready")
+		datastoreConnectionURI := strings.Replace(uri, "localhost", "host.docker.internal", -1)
+		tester, err := newOpenFGATester(t, "openfga/openfga:v1.1.0", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
+		require.NoError(t, err)
+		defer tester.Cleanup()
+
+		t.Logf("create a client of openfga")
+		conn := connect(t, tester)
+		defer conn.Close()
+
+		client := openfgapb.NewOpenFGAServiceClient(conn)
+
+		t.Logf("writing authorization model")
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+			StoreId: store,
+			TypeDefinitions: []*openfgapb.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgapb.Userset{
+						"viewer": {Userset: &openfgapb.Userset_This{}},
+					},
+					Metadata: &openfgapb.Metadata{
+						Relations: map[string]*openfgapb.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+								},
+							},
+						},
+					},
+				},
+			},
+			SchemaVersion: typesystem.SchemaVersion1_1,
+		})
+		require.NoError(t, err)
+
+		t.Logf("write one tuple")
+		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+			StoreId: store,
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:a"),
+			}},
+		})
+		require.NoError(t, err)
+
+		t.Logf("downgrade database to version 3")
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(4)})
+		err = migrateCommand.Execute()
+		require.NoError(t, err)
+
+		t.Logf("writing another tuple")
+		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+			StoreId: store,
+			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:b"),
+			}},
+		})
+		require.NoError(t, err)
+
+		t.Logf("read changes")
+		resp, err := client.ReadChanges(context.Background(), &openfgapb.ReadChangesRequest{
+			StoreId: store,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, len(resp.Changes))
+	})
 }
 
 func GRPCWriteTest(t *testing.T, tester OpenFGATester) {
@@ -406,7 +518,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 }
 
 func TestGRPCListStores(t *testing.T) {
-	tester, err := newOpenFGATester(t)
+	tester, err := newOpenFGATester(t, baseFunctionalTestImage)
 	require.NoError(t, err)
 	defer tester.Cleanup()
 
@@ -739,7 +851,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 // Checks against multi-model stores etc..
 func TestCheckWorkflows(t *testing.T) {
 
-	tester, err := newOpenFGATester(t)
+	tester, err := newOpenFGATester(t, baseFunctionalTestImage)
 	require.NoError(t, err)
 	defer tester.Cleanup()
 
@@ -850,7 +962,7 @@ func TestCheckWorkflows(t *testing.T) {
 // Expands against multi-model stores etc..
 func TestExpandWorkflows(t *testing.T) {
 
-	tester, err := newOpenFGATester(t)
+	tester, err := newOpenFGATester(t, baseFunctionalTestImage)
 	require.NoError(t, err)
 	defer tester.Cleanup()
 

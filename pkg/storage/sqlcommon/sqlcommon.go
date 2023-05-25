@@ -395,6 +395,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	return nil
 }
 
+// IsReady returns true if the connection to the datastore is successful and the latest migration available has run
 func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
