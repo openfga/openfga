@@ -3,12 +3,15 @@
 
 -- +goose Up
 
+CREATE UNIQUE INDEX CONCURRENTLY idx_tuple_pkey
+    ON tuple (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation);
+
 ALTER TABLE tuple
     ALTER COLUMN user_object_type SET NOT NULL,
     ALTER COLUMN user_object_id SET NOT NULL,
     ALTER COLUMN user_relation SET NOT NULL,
     DROP CONSTRAINT tuple_pkey,
-    ADD PRIMARY KEY (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation);
+    ADD CONSTRAINT tuple_pkey PRIMARY KEY USING INDEX idx_tuple_pkey;
 
 -- +goose StatementBegin
 DROP INDEX CONCURRENTLY idx_tuple_partial_user;
@@ -27,9 +30,12 @@ ALTER TABLE changelog
 CREATE INDEX idx_tuple_partial_user ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'user';
 CREATE INDEX idx_tuple_partial_userset ON tuple (store, object_type, object_id, relation, _user) WHERE user_type = 'userset';
 
+CREATE UNIQUE INDEX CONCURRENTLY idx_tuple_pkey
+    ON tuple (store, object_type, object_id, relation, _user);
+
 ALTER TABLE tuple
     DROP CONSTRAINT tuple_pkey,
-    ADD PRIMARY KEY (store, object_type, object_id, relation, _user),
+    ADD CONSTRAINT tuple_pkey PRIMARY KEY USING INDEX idx_tuple_pkey,
     ALTER COLUMN user_object_type DROP NOT NULL,
     ALTER COLUMN user_object_id DROP NOT NULL,
     ALTER COLUMN user_relation DROP NOT NULL;
