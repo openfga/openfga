@@ -351,26 +351,10 @@ func MigrateDatastoreToVersion4Test(t *testing.T, engine string) {
 		t.Logf("write authorization model")
 		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 			StoreId: store,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"viewer": {Userset: &openfgapb.Userset_This{}},
-					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
-							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.DirectRelationReference("user", ""),
-								},
-							},
-						},
-					},
-				},
-			},
+			TypeDefinitions: parser.MustParse(`type user
+          type document
+            relations
+              define viewer: [user] as self`),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 		})
 		require.NoError(t, err)
