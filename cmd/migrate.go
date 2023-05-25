@@ -19,13 +19,12 @@ import (
 )
 
 const (
-	datastoreEngineFlag  = "datastore-engine"
-	datastoreEngineConf  = "datastore.engine"
-	datastoreURIFlag     = "datastore-uri"
-	datastoreURIConf     = "datastore.uri"
-	versionFlag          = "version"
-	timeoutFlag          = "timeout"
-	verboseMigrationFlag = "verbose"
+	datastoreEngineFlag = "datastore-engine"
+	datastoreEngineConf = "datastore.engine"
+	datastoreURIFlag    = "datastore-uri"
+	datastoreURIConf    = "datastore.uri"
+	versionFlag         = "version"
+	timeoutFlag         = "timeout"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -64,9 +63,8 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
-	verbose := viper.GetBool(verboseMigrationFlag)
 
-	goose.SetVerbose(verbose)
+	goose.SetLogger(goose.NopLogger())
 
 	var driver, dialect, migrationsPath string
 	switch engine {
@@ -167,6 +165,4 @@ func bindMigrateFlags(cmd *cobra.Command) {
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
 	util.MustBindPFlag(timeoutFlag, flags.Lookup(timeoutFlag))
 
-	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs")
-	util.MustBindPFlag(verboseMigrationFlag, flags.Lookup(verboseMigrationFlag))
 }
