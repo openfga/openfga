@@ -103,7 +103,7 @@ type ConnectedObjectsCommand struct {
 func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string,
+	resultChan chan<- ObjectOrError,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -218,7 +218,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string, // object string (e.g. document:1)
+	resultChan chan<- ObjectOrError, // object string (e.g. document:1)
 ) error {
 	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
@@ -248,7 +248,7 @@ type reverseExpandRequest struct {
 func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- ObjectOrError,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -330,7 +330,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 				break
 			}
 
-			resultChan <- foundObject
+			resultChan <- ObjectOrError{ObjectID: foundObject}
 		}
 
 		var sourceUserRef isUserRef
@@ -372,7 +372,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- ObjectOrError,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -472,7 +472,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 				break
 			}
 
-			resultChan <- foundObject
+			resultChan <- ObjectOrError{ObjectID: foundObject}
 		}
 
 		sourceUserRef := &UserRefObjectRelation{
