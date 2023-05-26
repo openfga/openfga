@@ -211,14 +211,14 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	return subg.Wait()
 }
 
-// StreamedConnectedObjects yields all of the objects of the provided objectType that
+// StreamedConnectedObjects yields all the objects of the provided objectType that
 // the given user has a specific relation with. The results will be limited by the request
 // limit. If a 0 limit is provided then all objects of the provided objectType will be
 // returned.
 func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- ObjectOrError, // object string (e.g. document:1)
+	resultChan chan<- ObjectOrError, // contains object string (e.g. document:1)
 ) error {
 	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),

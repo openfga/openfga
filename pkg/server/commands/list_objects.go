@@ -217,7 +217,7 @@ func (q *ListObjectsQuery) Execute(
 
 		case result, channelOpen := <-resultsChan:
 			if result.Err != nil {
-				return nil, result.Err
+				return nil, serverErrors.NewInternalError("", result.Err)
 			}
 			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
