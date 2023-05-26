@@ -8,21 +8,35 @@
      DROP PRIMARY KEY,
      ADD PRIMARY KEY (store, object_type, object_id, relation, user_object_type, user_object_id, user_relation);
 
- ALTER TABLE changelog
+ALTER TABLE tuple
+    MODIFY _user VARCHAR(256) NULL,
+    MODIFY user_type VARCHAR(7) NULL;
+
+ALTER TABLE changelog
      MODIFY user_object_type VARCHAR(145) NOT NULL,
      MODIFY user_object_id VARCHAR(145) NOT NULL,
      MODIFY user_relation VARCHAR(145) NOT NULL;
 
+ALTER TABLE changelog
+    MODIFY _user VARCHAR(512) NULL;
+
 --  +goose Down
 
- ALTER TABLE tuple
+ALTER TABLE tuple
      DROP PRIMARY KEY,
      ADD PRIMARY KEY (store, object_type, object_id, relation, _user),
      MODIFY user_object_type VARCHAR(145) NULL,
      MODIFY user_object_id VARCHAR(145) NULL,
      MODIFY user_relation VARCHAR(145) NULL;
 
- ALTER TABLE changelog
+ALTER TABLE tuple
+    MODIFY _user VARCHAR(256) NOT NULL,
+    MODIFY user_type VARCHAR(7) NOT NULL;
+
+ALTER TABLE changelog
      MODIFY user_object_type VARCHAR(145) NULL,
      MODIFY user_object_id VARCHAR(145) NULL,
      MODIFY user_relation VARCHAR(145) NULL;
+
+ALTER TABLE changelog
+    MODIFY _user VARCHAR(512) NOT NULL;

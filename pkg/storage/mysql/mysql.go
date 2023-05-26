@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -151,7 +150,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 	defer span.End()
 
 	sb := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -168,7 +167,11 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.Tupl
 		sb = sb.Where(sq.Eq{"relation": tupleKey.GetRelation()})
 	}
 	if tupleKey.GetUser() != "" {
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
 		sb = sb.Where(sq.Eq{"_user": tupleKey.GetUser()})
+		sb = sb.Where(sq.Eq{"user_object_type": userObjectType})
+		sb = sb.Where(sq.Eq{"user_object_id": userObjectID})
+		sb = sb.Where(sq.Eq{"user_relation": userRelation})
 	}
 	if opts != nil && opts.From != "" {
 		token, err := sqlcommon.UnmarshallContToken(opts.From)
@@ -208,21 +211,25 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
+	userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tupleKey.GetUser())
 
 	var record sqlcommon.TupleRecord
 	err := m.stbl.
-		Select("object_type", "object_id", "relation", "_user").
+		Select("object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation").
 		From("tuple").
 		Where(sq.Eq{
-			"store":       store,
-			"object_type": objectType,
-			"object_id":   objectID,
-			"relation":    tupleKey.GetRelation(),
-			"_user":       tupleKey.GetUser(),
-			"user_type":   userType,
+			"store":            store,
+			"object_type":      objectType,
+			"object_id":        objectID,
+			"relation":         tupleKey.GetRelation(),
+			"_user":            tupleKey.GetUser(),
+			"user_type":        userType,
+			"user_object_type": userObjectType,
+			"user_object_id":   userObjectID,
+			"user_relation":    userRelation,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.UserObjectType, &record.UserObjectID, &record.UserRelation)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -234,7 +241,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
-	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -253,10 +260,10 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
 			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
-				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
+				orConditions = append(orConditions, sq.And{sq.Eq{"user_object_type": userset.GetType()}, sq.Eq{"user_relation": userset.GetRelation()}})
 			}
 			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
-				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
+				orConditions = append(orConditions, sq.And{sq.Eq{"user_object_type": userset.GetType()}, sq.Eq{"user_object_id": "*"}})
 			}
 		}
 		sb = sb.Where(orConditions)
@@ -273,29 +280,29 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 	ctx, span := tracer.Start(ctx, "mysql.ReadStartingWithUser")
 	defer span.End()
 
-	var targetUsersArg []string
+	iterators := make([]storage.TupleIterator, 0, len(opts.UserFilter))
 	for _, u := range opts.UserFilter {
-		targetUser := u.GetObject()
-		if u.GetRelation() != "" {
-			targetUser = strings.Join([]string{u.GetObject(), u.GetRelation()}, "#")
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserPartsFromObjectRelation(u)
+
+		rows, err := m.stbl.
+			Select("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at").
+			From("tuple").
+			Where(sq.Eq{
+				"store":            store,
+				"object_type":      opts.ObjectType,
+				"relation":         opts.Relation,
+				"user_object_type": userObjectType,
+				"user_object_id":   userObjectID,
+				"user_relation":    userRelation,
+			}).QueryContext(ctx)
+		if err != nil {
+			return nil, sqlcommon.HandleSQLError(err)
 		}
-		targetUsersArg = append(targetUsersArg, targetUser)
+
+		iterators = append(iterators, sqlcommon.NewSQLTupleIterator(rows))
 	}
 
-	rows, err := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
-		From("tuple").
-		Where(sq.Eq{
-			"store":       store,
-			"object_type": opts.ObjectType,
-			"relation":    opts.Relation,
-			"_user":       targetUsersArg,
-		}).QueryContext(ctx)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	return sqlcommon.NewSQLTupleIterator(rows), nil
+	return storage.NewCombinedIterator(iterators...), nil
 }
 
 func (m *MySQL) MaxTuplesPerWrite() int {
@@ -710,7 +717,7 @@ func (m *MySQL) ReadChanges(
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 
-	sb := m.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := m.stbl.Select("ulid", "object_type", "object_id", "relation", "user_object_type", "user_object_id", "user_relation", "operation", "inserted_at").
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
@@ -743,11 +750,11 @@ func (m *MySQL) ReadChanges(
 	var changes []*openfgapb.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, user string
+		var objectType, objectID, relation, userObjectType, userObjectID, userRelation string
 		var operation int
 		var insertedAt time.Time
 
-		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
+		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &userObjectType, &userObjectID, &userRelation, &operation, &insertedAt)
 		if err != nil {
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
@@ -756,7 +763,7 @@ func (m *MySQL) ReadChanges(
 			TupleKey: &openfgapb.TupleKey{
 				Object:   tupleUtils.BuildObject(objectType, objectID),
 				Relation: relation,
-				User:     user,
+				User:     tupleUtils.FromUserParts(userObjectType, userObjectID, userRelation),
 			},
 			Operation: openfgapb.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),

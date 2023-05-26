@@ -426,35 +426,24 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		t.Logf("write authorization model")
 		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 			StoreId: store,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
-				{
-					Type: "user",
-				},
-				{
-					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"viewer": {Userset: &openfgapb.Userset_This{}},
-					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
-							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-									typesystem.DirectRelationReference("user", ""),
-								},
-							},
-						},
-					},
-				},
-			},
+			TypeDefinitions: parser.MustParse(`type user
+          type group
+            relations
+              define member: [user] as self
+          type document
+            relations
+              define viewer: [user, user:*, group#member] as self`),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 		})
 		require.NoError(t, err)
 
-		t.Logf("write one tuple")
+		t.Logf("write one tuple per _user format")
 		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
 			StoreId: store,
 			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:a"),
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+				tuple.NewTupleKey("document:3", "viewer", "group:fga#member"),
 			}},
 		})
 		require.NoError(t, err)
@@ -464,43 +453,58 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		err = migrateCommand.Execute()
 		require.NoError(t, err)
 
-		t.Logf("write another tuple")
-		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
-			StoreId: store,
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:2", "viewer", "user:b"),
-			}},
+		t.Logf("checks should work")
+		c1, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:a"),
 		})
 		require.NoError(t, err)
+		require.True(t, c1.Allowed)
 
-		t.Logf("read changes should work")
-		resp, err := client.ReadChanges(context.Background(), &openfgapb.ReadChangesRequest{
-			StoreId: store,
+		c2, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:2", "viewer", "user:*"),
 		})
 		require.NoError(t, err)
-		require.Equal(t, 2, len(resp.Changes))
+		require.True(t, c2.Allowed)
 
-		t.Logf("list objects should work for user:a")
-		respListObjects, err := client.ListObjects(context.Background(), &openfgapb.ListObjectsRequest{
+		c3, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:3", "viewer", "group:fga#member"),
+		})
+		require.NoError(t, err)
+		require.True(t, c3.Allowed)
+
+		t.Logf("ListObjects should work")
+		res, err := client.ListObjects(context.Background(), &openfgapb.ListObjectsRequest{
 			StoreId:  store,
 			Type:     "document",
 			Relation: "viewer",
 			User:     "user:a",
 		})
 		require.NoError(t, err)
-		require.Equal(t, 1, len(respListObjects.Objects))
-		require.Equal(t, "document:1", respListObjects.Objects[0])
+		require.Equal(t, 2, len(res.Objects))
+		require.ElementsMatch(t, []string{"document:1", "document:2"}, res.Objects)
 
-		t.Logf("list objects should work for user:b")
-		respListObjects, err = client.ListObjects(context.Background(), &openfgapb.ListObjectsRequest{
+		res, err = client.ListObjects(context.Background(), &openfgapb.ListObjectsRequest{
 			StoreId:  store,
 			Type:     "document",
 			Relation: "viewer",
-			User:     "user:b",
+			User:     "user:*",
 		})
 		require.NoError(t, err)
-		require.Equal(t, 1, len(respListObjects.Objects))
-		require.Equal(t, "document:2", respListObjects.Objects[0])
+		require.Equal(t, 1, len(res.Objects))
+		require.Equal(t, "document:2", res.Objects[0])
+
+		res, err = client.ListObjects(context.Background(), &openfgapb.ListObjectsRequest{
+			StoreId:  store,
+			Type:     "document",
+			Relation: "viewer",
+			User:     "group:fga#member",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.Objects))
+		require.Equal(t, "document:3", res.Objects[0])
 	})
 }
 
