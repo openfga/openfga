@@ -917,7 +917,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				Limit:            test.limit,
 			}
 
-			resultChan := make(chan commands.ObjectOrError, 100)
+			resultChan := make(chan commands.ListObjectsResult, 100)
 			done := make(chan struct{})
 
 			var results []string
