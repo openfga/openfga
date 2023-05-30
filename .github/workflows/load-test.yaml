@@ -122,6 +122,13 @@ jobs:
               --set postgresql.primary.resources.requests.memory=2Gi,postgresql.primary.resources.requests.cpu=1.0 \
               --set openfga.resources.requests.memory=1Gi,openfga.resources.requests.cpu=500m
 
+      - name: wait
+        uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        timeout-minutes: 10
+        with:
+          command: |
+            kubectl wait --for=condition=ready pod/openfgabench-${{ steps.vars.outputs.sha_short }}-benchmark-benchrunner
+
       - name: helm destroy
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
         with:
