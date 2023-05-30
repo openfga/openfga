@@ -59,3 +59,12 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: openfga/openfga
           short-description: ${{ github.event.repository.description }}
+  homebrew:
+    name: Bump Homebrew formula
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mislav/bump-homebrew-formula-action@v2
+        with:
+          formula-name: openfga
+        env:
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_COMMITTER_TOKEN }}
