@@ -63,6 +63,13 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
+type MemoryStorageOption func(ds *MemoryBackend)
+
+const (
+	defaultMaxTuplesPerWrite             = 100
+	defaultMaxTypesPerAuthorizationModel = 100
+)
+
 // A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
@@ -97,16 +104,30 @@ type AuthorizationModelEntry struct {
 }
 
 // New creates a new empty MemoryBackend.
-func New(maxTuplesPerWrite int, maxTypesPerAuthorizationModel int) *MemoryBackend {
-	return &MemoryBackend{
-		maxTuplesPerWrite:             maxTuplesPerWrite,
-		maxTypesPerAuthorizationModel: maxTypesPerAuthorizationModel,
+func New(opts ...MemoryStorageOption) storage.OpenFGADatastore {
+	ds := &MemoryBackend{
+		maxTuplesPerWrite:             defaultMaxTuplesPerWrite,
+		maxTypesPerAuthorizationModel: defaultMaxTypesPerAuthorizationModel,
 		tuples:                        make(map[string][]*openfgapb.Tuple, 0),
 		changes:                       make(map[string][]*openfgapb.TupleChange, 0),
 		authorizationModels:           make(map[string]map[string]*AuthorizationModelEntry),
 		stores:                        make(map[string]*openfgapb.Store, 0),
 		assertions:                    make(map[string][]*openfgapb.Assertion, 0),
 	}
+
+	for _, opt := range opts {
+		opt(ds)
+	}
+
+	return ds
+}
+
+func WithMaxTuplesPerWrite(n int) MemoryStorageOption {
+	return func(ds *MemoryBackend) { ds.maxTuplesPerWrite = n }
+}
+
+func WithMaxTypesPerAuthorizationModel(n int) MemoryStorageOption {
+	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
 }
 
 // Close closes any open connections and cleans up residual resources

@@ -15,7 +15,7 @@ import (
 
 func TestResolveCheckDeterministic(t *testing.T) {
 
-	ds := memory.New(10, 24)
+	ds := memory.New()
 
 	storeID := ulid.Make().String()
 
