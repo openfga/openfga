@@ -264,18 +264,18 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			)
 			return nil
 
-		case object, ok := <-resultsChan:
-			if !ok {
+		case result, channelOpen := <-resultsChan:
+			if !channelOpen {
 				// Channel closed! No more results.
 				return nil
 			}
 
-			if object.Err != nil {
-				return serverErrors.NewInternalError("", object.Err)
+			if result.Err != nil {
+				return serverErrors.NewInternalError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-				Object: object.ObjectID,
+				Object: result.ObjectID,
 			}); err != nil {
 				return serverErrors.NewInternalError("", err)
 			}
