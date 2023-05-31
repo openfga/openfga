@@ -9,6 +9,7 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -198,15 +199,28 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
+			typesys := typesystem.New(model)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+			connectedObjectsCmd := &commands.ConnectedObjectsCommand{
+				Datastore:        datastore,
+				Typesystem:       typesys,
+				ResolveNodeLimit: defaultResolveNodeLimit,
+				Limit:            test.maxResults,
+			}
+
 			listObjectsQuery := &commands.ListObjectsQuery{
 				Datastore:             datastore,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
+				ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
+				CheckResolver: graph.NewLocalChecker(
+					datastore,
+					100,
+				),
 			}
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {

@@ -74,7 +74,18 @@ func (r RelationshipIngressType) String() string {
 type IngressCondition int
 
 const (
+
+	// RequiresFurtherEvalCondition indicates an ingress condition whereby results expanded
+	// under such an ingress require further Check evaluation before a determination of the
+	// outcome can be made.
+	//
+	// Relationships involving intersection ('and') and/or exclusion ('but not') fall under
+	// ingresses with this condition.
 	RequiresFurtherEvalCondition IngressCondition = iota
+
+	// NoFurtherEvalCondition indicates an ingress condition whereby results are factual and
+	// known to be true and require no further evaluation before a determination of the outcome
+	// can be made.
 	NoFurtherEvalCondition
 )
 
