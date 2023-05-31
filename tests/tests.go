@@ -22,7 +22,7 @@ type TestClientBootstrapper interface {
 
 func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
-	cfg.Datastore.URI = container.GetConnectionURI()
+	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

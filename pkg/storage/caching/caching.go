@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/karlseguin/ccache/v2"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
@@ -16,32 +16,16 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
-	cache *ccache.Cache
+	cache *ccache.Cache[*openfgapb.AuthorizationModel]
 }
 
+// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches *openfgapb.AuthorizationModel
+// on every call to storage.ReadAuthorizationModel.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
-		cache:            ccache.New(ccache.Configure().MaxSize(int64(maxSize))),
+		cache:            ccache.New(ccache.Configure[*openfgapb.AuthorizationModel]().MaxSize(int64(maxSize))),
 	}
-}
-
-func (c *cachedOpenFGADatastore) ReadTypeDefinition(ctx context.Context, storeID, modelID, name string) (*openfgapb.TypeDefinition, error) {
-	cacheKey := fmt.Sprintf("%s:%s:%s", storeID, modelID, name)
-	cachedEntry := c.cache.Get(cacheKey)
-
-	if cachedEntry != nil {
-		return cachedEntry.Value().(*openfgapb.TypeDefinition), nil
-	}
-
-	td, err := c.OpenFGADatastore.ReadTypeDefinition(ctx, storeID, modelID, name)
-	if err != nil {
-		return nil, err
-	}
-
-	c.cache.Set(cacheKey, td, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl
-
-	return td, nil
 }
 
 func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgapb.AuthorizationModel, error) {
@@ -49,7 +33,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	cachedEntry := c.cache.Get(cacheKey)
 
 	if cachedEntry != nil {
-		return cachedEntry.Value().(*openfgapb.AuthorizationModel), nil
+		return cachedEntry.Value(), nil
 	}
 
 	model, err := c.OpenFGADatastore.ReadAuthorizationModel(ctx, storeID, modelID)

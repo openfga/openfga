@@ -978,6 +978,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			}
 			err := ds.WriteAuthorizationModel(ctx, store, model)
 			require.NoError(err)
+			test.request.Typesystem = typesystem.New(model)
 
 			err = ds.Write(ctx, store, nil, test.tuples)
 			require.NoError(err)
@@ -988,7 +989,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 			connectedObjectsCmd := commands.ConnectedObjectsCommand{
 				Datastore:        ds,
-				Typesystem:       typesystem.New(model),
 				ResolveNodeLimit: test.resolveNodeLimit,
 				Limit:            test.limit,
 			}

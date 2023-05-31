@@ -78,8 +78,10 @@ func NewRunCommand() *cobra.Command {
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine string
-	URI    string
+	Engine   string
+	URI      string
+	Username string
+	Password string
 
 	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
 	// old keys. The storage cache is used to cache query results for various static resources
@@ -195,9 +197,9 @@ type Config struct {
 	// ListObjects endpoints. It cannot be larger than HTTPConfig.UpstreamTimeout.
 	ListObjectsDeadline time.Duration
 
-	// ListObjectsMaxResults defines the maximum number of ListObjects results to accumulate
-	// before the server will respond. This is to protect the server from misuse of the
-	// ListObjects endpoints.
+	// ListObjectsMaxResults defines the maximum number of results to accumulate
+	// before the non-streaming ListObjects API will respond to the client.
+	// This is to protect the server from misuse of the ListObjects endpoints.
 	ListObjectsMaxResults uint32
 
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
@@ -214,12 +216,6 @@ type Config struct {
 
 	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
 	ResolveNodeLimit uint32
-
-	// AllowWriting1_0Models allows writing of model with schema 1.0
-	AllowWriting1_0Models bool
-
-	// AllowEvaluating1_0Models allows evaluating of model with schema 1.0
-	AllowEvaluating1_0Models bool
 
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
@@ -290,8 +286,6 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		AllowWriting1_0Models:    false,
-		AllowEvaluating1_0Models: false,
 	}
 }
 
@@ -431,6 +425,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 
 	dsCfg := sqlcommon.NewConfig(
+		sqlcommon.WithUsername(config.Datastore.Username),
+		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithLogger(logger),
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
@@ -579,13 +575,11 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:         config.ResolveNodeLimit,
-		ChangelogHorizonOffset:   config.ChangelogHorizonOffset,
-		ListObjectsDeadline:      config.ListObjectsDeadline,
-		ListObjectsMaxResults:    config.ListObjectsMaxResults,
-		Experimentals:            experimentals,
-		AllowEvaluating1_0Models: config.AllowEvaluating1_0Models,
-		AllowWriting1_0Models:    config.AllowWriting1_0Models,
+		ResolveNodeLimit:       config.ResolveNodeLimit,
+		ChangelogHorizonOffset: config.ChangelogHorizonOffset,
+		ListObjectsDeadline:    config.ListObjectsDeadline,
+		ListObjectsMaxResults:  config.ListObjectsMaxResults,
+		Experimentals:          experimentals,
 	})
 
 	logger.Info(

@@ -91,6 +91,14 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("datastore.uri", flags.Lookup("datastore-uri"))
 	util.MustBindEnv("datastore.uri", "OPENFGA_DATASTORE_URI")
 
+	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
+	util.MustBindPFlag("datastore.username", flags.Lookup("datastore-username"))
+	util.MustBindEnv("datastore.username", "OPENFGA_DATASTORE_USERNAME")
+
+	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
+	util.MustBindPFlag("datastore.password", flags.Lookup("datastore-password"))
+	util.MustBindEnv("datastore.password", "OPENFGA_DATASTORE_PASSWORD")
+
 	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
 	util.MustBindPFlag("datastore.maxCacheSize", flags.Lookup("datastore-max-cache-size"))
 	util.MustBindEnv("datastore.maxCacheSize", "OPENFGA_DATASTORE_MAX_CACHE_SIZE", "OPENFGA_DATASTORE_MAXCACHESIZE")
@@ -183,16 +191,7 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("listObjectsDeadline", flags.Lookup("listObjects-deadline"))
 	util.MustBindEnv("listObjectsDeadline", "OPENFGA_LIST_OBJECTS_DEADLINE", "OPENFGA_LISTOBJECTSDEADLINE")
 
-	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in ListObjects responses")
+	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 	util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 	util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
-
-	flags.Bool("allow-writing-1.0-models", defaultConfig.AllowWriting1_0Models, "allow writing of models with 1.0 schema")
-	util.MustBindPFlag("allowWriting1_0Models", flags.Lookup("allow-writing-1.0-models"))
-	util.MustBindEnv("allowWriting1_0Models", "OPENFGA_ALLOW_WRITING_1_0_MODELS")
-
-	flags.Bool("allow-evaluating-1.0-models", defaultConfig.AllowEvaluating1_0Models, "allow evaluating of models with 1.0 schema")
-	util.MustBindPFlag("allowEvaluating1_0Models", flags.Lookup("allow-evaluating-1.0-models"))
-	util.MustBindEnv("allowEvaluating1_0Models", "OPENFGA_ALLOW_EVALUATING_1_0_MODELS")
-
 }

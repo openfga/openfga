@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -15,15 +16,12 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
+	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
-	listObjectsOptimizedKey = "list_objects_optimized"
 )
 
 type ListObjectsQuery struct {
@@ -36,6 +34,9 @@ type ListObjectsQuery struct {
 	CheckResolver         graph.CheckResolver
 }
 
+// listObjectsRequest captures the RPC request definition interface for the ListObjects API.
+// The unary and streaming RPC definitions implement this interface, and so it can be used
+// interchangably for a canonical representation between the two.
 type listObjectsRequest interface {
 	GetStoreId() string
 	GetAuthorizationModelId() string
@@ -50,9 +51,8 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- string,
 	errChan chan<- error,
+	maxResults uint32,
 ) error {
-
-	span := trace.SpanFromContext(ctx)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -60,6 +60,10 @@ func (q *ListObjectsQuery) evaluate(
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
 		panic("typesystem missing in context")
+	}
+
+	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
+		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
@@ -85,127 +89,95 @@ func (q *ListObjectsQuery) evaluate(
 		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
-	handler := func() {
-		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
+	userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 
-		err = q.performChecks(ctx, req, resultsChan)
-		if err != nil {
-			errChan <- err
-		}
+	userObjType, userObjID := tuple.SplitObject(userObj)
 
-		close(resultsChan)
+	var sourceUserRef isUserRef
+	sourceUserRef = &UserRefObject{
+		Object: &openfgapb.Object{
+			Type: userObjType,
+			Id:   userObjID,
+		},
 	}
 
-	if q.ConnectedObjects != nil {
-		hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
-		if err != nil {
-			q.Logger.WarnWithContext(
-				ctx, fmt.Sprintf("failed to lookup type info for relation '%s'", targetRelation),
-				zap.String("store_id", req.GetStoreId()),
-				zap.String("object_type", targetObjectType),
-			)
+	if tuple.IsTypedWildcard(userObj) {
+		sourceUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+
+	}
+
+	if userRel != "" {
+		sourceUserRef = &UserRefObjectRelation{
+			ObjectRelation: &openfgapb.ObjectRelation{
+				Object:   userObj,
+				Relation: userRel,
+			},
 		}
+	}
 
-		// ConnectedObjects currently only supports models that include type info.
-		if hasTypeInfo {
-			userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
+	connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
+	defer close(connectedObjectsResChan)
 
-			userObjType, userObjID := tuple.SplitObject(userObj)
+	var objectsFound = new(uint32)
 
-			var targetUserRef isUserRef
-			targetUserRef = &UserRefObject{
-				Object: &openfgapb.Object{
-					Type: userObjType,
-					Id:   userObjID,
+	go func() {
+		defer close(errChan)
+		defer close(resultsChan)
+
+		for res := range connectedObjectsResChan {
+
+			if res.ResultStatus != RequiresFurtherEvalStatus {
+				resultsChan <- res.Object
+				continue
+			}
+
+			// todo(optimization): fire this Check resolution off concurrently and continue on to the next object in the
+			// result channel
+			resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+				StoreID:              req.GetStoreId(),
+				AuthorizationModelID: req.GetAuthorizationModelId(),
+				TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+				ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+				ResolutionMetadata: &graph.ResolutionMetadata{
+					Depth: q.ResolveNodeLimit,
 				},
+			})
+			if err != nil {
+				errChan <- err
+				return // is this the right thing here or should we try to find all of them we can up to some limit?
 			}
 
-			if tuple.IsTypedWildcard(userObj) {
-				targetUserRef = &UserRefTypedWildcard{Type: tuple.GetType(userObj)}
-			}
-
-			if userRel != "" {
-				targetUserRef = &UserRefObjectRelation{
-					ObjectRelation: &openfgapb.ObjectRelation{
-						Object:   userObj,
-						Relation: userRel,
-					},
-				}
-			}
-
-			handler = func() {
-
-				span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
-
-				connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
-
-				var objectsFound = new(uint32)
-
-				go func() {
-
-					defer close(resultsChan)
-
-					for res := range connectedObjectsResChan {
-
-						if res.ResultStatus != RequiresFurtherEvalStatus {
-							resultsChan <- res.Object
-							continue
-						}
-
-						resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-							StoreID:              req.GetStoreId(),
-							AuthorizationModelID: req.GetAuthorizationModelId(),
-							TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-							ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-							ResolutionMetadata: &graph.ResolutionMetadata{
-								Depth: q.ResolveNodeLimit,
-							},
-						})
-						if err != nil {
-							errChan <- err
-							return // is this the right thing here?
-						}
-
-						if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
-							resultsChan <- res.Object
-						}
-					}
-				}()
-
-				err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
-					StoreID:          req.GetStoreId(),
-					ObjectType:       targetObjectType,
-					Relation:         targetRelation,
-					User:             targetUserRef,
-					ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-				}, connectedObjectsResChan)
-				if err != nil {
-					errChan <- err
-				}
-
-				close(connectedObjectsResChan)
+			if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
+				resultsChan <- res.Object
 			}
 		}
-	}
+	}()
 
-	go handler()
-
-	return nil
+	return q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
+		StoreID:          req.GetStoreId(),
+		Typesystem:       typesys,
+		ObjectType:       targetObjectType,
+		Relation:         targetRelation,
+		User:             sourceUserRef,
+		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+	}, connectedObjectsResChan)
 }
 
-// Execute the ListObjectsQuery, returning a list of object IDs
+// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.ListObjectsMaxResults
+// or until q.ListObjectsDeadline is hit, whichever happens first.
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
 	resultsChan := make(chan string, 1)
-	if q.ListObjectsMaxResults > 0 {
-		resultsChan = make(chan string, q.ListObjectsMaxResults)
+	maxResults := q.ListObjectsMaxResults
+	if maxResults > 0 {
+		resultsChan = make(chan string, maxResults)
 	}
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -214,7 +186,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -223,33 +195,46 @@ func (q *ListObjectsQuery) Execute(
 
 	for {
 		select {
-		case objectID, ok := <-resultsChan:
-			if !ok {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return &openfgapb.ListObjectsResponse{
+				Objects: objects,
+			}, nil
+
+		case objectID, channelOpen := <-resultsChan:
+			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil
 			}
 			objects = append(objects, objectID)
-		case genericError, ok := <-errChan:
-			if ok {
+		case genericError, valueAvailable := <-errChan:
+			if valueAvailable {
 				return nil, serverErrors.NewInternalError("", genericError)
 			}
 		}
 	}
 }
 
+// ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
+// It ignores the value of q.ListObjectsMaxResults and returns all available results
+// until q.ListObjectsDeadline is hit
 func (q *ListObjectsQuery) ExecuteStreamed(
 	ctx context.Context,
 	req *openfgapb.StreamedListObjectsRequest,
 	srv openfgapb.OpenFGAService_StreamedListObjectsServer,
 ) error {
 
-	resultsChan := make(chan string, 1)
-	if q.ListObjectsMaxResults > 0 {
-		resultsChan = make(chan string, q.ListObjectsMaxResults)
-	}
+	maxResults := uint32(math.MaxUint32)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
+	resultsChan := make(chan string, streamedBufferSize)
 
-	errChan := make(chan error)
+	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
+	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -258,22 +243,31 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan)
+	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
 	if err != nil {
 		return err
 	}
 
 	for {
 		select {
+
+		case <-timeoutCtx.Done():
+			q.Logger.WarnWithContext(
+				ctx, "list objects timeout with list object configuration timeout",
+				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+			)
+			return nil
+
 		case object, ok := <-resultsChan:
 			if !ok {
 				// Channel closed! No more results.
 				return nil
 			}
 
-			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
+			err := srv.Send(&openfgapb.StreamedListObjectsResponse{
 				Object: object,
-			}); err != nil {
+			})
+			if err != nil {
 				return serverErrors.NewInternalError("", err)
 			}
 		case genericError, ok := <-errChan:
@@ -282,74 +276,4 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			}
 		}
 	}
-}
-
-func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string) error {
-	ctx, span := tracer.Start(ctx, "performChecks")
-	defer span.End()
-	var objectsFound = new(uint32)
-
-	combinedDatastore := storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys())
-
-	iter, err := combinedDatastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
-	if err != nil {
-		return err
-	}
-	defer iter.Stop()
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(maximumConcurrentChecks)
-
-	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
-	// iterate over all object IDs in the store and check if the user has relation with each
-	for {
-		object, err := iter.Next()
-		if err != nil {
-			if !errors.Is(err, storage.ErrIteratorDone) {
-				return err
-			}
-			break
-		}
-		if atomic.LoadUint32(objectsFound) >= q.ListObjectsMaxResults {
-			break
-		}
-
-		checkFunction := func() error {
-			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan)
-		}
-
-		g.Go(checkFunction)
-	}
-
-	return g.Wait()
-}
-
-func (q *ListObjectsQuery) internalCheck(
-	ctx context.Context,
-	checkResolver *graph.LocalChecker,
-	obj *openfgapb.Object,
-	req listObjectsRequest,
-	objectsFound *uint32,
-	resultsChan chan<- string,
-) error {
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
-		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), req.GetRelation(), req.GetUser()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: q.ResolveNodeLimit,
-		},
-	})
-	if err != nil {
-		// ignore the error. we don't want to abort everything if one of the checks failed.
-		q.Logger.ErrorWithContext(ctx, "check_error", zap.Error(err))
-		return nil
-	}
-
-	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
-		resultsChan <- tuple.ObjectKey(obj)
-	}
-
-	return nil
 }

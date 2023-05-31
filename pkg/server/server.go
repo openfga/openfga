@@ -58,13 +58,11 @@ type Dependencies struct {
 }
 
 type Config struct {
-	ResolveNodeLimit         uint32
-	ChangelogHorizonOffset   int
-	ListObjectsDeadline      time.Duration
-	ListObjectsMaxResults    uint32
-	Experimentals            []ExperimentalFeatureFlag
-	AllowWriting1_0Models    bool
-	AllowEvaluating1_0Models bool
+	ResolveNodeLimit       uint32
+	ChangelogHorizonOffset int
+	ListObjectsDeadline    time.Duration
+	ListObjectsMaxResults  uint32
+	Experimentals          []ExperimentalFeatureFlag
 }
 
 // New creates a new Server which uses the supplied backends
@@ -109,10 +107,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	typesys := typesystem.New(model)
 
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
-	}
-
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	q := &commands.ListObjectsQuery{
@@ -126,15 +120,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 			checkConcurrencyLimit,
 		),
 	}
-
-	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
-
-	q.ConnectedObjects = connectObjCmd.StreamedConnectedObjects
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
 		StoreId:              storeID,
@@ -173,20 +158,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	typesys := typesystem.New(model)
 
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
-		}
-	}
-
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	connectObjCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        s.datastore,
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
 
 	q := &commands.ListObjectsQuery{
 		Datastore:             s.datastore,
@@ -194,11 +166,6 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		ConnectedObjects:      connectObjCmd.StreamedConnectedObjects,
-		CheckResolver: graph.NewLocalChecker(
-			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-			checkConcurrencyLimit,
-		),
 	}
 
 	req.AuthorizationModelId = modelID
@@ -234,7 +201,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
+	cmd := commands.NewWriteCommand(s.datastore, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -271,11 +238,11 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		return nil, err
 	}
 
-	typesys := typesystem.New(model)
-
-	if commands.ProhibitModel1_0(typesys.GetSchemaVersion(), s.config.AllowEvaluating1_0Models) {
-		return nil, serverErrors.ValidationError(commands.ErrObsoleteAuthorizationModel)
+	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
+
+	typesys := typesystem.New(model)
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
@@ -335,7 +302,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
+	q := commands.NewExpandQuery(s.datastore, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
@@ -357,7 +324,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgapb.Wri
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.config.AllowWriting1_0Models)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -387,7 +354,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger, s.config.AllowEvaluating1_0Models)
+	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,

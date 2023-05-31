@@ -13,20 +13,17 @@ import (
 )
 
 type WriteAssertionsCommand struct {
-	datastore     storage.OpenFGADatastore
-	logger        logger.Logger
-	allowSchema10 bool
+	datastore storage.OpenFGADatastore
+	logger    logger.Logger
 }
 
 func NewWriteAssertionsCommand(
 	datastore storage.OpenFGADatastore,
 	logger logger.Logger,
-	allowSchema10 bool,
 ) *WriteAssertionsCommand {
 	return &WriteAssertionsCommand{
-		datastore:     datastore,
-		logger:        logger,
-		allowSchema10: allowSchema10,
+		datastore: datastore,
+		logger:    logger,
 	}
 }
 
@@ -44,11 +41,11 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	typesys := typesystem.New(model)
-
-	if ProhibitModel1_0(typesys.GetSchemaVersion(), w.allowSchema10) {
-		return nil, serverErrors.ValidationError(ErrObsoleteAuthorizationModel)
+	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
+
+	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
 		if err := validation.ValidateUserObjectRelation(typesys, assertion.TupleKey); err != nil {

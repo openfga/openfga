@@ -16,7 +16,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 		{
 			name: "empty_relations",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -27,7 +27,7 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 		{
 			name: "zero_length_relations_is_valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type:      "repo",
@@ -46,7 +46,6 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 	}
 }
 
-// TODO: update these to v1.1 models and combine the test functions
 func TestInvalidRewriteValidations(t *testing.T) {
 	var tests = []struct {
 		name  string
@@ -56,7 +55,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "empty_rewrites",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -71,7 +70,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_self_reference_in_computedUserset",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -90,7 +89,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_self_reference_in_union",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -120,7 +119,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_self_reference_in_intersection",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -150,7 +149,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_self_reference_in_difference_base",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -178,7 +177,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_self_reference_in_difference_subtract",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -206,7 +205,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_computedUserset_to_relation_which_does_not_exist",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -225,7 +224,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_computedUserset_in_a_union",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -255,7 +254,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_computedUserset_in_a_intersection",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -285,7 +284,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_computedUserset_in_a_difference_base",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -313,7 +312,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_computedUserset_in_a_difference_subtract",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "document",
@@ -341,7 +340,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_tupleToUserset_where_tupleset_is_not_valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "group",
@@ -389,55 +388,22 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "invalid_relation:_tupleToUserset_where_computed_userset_is_not_valid",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"member": {
-								Userset: &openfgapb.Userset_This{},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {
-								Userset: &openfgapb.Userset_Union{
-									Union: &openfgapb.Usersets{
-										Child: []*openfgapb.Userset{
-											{
-												Userset: &openfgapb.Userset_This{},
-											},
-											{
-												Userset: &openfgapb.Userset_TupleToUserset{
-													TupleToUserset: &openfgapb.TupleToUserset{
-														Tupleset: &openfgapb.ObjectRelation{
-															Relation: "writer",
-														},
-														ComputedUserset: &openfgapb.ObjectRelation{
-															Relation: "notavalidrelation",
-														},
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-							"writer": {
-								Userset: &openfgapb.Userset_This{},
-							},
-						},
-					},
-				},
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define reader as notavalidrelation from writer
+					define writer: [user] as self
+				`),
 			},
 			err: ErrRelationUndefined,
 		},
 		{
 			name: "Fails_If_Using_This_As_Relation_Name",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -452,7 +418,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "Fails_If_Using_Self_As_Relation_Name",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "repo",
@@ -467,7 +433,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "Fails_If_Using_This_As_Type_Name",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "this",
@@ -482,7 +448,7 @@ func TestInvalidRewriteValidations(t *testing.T) {
 		{
 			name: "Fails_If_Using_Self_As_Type_Name",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
+				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
 						Type: "self",
@@ -495,39 +461,17 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrReservedKeywords,
 		},
 		{
-			name: "Fails_If_Auth_Model_1.0_Has_A_Cycle_And_Only_One_Type",
+			name: "Fails_If_Auth_Model_1.1_Has_A_Cycle_And_Only_One_Type",
 			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"viewer": TupleToUserset("parent", "viewer"),
-						},
-					},
-				},
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type folder
+				  relations
+				    define parent: [folder] as self
+					define viewer as viewer from parent
+				`),
 			},
 			err: ErrCycle,
-		},
-		{
-			name: "Succeeds_If_Auth_Model_1.0_Has_A_Cycle_But_There_Is_More_Than_One_Type",
-			model: &openfgapb.AuthorizationModel{
-				SchemaVersion: SchemaVersion1_0,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": This(),
-							"viewer": TupleToUserset("parent", "viewer"),
-						},
-					},
-				},
-			},
-			err: nil,
 		},
 	}
 

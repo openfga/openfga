@@ -13,8 +13,8 @@ import (
 type ctxKey string
 
 const (
-	SchemaVersion1_0 = "1.0"
-	SchemaVersion1_1 = "1.1"
+	SchemaVersion1_0 string = "1.0"
+	SchemaVersion1_1 string = "1.1"
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
 )
@@ -29,6 +29,15 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 )
+
+func IsSchemaVersionSupported(version string) bool {
+	switch version {
+	case SchemaVersion1_1:
+		return true
+	default:
+		return false
+	}
+}
 
 // ContextWithTypesystem attaches the provided TypeSystem to the parent context.
 func ContextWithTypesystem(parent context.Context, typesys *TypeSystem) context.Context {
@@ -126,23 +135,45 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 }
 
 type TypeSystem struct {
+	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgapb.TypeDefinition
-	modelID         string
-	schemaVersion   string
+	// [objectType] => [relationName] => relation
+	relations     map[string]map[string]*openfgapb.Relation
+	modelID       string
+	schemaVersion string
 }
 
 // New creates a *TypeSystem from an *openfgapb.AuthorizationModel.
 // It assumes that the input model is valid. If you need to run validations, use NewAndValidate.
 func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	tds := make(map[string]*openfgapb.TypeDefinition, len(model.GetTypeDefinitions()))
+	relations := make(map[string]map[string]*openfgapb.Relation, len(model.GetTypeDefinitions()))
+
 	for _, td := range model.GetTypeDefinitions() {
 		tds[td.GetType()] = td
+		tdRelations := make(map[string]*openfgapb.Relation, len(td.GetRelations()))
+
+		for relation, rewrite := range td.GetRelations() {
+			r := &openfgapb.Relation{
+				Name:     relation,
+				Rewrite:  rewrite,
+				TypeInfo: &openfgapb.RelationTypeInfo{},
+			}
+
+			if metadata, ok := td.GetMetadata().GetRelations()[relation]; ok {
+				r.TypeInfo.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
+			}
+
+			tdRelations[relation] = r
+		}
+		relations[td.GetType()] = tdRelations
 	}
 
 	return &TypeSystem{
 		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
+		relations:       relations,
 	}
 }
 
@@ -165,7 +196,7 @@ func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgapb.TypeDefini
 
 // GetRelations returns all relations in the TypeSystem for a given type
 func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Relation, error) {
-	td, ok := t.GetTypeDefinition(objectType)
+	_, ok := t.GetTypeDefinition(objectType)
 	if !ok {
 		return nil, &ObjectTypeUndefinedError{
 			ObjectType: objectType,
@@ -173,23 +204,7 @@ func (t *TypeSystem) GetRelations(objectType string) (map[string]*openfgapb.Rela
 		}
 	}
 
-	relations := map[string]*openfgapb.Relation{}
-
-	for relation, rewrite := range td.GetRelations() {
-		r := &openfgapb.Relation{
-			Name:     relation,
-			Rewrite:  rewrite,
-			TypeInfo: &openfgapb.RelationTypeInfo{},
-		}
-
-		if metadata, ok := td.GetMetadata().GetRelations()[relation]; ok {
-			r.TypeInfo.DirectlyRelatedUserTypes = metadata.GetDirectlyRelatedUserTypes()
-		}
-
-		relations[relation] = r
-	}
-
-	return relations, nil
+	return t.relations[objectType], nil
 }
 
 func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgapb.Relation, error) {
@@ -581,32 +596,6 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 	return false, nil
 }
 
-// allRelations returns all relations in the TypeSystem
-func (t *TypeSystem) allRelations() map[string]*openfgapb.Relation {
-	relations := map[string]*openfgapb.Relation{}
-
-	for _, td := range t.typeDefinitions {
-		relationMetadata := td.GetMetadata().GetRelations()
-
-		for relation, rewrite := range td.GetRelations() {
-			var typeInfo *openfgapb.RelationTypeInfo
-			if md, ok := relationMetadata[relation]; ok {
-				typeInfo = &openfgapb.RelationTypeInfo{
-					DirectlyRelatedUserTypes: md.GetDirectlyRelatedUserTypes(),
-				}
-			}
-
-			relations[relation] = &openfgapb.Relation{
-				Name:     relation,
-				Rewrite:  rewrite,
-				TypeInfo: typeInfo,
-			}
-		}
-	}
-
-	return relations
-}
-
 // NewAndValidate is like New but also validates the model according to the following rules:
 //  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
@@ -625,7 +614,7 @@ func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
 	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
-	if schemaVersion != SchemaVersion1_0 && schemaVersion != SchemaVersion1_1 {
+	if !IsSchemaVersionSupported(schemaVersion) {
 		return nil, ErrInvalidSchemaVersion
 	}
 
@@ -727,6 +716,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
 
 		if t.GetSchemaVersion() == SchemaVersion1_1 {
+			// for 1.1 models, relation `computedUserset` has to be defined in one of the types declared by the tupleset's list of allowed types
 			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
 			for _, rr := range userTypes {
 				if _, err := t.GetRelation(rr.GetType(), computedUserset); err == nil {
@@ -734,11 +724,15 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 				}
 			}
 
-			return fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes)
+			return errors.Join(ErrRelationUndefined, fmt.Errorf("%s does not appear as a relation in any of the directly related user types %v", computedUserset, userTypes))
 		} else {
-			if _, ok := t.allRelations()[computedUserset]; !ok {
-				return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
+			// for 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model
+			for typeName := range t.relations {
+				if _, err := t.GetRelation(typeName, computedUserset); err == nil {
+					return nil
+				}
 			}
+			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 		}
 	case *openfgapb.Userset_Union:
 		for _, child := range r.Union.GetChild() {
