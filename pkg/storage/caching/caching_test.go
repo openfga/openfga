@@ -14,7 +14,7 @@ import (
 
 func TestCache(t *testing.T) {
 	ctx := context.Background()
-	memoryBackend := memory.New(10000, 10000)
+	memoryBackend := memory.New()
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 	defer cachingBackend.Close()
 
