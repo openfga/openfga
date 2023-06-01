@@ -287,7 +287,17 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 
 				condition := NoFurtherEvalCondition
 
-				if typesystem.RewriteContainsIntersection(r.GetRewrite()) || typesystem.RewriteContainsExclusion(r.GetRewrite()) {
+				involvesIntersection, err := g.typesystem.RelationInvolvesIntersection(typeRestriction.GetType(), r.GetName())
+				if err != nil {
+					return nil, err
+				}
+
+				involvesExclusion, err := g.typesystem.RelationInvolvesExclusion(typeRestriction.GetType(), r.GetName())
+				if err != nil {
+					return nil, err
+				}
+
+				if involvesIntersection || involvesExclusion {
 					condition = RequiresFurtherEvalCondition
 				}
 

@@ -87,7 +87,7 @@ func TestRelationshipIngressType_String(t *testing.T) {
 	require.Equal(t, "undefined", RelationshipIngressType(4).String())
 }
 
-/*func TestPrunedRelationshipIngresses(t *testing.T) {
+func TestPrunedRelationshipIngresses(t *testing.T) {
 
 	tests := []struct {
 		name     string
@@ -96,51 +96,51 @@ func TestRelationshipIngressType_String(t *testing.T) {
 		source   *openfgapb.RelationReference
 		expected []*RelationshipIngress
 	}{
-		// {
-		// 	name: "basic_intersection",
-		// 	model: `
-		// 	type user
+		{
+			name: "basic_intersection",
+			model: `
+			type user
 
-		// 	type document
-		// 	  relations
-		// 	    define allowed: [user] as self
-		// 	    define viewer: [user] as self and allowed
-		// 	`,
-		// 	target: typesystem.DirectRelationReference("document", "viewer"),
-		// 	source: typesystem.DirectRelationReference("user", ""),
-		// 	expected: []*RelationshipIngress{
-		// 		{
-		// 			Type:      DirectIngress,
-		// 			Ingress:   typesystem.DirectRelationReference("document", "viewer"),
-		// 			Condition: RequiresFurtherEvalCondition,
-		// 		},
-		// 	},
-		// },
-		// {
-		// 	name: "basic_intersection_through_ttu_1",
-		// 	model: `
-		// 	type user
+			type document
+			  relations
+			    define allowed: [user] as self
+			    define viewer: [user] as self and allowed
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_intersection_through_ttu_1",
+			model: `
+			type user
 
-		// 	type folder
-		// 	  relations
-		// 	    define allowed: [user] as self
-		// 	    define viewer: [user] as self and allowed
+			type folder
+			  relations
+			    define allowed: [user] as self
+			    define viewer: [user] as self and allowed
 
-		// 	type document
-		// 	  relations
-		// 	  	define parent: [folder] as self
-		// 	    define viewer as viewer from parent
-		// 	`,
-		// 	target: typesystem.DirectRelationReference("document", "viewer"),
-		// 	source: typesystem.DirectRelationReference("user", ""),
-		// 	expected: []*RelationshipIngress{
-		// 		{
-		// 			Type:      DirectIngress,
-		// 			Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
-		// 			Condition: RequiresFurtherEvalCondition,
-		// 		},
-		// 	},
-		// },
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+			},
+		},
 		{
 			name: "basic_intersection_through_ttu_2",
 			model: `
@@ -158,7 +158,60 @@ func TestRelationshipIngressType_String(t *testing.T) {
 
 			type document
 			  relations
-			  	define parent: [folder] as self
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("folder", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        RequiresFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_exclusion_through_ttu_1",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define writer: [user] as self
+			    define editor: [user] as self
+			    define viewer as writer but not editor
+
+			type document
+			  relations
+			    define parent: [folder] as self
+			    define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "writer"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_exclusion_through_ttu_2",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define writer: [user] as self
+			    define editor: [user] as self
+			    define viewer as writer but not editor
+
+			type document
+			  relations
+			    define parent: [folder] as self
 			    define viewer as viewer from parent
 			`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
@@ -196,7 +249,7 @@ func TestRelationshipIngressType_String(t *testing.T) {
 			}
 		})
 	}
-}*/
+}
 
 func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 

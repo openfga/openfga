@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -202,22 +203,24 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			typesys := typesystem.New(model)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+			ds := storage.NewCombinedTupleReader(datastore, test.contextualTuples.GetTupleKeys())
+
 			connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-				Datastore:        datastore,
+				Datastore:        ds,
 				Typesystem:       typesys,
 				ResolveNodeLimit: defaultResolveNodeLimit,
-				Limit:            test.maxResults,
+				Limit:            math.MaxUint32,
 			}
 
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             datastore,
+				Datastore:             ds,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
 				ResolveNodeLimit:      defaultResolveNodeLimit,
 				ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
 				CheckResolver: graph.NewLocalChecker(
-					datastore,
+					ds,
 					100,
 				),
 			}

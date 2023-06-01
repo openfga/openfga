@@ -109,22 +109,24 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
+	ds := storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys())
+
 	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		Datastore:        ds,
 		Typesystem:       typesys,
 		ResolveNodeLimit: s.config.ResolveNodeLimit,
 		Limit:            s.config.ListObjectsMaxResults,
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
+		Datastore:             ds,
 		Logger:                s.logger,
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:      s.config.ResolveNodeLimit,
 		ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
 		CheckResolver: graph.NewLocalChecker(
-			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+			ds,
 			checkConcurrencyLimit,
 		),
 	}

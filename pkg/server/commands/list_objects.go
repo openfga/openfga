@@ -25,7 +25,7 @@ const (
 )
 
 type ListObjectsQuery struct {
-	Datastore             storage.OpenFGADatastore
+	Datastore             storage.RelationshipTupleReader
 	Logger                logger.Logger
 	ListObjectsDeadline   time.Duration
 	ListObjectsMaxResults uint32
@@ -116,17 +116,31 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
-	defer close(connectedObjectsResChan)
 
 	var objectsFound = new(uint32)
 
 	go func() {
-		defer close(errChan)
-		defer close(resultsChan)
+		err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
+			StoreID:          req.GetStoreId(),
+			Typesystem:       typesys,
+			ObjectType:       targetObjectType,
+			Relation:         targetRelation,
+			User:             sourceUserRef,
+			ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+		}, connectedObjectsResChan)
+		if err != nil {
+			errChan <- err
+			close(errChan)
+		}
+
+		close(connectedObjectsResChan)
+	}()
+
+	go func() {
 
 		for res := range connectedObjectsResChan {
 
-			if res.ResultStatus != RequiresFurtherEvalStatus {
+			if res.ResultStatus == NoFurtherEvalStatus && atomic.AddUint32(objectsFound, 1) <= maxResults {
 				resultsChan <- res.Object
 				continue
 			}
@@ -144,23 +158,19 @@ func (q *ListObjectsQuery) evaluate(
 			})
 			if err != nil {
 				errChan <- err
+				close(errChan)
 				return // is this the right thing here or should we try to find all of them we can up to some limit?
 			}
 
-			if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= q.ListObjectsMaxResults {
+			if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
 				resultsChan <- res.Object
 			}
 		}
+
+		close(resultsChan)
 	}()
 
-	return q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
-		StoreID:          req.GetStoreId(),
-		Typesystem:       typesys,
-		ObjectType:       targetObjectType,
-		Relation:         targetRelation,
-		User:             sourceUserRef,
-		ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-	}, connectedObjectsResChan)
+	return nil
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.ListObjectsMaxResults
