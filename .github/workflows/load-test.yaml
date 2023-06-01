@@ -59,7 +59,7 @@ jobs:
         with:
           node-version: "16"
       - name: Build benchmarks
-        run: npm install . && run-script webpack
+        run: npm install . && npm run-script webpack
       - name: Set AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2.0.0
         with:
