@@ -440,7 +440,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		opts := []memory.MemoryStorageOption{
+		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		}

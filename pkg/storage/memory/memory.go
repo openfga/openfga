@@ -63,7 +63,7 @@ func (s *staticIterator) Next() (*openfgapb.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
-type MemoryStorageOption func(ds *MemoryBackend)
+type StorageOption func(ds *MemoryBackend)
 
 const (
 	defaultMaxTuplesPerWrite             = 100
@@ -104,7 +104,7 @@ type AuthorizationModelEntry struct {
 }
 
 // New creates a new empty MemoryBackend.
-func New(opts ...MemoryStorageOption) storage.OpenFGADatastore {
+func New(opts ...StorageOption) storage.OpenFGADatastore {
 	ds := &MemoryBackend{
 		maxTuplesPerWrite:             defaultMaxTuplesPerWrite,
 		maxTypesPerAuthorizationModel: defaultMaxTypesPerAuthorizationModel,
@@ -122,11 +122,11 @@ func New(opts ...MemoryStorageOption) storage.OpenFGADatastore {
 	return ds
 }
 
-func WithMaxTuplesPerWrite(n int) MemoryStorageOption {
+func WithMaxTuplesPerWrite(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTuplesPerWrite = n }
 }
 
-func WithMaxTypesPerAuthorizationModel(n int) MemoryStorageOption {
+func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTypesPerAuthorizationModel = n }
 }
 
