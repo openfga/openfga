@@ -58,6 +58,8 @@ jobs:
         uses: actions/setup-node@7c12f8017d5436eb855f1ed4399f037a36fbd9e8 # v2.5.2
         with:
           node-version: "16"
+          always-auth: true
+          registry-url: https://a0us.jfrog.io/a0us/api/npm/npm/
       - name: Build benchmarks
         run: npm install . && npm run-script webpack
       - name: Set AWS Credentials
