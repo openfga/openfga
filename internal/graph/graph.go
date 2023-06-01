@@ -152,6 +152,24 @@ func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationR
 	return g.findIngresses(target, source, map[string]struct{}{}, resolveAllIngresses)
 }
 
+// PrunedRelationshipIngresses compute the minimum incoming endges (ingresses) that are possible between the target and the source.
+//
+// PrunedRelationshipIngresses is primarily used as the driver behind ingresses that work for models including intersection and exclusion.
+// If the ingresses from the source to the target pass through a relationship involving intersection or exclusion (directly or indirectly),
+// then the PrunedRelationshipIngresses will just return the first-most ingress involved in the rewrite.
+//
+// Consider the following model:
+//
+// type user
+// type document
+//
+//	relations
+//	  define allowed: [user]
+//	  define viewer: [user] and allowed
+//
+// The pruned relationship ingresses from the 'user' type to 'document#viewer' returns only the `document#viewer` ingress but with a 'RequiresFurtherEvalCondition' ingress condition.
+// This is because when evaluating relationships involving intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
+// we call Check on the result to evaluate the sub-condition on the 'and allowed' bit.
 func (g *ConnectedObjectGraph) PrunedRelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
 	return g.findIngresses(target, source, map[string]struct{}{}, resolveAnyIngress)
 }
