@@ -55,9 +55,9 @@ jobs:
           token: ${{ secrets.PAT_TOKEN_TO_CLONE_BENCHMARKS }}
           fetch-depth: 2
       - name: Install Node
-        uses: actions/setup-node@7c12f8017d5436eb855f1ed4399f037a36fbd9e8 # v2.5.2
+        uses: actions/setup-node@64ed1c7eab4cce3362f8c340dee64e5eaeef8f7c # v3.6.0
         with:
-          node-version: "16"
+          node-version: "lts/gallium"
       - name: Build benchmarks
         run: npm install . && npm run-script webpack
       - name: Set AWS Credentials
