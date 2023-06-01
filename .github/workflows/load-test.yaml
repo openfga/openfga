@@ -52,6 +52,7 @@ jobs:
         uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
         with:
           repository: openfga/benchmarks
+          token: ${{ secrets.PAT_TOKEN_TO_CLONE_BENCHMARKS }}
           fetch-depth: 2
       - name: Install Node
         uses: actions/setup-node@7c12f8017d5436eb855f1ed4399f037a36fbd9e8 # v2.5.2
