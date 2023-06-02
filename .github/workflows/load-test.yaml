@@ -69,15 +69,23 @@ jobs:
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
         with:
           command: |
+            aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.OPENFGA_EKS_CLUSTER }} --role-arn ${{ secrets.AWS_IAM_ROLE }} --kubeconfig ./kubeconfig
+            echo 'KUBE_CONFIG_DATA<<EOF' >> $GITHUB_ENV
+            echo $(cat ./kubeconfig | base64) >> $GITHUB_ENV
+            echo 'EOF' >> $GITHUB_ENV
             kubectl config set-context arn:aws:eks:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT }}:cluster/${{ secrets.OPENFGA_EKS_CLUSTER }}
       - name: Delete existing Kubernetes configmap
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
         continue-on-error: true
+        env:
+          KUBE_CONFIG_DATA: ${{ env.KUBE_CONFIG_DATA }}
         with:
           command: |
             kubectl delete configmap openfga-benchmark-script
       - name: Create Kubernetes configmap
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
+        env:
+          KUBE_CONFIG_DATA: ${{ env.KUBE_CONFIG_DATA }}
         with:
           command: |
             kubectl create configmap openfga-benchmark-script --from-file ./build
