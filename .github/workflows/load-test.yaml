@@ -64,6 +64,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2.0.0
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
+          aws-region: ${{ secrets.AWS_REGION }}
       - name: Delete existing Kubernetes configmap
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
         continue-on-error: true
