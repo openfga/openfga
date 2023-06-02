@@ -110,7 +110,7 @@ func BenchmarkOpenFGAServer(b *testing.B) {
 	})
 
 	b.Run("BenchmarkMemoryDatastore", func(b *testing.B) {
-		ds := memory.New(10, 24)
+		ds := memory.New()
 		defer ds.Close()
 		test.RunAllBenchmarks(b, ds)
 	})
@@ -704,7 +704,7 @@ func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastor
 
 	switch engine {
 	case "memory":
-		ds = memory.New(10, 24)
+		ds = memory.New()
 	case "postgres":
 		ds, err = postgres.New(uri, sqlcommon.NewConfig())
 	case "mysql":
