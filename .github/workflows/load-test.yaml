@@ -92,6 +92,8 @@ jobs:
   upload-code-to-ecr:
     runs-on: ubuntu-latest
     environment: AWSLoadTest
+    outputs:
+      sha_short: ${{ steps.vars.outputs.sha_short }}
     steps:
       - name: Checkout code
         uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
@@ -129,9 +131,6 @@ jobs:
     needs: [create-config-map, upload-code-to-ecr]
     environment: AWSLoadTest
     steps:
-      - name: Set variables
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short=8 ${{ github.event.inputs.ref }})" >> $GITHUB_OUTPUT
       - name: Set AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2.0.0
         with:
@@ -165,14 +164,14 @@ jobs:
           command: |
             helm repo add openfga https://openfga.github.io/helm-charts
             helm repo update
-            helm upgrade --install openfgabench-${{ steps.vars.outputs.sha_short }} openfga/benchmark \
+            helm upgrade --install openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short  }} openfga/benchmark \
               --set Nparam=${{ github.event.inputs.N }} \
               --set Mparam=${{ github.event.inputs.M }} \
               --set Kparam=${{ github.event.inputs.K }} \
               --set testCase=${{ github.event.inputs.testCase }} \
               --set replicaCount=1 \
               --set image.repository=${{ secrets.OPENFGA_ECR_URI }} \
-              --set image.tag=openfgabench-${{ steps.vars.outputs.sha_short }} \
+              --set image.tag=openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }} \
               --set datastore.engine=postgres \
               --set datastore.uri="postgres://postgres:password@openfga-postgresql.default.svc.cluster.local:5432/postgres?sslmode=disable" \
               --set postgres.enabled=true \
@@ -186,11 +185,11 @@ jobs:
         timeout-minutes: 10
         with:
           command: |
-            kubectl wait --for=condition=ready pod/openfgabench-${{ steps.vars.outputs.sha_short }}-benchmark-benchrunner
+            kubectl wait --for=condition=ready pod/openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }}-benchmark-benchrunner
 
       - name: helm destroy
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
         with:
           command: |
-            helm uninstall openfgabench-${{ steps.vars.outputs.sha_short }}
-            kubectl delete pvc -l app.kubernetes.io/instance=openfgabench-${{ steps.vars.outputs.sha_short }}
+            helm uninstall openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }}
+            kubectl delete pvc -l app.kubernetes.io/instance=openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }}
