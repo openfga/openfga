@@ -30,7 +30,7 @@ require (
 	github.com/stretchr/testify v1.8.3
 	github.com/tidwall/gjson v1.14.4
 	go.buf.build/openfga/go/openfga/api v1.2.50
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.41.1
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.42.0
 	go.opentelemetry.io/otel v1.16.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.16.0
 	go.opentelemetry.io/otel/sdk v1.16.0
