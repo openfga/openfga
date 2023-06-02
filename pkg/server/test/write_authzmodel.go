@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -133,6 +134,21 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						},
 					},
 				},
+			},
+		},
+		{
+			name: "self_referencing_type_restriction_with_entrypoint",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define editor: [user] as self
+				    define viewer: [document#viewer] as self or editor
+				`),
+				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 		},
 	}
