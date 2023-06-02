@@ -3843,3 +3843,98 @@ tests:
               relation: reader
             expectation:
               - repo:openfga/openfga
+
+  - name: nested_ttu_involving_intersection
+    stages:
+      - model: |
+          type user
+          type organization
+            relations
+              define member: [user] as self
+              define viewer: [user] as self and member
+          type folder
+            relations
+              define parent: [organization] as self
+              define viewer as viewer from parent
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as viewer from parent
+        tuples:
+          - user: user:jon
+            relation: member
+            object: organization:openfga
+          - user: user:jon
+            relation: viewer
+            object: organization:openfga
+          - user: organization:openfga
+            relation: parent
+            object: folder:X
+          - user: folder:X
+            relation: parent
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+  - name: nested_ttu_involving_exclusion
+    stages:
+      - model: |
+          type user
+          type organization
+            relations
+              define restricted: [user] as self
+              define viewer: [user] as self but not restricted
+          type folder
+            relations
+              define parent: [organization] as self
+              define viewer as viewer from parent
+          type document
+            relations
+              define parent: [folder] as self
+              define viewer as viewer from parent
+        tuples:
+          - user: user:bob
+            relation: restricted
+            object: organization:openfga
+          - user: user:jon
+            relation: viewer
+            object: organization:openfga
+          - user: organization:openfga
+            relation: parent
+            object: folder:X
+          - user: folder:X
+            relation: parent
+            object: document:1
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
