@@ -129,6 +129,9 @@ jobs:
     needs: [create-config-map, upload-code-to-ecr]
     environment: AWSLoadTest
     steps:
+      - name: Set variables
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short=8 ${{ github.event.inputs.ref }})" >> $GITHUB_OUTPUT
       - name: Set AWS Credentials
         uses: aws-actions/configure-aws-credentials@e1e17a757e536f70e52b5a12b2e8d1d1c60e04ef # v2.0.0
         with:
