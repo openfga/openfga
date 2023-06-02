@@ -4043,3 +4043,139 @@ tests:
               type: repo
               relation: reader
             expectation:
+  - name: relation_with_wildcard_involving_intersection
+    stages:
+      - model: |
+          type user
+          type document
+            relations
+              define allowed: [user] as self
+              define viewer: [user:*] as self and allowed
+        tuples:
+          - user: user:jon
+            relation: allowed
+            object: document:1
+          - user: user:*
+            relation: viewer
+            object: document:1
+          - user: user:*
+            relation: viewer
+            object: document:2
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+  - name: relation_with_wildcard_involving_exclusion
+    stages:
+      - model: |
+          type user
+          type document
+            relations
+              define restricted: [user] as self
+              define viewer: [user:*] as self but not restricted
+        tuples:
+          - user: user:bob
+            relation: restricted
+            object: document:1
+          - user: user:*
+            relation: viewer
+            object: document:1
+          - user: user:*
+            relation: viewer
+            object: document:2
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:2
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+  - name: directly_related_backref_involving_exclusion
+    stages:
+      - model: |
+          type user
+          type document
+            relations
+              define restricted: [user] as self
+              define editor: [user] as self
+              define viewer: [document#viewer] as (self or editor) but not restricted
+        tuples:
+          - user: user:bob
+            relation: restricted
+            object: document:1
+          - user: document:2#viewer
+            relation: viewer
+            object: document:1
+          - user: user:jon
+            relation: editor
+            object: document:2
+          - user: user:bob
+            relation: editor
+            object: document:2
+        checkAssertions:
+          - tuple:
+              user: user:bob
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: true
+        listObjectsAssertions:
+          - request:
+              user: user:bob
+              type: document
+              relation: viewer
+            expectation:
+              - document:2
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+              - document:1
+              - document:2
