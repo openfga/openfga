@@ -3938,3 +3938,108 @@ tests:
               type: document
               relation: viewer
             expectation:
+
+  - name: userset_with_intersection_in_computed_relation_of_ttu
+    stages:
+      - model: |
+          type user
+          type repo
+            relations
+              define owner: [organization] as self
+              define allowed: [user] as self
+              define reader as repo_admin from owner and allowed
+          type organization
+            relations
+              define member: [user] as self
+              define repo_admin: [organization#member] as self
+        tuples:
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:openfga#member
+            relation: repo_admin
+            object: organization:openfga
+          - user: user:erik
+            relation: member
+            object: organization:openfga
+          - user: user:jim
+            relation: member
+            object: organization:openfga
+          - user: user:erik
+            relation: allowed
+            object: repo:openfga/openfga
+        checkAssertions:
+          - tuple:
+              user: user:erik
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: true
+          - tuple:
+              user: user:jim
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:erik
+              type: repo
+              relation: reader
+            expectation:
+              - repo:openfga/openfga
+          - request:
+              user: user:jim
+              type: repo
+              relation: reader
+            expectation:
+  - name: userset_with_exclusion_in_computed_relation_of_ttu
+    stages:
+      - model: |
+          type user
+          type repo
+            relations
+              define owner: [organization] as self
+              define restricted: [user] as self
+              define reader as repo_admin from owner but not restricted
+          type organization
+            relations
+              define member: [user] as self
+              define repo_admin: [organization#member] as self
+        tuples:
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:openfga#member
+            relation: repo_admin
+            object: organization:openfga
+          - user: user:erik
+            relation: member
+            object: organization:openfga
+          - user: user:jim
+            relation: member
+            object: organization:openfga
+          - user: user:jim
+            relation: restricted
+            object: repo:openfga/openfga
+        checkAssertions:
+          - tuple:
+              user: user:erik
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: true
+          - tuple:
+              user: user:jim
+              relation: reader
+              object: repo:openfga/openfga
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:erik
+              type: repo
+              relation: reader
+            expectation:
+              - repo:openfga/openfga
+          - request:
+              user: user:jim
+              type: repo
+              relation: reader
+            expectation:
