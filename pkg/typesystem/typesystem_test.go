@@ -1051,10 +1051,11 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(`
+				type user
 				type document
 				  relations
 				    define viewer: [document#viewer] as self and editor
-				    define editor: [document#editor] as self
+				    define editor: [user] as self
 				`),
 			},
 			err: &InvalidRelationError{ObjectType: "document", Relation: "viewer", Cause: ErrCycle},
@@ -1064,10 +1065,11 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(`
+				type user
 				type document
 				  relations
-				    define viewer: [document#viewer] as self and editor
-				    define editor: [document#editor] as self
+				    define restricted: [user] as self
+				    define viewer: [document#viewer] as self but not restricted
 				`),
 			},
 			err: &InvalidRelationError{ObjectType: "document", Relation: "viewer", Cause: ErrCycle},
