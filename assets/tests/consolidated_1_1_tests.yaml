@@ -2656,7 +2656,318 @@ tests:
                 relation: parent
                 user: user:* #invalid
             errorCode: 2027
-
+  - name: list_objects_considers_input_contextual_tuples
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a
+                relation: owner
+                object: repo:3
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+              - repo:3
+      - model: | #reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a
+                relation: owner
+                object: repo:3
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+              - repo:3
+  - name: ignores_irrelevant_contextual_tuples_because_different_user
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:b #different user
+                relation: owner
+                object: repo:2
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+      - model: | #reverse expansion
+          type user
+          type team
+            relations
+              define member: [user] as self
+          type repo
+            relations
+              define owner: [user, team#member] as self
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:b #different user
+                relation: owner
+                object: repo:2
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: ignores_irrelevant_contextual_tuples_because_different_type
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+          type organization
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: organization:1 #different type, should be ignored
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+      - model: | #reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+          type organization
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: organization:1 #different type, should be ignored
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: list_objects_ignores_irrelevant_tuples_because_different_user
+    stages:
+      - model: | # concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+          - user: user:aa #same prefix, but different user
+            relation: owner
+            object: repo:2
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+      - model: | #reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+  - name: list_objects_ignores_duplicate_contextual_tuples
+    stages:
+      - model: | # concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a #same as above
+                relation: owner
+                object: repo:2
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+      - model: | # reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:a
+                relation: owner
+                object: repo:2
+              - user: user:a # same as above
+                relation: owner
+                object: repo:2
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+              - repo:2
+  - name: error_if_contextual_tuples_do_not_follow_type_restrictions
+    stages:
+      - model: | # concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+          type organization
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:*  #not allowed
+                relation: owner
+                object: organization:1
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            errorCode: 2027
+      - model: | # reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+          type organization
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - contextualTuples:
+              - user: user:*  #not allowed
+                relation: owner
+                object: organization:1
+            request:
+              user: user:a
+              type: repo
+              relation: owner
+            errorCode: 2027
+  - name: list_objects_error_if_unknown_type_in_request
+    stages:
+      - model: | # concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: unknown
+              relation: owner
+            errorCode: 2021 # type 'unknown' not found
+      - model: | # reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: unknown
+              relation: owner
+            errorCode: 2021 # type 'unknown' not found
+  - name: list_objects_error_if_unknown_relation_in_request
+    stages:
+      - model: | # concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user] as self but not blocked
+        assertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: unknown
+            errorCode: 2022 # relation 'unknown' not found
+      - model: | # reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user] as self
+        assertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: unknown
+            errorCode: 2022 # relation 'unknown' not found
   - name: relations_not_defined_in_some_child_type
     stages:
       - model: |
@@ -4140,7 +4451,8 @@ tests:
             relations
               define restricted: [user] as self
               define editor: [user] as self
-              define viewer: [document#viewer] as (self or editor) but not restricted
+              define viewer: [document#viewer] as self or editor
+              define can_view as viewer but not restricted
         tuples:
           - user: user:bob
             relation: restricted
@@ -4157,25 +4469,90 @@ tests:
         checkAssertions:
           - tuple:
               user: user:bob
-              relation: viewer
+              relation: can_view
               object: document:1
             expectation: false
           - tuple:
               user: user:jon
-              relation: viewer
+              relation: can_view
               object: document:1
             expectation: true
         listObjectsAssertions:
           - request:
               user: user:bob
               type: document
-              relation: viewer
+              relation: can_view
             expectation:
               - document:2
           - request:
               user: user:jon
               type: document
-              relation: viewer
+              relation: can_view
             expectation:
               - document:1
               - document:2
+  - name: list_objects_does_not_return_duplicates
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define admin: [user, user:*] as self but not blocked
+        tuples:
+          - user: user:a
+            relation: admin
+            object: repo:1
+          - user: user:* #tuple grants access to the same as above
+            relation: admin
+            object: repo:1
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: admin
+            expectation:
+              - repo:1
+      - model: | #reverse expansion
+          type user
+          type repo
+            relations
+              define admin: [user, user:*] as self
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: admin
+            expectation:
+              - repo:1
+  - name: list_objects_expands_wildcard_tuple
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define blocked: [user] as self
+              define owner: [user, user:*] as self but not blocked
+        tuples:
+          - user: user:*
+            relation: owner
+            object: repo:1
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1
+      - model: | #reverse expansion
+          type user
+          type repo
+            relations
+              define owner: [user, user:*] as self
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: owner
+            expectation:
+              - repo:1

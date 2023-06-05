@@ -491,87 +491,60 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 			name: "succeeds_on_a_valid_typeSystem_with_an_objectType_type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define reader: [user] as self
+				`),
 			},
 		},
 		{
 			name: "succeeds_on_a_valid_typeSystem_with_a_type_and_type#relation_type",
 			model: &openfgapb.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgapb.Userset{
-							"admin":  {Userset: &openfgapb.Userset_This{}},
-							"member": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"admin": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"reader": {Userset: &openfgapb.Userset_This{}},
-							"writer": {Userset: &openfgapb.Userset_This{}},
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"reader": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-										DirectRelationReference("group", "member"),
-									},
-								},
-								"writer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										DirectRelationReference("user", ""),
-										DirectRelationReference("group", "admin"),
-									},
-								},
-							},
-						},
-					},
-				},
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type group
+				  relations
+				    define admin: [user] as self
+				    define member: [user] as self
+
+				type document
+				  relations
+				    define reader: [user, group#member] as self
+				    define writer: [user, group#admin] as self
+				`),
+			},
+		},
+		{
+			name: "self_referencing_type_restriction_with_nonzero_entrypoint_1",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define viewer: [document#viewer] as self or editor
+				    define editor: [user] as self
+				`),
+			},
+		},
+		{
+			name: "self_referencing_type_restriction_with_nonzero_entrypoint_2",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define viewer: [document#viewer] as self or editor
+				    define editor: [document] as self
+				`),
 			},
 		},
 	}
@@ -1047,6 +1020,59 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 				},
 			},
 			err: InvalidRelationTypeError("document", "parent", "folder", ""),
+		},
+		{
+			name: "self_referencing_type_restriction_with_zero_entrypoints_1",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type document
+				  relations
+				    define viewer: [document#viewer] as self
+				`),
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "viewer", Cause: ErrCycle},
+		},
+		{
+			name: "self_referencing_type_restriction_with_zero_entrypoints_2",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type document
+				  relations
+				    define viewer: [document#viewer] as self or editor
+				    define editor: [document#editor] as self
+				`),
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "editor", Cause: ErrCycle},
+		},
+		{
+			name: "self_referencing_type_restriction_with_zero_entrypoints_3",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+				    define viewer: [document#viewer] as self and editor
+				    define editor: [user] as self
+				`),
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "viewer", Cause: ErrCycle},
+		},
+		{
+			name: "self_referencing_type_restriction_with_zero_entrypoints_4",
+			model: &openfgapb.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+				    define restricted: [user] as self
+				    define viewer: [document#viewer] as self but not restricted
+				`),
+			},
+			err: &InvalidRelationError{ObjectType: "document", Relation: "viewer", Cause: ErrCycle},
 		},
 	}
 
