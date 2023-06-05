@@ -440,7 +440,11 @@ func RunServer(ctx context.Context, config *Config) error {
 	var err error
 	switch config.Datastore.Engine {
 	case "memory":
-		datastore = memory.New(config.MaxTuplesPerWrite, config.MaxTypesPerAuthorizationModel)
+		opts := []memory.StorageOption{
+			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
+			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
+		}
+		datastore = memory.New(opts...)
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
