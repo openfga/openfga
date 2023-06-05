@@ -781,8 +781,12 @@ func (t *TypeSystem) validateRelationTypeRestrictions() error {
 			if assignable && len(relatedTypes) == 1 {
 				relatedObjectType := relatedTypes[0].GetType()
 				relatedRelation := relatedTypes[0].GetRelation()
+
 				if objectType == relatedObjectType && name == relatedRelation {
-					return &InvalidRelationError{ObjectType: objectType, Relation: name, Cause: ErrCycle}
+					switch relation.GetRewrite().Userset.(type) {
+					case *openfgapb.Userset_This, *openfgapb.Userset_Intersection, *openfgapb.Userset_Difference:
+						return &InvalidRelationError{ObjectType: objectType, Relation: name, Cause: ErrCycle}
+					}
 				}
 			}
 
