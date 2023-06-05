@@ -151,6 +151,62 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 		},
+		{
+			name: "self_referencing_type_restriction_without_entrypoint_1",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+				    define viewer: [document#viewer] as self
+				`),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
+				ObjectType: "document",
+				Relation:   "viewer",
+				Cause:      typesystem.ErrCycle,
+			}),
+		},
+		{
+			name: "self_referencing_type_restriction_without_entrypoint_2",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+				    define editor: [user] as self
+				    define viewer: [document#viewer] as self and editor
+				`),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
+				ObjectType: "document",
+				Relation:   "viewer",
+				Cause:      typesystem.ErrCycle,
+			}),
+		},
+		{
+			name: "self_referencing_type_restriction_without_entrypoint_3",
+			request: &openfgapb.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+				    define restricted: [user] as self
+				    define viewer: [document#viewer] as self but not restricted
+				`),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
+				ObjectType: "document",
+				Relation:   "viewer",
+				Cause:      typesystem.ErrCycle,
+			}),
+		},
 	}
 
 	ctx := context.Background()
