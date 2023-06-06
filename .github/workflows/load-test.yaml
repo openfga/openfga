@@ -3,9 +3,14 @@ name: On-demand load test
 on:
   workflow_dispatch:
     inputs:
+      repository:
+        required: true
+        description: repository to test
+        type: string
+        default: 'openfga/openfga'
       ref:
         required: true
-        description: SHA or branch name to deploy
+        description: SHA or branch name to test
         type: string
         default: 'main'
       N:
@@ -98,6 +103,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
         with:
+          repository: ${{ github.event.inputs.repository }}
           ref: ${{ github.event.inputs.ref }}
 
       - name: Set variables
