@@ -191,7 +191,7 @@ jobs:
         timeout-minutes: 10
         with:
           command: |
-            kubectl wait --for=condition=ready pod/openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }}-benchmark-benchrunner
+            kubectl wait --timeout=1h --for=jsonpath='{.status.phase}'=Succeeded pod/openfgabench-${{ needs.upload-code-to-ecr.outputs.sha_short }}-benchmark-benchrunner
 
       - name: helm destroy
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
