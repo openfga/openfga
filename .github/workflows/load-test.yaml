@@ -174,6 +174,7 @@ jobs:
               --set Nparam=${{ github.event.inputs.N }} \
               --set Mparam=${{ github.event.inputs.M }} \
               --set Kparam=${{ github.event.inputs.K }} \
+              --set k6.projectID=${{ secrets.K6_PROJECT_ID}} \
               --set testCase=${{ github.event.inputs.testCase }} \
               --set replicaCount=1 \
               --set image.repository=${{ secrets.OPENFGA_ECR_URI }} \
