@@ -4084,6 +4084,7 @@ tests:
               define owner: [folder] as self
               define viewer as viewer from owner
               define can_view as viewer but not banned
+              define can_see as can_view
         tuples:
           - user: user:anne
             relation: member
@@ -4105,6 +4106,11 @@ tests:
               relation: can_view
               object: document:a
             expectation: true
+          - tuple:
+              user: user:anne
+              relation: can_see
+              object: document:a
+            expectation: true
         listObjectsAssertions:
           - request:
               user: user:anne
@@ -4116,6 +4122,12 @@ tests:
               user: user:anne
               type: document
               relation: can_view
+            expectation:
+              - document:a
+          - request:
+              user: user:anne
+              type: document
+              relation: can_see
             expectation:
               - document:a
 
@@ -4171,6 +4183,7 @@ tests:
             relations
               define parent: [folder] as self
               define viewer as viewer from parent
+              define can_view as viewer
         tuples:
           - user: user:jon
             relation: member
@@ -4190,11 +4203,22 @@ tests:
               relation: viewer
               object: document:1
             expectation: true
+          - tuple:
+              user: user:jon
+              relation: can_view
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: user:jon
               type: document
               relation: viewer
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: can_view
             expectation:
               - document:1
   - name: nested_ttu_involving_exclusion
@@ -4213,6 +4237,7 @@ tests:
             relations
               define parent: [folder] as self
               define viewer as viewer from parent
+              define can_view as viewer
         tuples:
           - user: user:bob
             relation: restricted
@@ -4237,6 +4262,16 @@ tests:
               relation: viewer
               object: document:1
             expectation: false
+          - tuple:
+              user: user:jon
+              relation: can_view
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:1
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -4249,7 +4284,17 @@ tests:
               type: document
               relation: viewer
             expectation:
-
+          - request:
+              user: user:jon
+              type: document
+              relation: can_view
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            expectation:
   - name: userset_with_intersection_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -4259,6 +4304,7 @@ tests:
               define owner: [organization] as self
               define allowed: [user] as self
               define reader as repo_admin from owner and allowed
+              define can_read as reader
           type organization
             relations
               define member: [user] as self
@@ -4290,6 +4336,16 @@ tests:
               relation: reader
               object: repo:openfga/openfga
             expectation: false
+          - tuple:
+              user: user:erik
+              relation: can_read
+              object: repo:openfga/openfga
+            expectation: true
+          - tuple:
+              user: user:jim
+              relation: can_read
+              object: repo:openfga/openfga
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:erik
@@ -4302,6 +4358,17 @@ tests:
               type: repo
               relation: reader
             expectation:
+          - request:
+              user: user:erik
+              type: repo
+              relation: can_read
+            expectation:
+              - repo:openfga/openfga
+          - request:
+              user: user:jim
+              type: repo
+              relation: can_read
+            expectation:
   - name: userset_with_exclusion_in_computed_relation_of_ttu
     stages:
       - model: |
@@ -4311,6 +4378,7 @@ tests:
               define owner: [organization] as self
               define restricted: [user] as self
               define reader as repo_admin from owner but not restricted
+              define can_read as reader
           type organization
             relations
               define member: [user] as self
@@ -4342,6 +4410,16 @@ tests:
               relation: reader
               object: repo:openfga/openfga
             expectation: false
+          - tuple:
+              user: user:erik
+              relation: can_read
+              object: repo:openfga/openfga
+            expectation: true
+          - tuple:
+              user: user:jim
+              relation: can_read
+              object: repo:openfga/openfga
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:erik
@@ -4354,6 +4432,17 @@ tests:
               type: repo
               relation: reader
             expectation:
+          - request:
+              user: user:erik
+              type: repo
+              relation: can_read
+            expectation:
+              - repo:openfga/openfga
+          - request:
+              user: user:jim
+              type: repo
+              relation: can_read
+            expectation:
   - name: relation_with_wildcard_involving_intersection
     stages:
       - model: |
@@ -4362,6 +4451,7 @@ tests:
             relations
               define allowed: [user] as self
               define viewer: [user:*] as self and allowed
+              define can_view as viewer
         tuples:
           - user: user:jon
             relation: allowed
@@ -4383,6 +4473,16 @@ tests:
               relation: viewer
               object: document:2
             expectation: false
+          - tuple:
+              user: user:jon
+              relation: can_view
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:2
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -4395,6 +4495,17 @@ tests:
               type: document
               relation: viewer
             expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: can_view
+            expectation:
+              - document:1
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            expectation:
   - name: relation_with_wildcard_involving_exclusion
     stages:
       - model: |
@@ -4403,6 +4514,7 @@ tests:
             relations
               define restricted: [user] as self
               define viewer: [user:*] as self but not restricted
+              define can_view as viewer
         tuples:
           - user: user:bob
             relation: restricted
@@ -4429,6 +4541,21 @@ tests:
               relation: viewer
               object: document:2
             expectation: true
+          - tuple:
+              user: user:jon
+              relation: can_view
+              object: document:1
+            expectation: true
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:bob
+              relation: can_view
+              object: document:2
+            expectation: true
         listObjectsAssertions:
           - request:
               user: user:jon
@@ -4443,6 +4570,19 @@ tests:
               relation: viewer
             expectation:
               - document:2
+          - request:
+              user: user:jon
+              type: document
+              relation: can_view
+            expectation:
+              - document:1
+              - document:2
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view
+            expectation:
+              - document:2
   - name: directly_related_backref_involving_exclusion
     stages:
       - model: |
@@ -4453,6 +4593,7 @@ tests:
               define editor: [user] as self
               define viewer: [document#viewer] as self or editor
               define can_view as viewer but not restricted
+              define can_view_actual as can_view
         tuples:
           - user: user:bob
             relation: restricted
@@ -4477,6 +4618,16 @@ tests:
               relation: can_view
               object: document:1
             expectation: true
+          - tuple:
+              user: user:bob
+              relation: can_view_actual
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: can_view_actual
+              object: document:1
+            expectation: true
         listObjectsAssertions:
           - request:
               user: user:bob
@@ -4488,6 +4639,19 @@ tests:
               user: user:jon
               type: document
               relation: can_view
+            expectation:
+              - document:1
+              - document:2
+          - request:
+              user: user:bob
+              type: document
+              relation: can_view_actual
+            expectation:
+              - document:2
+          - request:
+              user: user:jon
+              type: document
+              relation: can_view_actual
             expectation:
               - document:1
               - document:2
@@ -4533,6 +4697,7 @@ tests:
             relations
               define blocked: [user] as self
               define owner: [user, user:*] as self but not blocked
+              define can_own as owner
         tuples:
           - user: user:*
             relation: owner
@@ -4544,11 +4709,18 @@ tests:
               relation: owner
             expectation:
               - repo:1
+          - request:
+              user: user:a
+              type: repo
+              relation: can_own
+            expectation:
+              - repo:1
       - model: | #reverse expansion
           type user
           type repo
             relations
               define owner: [user, user:*] as self
+              define can_own as owner
         listObjectsAssertions:
           - request:
               user: user:a
@@ -4556,3 +4728,40 @@ tests:
               relation: owner
             expectation:
               - repo:1
+          - request:
+              user: user:a
+              type: repo
+              relation: can_own
+            expectation:
+              - repo:1
+  - name: list_objects_intersection_related
+    stages:
+      - model: | #concurrent checks
+          type user
+          type repo
+            relations
+              define admin: [user] as self
+              define action1 as admin and action2 and action3
+              define action2 as admin and action3 and action1
+              define action3 as admin and action1 and action2
+        tuples:
+          - user: user:a
+            relation: admin
+            object: repo:1
+        listObjectsAssertions:
+          - request:
+              user: user:a
+              type: repo
+              relation: action1
+            expectation:
+          - request:
+              user: user:a
+              type: repo
+              relation: action2
+            expectation:
+          - request:
+              user: user:a
+              type: repo
+              relation: action3
+            expectation:
+
