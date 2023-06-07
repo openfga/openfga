@@ -188,8 +188,7 @@ jobs:
               --set postgresql.auth.database=postgres \
               --set postgresql.primary.resources.requests.memory=2Gi,postgresql.primary.resources.requests.cpu=1.0 \
               --set openfga.resources.requests.memory=1Gi,openfga.resources.requests.cpu=500m \
-              --set resources.requests.memory=1Gi \ 
-              --set resources.requests.limit=2Gi
+              --set resources.requests.memory=1Gi,resources.requests.limit=2Gi
 
       - name: wait
         uses: koslib/helm-eks-action@4d7c0adee70fd51aee3eea1274599aca9cca7fe0 # april 5, 2023
