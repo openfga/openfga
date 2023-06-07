@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -34,6 +35,8 @@ const (
 	authorizationModelIDKey    = "authorization_model_id"
 
 	checkConcurrencyLimit = 100
+
+	optimizedListObjects ExperimentalFeatureFlag = "optimized-list-objects"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -43,11 +46,12 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	transport gateway.Transport
-	config    *Config
+	logger              logger.Logger
+	datastore           storage.OpenFGADatastore
+	encoder             encoder.Encoder
+	transport           gateway.Transport
+	config              *Config
+	optimizeListObjects bool
 }
 
 type Dependencies struct {
@@ -69,12 +73,18 @@ type Config struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
 
+	optimizeListObjects := false
+	if slices.Contains(config.Experimentals, optimizedListObjects) {
+		optimizeListObjects = true
+	}
+
 	return &Server{
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		logger:              dependencies.Logger,
+		datastore:           dependencies.Datastore,
+		encoder:             dependencies.TokenEncoder,
+		transport:           dependencies.Transport,
+		config:              config,
+		optimizeListObjects: optimizeListObjects,
 	}
 }
 
@@ -129,6 +139,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 			ds,
 			checkConcurrencyLimit,
 		),
+		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
 	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
@@ -188,6 +199,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 			checkConcurrencyLimit,
 		),
+		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
 	req.AuthorizationModelId = modelID

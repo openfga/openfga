@@ -223,6 +223,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					ds,
 					100,
 				),
+				OptimizeIntersectionExclusion: true,
 			}
 
 			// assertions
@@ -328,9 +329,10 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ResolveNodeLimit:              defaultResolveNodeLimit,
+		OptimizeIntersectionExclusion: true,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -394,9 +396,10 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ResolveNodeLimit:              defaultResolveNodeLimit,
+		OptimizeIntersectionExclusion: true,
 	}
 
 	var r *openfgapb.ListObjectsResponse
