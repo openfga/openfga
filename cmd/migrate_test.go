@@ -43,6 +43,7 @@ func TestNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
+		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
@@ -61,6 +62,7 @@ func TestConfigFileValuesAreParsed(t *testing.T) {
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
+		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
@@ -73,6 +75,7 @@ func TestConfigIsMerged(t *testing.T) {
 	prepareTempConfigFile(t, config)
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
+	t.Setenv("OPENFGA_VERBOSE", "true")
 
 	migrateCmd := NewMigrateCommand()
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -80,6 +83,7 @@ func TestConfigIsMerged(t *testing.T) {
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
+		require.Equal(t, true, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
