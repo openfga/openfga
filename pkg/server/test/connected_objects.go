@@ -917,13 +917,13 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				Limit:            test.limit,
 			}
 
-			resultChan := make(chan string, 100)
+			resultChan := make(chan commands.ListObjectsResult, 100)
 			done := make(chan struct{})
 
 			var results []string
 			go func() {
 				for result := range resultChan {
-					results = append(results, result)
+					results = append(results, result.ObjectID)
 				}
 
 				done <- struct{}{}

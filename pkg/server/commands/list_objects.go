@@ -36,6 +36,11 @@ type ListObjectsQuery struct {
 	ResolveNodeLimit      uint32
 }
 
+type ListObjectsResult struct {
+	ObjectID string
+	Err      error
+}
+
 type listObjectsRequest interface {
 	GetStoreId() string
 	GetAuthorizationModelId() string
@@ -48,8 +53,7 @@ type listObjectsRequest interface {
 func (q *ListObjectsQuery) evaluate(
 	ctx context.Context,
 	req listObjectsRequest,
-	resultsChan chan<- string,
-	errChan chan<- error,
+	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 ) error {
 
@@ -91,16 +95,15 @@ func (q *ListObjectsQuery) evaluate(
 	}
 
 	handler := func() {
+		defer close(resultsChan)
+
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 		span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
 
 		err = q.performChecks(ctx, req, resultsChan, maxResults)
 		if err != nil {
-			errChan <- err
-			close(errChan)
-			return
+			resultsChan <- ListObjectsResult{Err: err}
 		}
-		close(resultsChan)
 	}
 
 	hasTypeInfo, err := typesys.HasTypeInfo(targetObjectType, targetRelation)
@@ -144,6 +147,8 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		handler = func() {
+			defer close(resultsChan)
+
 			span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, true))
 
 			connectObjCmd := &ConnectedObjectsCommand{
@@ -161,11 +166,8 @@ func (q *ListObjectsQuery) evaluate(
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 			}, resultsChan)
 			if err != nil {
-				errChan <- err
-				close(errChan)
-				return
+				resultsChan <- ListObjectsResult{Err: err}
 			}
-			close(resultsChan)
 		}
 	}
 
@@ -181,14 +183,11 @@ func (q *ListObjectsQuery) Execute(
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
-	resultsChan := make(chan string, 1)
+	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.ListObjectsMaxResults
 	if maxResults > 0 {
-		resultsChan = make(chan string, maxResults)
+		resultsChan = make(chan ListObjectsResult, maxResults)
 	}
-
-	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
-	errChan := make(chan error, 1)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -197,7 +196,7 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -216,17 +215,16 @@ func (q *ListObjectsQuery) Execute(
 				Objects: objects,
 			}, nil
 
-		case objectID, channelOpen := <-resultsChan:
+		case result, channelOpen := <-resultsChan:
+			if result.Err != nil {
+				return nil, serverErrors.NewInternalError("", result.Err)
+			}
 			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
 				}, nil
 			}
-			objects = append(objects, objectID)
-		case genericError, valueAvailable := <-errChan:
-			if valueAvailable {
-				return nil, serverErrors.NewInternalError("", genericError)
-			}
+			objects = append(objects, result.ObjectID)
 		}
 	}
 }
@@ -242,10 +240,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
-	resultsChan := make(chan string, streamedBufferSize)
-
-	// make a buffered channel so that writer goroutines aren't blocked when attempting to send an error
-	errChan := make(chan error, 1)
+	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
 
 	timeoutCtx := ctx
 	if q.ListObjectsDeadline != 0 {
@@ -254,7 +249,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, errChan, maxResults)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
 	if err != nil {
 		return err
 	}
@@ -269,26 +264,26 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			)
 			return nil
 
-		case object, ok := <-resultsChan:
-			if !ok {
+		case result, channelOpen := <-resultsChan:
+			if !channelOpen {
 				// Channel closed! No more results.
 				return nil
 			}
 
+			if result.Err != nil {
+				return serverErrors.NewInternalError("", result.Err)
+			}
+
 			if err := srv.Send(&openfgapb.StreamedListObjectsResponse{
-				Object: object,
+				Object: result.ObjectID,
 			}); err != nil {
 				return serverErrors.NewInternalError("", err)
-			}
-		case genericError, ok := <-errChan:
-			if ok {
-				return serverErrors.NewInternalError("", genericError)
 			}
 		}
 	}
 }
 
-func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- string, maxResults uint32) error {
+func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- ListObjectsResult, maxResults uint32) error {
 	ctx, span := tracer.Start(ctx, "performChecks")
 	defer span.End()
 	var objectsFound = new(uint32)
@@ -334,7 +329,7 @@ func (q *ListObjectsQuery) internalCheck(
 	obj *openfgapb.Object,
 	req listObjectsRequest,
 	objectsFound *uint32,
-	resultsChan chan<- string,
+	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 ) error {
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
@@ -353,7 +348,7 @@ func (q *ListObjectsQuery) internalCheck(
 	}
 
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-		resultsChan <- tuple.ObjectKey(obj)
+		resultsChan <- ListObjectsResult{ObjectID: tuple.ObjectKey(obj)}
 	}
 
 	return nil
