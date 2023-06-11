@@ -60,7 +60,10 @@ func NewMigrateCommand() *cobra.Command {
 }
 
 func runMigration(_ *cobra.Command, _ []string) error {
-	engine := viper.GetString(datastoreEngineFlag)
+	engine, err := NewDatastoreEngine(viper.GetString(datastoreEngineFlag))
+	if err != nil {
+		return err
+	}
 	uri := viper.GetString(datastoreURIFlag)
 	targetVersion := viper.GetUint(versionFlag)
 	timeout := viper.GetDuration(timeoutFlag)
@@ -70,15 +73,15 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetVerbose(verbose)
 
 	var driver, dialect, migrationsPath string
-	switch engine {
-	case "memory":
+	switch *engine {
+	case Memory:
 		log.Println("no migrations to run for `memory` datastore")
 		return nil
-	case "mysql":
+	case MySQL:
 		driver = "mysql"
 		dialect = "mysql"
 		migrationsPath = assets.MySQLMigrationDir
-	case "postgres":
+	case Postgres:
 		driver = "pgx"
 		dialect = "postgres"
 		migrationsPath = assets.PostgresMigrationDir

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/cmd"
 	"html/template"
 	"net"
 	"net/http"
@@ -78,7 +79,7 @@ func NewRunCommand() *cobra.Command {
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   string
+	Engine   cmd.DatastoreEngine
 	URI      string
 	Username string
 	Password string
@@ -350,6 +351,9 @@ func ReadConfig() (*Config, error) {
 }
 
 func VerifyConfig(cfg *Config) error {
+	if isValid := cfg.Datastore.Engine.IsValid(); !isValid {
+		return fmt.Errorf("invalid datastore engine '(%s)'", cfg.Datastore.Engine.String())
+	}
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}

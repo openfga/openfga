@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/cmd"
 	"io"
 	"log"
 	"math/big"
@@ -279,6 +280,23 @@ func TestVerifyConfig(t *testing.T) {
 	t.Run("non_log_level", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.Log.Level = "notalevel"
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("correct datastore engine specified", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.URI = "postgresql://localhost:5432"
+		cfg.Datastore.Engine = cmd.Postgres
+
+		err := VerifyConfig(cfg)
+		require.NoError(t, err)
+	})
+
+	t.Run("incorrect datastore engine specified", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.Datastore.Engine = "mssql"
 
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
