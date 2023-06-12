@@ -370,14 +370,12 @@ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9de
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
-go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.7/go.mod h1:vDGPWmgcenDF3BKV1EZjWm1O62Ux8j64NPrvQIbvurg=
 go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.8 h1:2zM59qI+d3SyGg/Hd08//q10Ic3f2Ef+ZuU3Wow4Y0E=
 go.buf.build/openfga/go/envoyproxy/protoc-gen-validate v1.2.8/go.mod h1:vDGPWmgcenDF3BKV1EZjWm1O62Ux8j64NPrvQIbvurg=
-go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.46/go.mod h1:WfhNIqSEXCpV/mxdYvyo5KgLNYPsDEom6n2IFagP9PQ=
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50 h1:6DuFAivHGVH+fppCAJelA0hPRnQj16vrYFSgYgd/8bA=
 go.buf.build/openfga/go/grpc-ecosystem/grpc-gateway v1.2.50/go.mod h1:WfhNIqSEXCpV/mxdYvyo5KgLNYPsDEom6n2IFagP9PQ=
-go.buf.build/openfga/go/openfga/api v1.2.50 h1:1V21vInZuotzcbNxXx1hQxCwVmDKvvfHRx0ksNaRDdk=
-go.buf.build/openfga/go/openfga/api v1.2.50/go.mod h1:gkcP+Zq/lLcXi2GOpjzqecB5hCjwiZSfVq44NLbjJz4=
+go.buf.build/openfga/go/openfga/api v1.2.56 h1:t/6Oax9R8uyiYEzKhsfdPGzqo+l7qhCkcteRLBOAcWk=
+go.buf.build/openfga/go/openfga/api v1.2.56/go.mod h1:EtsIkxpRjQTORhJkaolXfcMKsrag7n6JpcKp6ViUXEQ=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
