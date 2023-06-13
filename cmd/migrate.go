@@ -73,7 +73,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetVerbose(verbose)
 
 	var driver, dialect, migrationsPath string
-	switch *engine {
+	switch engine {
 	case Memory:
 		log.Println("no migrations to run for `memory` datastore")
 		return nil

@@ -287,7 +287,6 @@ func TestVerifyConfig(t *testing.T) {
 
 	t.Run("correct datastore engine specified", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.Datastore.URI = "postgresql://localhost:5432"
 		cfg.Datastore.Engine = cmd.Postgres
 
 		err := VerifyConfig(cfg)

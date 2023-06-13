@@ -443,18 +443,18 @@ func RunServer(ctx context.Context, config *Config) error {
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {
-	case "memory":
+	case cmd.Memory:
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		}
 		datastore = memory.New(opts...)
-	case "mysql":
+	case cmd.MySQL:
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
-	case "postgres":
+	case cmd.Postgres:
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
