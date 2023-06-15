@@ -3,3 +3,5 @@ version: 3
 paths:
   exclude:
     - ./tools
+    - ./NOTICE
+    - ./NOTICE.txt
