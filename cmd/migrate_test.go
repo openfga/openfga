@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"os"
-	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/openfga/openfga/cmd/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -13,30 +13,32 @@ import (
 
 const defaultDuration = 1 * time.Minute
 
-func prepareTempConfigDir(t *testing.T) string {
-	_, err := os.Stat("/etc/openfga/config.yaml")
-	require.ErrorIs(t, err, os.ErrNotExist, "Config file at /etc/openfga/config.yaml would disturb test result.")
+func TestMigrateCommandRollbacks(t *testing.T) {
+	engines := []string{"postgres", "mysql"}
 
-	homedir := t.TempDir()
-	t.Setenv("HOME", homedir)
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			container, _, uri, err := util.MustBootstrapDatastore(t, engine)
+			require.NoError(t, err)
 
-	confdir := filepath.Join(homedir, ".openfga")
-	require.Nil(t, os.Mkdir(confdir, 0750))
+			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
+			version := container.GetDatabaseSchemaVersion() + 1
 
-	return confdir
+			migrateCommand := NewMigrateCommand()
+
+			for version >= 0 {
+				t.Logf("migrating to version %d", version)
+				migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
+				err = migrateCommand.Execute()
+				require.NoError(t, err)
+				version--
+			}
+		})
+	}
 }
 
-func prepareTempConfigFile(t *testing.T, config string) {
-	confdir := prepareTempConfigDir(t)
-	confFile, err := os.Create(filepath.Join(confdir, "config.yaml"))
-	require.Nil(t, err)
-	_, err = confFile.WriteString(config)
-	require.Nil(t, err)
-	require.Nil(t, confFile.Close())
-}
-
-func TestNoConfigDefaultValues(t *testing.T) {
-	prepareTempConfigDir(t)
+func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
+	util.PrepareTempConfigDir(t)
 	migrateCmd := NewMigrateCommand()
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
@@ -46,45 +48,57 @@ func TestNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
-	require.Nil(t, migrateCmd.Execute())
+
+	cmd := NewRootCommand()
+	cmd.AddCommand(migrateCmd)
+	cmd.SetArgs([]string{"migrate"})
+	require.Nil(t, cmd.Execute())
 }
 
-func TestConfigFileValuesAreParsed(t *testing.T) {
+func TestMigrateCommandConfigFileValuesAreParsed(t *testing.T) {
 	config := `datastore:
-    engine: postgres
+    engine: oneEngine
     uri: postgres://postgres:password@127.0.0.1:5432/postgres
 `
-	prepareTempConfigFile(t, config)
+	util.PrepareTempConfigFile(t, config)
 
 	migrateCmd := NewMigrateCommand()
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
+		require.Equal(t, "oneEngine", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
 		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
-	require.Nil(t, migrateCmd.Execute())
+
+	cmd := NewRootCommand()
+	cmd.AddCommand(migrateCmd)
+	cmd.SetArgs([]string{"migrate"})
+	require.Nil(t, cmd.Execute())
 }
 
-func TestConfigIsMerged(t *testing.T) {
+func TestMigrateCommandConfigIsMerged(t *testing.T) {
 	config := `datastore:
-    engine: postgres
+    engine: randomEngine
 `
-	prepareTempConfigFile(t, config)
+	util.PrepareTempConfigFile(t, config)
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_VERBOSE", "true")
 
 	migrateCmd := NewMigrateCommand()
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
+		require.Equal(t, "randomEngine", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
 		require.Equal(t, true, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
-	require.Nil(t, migrateCmd.Execute())
+
+	cmd := NewRootCommand()
+	cmd.AddCommand(migrateCmd)
+	cmd.SetArgs([]string{"migrate"})
+	require.Nil(t, cmd.Execute())
 }

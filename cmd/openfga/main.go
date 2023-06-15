@@ -16,6 +16,9 @@ func main() {
 	migrateCmd := cmd.NewMigrateCommand()
 	rootCmd.AddCommand(migrateCmd)
 
+	validateCmd := cmd.NewValidateCommand()
+	rootCmd.AddCommand(validateCmd)
+
 	versionCmd := cmd.NewVersionCommand()
 	rootCmd.AddCommand(versionCmd)
 

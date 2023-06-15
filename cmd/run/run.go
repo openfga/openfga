@@ -22,6 +22,7 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/openfga/openfga/assets"
+	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
 	"github.com/openfga/openfga/internal/authn/presharedkey"
@@ -60,6 +61,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	datastoreEngineFlag = "datastore-engine"
+	datastoreURIFlag    = "datastore-uri"
+)
+
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -67,9 +73,244 @@ func NewRunCommand() *cobra.Command {
 		Long:  "Run the OpenFGA server.",
 		Run:   run,
 		Args:  cobra.NoArgs,
+		PreRun: func(cmd *cobra.Command, args []string) {
+			flags := cmd.Flags()
+
+			util.MustBindPFlag("experimentals", flags.Lookup("experimentals"))
+			util.MustBindEnv("experimentals", "OPENFGA_EXPERIMENTALS")
+
+			util.MustBindPFlag("grpc.addr", flags.Lookup("grpc-addr"))
+			util.MustBindEnv("grpc.addr", "OPENFGA_GRPC_ADDR")
+
+			util.MustBindPFlag("grpc.tls.enabled", flags.Lookup("grpc-tls-enabled"))
+			util.MustBindEnv("grpc.tls.enabled", "OPENFGA_GRPC_TLS_ENABLED")
+
+			util.MustBindPFlag("grpc.tls.cert", flags.Lookup("grpc-tls-cert"))
+			util.MustBindEnv("grpc.tls.cert", "OPENFGA_GRPC_TLS_CERT")
+
+			util.MustBindPFlag("grpc.tls.key", flags.Lookup("grpc-tls-key"))
+			util.MustBindEnv("grpc.tls.key", "OPENFGA_GRPC_TLS_KEY")
+
+			util.MustBindPFlag("http.enabled", flags.Lookup("http-enabled"))
+			util.MustBindEnv("http.enabled", "OPENFGA_HTTP_ENABLED")
+
+			util.MustBindPFlag("http.addr", flags.Lookup("http-addr"))
+			util.MustBindEnv("http.addr", "OPENFGA_HTTP_ADDR")
+
+			util.MustBindPFlag("http.tls.enabled", flags.Lookup("http-tls-enabled"))
+			util.MustBindEnv("http.tls.enabled", "OPENFGA_HTTP_TLS_ENABLED")
+
+			util.MustBindPFlag("http.tls.cert", flags.Lookup("http-tls-cert"))
+			util.MustBindEnv("http.tls.cert", "OPENFGA_HTTP_TLS_CERT")
+
+			util.MustBindPFlag("http.tls.key", flags.Lookup("http-tls-key"))
+			util.MustBindEnv("http.tls.key", "OPENFGA_HTTP_TLS_KEY")
+
+			util.MustBindPFlag("http.upstreamTimeout", flags.Lookup("http-upstream-timeout"))
+			util.MustBindEnv("http.upstreamTimeout", "OPENFGA_HTTP_UPSTREAM_TIMEOUT", "OPENFGA_HTTP_UPSTREAMTIMEOUT")
+
+			util.MustBindPFlag("http.corsAllowedOrigins", flags.Lookup("http-cors-allowed-origins"))
+			util.MustBindEnv("http.corsAllowedOrigins", "OPENFGA_HTTP_CORS_ALLOWED_ORIGINS", "OPENFGA_HTTP_CORSALLOWEDORIGINS")
+
+			util.MustBindPFlag("http.corsAllowedHeaders", flags.Lookup("http-cors-allowed-headers"))
+			util.MustBindEnv("http.corsAllowedHeaders", "OPENFGA_HTTP_CORS_ALLOWED_HEADERS", "OPENFGA_HTTP_CORSALLOWEDHEADERS")
+
+			util.MustBindPFlag("authn.method", flags.Lookup("authn-method"))
+			util.MustBindEnv("authn.method", "OPENFGA_AUTHN_METHOD")
+
+			util.MustBindPFlag("authn.preshared.keys", flags.Lookup("authn-preshared-keys"))
+			util.MustBindEnv("authn.preshared.keys", "OPENFGA_AUTHN_PRESHARED_KEYS")
+
+			util.MustBindPFlag("authn.oidc.audience", flags.Lookup("authn-oidc-audience"))
+			util.MustBindEnv("authn.oidc.audience", "OPENFGA_AUTHN_OIDC_AUDIENCE")
+
+			util.MustBindPFlag("authn.oidc.issuer", flags.Lookup("authn-oidc-issuer"))
+			util.MustBindEnv("authn.oidc.issuer", "OPENFGA_AUTHN_OIDC_ISSUER")
+
+			util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
+			util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
+
+			util.MustBindPFlag("datastore.uri", flags.Lookup("datastore-uri"))
+			util.MustBindEnv("datastore.uri", "OPENFGA_DATASTORE_URI")
+
+			util.MustBindPFlag("datastore.username", flags.Lookup("datastore-username"))
+			util.MustBindEnv("datastore.username", "OPENFGA_DATASTORE_USERNAME")
+
+			util.MustBindPFlag("datastore.password", flags.Lookup("datastore-password"))
+			util.MustBindEnv("datastore.password", "OPENFGA_DATASTORE_PASSWORD")
+
+			util.MustBindPFlag("datastore.maxCacheSize", flags.Lookup("datastore-max-cache-size"))
+			util.MustBindEnv("datastore.maxCacheSize", "OPENFGA_DATASTORE_MAX_CACHE_SIZE", "OPENFGA_DATASTORE_MAXCACHESIZE")
+
+			util.MustBindPFlag("datastore.maxOpenConns", flags.Lookup("datastore-max-open-conns"))
+			util.MustBindEnv("datastore.maxOpenConns", "OPENFGA_DATASTORE_MAX_OPEN_CONNS", "OPENFGA_DATASTORE_MAXOPENCONNS")
+
+			util.MustBindPFlag("datastore.maxIdleConns", flags.Lookup("datastore-max-idle-conns"))
+			util.MustBindEnv("datastore.maxIdleConns", "OPENFGA_DATASTORE_MAX_IDLE_CONNS", "OPENFGA_DATASTORE_MAXIDLECONNS")
+
+			util.MustBindPFlag("datastore.connMaxIdleTime", flags.Lookup("datastore-conn-max-idle-time"))
+			util.MustBindEnv("datastore.connMaxIdleTime", "OPENFGA_DATASTORE_CONN_MAX_IDLE_TIME", "OPENFGA_DATASTORE_CONNMAXIDLETIME")
+
+			util.MustBindPFlag("datastore.connMaxLifetime", flags.Lookup("datastore-conn-max-lifetime"))
+			util.MustBindEnv("datastore.connMaxLifetime", "OPENFGA_DATASTORE_CONN_MAX_LIFETIME", "OPENFGA_DATASTORE_CONNMAXLIFETIME")
+
+			util.MustBindPFlag("playground.enabled", flags.Lookup("playground-enabled"))
+			util.MustBindEnv("playground.enabled", "OPENFGA_PLAYGROUND_ENABLED")
+
+			util.MustBindPFlag("playground.port", flags.Lookup("playground-port"))
+			util.MustBindEnv("playground.port", "OPENFGA_PLAYGROUND_PORT")
+
+			util.MustBindPFlag("profiler.enabled", flags.Lookup("profiler-enabled"))
+			util.MustBindEnv("profiler.enabled", "OPENFGA_PROFILER_ENABLED")
+
+			util.MustBindPFlag("profiler.addr", flags.Lookup("profiler-addr"))
+			util.MustBindEnv("profiler.addr", "OPENFGA_PROFILER_ADDRESS")
+
+			util.MustBindPFlag("log.format", flags.Lookup("log-format"))
+			util.MustBindEnv("log.format", "OPENFGA_LOG_FORMAT")
+
+			util.MustBindPFlag("log.level", flags.Lookup("log-level"))
+			util.MustBindEnv("log.level", "OPENFGA_LOG_LEVEL")
+
+			util.MustBindPFlag("trace.enabled", flags.Lookup("trace-enabled"))
+			util.MustBindEnv("trace.enabled", "OPENFGA_TRACE_ENABLED")
+
+			util.MustBindPFlag("trace.otlp.endpoint", flags.Lookup("trace-otlp-endpoint"))
+			util.MustBindEnv("trace.otlp.endpoint", "OPENFGA_TRACE_OTLP_ENDPOINT")
+
+			util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
+			util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
+
+			util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
+			util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME")
+
+			util.MustBindPFlag("metrics.enabled", flags.Lookup("metrics-enabled"))
+			util.MustBindEnv("metrics.enabled", "OPENFGA_METRICS_ENABLED")
+
+			util.MustBindPFlag("metrics.addr", flags.Lookup("metrics-addr"))
+			util.MustBindEnv("metrics.addr", "OPENFGA_METRICS_ADDR")
+
+			util.MustBindPFlag("metrics.enableRPCHistograms", flags.Lookup("metrics-enable-rpc-histograms"))
+			util.MustBindEnv("metrics.enableRPCHistograms", "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS")
+
+			util.MustBindPFlag("maxTuplesPerWrite", flags.Lookup("max-tuples-per-write"))
+			util.MustBindEnv("maxTuplesPerWrite", "OPENFGA_MAX_TUPLES_PER_WRITE", "OPENFGA_MAXTUPLESPERWRITE")
+
+			util.MustBindPFlag("maxTypesPerAuthorizationModel", flags.Lookup("max-types-per-authorization-model"))
+			util.MustBindEnv("maxTypesPerAuthorizationModel", "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "OPENFGA_MAXTYPESPERAUTHORIZATIONMODEL")
+
+			util.MustBindPFlag("changelogHorizonOffset", flags.Lookup("changelog-horizon-offset"))
+			util.MustBindEnv("changelogHorizonOffset", "OPENFGA_CHANGELOG_HORIZON_OFFSET", "OPENFGA_CHANGELOGHORIZONOFFSET")
+
+			util.MustBindPFlag("resolveNodeLimit", flags.Lookup("resolve-node-limit"))
+			util.MustBindEnv("resolveNodeLimit", "OPENFGA_RESOLVE_NODE_LIMIT", "OPENFGA_RESOLVENODELIMIT")
+
+			util.MustBindPFlag("listObjectsDeadline", flags.Lookup("listObjects-deadline"))
+			util.MustBindEnv("listObjectsDeadline", "OPENFGA_LIST_OBJECTS_DEADLINE", "OPENFGA_LISTOBJECTSDEADLINE")
+
+			util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
+			util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
+		},
 	}
 
-	bindRunFlags(cmd)
+	defaultConfig := DefaultConfig()
+	flags := cmd.Flags()
+
+	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
+
+	flags.String("grpc-addr", defaultConfig.GRPC.Addr, "the host:port address to serve the grpc server on")
+
+	flags.Bool("grpc-tls-enabled", defaultConfig.GRPC.TLS.Enabled, "enable/disable transport layer security (TLS)")
+
+	flags.String("grpc-tls-cert", defaultConfig.GRPC.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
+
+	flags.String("grpc-tls-key", defaultConfig.GRPC.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
+
+	cmd.MarkFlagsRequiredTogether("grpc-tls-enabled", "grpc-tls-cert", "grpc-tls-key")
+
+	flags.Bool("http-enabled", defaultConfig.HTTP.Enabled, "enable/disable the OpenFGA HTTP server")
+
+	flags.String("http-addr", defaultConfig.HTTP.Addr, "the host:port address to serve the HTTP server on")
+
+	flags.Bool("http-tls-enabled", defaultConfig.HTTP.TLS.Enabled, "enable/disable transport layer security (TLS)")
+
+	flags.String("http-tls-cert", defaultConfig.HTTP.TLS.CertPath, "the (absolute) file path of the certificate to use for the TLS connection")
+
+	flags.String("http-tls-key", defaultConfig.HTTP.TLS.KeyPath, "the (absolute) file path of the TLS key that should be used for the TLS connection")
+
+	cmd.MarkFlagsRequiredTogether("http-tls-enabled", "http-tls-cert", "http-tls-key")
+
+	flags.Duration("http-upstream-timeout", defaultConfig.HTTP.UpstreamTimeout, "the timeout duration for proxying HTTP requests upstream to the grpc endpoint")
+
+	flags.StringSlice("http-cors-allowed-origins", defaultConfig.HTTP.CORSAllowedOrigins, "specifies the CORS allowed origins")
+
+	flags.StringSlice("http-cors-allowed-headers", defaultConfig.HTTP.CORSAllowedHeaders, "specifies the CORS allowed headers")
+
+	flags.String("authn-method", defaultConfig.Authn.Method, "the authentication method to use")
+
+	flags.StringSlice("authn-preshared-keys", defaultConfig.Authn.Keys, "one or more preshared keys to use for authentication")
+
+	flags.String("authn-oidc-audience", defaultConfig.Authn.Audience, "the OIDC audience of the tokens being signed by the authorization server")
+
+	flags.String("authn-oidc-issuer", defaultConfig.Authn.Issuer, "the OIDC issuer (authorization server) signing the tokens")
+
+	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
+
+	flags.String("datastore-uri", defaultConfig.Datastore.URI, "the connection uri to use to connect to the datastore (for any engine other than 'memory')")
+
+	flags.String("datastore-username", "", "the connection username to use to connect to the datastore (overwrites any username provided in the connection uri)")
+
+	flags.String("datastore-password", "", "the connection password to use to connect to the datastore (overwrites any password provided in the connection uri)")
+
+	flags.Int("datastore-max-cache-size", defaultConfig.Datastore.MaxCacheSize, "the maximum number of cache keys that the storage cache can store before evicting old keys")
+
+	flags.Int("datastore-max-open-conns", defaultConfig.Datastore.MaxOpenConns, "the maximum number of open connections to the datastore")
+
+	flags.Int("datastore-max-idle-conns", defaultConfig.Datastore.MaxIdleConns, "the maximum number of connections to the datastore in the idle connection pool")
+
+	flags.Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection to the datastore may be idle")
+
+	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
+
+	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
+
+	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
+
+	flags.Bool("profiler-enabled", defaultConfig.Profiler.Enabled, "enable/disable pprof profiling")
+
+	flags.String("profiler-addr", defaultConfig.Profiler.Addr, "the host:port address to serve the pprof profiler server on")
+
+	flags.String("log-format", defaultConfig.Log.Format, "the log format to output logs in")
+
+	flags.String("log-level", defaultConfig.Log.Level, "the log level to use")
+
+	flags.Bool("trace-enabled", defaultConfig.Trace.Enabled, "enable tracing")
+
+	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
+
+	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
+
+	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
+
+	flags.Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable prometheus metrics on the '/metrics' endpoint")
+
+	flags.String("metrics-addr", defaultConfig.Metrics.Addr, "the host:port address to serve the prometheus metrics server on")
+
+	flags.Bool("metrics-enable-rpc-histograms", defaultConfig.Metrics.EnableRPCHistograms, "enables prometheus histogram metrics for RPC latency distributions")
+
+	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
+
+	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+
+	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
+
+	flags.Uint32("resolve-node-limit", defaultConfig.ResolveNodeLimit, "defines how deeply nested an authorization model can be")
+
+	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
+
+	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
+
+	// NOTE: if you add a new flag here, add the binding in PreRunE
 
 	return cmd
 }
@@ -326,14 +567,6 @@ func MustDefaultConfigWithRandomPorts() *Config {
 // file is present, the default values are returned.
 func ReadConfig() (*Config, error) {
 	config := DefaultConfig()
-
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-
-	configPaths := []string{"/etc/openfga", "$HOME/.openfga", "."}
-	for _, path := range configPaths {
-		viper.AddConfigPath(path)
-	}
 
 	err := viper.ReadInConfig()
 	if err != nil {

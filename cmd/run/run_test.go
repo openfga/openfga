@@ -25,8 +25,12 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/openfga/openfga/cmd"
+	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -898,4 +902,62 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
+}
+
+func TestRunCommandNoConfigDefaultValues(t *testing.T) {
+	util.PrepareTempConfigDir(t)
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
+		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
+}
+
+func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
+	config := `datastore:
+    engine: postgres
+    uri: postgres://postgres:password@127.0.0.1:5432/postgres
+`
+	util.PrepareTempConfigFile(t, config)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
+		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
+}
+
+func TestRunCommandConfigIsMerged(t *testing.T) {
+	config := `datastore:
+    engine: postgres
+`
+	util.PrepareTempConfigFile(t, config)
+
+	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
+	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
+		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
+		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
+		return nil
+	}
+
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
 }
