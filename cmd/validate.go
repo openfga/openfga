@@ -17,10 +17,10 @@ import (
 func NewValidateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "validate-models",
-		Short: "Validate authorization models",
-		Long:  "List all authorization models across all stores and run validations against them.",
+		Short: "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
+		Long:  "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
 		RunE:  runValidate,
-		Args:  cobra.NoArgs,
+		Args:  cobra.MaximumNArgs(1),
 		PreRun: func(cmd *cobra.Command, args []string) {
 			flags := cmd.Flags()
 
