@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -26,6 +29,16 @@ const (
 	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
 	listObjectsOptimizedKey = "list_objects_optimized"
+)
+
+var (
+	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "list_objects_further_eval_required_count",
+	})
+
+	noFurtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "list_objects_no_further_eval_required_count",
+	})
 )
 
 type ListObjectsQuery struct {
@@ -145,33 +158,50 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
+		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)
+
+		wg := sync.WaitGroup{}
+
 		for res := range connectedObjectsResChan {
 
 			if res.ResultStatus == NoFurtherEvalStatus && atomic.AddUint32(objectsFound, 1) <= maxResults {
+				noFurtherEvalRequiredCounter.Inc()
 				resultsChan <- ListObjectsResult{ObjectID: res.Object}
 				continue
 			}
 
-			// todo(optimization): fire this Check resolution off concurrently and continue on to the next object in the
-			// result channel
-			resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-				StoreID:              req.GetStoreId(),
-				AuthorizationModelID: req.GetAuthorizationModelId(),
-				TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-				ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-				ResolutionMetadata: &graph.ResolutionMetadata{
-					Depth: q.ResolveNodeLimit,
-				},
-			})
-			if err != nil {
-				resultsChan <- ListObjectsResult{Err: err}
-				return // is this the right thing here or should we try to find all of them we can up to some limit?
-			}
+			furtherEvalRequiredCounter.Inc()
 
-			if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-				resultsChan <- ListObjectsResult{ObjectID: res.Object}
-			}
+			wg.Add(1)
+			go func(res *ConnectedObjectsResult) {
+				defer func() {
+					<-concurrencyLimiterCh
+					wg.Done()
+				}()
+
+				concurrencyLimiterCh <- struct{}{}
+
+				resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+					StoreID:              req.GetStoreId(),
+					AuthorizationModelID: req.GetAuthorizationModelId(),
+					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
+					ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+					ResolutionMetadata: &graph.ResolutionMetadata{
+						Depth: q.ResolveNodeLimit,
+					},
+				})
+				if err != nil {
+					resultsChan <- ListObjectsResult{Err: err}
+					return // is this the right thing here or should we try to find all of them we can up to some limit?
+				}
+
+				if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
+					resultsChan <- ListObjectsResult{ObjectID: res.Object}
+				}
+			}(res)
 		}
+
+		wg.Wait()
 
 		close(resultsChan)
 	}
@@ -241,6 +271,7 @@ func (q *ListObjectsQuery) Execute(
 			if result.Err != nil {
 				return nil, serverErrors.NewInternalError("", result.Err)
 			}
+
 			if !channelOpen {
 				return &openfgapb.ListObjectsResponse{
 					Objects: objects,
