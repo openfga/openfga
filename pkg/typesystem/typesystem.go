@@ -723,8 +723,6 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 					return nil
 				}
 			}
-			// ErrRes := ErrUserNotRelatedToType{computedUserset, userTypes}
-
 			return fmt.Errorf("%w: %s does not appear as a relation in any of the directly related user types %s", ErrRelationUndefined, computedUserset, userTypes)
 		} else {
 			// for 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model
