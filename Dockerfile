@@ -10,7 +10,7 @@ FROM cgr.dev/chainguard/static@sha256:ee47224a2afc674c1f1089b9dea97d5ee400cf2fff
 EXPOSE 8081
 EXPOSE 8080
 EXPOSE 3000
-COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.18 /ko-app/grpc-health-probe /user/local/bin/grpc_health_probe
+COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.19 /ko-app/grpc-health-probe /user/local/bin/grpc_health_probe
 COPY --from=builder /app/openfga /openfga
 COPY --from=builder /app/assets /assets
 ENTRYPOINT ["/openfga"]
