@@ -20,7 +20,7 @@ func NewValidateCommand() *cobra.Command {
 		Short: "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
 		Long:  "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
 		RunE:  runValidate,
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.NoArgs,
 		PreRun: func(cmd *cobra.Command, args []string) {
 			flags := cmd.Flags()
 
