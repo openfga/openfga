@@ -59,10 +59,10 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	expectedId := "expectedId"
+	expectedID := "expectedId"
 	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
 		time.Sleep(1 * time.Second)
-		return expectedId, nil
+		return expectedID, nil
 	}).Times(1)
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
 	var wg sync.WaitGroup
@@ -72,7 +72,7 @@ func TestFindLatestAuthorizationModelID(t *testing.T) {
 			defer wg.Done()
 			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
 			require.NoError(t, err)
-			require.Equal(t, expectedId, id)
+			require.Equal(t, expectedID, id)
 		}()
 	}
 	wg.Wait()
