@@ -83,7 +83,7 @@ func bindRunFlags(command *cobra.Command) {
 	util.MustBindPFlag("authn.oidc.issuer", flags.Lookup("authn-oidc-issuer"))
 	util.MustBindEnv("authn.oidc.issuer", "OPENFGA_AUTHN_OIDC_ISSUER")
 
-	flags.String("datastore-engine", defaultConfig.Datastore.Engine, "the datastore engine that will be used for persistence")
+	flags.String("datastore-engine", defaultConfig.Datastore.Engine.String(), "the datastore engine that will be used for persistence")
 	util.MustBindPFlag("datastore.engine", flags.Lookup("datastore-engine"))
 	util.MustBindEnv("datastore.engine", "OPENFGA_DATASTORE_ENGINE")
 

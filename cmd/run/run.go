@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/openfga/openfga/cmd"
 	"html/template"
 	"net"
 	"net/http"
@@ -78,7 +79,7 @@ func NewRunCommand() *cobra.Command {
 type DatastoreConfig struct {
 
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   string
+	Engine   cmd.DatastoreEngine
 	URI      string
 	Username string
 	Password string
@@ -350,6 +351,9 @@ func ReadConfig() (*Config, error) {
 }
 
 func VerifyConfig(cfg *Config) error {
+	if isValid := cfg.Datastore.Engine.IsValid(); !isValid {
+		return fmt.Errorf("invalid datastore engine '(%s)'", cfg.Datastore.Engine.String())
+	}
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}
@@ -439,18 +443,18 @@ func RunServer(ctx context.Context, config *Config) error {
 	var datastore storage.OpenFGADatastore
 	var err error
 	switch config.Datastore.Engine {
-	case "memory":
+	case cmd.Memory:
 		opts := []memory.StorageOption{
 			memory.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 			memory.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		}
 		datastore = memory.New(opts...)
-	case "mysql":
+	case cmd.MySQL:
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
 		}
-	case "postgres":
+	case cmd.Postgres:
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
 			return fmt.Errorf("failed to initialize postgres datastore: %w", err)

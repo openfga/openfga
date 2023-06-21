@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -87,4 +88,16 @@ func TestConfigIsMerged(t *testing.T) {
 		return nil
 	}
 	require.Nil(t, migrateCmd.Execute())
+}
+
+func TestDatastoreIsInValid(t *testing.T) {
+	config := `datastore:
+    engine: mssql
+    uri: postgres://postgres:password@127.0.0.1:5432/postgres
+`
+	prepareTempConfigFile(t, config)
+
+	migrateCmd := NewMigrateCommand()
+	err := migrateCmd.Execute()
+	require.Error(t, errors.New("invalid datastore engine '(mssql)'"), err)
 }
