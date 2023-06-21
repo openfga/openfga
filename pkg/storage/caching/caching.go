@@ -17,8 +17,8 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
-	G     singleflight.Group
-	cache *ccache.Cache[*openfgapb.AuthorizationModel]
+	lookupGroup singleflight.Group
+	cache       *ccache.Cache[*openfgapb.AuthorizationModel]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches *openfgapb.AuthorizationModel
@@ -49,7 +49,7 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 }
 
 func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
-	v, err, _ := c.G.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
+	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
 		return c.OpenFGADatastore.FindLatestAuthorizationModelID(ctx, storeID)
 	})
 	if err != nil {
