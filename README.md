@@ -208,7 +208,7 @@ The MySQL storage engine has a lower length limit for some properties of a tuple
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
 
-OpenFGA's Memory Adapter was built for development purposes only and is not recommended for a production environment, since it will not scale well for a large number of tuples.
+OpenFGA's Memory Storage Adapter was built for development purposes only and is not recommended for a production environment, because it is not designed for scalable queries and has no support for persistence.
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
 
