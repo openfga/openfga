@@ -156,7 +156,6 @@ type TypeDefinitionWriteBackend interface {
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
-	// It is expected that the number of type definitions is less than or equal to 24
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error
 }
 
