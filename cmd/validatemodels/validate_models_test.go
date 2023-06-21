@@ -1,4 +1,4 @@
-package cmd
+package validatemodels
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
@@ -103,7 +104,7 @@ func TestValidateModelsCommandNoConfigDefaultValues(t *testing.T) {
 		return nil
 	}
 
-	cmd := NewRootCommand()
+	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCommand)
 	cmd.SetArgs([]string{"validate-models"})
 	require.Nil(t, cmd.Execute())
@@ -123,7 +124,7 @@ func TestValidateModelsCommandConfigFileValuesAreParsed(t *testing.T) {
 		return nil
 	}
 
-	cmd := NewRootCommand()
+	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCmd)
 	cmd.SetArgs([]string{"validate-models"})
 	require.Nil(t, cmd.Execute())
@@ -144,7 +145,7 @@ func TestValidateModelsCommandConfigIsMerged(t *testing.T) {
 		return nil
 	}
 
-	cmd := NewRootCommand()
+	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCmd)
 	cmd.SetArgs([]string{"validate-models"})
 	require.Nil(t, cmd.Execute())

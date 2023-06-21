@@ -1,4 +1,4 @@
-package cmd
+package migrate
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 const (
+	datastoreEngineFlag  = "datastore-engine"
+	datastoreURIFlag     = "datastore-uri"
 	versionFlag          = "version"
 	timeoutFlag          = "timeout"
 	verboseMigrationFlag = "verbose"
@@ -25,20 +26,12 @@ const (
 
 func NewMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "migrate",
-		Short: "Run database schema migrations needed for the OpenFGA server",
-		Long:  `The migrate command is used to migrate the database schema needed for OpenFGA.`,
-		RunE:  runMigration,
-		Args:  cobra.NoArgs,
-		PreRun: func(cmd *cobra.Command, args []string) {
-			flags := cmd.Flags()
-
-			util.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
-			util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
-			util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
-			util.MustBindPFlag(timeoutFlag, flags.Lookup(timeoutFlag))
-			util.MustBindPFlag(verboseMigrationFlag, flags.Lookup(verboseMigrationFlag))
-		},
+		Use:    "migrate",
+		Short:  "Run database schema migrations needed for the OpenFGA server",
+		Long:   `The migrate command is used to migrate the database schema needed for OpenFGA.`,
+		RunE:   runMigration,
+		Args:   cobra.NoArgs,
+		PreRun: bindRunFlags,
 	}
 
 	flags := cmd.Flags()
@@ -49,7 +42,7 @@ func NewMigrateCommand() *cobra.Command {
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 
-	// NOTE: if you add a new flag here, add the binding in PreRunE
+	// NOTE: if you add a new flag here, add the binding in flags.go
 
 	return cmd
 }

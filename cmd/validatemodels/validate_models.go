@@ -1,11 +1,10 @@
-package cmd
+package validatemodels
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
@@ -15,31 +14,31 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	datastoreEngineFlag = "datastore-engine"
+	datastoreURIFlag    = "datastore-uri"
+)
+
 func NewValidateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "validate-models",
-		Short: "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
-		Long:  "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
-		RunE:  runValidate,
-		Args:  cobra.NoArgs,
-		PreRun: func(cmd *cobra.Command, args []string) {
-			flags := cmd.Flags()
-
-			util.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
-			util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
-		},
+		Use:    "validate-models",
+		Short:  "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
+		Long:   "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
+		RunE:   runValidate,
+		Args:   cobra.NoArgs,
+		PreRun: bindRunFlags,
 	}
 
 	flags := cmd.Flags()
 	flags.String(datastoreEngineFlag, "", "the datastore engine")
 	flags.String(datastoreURIFlag, "", "the connection uri to the datastore")
 
-	// NOTE: if you add a new flag here, add the binding in PreRunE
+	// NOTE: if you add a new flag here, add the binding in flags.go
 
 	return cmd
 }
 
-type ValidationResult struct {
+type validationResult struct {
 	StoreID       string `json:"store_id"`
 	ModelID       string `json:"model_id"`
 	IsLatestModel bool   `json:"is_latest_model"`
@@ -78,8 +77,7 @@ func runValidate(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// print validation results in json format to allow piping to other commands, e.g. jq
-	marshalled, err := json.Marshal(validationResults)
+	marshalled, err := json.MarshalIndent(validationResults, " ", "    ")
 	if err != nil {
 		return fmt.Errorf("error gathering validation results: %w", err)
 	}
@@ -90,8 +88,8 @@ func runValidate(_ *cobra.Command, _ []string) error {
 
 // ValidateAllAuthorizationModels lists all stores and then, for each store, lists all models.
 // Then it runs validation on each model.
-func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatastore) ([]ValidationResult, error) {
-	validationResults := make([]ValidationResult, 0)
+func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatastore) ([]validationResult, error) {
+	validationResults := make([]validationResult, 0)
 
 	continuationTokenStores := ""
 
@@ -129,7 +127,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 				for _, model := range models {
 					_, err := typesystem.NewAndValidate(model)
 
-					validationResult := ValidationResult{
+					validationResult := validationResult{
 						StoreID:       store.Id,
 						ModelID:       model.Id,
 						IsLatestModel: model.Id == latestModelID,
