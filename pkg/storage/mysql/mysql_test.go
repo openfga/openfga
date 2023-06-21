@@ -2,12 +2,10 @@ package mysql
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -25,30 +23,6 @@ func TestMySQLDatastore(t *testing.T) {
 	require.NoError(t, err)
 	defer ds.Close()
 	test.RunAllTests(t, ds)
-}
-
-func TestMigrate(t *testing.T) {
-	engine := "mysql"
-	// starts the container and runs migration up to the latest migration version available
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-	defer ds.Close()
-
-	// going from version 3 to 4 when migration #4 doesn't exist is a no-op
-	version := testDatastore.GetDatabaseSchemaVersion() + 1
-
-	migrateCommand := cmd.NewMigrateCommand()
-
-	for version >= 0 {
-		t.Logf("migrating to version %d", version)
-		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
-		err = migrateCommand.Execute()
-		require.NoError(t, err)
-		version--
-	}
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid

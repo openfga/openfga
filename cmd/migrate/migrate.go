@@ -1,18 +1,16 @@
-package cmd
+package migrate
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/openfga/openfga/assets"
-	"github.com/openfga/openfga/cmd/util"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -20,9 +18,7 @@ import (
 
 const (
 	datastoreEngineFlag  = "datastore-engine"
-	datastoreEngineConf  = "datastore.engine"
 	datastoreURIFlag     = "datastore-uri"
-	datastoreURIConf     = "datastore.uri"
 	versionFlag          = "version"
 	timeoutFlag          = "timeout"
 	verboseMigrationFlag = "verbose"
@@ -34,27 +30,20 @@ func NewMigrateCommand() *cobra.Command {
 		Short: "Run database schema migrations needed for the OpenFGA server",
 		Long:  `The migrate command is used to migrate the database schema needed for OpenFGA.`,
 		RunE:  runMigration,
+		Args:  cobra.NoArgs,
 	}
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
+	flags := cmd.Flags()
 
-	configPaths := []string{"/etc/openfga", "$HOME/.openfga", "."}
-	for _, path := range configPaths {
-		viper.AddConfigPath(path)
-	}
+	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
+	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
+	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
+	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
+	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 
-	err := viper.ReadInConfig()
-	if err == nil {
-		viper.SetDefault(datastoreEngineFlag, viper.Get(datastoreEngineConf))
-		viper.SetDefault(datastoreURIFlag, viper.Get(datastoreURIConf))
-	}
+	// NOTE: if you add a new flag here, update the function below, too
 
-	viper.SetEnvPrefix("OPENFGA")
-	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
-	viper.AutomaticEnv()
-
-	bindMigrateFlags(cmd)
+	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
 }
@@ -151,23 +140,4 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	log.Println("migration done")
 
 	return nil
-}
-
-func bindMigrateFlags(cmd *cobra.Command) {
-	flags := cmd.Flags()
-
-	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
-	util.MustBindPFlag(datastoreEngineFlag, flags.Lookup(datastoreEngineFlag))
-
-	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
-	util.MustBindPFlag(datastoreURIFlag, flags.Lookup(datastoreURIFlag))
-
-	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
-	util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
-
-	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
-	util.MustBindPFlag(timeoutFlag, flags.Lookup(timeoutFlag))
-
-	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
-	util.MustBindPFlag(verboseMigrationFlag, flags.Lookup(verboseMigrationFlag))
 }
