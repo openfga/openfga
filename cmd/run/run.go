@@ -67,12 +67,11 @@ const (
 
 func NewRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "run",
-		Short:  "Run the OpenFGA server",
-		Long:   "Run the OpenFGA server.",
-		Run:    run,
-		Args:   cobra.NoArgs,
-		PreRun: bindRunFlags,
+		Use:   "run",
+		Short: "Run the OpenFGA server",
+		Long:  "Run the OpenFGA server.",
+		Run:   run,
+		Args:  cobra.NoArgs,
 	}
 
 	defaultConfig := DefaultConfig()
@@ -172,7 +171,9 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
-	// NOTE: if you add a new flag here, add the binding in flags.go
+	// NOTE: if you add a new flag here, update the function below, too
+
+	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
 }

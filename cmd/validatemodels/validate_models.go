@@ -21,19 +21,20 @@ const (
 
 func NewValidateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "validate-models",
-		Short:  "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
-		Long:   "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
-		RunE:   runValidate,
-		Args:   cobra.NoArgs,
-		PreRun: bindRunFlags,
+		Use:   "validate-models",
+		Short: "Validate authorization models. NOTE: this command is in beta and may be removed in future releases.",
+		Long:  "List all authorization models across all stores and run validations against them.\nNOTE: this command is in beta and may be removed in future releases.",
+		RunE:  runValidate,
+		Args:  cobra.NoArgs,
 	}
 
 	flags := cmd.Flags()
 	flags.String(datastoreEngineFlag, "", "the datastore engine")
 	flags.String(datastoreURIFlag, "", "the connection uri to the datastore")
 
-	// NOTE: if you add a new flag here, add the binding in flags.go
+	// NOTE: if you add a new flag here, update the function below, too
+
+	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
 }

@@ -26,12 +26,11 @@ const (
 
 func NewMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:    "migrate",
-		Short:  "Run database schema migrations needed for the OpenFGA server",
-		Long:   `The migrate command is used to migrate the database schema needed for OpenFGA.`,
-		RunE:   runMigration,
-		Args:   cobra.NoArgs,
-		PreRun: bindRunFlags,
+		Use:   "migrate",
+		Short: "Run database schema migrations needed for the OpenFGA server",
+		Long:  `The migrate command is used to migrate the database schema needed for OpenFGA.`,
+		RunE:  runMigration,
+		Args:  cobra.NoArgs,
 	}
 
 	flags := cmd.Flags()
@@ -42,7 +41,9 @@ func NewMigrateCommand() *cobra.Command {
 	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 
-	// NOTE: if you add a new flag here, add the binding in flags.go
+	// NOTE: if you add a new flag here, update the function below, too
+
+	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
 }
