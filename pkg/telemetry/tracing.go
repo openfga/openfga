@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc"
 )
 
-func MustNewTracerProvider(endpoint string, serviceName string, ratio float64) *sdktrace.TracerProvider {
+func MustNewTracerProvider(endpoint string, serviceName string, ratio float64, enableTailLatencySpanExporter bool, tailLatencyInMs int) *sdktrace.TracerProvider {
 	res, err := resource.Merge(
 		resource.Default(),
 		resource.NewSchemaless(
@@ -31,13 +31,21 @@ func MustNewTracerProvider(endpoint string, serviceName string, ratio float64) *
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	exp, err := otlptracegrpc.New(ctx,
+	var exp sdktrace.SpanExporter
+	exp, err = otlptracegrpc.New(ctx,
 		otlptracegrpc.WithInsecure(),
 		otlptracegrpc.WithEndpoint(endpoint),
 		otlptracegrpc.WithDialOption(grpc.WithBlock()),
 	)
 	if err != nil {
 		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
+	}
+
+	if enableTailLatencySpanExporter {
+		if ratio != 1 {
+			panic("to enable trace exporting based on tail latency, you must set the trace sample ratio to 1")
+		}
+		exp = NewTailLatencySpanExporter(exp, WithLatencyInMs(tailLatencyInMs))
 	}
 
 	tp := sdktrace.NewTracerProvider(

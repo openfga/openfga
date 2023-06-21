@@ -151,6 +151,10 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
+	flags.Bool("trace-enable-tail-latency-exporter", defaultConfig.Trace.EnableTailLatencyExporter, "if true, only export top-level spans whose duration is higher than the value of trace-tail-latency-in-ms")
+
+	flags.Int("trace-tail-latency", defaultConfig.Trace.TailLatencyInMs, "top-level spans under this duration (in milliseconds) will not be exported")
+
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
 
 	flags.Bool("metrics-enabled", defaultConfig.Metrics.Enabled, "enable/disable prometheus metrics on the '/metrics' endpoint")
@@ -264,10 +268,12 @@ type LogConfig struct {
 }
 
 type TraceConfig struct {
-	Enabled     bool
-	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
-	SampleRatio float64
-	ServiceName string
+	Enabled                   bool
+	OTLP                      OTLPTraceConfig `mapstructure:"otlp"`
+	SampleRatio               float64
+	ServiceName               string
+	EnableTailLatencyExporter bool
+	TailLatencyInMs           int
 }
 
 type OTLPTraceConfig struct {
@@ -374,8 +380,10 @@ func DefaultConfig() *Config {
 			OTLP: OTLPTraceConfig{
 				Endpoint: "0.0.0.0:4317",
 			},
-			SampleRatio: 0.2,
-			ServiceName: "openfga",
+			SampleRatio:               0.2,
+			ServiceName:               "openfga",
+			EnableTailLatencyExporter: false,
+			TailLatencyInMs:           1000,
 		},
 		Playground: PlaygroundConfig{
 			Enabled: true,
@@ -509,8 +517,8 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio)
+		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v, tail-based exporter is %v. Sending traces to '%s'", config.Trace.SampleRatio, config.Trace.EnableTailLatencyExporter, config.Trace.OTLP.Endpoint))
+		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio, config.Trace.EnableTailLatencyExporter, config.Trace.TailLatencyInMs)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
