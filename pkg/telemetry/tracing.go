@@ -42,9 +42,6 @@ func MustNewTracerProvider(endpoint string, serviceName string, ratio float64, e
 	}
 
 	if enableTailLatencySpanExporter {
-		if ratio != 1 {
-			panic("to enable trace exporting based on tail latency, you must set the trace sample ratio to 1")
-		}
 		exp = NewTailLatencySpanExporter(exp, WithLatencyInMs(tailLatencyInMs))
 	}
 
