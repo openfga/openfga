@@ -162,16 +162,31 @@ In the event that a port other than the default port is required, the `--playgro
 ```
 
 ## Profiler (pprof)
-Profiling through pprof can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
+Profiling through [pprof](https://github.com/google/pprof) can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
 
 ```sh
 ./openfga run --profiler-enabled
 ```
 
-If you need to serve the profiler on a different address than the default `:3001`, you can do so by specifying the `--profiler-addr` flag. For example,
+This will start serving profiling data on port `3001`. You can see that data by visiting `http://localhost:3001/debug/pprof`.
+
+If you need to serve the profiler on a different address, you can do so by specifying the `--profiler-addr` flag. For example,
 
 ```sh
 ./openfga run --profiler-enabled --profiler-addr :3002
+```
+
+Once the OpenFGA server is running, in another window you can run the following command to generate a compressed CPU profile:
+
+```sh
+go tool pprof -proto -seconds 60 http://localhost:3001/debug/pprof/profile
+# will collect data for 60 seconds and generate a file like pprof.samples.cpu.001.pb.gz
+```
+
+That file can be analyzed visually by running the following command and then visiting `http://localhost:8084`:
+
+```shell
+go tool pprof -http=localhost:8084 pprof.samples.cpu.001.pb.gz
 ```
 
 ## Next Steps
@@ -192,6 +207,8 @@ The MySQL storage engine has a lower length limit for some properties of a tuple
 ## Production Readiness
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
+
+OpenFGA's Memory Storage Adapter was built for development purposes only and is not recommended for a production environment, because it is not designed for scalable queries and has no support for persistence.
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
 
