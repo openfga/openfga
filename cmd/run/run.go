@@ -153,7 +153,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Bool("trace-enable-tail-latency-exporter", defaultConfig.Trace.EnableTailLatencyExporter, "if true, only export top-level spans whose duration is higher than the value of trace-tail-latency-in-ms")
 
-	flags.Int("trace-tail-latency", defaultConfig.Trace.TailLatencyInMs, "top-level spans under this duration (in milliseconds) will not be exported")
+	flags.Int("trace-tail-latency-in-ms", defaultConfig.Trace.TailLatencyInMs, "top-level spans under this duration (in milliseconds) will not be exported")
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
 
