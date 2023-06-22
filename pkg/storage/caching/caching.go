@@ -8,6 +8,7 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"golang.org/x/sync/singleflight"
 )
 
 const ttl = time.Hour * 168
@@ -16,7 +17,8 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
-	cache *ccache.Cache[*openfgapb.AuthorizationModel]
+	lookupGroup singleflight.Group
+	cache       *ccache.Cache[*openfgapb.AuthorizationModel]
 }
 
 // NewCachedOpenFGADatastore returns a wrapper over a datastore that caches *openfgapb.AuthorizationModel
@@ -44,6 +46,16 @@ func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, sto
 	c.cache.Set(cacheKey, model, ttl) // these are immutable, once created, there cannot be edits, therefore they can be cached without ttl
 
 	return model, nil
+}
+
+func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Context, storeID string) (string, error) {
+	v, err, _ := c.lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
+		return c.OpenFGADatastore.FindLatestAuthorizationModelID(ctx, storeID)
+	})
+	if err != nil {
+		return "", err
+	}
+	return v.(string), nil
 }
 
 func (c *cachedOpenFGADatastore) Close() {
