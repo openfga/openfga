@@ -518,7 +518,12 @@ func RunServer(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v, tail-based exporter is %v. Sending traces to '%s'", config.Trace.SampleRatio, config.Trace.EnableTailLatencyExporter, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio, config.Trace.EnableTailLatencyExporter, config.Trace.TailLatencyInMs)
+		tp = telemetry.MustNewTracerProvider(
+			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+			telemetry.WithServiceName(config.Trace.ServiceName),
+			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
+			telemetry.WithEnableTailLatencySpanExporter(config.Trace.EnableTailLatencyExporter),
+			telemetry.WithTailLatencyInMillisecond(config.Trace.TailLatencyInMs))
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))

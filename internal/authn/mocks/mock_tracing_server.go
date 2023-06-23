@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 
 	otlpcollector "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
@@ -13,9 +14,12 @@ import (
 type MockTracingServer struct {
 	otlpcollector.UnimplementedTraceServiceServer
 	exportCount int
+	serviceMu   sync.Mutex
 }
 
 func (s *MockTracingServer) Export(context.Context, *otlpcollector.ExportTraceServiceRequest) (*otlpcollector.ExportTraceServiceResponse, error) {
+	s.serviceMu.Lock()
+	defer s.serviceMu.Unlock()
 	s.exportCount++
 	return &otlpcollector.ExportTraceServiceResponse{}, nil
 }
@@ -38,5 +42,7 @@ func NewMockTracingServer(port int) (*MockTracingServer, error) {
 }
 
 func (s *MockTracingServer) GetExportCount() int {
+	s.serviceMu.Lock()
+	defer s.serviceMu.Unlock()
 	return s.exportCount
 }
