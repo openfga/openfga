@@ -51,6 +51,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -520,7 +521,10 @@ func RunServer(ctx context.Context, config *Config) error {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v, tail-based exporter is %v. Sending traces to '%s'", config.Trace.SampleRatio, config.Trace.EnableTailLatencyExporter, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(
 			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
-			telemetry.WithServiceName(config.Trace.ServiceName),
+			telemetry.WithAttributes(
+				semconv.ServiceNameKey.String(config.Trace.ServiceName),
+				semconv.ServiceVersionKey.String(build.Version),
+			),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
 			telemetry.WithEnableTailLatencySpanExporter(config.Trace.EnableTailLatencyExporter),
 			telemetry.WithTailLatencyInMillisecond(config.Trace.TailLatencyInMs))
