@@ -3,16 +3,20 @@ package caching
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-func TestCache(t *testing.T) {
+func TestReadAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 	memoryBackend := memory.New()
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
@@ -49,4 +53,27 @@ func TestCache(t *testing.T) {
 	gotModel, err = cachingBackend.ReadAuthorizationModel(ctx, storeID, model.Id)
 	require.NoError(t, err)
 	require.Equal(t, model, gotModel)
+}
+
+func TestFindLatestAuthorizationModelID(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	expectedID := "expectedId"
+	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
+		time.Sleep(1 * time.Second)
+		return expectedID, nil
+	}).Times(1)
+	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
+			require.NoError(t, err)
+			require.Equal(t, expectedID, id)
+		}()
+	}
+	wg.Wait()
 }
