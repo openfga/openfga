@@ -4663,3 +4663,248 @@ tests:
             expectation:
               - repo:1
 
+      - model: | #complex model
+          type user
+          type folder
+            relations
+              define parent: [folder] as self
+              define owner: [group] as self
+              define folder_reader: [user, group#member] as self or folder_reader from owner or folder_reader from parent
+              define blocked: [user, user:*, group#member] as self or nblocked from parent
+              define unblocked: [user, group#member] as self
+              define nblocked as blocked but not unblocked
+              define allowed: [user, user:*, group#member] as self or allowed from parent
+              define super_allowed: [user, group#member] as self or super_allowed from parent
+              define reader as folder_reader and allowed and super_allowed
+              define can_read as reader but not nblocked
+          type group
+            relations
+              define parent: [group] as self
+              define allowed: [user, group#member] as self or allowed from parent
+              define super_allowed: [user, group#super_allowed] as self
+              define blocked: [user, group#member] as self or blocked from parent
+              define og_member: [user] as self or member from parent
+              define allowed_member as og_member and allowed and super_allowed
+              define member as allowed_member but not blocked
+              define folder_reader: [group#member] as self or folder_reader from parent
+        tuples:
+          - user: user:anne
+            relation: og_member
+            object: group:marketing
+          - user: user:anne
+            relation: allowed
+            object: group:marketing
+          - user: user:anne
+            relation: super_allowed
+            object: group:marketing
+          - user: user:beth
+            relation: og_member
+            object: group:marketing
+          - user: user:beth
+            relation: allowed
+            object: group:marketing
+          - user: user:beth
+            relation: super_allowed
+            object: group:marketing
+          - user: user:carl
+            relation: og_member
+            object: group:marketing
+          - user: user:carl
+            relation: allowed
+            object: group:marketing
+          - user: user:dan
+            relation: og_member
+            object: group:marketing
+          - user: user:dan
+            relation: allowed
+            object: group:marketing
+          - user: user:dan
+            relation: super_allowed
+            object: group:marketing
+          - user: user:dan
+            relation: blocked
+            object: group:marketing
+          - user: user:emily
+            relation: og_member
+            object: group:marketing
+          - user: user:emily
+            relation: allowed
+            object: group:marketing
+          - user: user:emily
+            relation: super_allowed
+            object: group:marketing
+          - user: user:gabriel
+            relation: og_member
+            object: group:marketing
+          - user: user:gabriel
+            relation: allowed
+            object: group:marketing
+          - user: user:gabriel
+            relation: super_allowed
+            object: group:marketing
+          - user: user:harriette
+            relation: og_member
+            object: group:marketing
+          - user: user:harriette
+            relation: allowed
+            object: group:marketing
+          - user: user:harriette
+            relation: super_allowed
+            object: group:marketing
+          - user: user:gabriel
+            relation: og_member
+            object: group:admin
+          - user: user:gabriel
+            relation: allowed
+            object: group:admin
+          - user: user:gabriel
+            relation: super_allowed
+            object: group:admin
+          - user: group:marketing#member
+            relation: folder_reader
+            object: group:marketing
+          - user: group:marketing
+            relation: parent
+            object: group:digitalmktg
+          - user: group:marketing#super_allowed
+            relation: super_allowed
+            object: group:digitalmktg
+          - user: group:digitalmktg
+            relation: owner
+            object: folder:1
+          - user: folder:1
+            relation: parent
+            object: folder:2
+          - user: folder:2
+            relation: parent
+            object: folder:3
+          - user: folder:3
+            relation: parent
+            object: folder:4
+          - user: folder:4
+            relation: parent
+            object: folder:5
+          - user: group:marketing#member
+            relation: allowed
+            object: folder:1
+          - user: group:marketing#member
+            relation: super_allowed
+            object: folder:1
+          - user: user:beth
+            relation: blocked
+            object: folder:2
+          - user: user:emily
+            relation: blocked
+            object: folder:1
+          - user: user:emily
+            relation: unblocked
+            object: folder:2
+          - user: user:gabriel
+            relation: blocked
+            object: folder:1
+          - user: user:harriette
+            relation: unblocked
+            object: folder:5
+          - user: user:*
+            relation: blocked
+            object: folder:4
+          - user: user:*
+            relation: allowed
+            object: folder:4
+          - user: group:admin#member
+            relation: unblocked
+            object: folder:2
+        checkAssertions:
+          - tuple:
+              user: user:anne
+              relation: can_read
+              object: folder:3
+            expectation: True
+          - tuple:
+              user: user:beth
+              relation: can_read
+              object: folder:3
+            expectation: False
+          - tuple:
+              user: user:carl
+              relation: can_read
+              object: folder:3
+            expectation: False
+          - tuple:
+              user: user:dan
+              relation: can_read
+              object: folder:3
+            expectation: False
+          - tuple:
+              user: user:emily
+              relation: can_read
+              object: folder:3
+            expectation: True
+          - tuple:
+              user: user:frida
+              relation: can_read
+              object: folder:3
+            expectation: False
+          - tuple:
+              user: user:gabriel
+              relation: can_read
+              object: folder:3
+            expectation: True
+          - tuple:
+              user: user:harriette
+              relation: can_read
+              object: folder:3
+            expectation: True
+        listObjectsAssertions:
+          - request:
+              user: user:anne
+              relation: can_read
+              type: folder
+            expectation:
+              - folder:1
+              - folder:2
+              - folder:3
+          - request:
+              user: user:beth
+              relation: can_read
+              type: folder
+            expectation:
+              - folder:1
+          - request:
+              user: user:carl
+              relation: can_read
+              type: folder
+            expectation: []
+          - request:
+              user: user:dan
+              relation: can_read
+              type: folder
+            expectation: []
+          - request:
+              user: user:emily
+              relation: can_read
+              type: folder
+            expectation:
+              - folder:2
+              - folder:3
+          - request:
+              user: user:frida
+              relation: can_read
+              type: folder
+            expectation: []
+          - request:
+              user: user:gabriel
+              relation: can_read
+              type: folder
+            expectation:
+              - folder:2
+              - folder:3
+          - request:
+              user: user:harriette
+              relation: can_read
+              type: folder
+            expectation:
+              - folder:1
+              - folder:2
+              - folder:3
+              - folder:5
