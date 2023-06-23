@@ -1201,6 +1201,159 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "basic_relation_with_intersection_1",
+			model: `
+			type user
+
+			type document
+			  relations
+				define allowed: [user] as self
+				define viewer: [user] as self and allowed
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "allowed"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_relation_with_intersection_2",
+			model: `
+			type user
+
+			type document
+			  relations
+				define allowed: [user] as self
+				define editor: [user] as self
+				define viewer as editor and allowed
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "allowed"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_relation_with_intersection_3",
+			model: `
+			type user
+
+			type document
+			  relations
+				define allowed: [user] as self
+				define editor: [user] as self
+				define viewer: [user] as allowed and self
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "allowed"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_relation_with_exclusion_1",
+			model: `
+			type user
+
+			type document
+			  relations
+				define restricted: [user] as self
+				define viewer: [user] as self but not restricted
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "restricted"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_relation_with_exclusion_2",
+			model: `
+			type user
+
+			type document
+			  relations
+				define restricted: [user] as self
+				define editor: [user] as self
+				define viewer as editor but not restricted
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "editor"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "restricted"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "basic_relation_with_exclusion_3",
+			model: `
+			type user
+
+			type document
+			  relations
+				define allowed: [user] as self
+				define viewer: [user] as allowed but not self
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("user", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "allowed"),
+					Condition: RequiresFurtherEvalCondition,
+				},
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("document", "viewer"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

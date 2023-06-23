@@ -401,20 +401,22 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 			return childresults, nil
 		}
 
-		var res []*RelationshipIngress
-		var err error
+		var ingresses []*RelationshipIngress
 		for _, child := range t.Intersection.GetChild() {
-			res, err = g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
+
+			res, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, childresult := range res {
-				childresult.Condition = RequiresFurtherEvalCondition
-			}
+			ingresses = append(ingresses, res...)
 		}
 
-		return res, nil
+		if len(ingresses) > 0 {
+			ingresses[0].Condition = RequiresFurtherEvalCondition
+		}
+
+		return ingresses, nil
 	case *openfgapb.Userset_Difference:
 
 		if findIngressOption == resolveAnyIngress {
@@ -432,7 +434,30 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 			return childresults, nil
 		}
 
-		return nil, fmt.Errorf("not implemented")
+		var ingresses []*RelationshipIngress
+
+		baseRewrite := t.Difference.GetBase()
+
+		baseIngresses, err := g.findIngressesWithTargetRewrite(target, source, baseRewrite, visited, findIngressOption)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(baseIngresses) > 0 {
+			baseIngresses[0].Condition = RequiresFurtherEvalCondition
+		}
+
+		ingresses = append(ingresses, baseIngresses...)
+
+		subtractRewrite := t.Difference.GetSubtract()
+
+		subIngresses, err := g.findIngressesWithTargetRewrite(target, source, subtractRewrite, visited, findIngressOption)
+		if err != nil {
+			return nil, err
+		}
+		ingresses = append(ingresses, subIngresses...)
+
+		return ingresses, nil
 	default:
 		panic("unexpected userset rewrite encountered")
 	}
