@@ -48,6 +48,8 @@ type Server struct {
 	encoder   encoder.Encoder
 	transport gateway.Transport
 	config    *Config
+
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
 type Dependencies struct {
@@ -69,17 +71,20 @@ type Config struct {
 // for managing data.
 func New(dependencies *Dependencies, config *Config) *Server {
 
+	typesysResolverFunc := typesystem.MemoizedTypesystemResolverFunc(dependencies.Datastore)
+
 	return &Server{
-		logger:    dependencies.Logger,
-		datastore: dependencies.Datastore,
-		encoder:   dependencies.TokenEncoder,
-		transport: dependencies.Transport,
-		config:    config,
+		logger:             dependencies.Logger,
+		datastore:          dependencies.Datastore,
+		encoder:            dependencies.TokenEncoder,
+		transport:          dependencies.Transport,
+		config:             config,
+		typesystemResolver: typesysResolverFunc,
 	}
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-	storeID := req.GetStoreId()
+
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
@@ -89,25 +94,33 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
+	storeID := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
-	if err != nil {
-		return nil, err
-	}
+	// modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	// model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
+	// if err != nil {
+	// 	if errors.Is(err, storage.ErrNotFound) {
+	// 		return nil, serverErrors.AuthorizationModelNotFound(modelID)
+	// 	}
+
+	// 	return nil, err
+	// }
+
+	// typesys, err := typesystem.NewAndValidate(ctx, model)
+	// if err != nil {
+	// 	return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+	// }
+
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
-
-		return nil, err
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
 	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -225,27 +238,19 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	}
 
 	storeID := req.GetStoreId()
+	modelID := req.GetAuthorizationModelId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
-		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
-		return nil, err
-	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
+		if errors.Is(err, typesystem.ErrInvalidModel) {
+			return nil, serverErrors.InvalidAuthorizationModelInput(err)
+		}
 
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+		return nil, serverErrors.HandleError("", err)
 	}
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
