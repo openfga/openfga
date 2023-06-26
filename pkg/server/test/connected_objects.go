@@ -908,7 +908,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.resolveNodeLimit == 0 {
-				test.resolveNodeLimit = defaultResolveNodeLimit
+				test.resolveNodeLimit = DefaultResolveNodeLimit
 			}
 
 			connectedObjectsCmd := commands.ConnectedObjectsCommand{

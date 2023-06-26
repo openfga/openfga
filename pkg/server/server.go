@@ -105,7 +105,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	if err != nil {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
@@ -151,7 +154,10 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		return serverErrors.HandleError("", err)
 	}
 
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	if err != nil {
+		return serverErrors.ValidationError(typesystem.ErrInvalidModel)
+	}
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
@@ -237,7 +243,10 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	if err != nil {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+	}
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)

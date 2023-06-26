@@ -5,10 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 
 	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel"
+	"golang.org/x/exp/maps"
 )
+
+var tracer = otel.Tracer("openfga/pkg/typesystem")
 
 type ctxKey string
 
@@ -28,6 +33,7 @@ var (
 	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
+	ErrNoEntrypoints         = errors.New("no entrypoints defined")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -150,7 +156,9 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 	relations := make(map[string]map[string]*openfgapb.Relation, len(model.GetTypeDefinitions()))
 
 	for _, td := range model.GetTypeDefinitions() {
-		tds[td.GetType()] = td
+		typeName := td.GetType()
+
+		tds[typeName] = td
 		tdRelations := make(map[string]*openfgapb.Relation, len(td.GetRelations()))
 
 		for relation, rewrite := range td.GetRelations() {
@@ -166,7 +174,7 @@ func New(model *openfgapb.AuthorizationModel) *TypeSystem {
 
 			tdRelations[relation] = r
 		}
-		relations[td.GetType()] = tdRelations
+		relations[typeName] = tdRelations
 	}
 
 	return &TypeSystem{
@@ -596,6 +604,170 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 	return false, nil
 }
 
+// hasEntrypoints recursively walks the rewrite definition for the given relation to determine if there is at least
+// one path in the rewrite rule that could relate to at least one concrete object type. If there is no such path that
+// could lead to at least one relationship with some object type, then false is returned along with an error indicating
+// no entrypoints were found. If at least one relationship with a specific object type is found while walking the rewrite,
+// then true is returned along with a nil error.
+func hasEntrypoints(
+	typedefs map[string]map[string]*openfgapb.Relation,
+	typeName, relationName string,
+	rewrite *openfgapb.Userset,
+	visitedRelations map[string]map[string]struct{},
+) (bool, error) {
+
+	v := maps.Clone(visitedRelations)
+
+	if val, ok := v[typeName]; ok {
+		val[relationName] = struct{}{}
+	} else {
+		v[typeName] = map[string]struct{}{
+			relationName: {},
+		}
+	}
+
+	relation, ok := typedefs[typeName][relationName]
+	if !ok {
+		return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
+	}
+
+	switch rw := rewrite.Userset.(type) {
+	case *openfgapb.Userset_This:
+		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
+				return true, nil
+			}
+
+			assignableTypeName := assignableType.GetType()
+			assignableRelationName := assignableType.GetRelation()
+
+			assignableRelation, ok := typedefs[assignableTypeName][assignableRelationName]
+			if !ok {
+				return false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
+			}
+
+			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
+				continue
+			}
+
+			hasEntrypoint, err := hasEntrypoints(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
+			if err != nil {
+				return false, err
+			}
+
+			if hasEntrypoint {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	case *openfgapb.Userset_ComputedUserset:
+
+		computedRelationName := rw.ComputedUserset.GetRelation()
+		computedRelation, ok := typedefs[typeName][computedRelationName]
+		if !ok {
+			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
+		}
+
+		if _, ok := v[typeName][computedRelationName]; ok {
+			return false, nil
+		}
+
+		hasEntrypoint, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
+		if err != nil {
+			return false, err
+		}
+
+		return hasEntrypoint, nil
+	case *openfgapb.Userset_TupleToUserset:
+		tuplesetRelationName := rw.TupleToUserset.GetTupleset().GetRelation()
+		computedRelationName := rw.TupleToUserset.ComputedUserset.GetRelation()
+
+		tuplesetRelation, ok := typedefs[typeName][tuplesetRelationName]
+		if !ok {
+			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
+		}
+
+		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
+			assignableTypeName := assignableType.GetType()
+
+			if assignableRelation, ok := typedefs[assignableTypeName][computedRelationName]; ok {
+				if _, ok := v[assignableTypeName][computedRelationName]; ok {
+					continue
+				}
+
+				hasEntrypoint, err := hasEntrypoints(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
+				if err != nil {
+					return false, err
+				}
+
+				if hasEntrypoint {
+					return true, nil
+				}
+			}
+		}
+
+		return false, nil
+
+	case *openfgapb.Userset_Union:
+
+		for _, child := range rw.Union.Child {
+
+			hasEntrypoints, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			if err != nil {
+				return false, err
+			}
+
+			if hasEntrypoints {
+				return true, nil
+			}
+		}
+
+		return false, nil
+	case *openfgapb.Userset_Intersection:
+
+		for _, child := range rw.Intersection.Child {
+
+			// all of the children must have an entrypoint
+			hasEntrypoints, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			if err != nil {
+				return false, err
+			}
+
+			if !hasEntrypoints {
+				return false, nil
+			}
+		}
+
+		return true, nil
+	case *openfgapb.Userset_Difference:
+
+		v := maps.Clone(visitedRelations)
+
+		hasEntrypoint, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), v)
+		if err != nil {
+			return false, err
+		}
+
+		if !hasEntrypoint {
+			return false, nil
+		}
+
+		hasEntrypoint, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), v)
+		if err != nil {
+			return false, err
+		}
+
+		if !hasEntrypoint {
+			return false, nil
+		}
+
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // NewAndValidate is like New but also validates the model according to the following rules:
 //  1. Checks that the *TypeSystem have a valid schema version.
 //  2. For every rewrite the relations in the rewrite must:
@@ -610,7 +782,10 @@ func (t *TypeSystem) relationInvolvesExclusion(objectType, relation string, visi
 //     a. For a type (e.g. user) this means checking that this type is in the *TypeSystem
 //     b. For a type#relation this means checking that this type with this relation is in the *TypeSystem
 //  4. Check that a relation is assignable if and only if it has a non-zero list of types
-func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
+func NewAndValidate(ctx context.Context, model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
+	_, span := tracer.Start(ctx, "typesystem.NewAndValidate")
+	defer span.End()
+
 	t := New(model)
 	schemaVersion := t.GetSchemaVersion()
 
@@ -626,10 +801,31 @@ func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
 		return nil, err
 	}
 
-	// Validate the userset rewrites
-	for _, td := range t.typeDefinitions {
-		for relation, rewrite := range td.GetRelations() {
-			err := t.isUsersetRewriteValid(td.GetType(), relation, rewrite)
+	typedefsMap := t.typeDefinitions
+
+	typeNames := make([]string, 0, len(typedefsMap))
+	for typeName := range typedefsMap {
+		typeNames = append(typeNames, typeName)
+	}
+
+	// range over the type definitions in sorted order to produce a deterministic outcome
+	sort.Strings(typeNames)
+
+	for _, typeName := range typeNames {
+		typedef := typedefsMap[typeName]
+
+		relationMap := typedef.GetRelations()
+		relationNames := make([]string, 0, len(relationMap))
+		for relationName := range relationMap {
+			relationNames = append(relationNames, relationName)
+		}
+
+		// range over the relations in sorted order to produce a deterministic outcome
+		sort.Strings(relationNames)
+
+		for _, relationName := range relationNames {
+
+			err := t.validateRelation(typeName, relationName, relationMap)
 			if err != nil {
 				return nil, err
 			}
@@ -644,13 +840,42 @@ func NewAndValidate(model *openfgapb.AuthorizationModel) (*TypeSystem, error) {
 		return nil, err
 	}
 
-	if schemaVersion == SchemaVersion1_1 {
-		if err := t.validateRelationTypeRestrictions(); err != nil {
-			return nil, err
+	return t, nil
+}
+
+// validateRelation applies all of the validation rules to a relation definition in a model. A relation
+// must meet all of the rewrite validation, type restriction valdiation, and entrypoint validation criteria
+// for it to be valid. Otherrwise an error is returned.
+func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap map[string]*openfgapb.Userset) error {
+
+	rewrite := relationMap[relationName]
+
+	err := t.isUsersetRewriteValid(typeName, relationName, rewrite)
+	if err != nil {
+		return err
+	}
+
+	err = t.validateTypeRestrictions(typeName, relationName)
+	if err != nil {
+		return err
+	}
+
+	visitedRelations := map[string]map[string]struct{}{}
+
+	hasEntrypoints, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
+	if err != nil {
+		return err
+	}
+
+	if !hasEntrypoints {
+		return &InvalidRelationError{
+			ObjectType: typeName,
+			Relation:   relationName,
+			Cause:      fmt.Errorf("no entrypoints found for relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints),
 		}
 	}
 
-	return t, nil
+	return nil
 }
 
 func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
@@ -670,11 +895,20 @@ func containsDuplicateType(model *openfgapb.AuthorizationModel) bool {
 func (t *TypeSystem) validateNames() error {
 	for _, td := range t.typeDefinitions {
 		objectType := td.GetType()
+
+		if objectType == "" {
+			return fmt.Errorf("the type name of a type definition cannot be an empty string")
+		}
+
 		if objectType == "self" || objectType == "this" {
 			return &InvalidTypeError{ObjectType: objectType, Cause: ErrReservedKeywords}
 		}
 
 		for relation := range td.GetRelations() {
+			if relation == "" {
+				return fmt.Errorf("type '%s' defines a relation with an empty string for a name", objectType)
+			}
+
 			if relation == "self" || relation == "this" {
 				return &InvalidRelationError{ObjectType: objectType, Relation: relation, Cause: ErrReservedKeywords}
 			}
@@ -762,54 +996,48 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 	return nil
 }
 
-func (t *TypeSystem) validateRelationTypeRestrictions() error {
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err != nil {
-			return err
+// validateTypeRestrictions validates the type restrictions of a given relation using the following rules:
+//  1. An assignable relation must have one or more type restrictions.
+//  2. A non-assignable relation must not have any type restrictions.
+//  3. For each type restriction referenced for an assignable relation, each of the referenced types and relations
+//     must be defined in the model.
+//  4. If the provided relation is a tupleset relation, then the type restriction must be on a direct object.
+func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName string) error {
+
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return err
+	}
+
+	relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+	assignable := t.IsDirectlyAssignable(relation)
+
+	if assignable && len(relatedTypes) == 0 {
+		return AssignableRelationError(objectType, relationName)
+	}
+
+	if !assignable && len(relatedTypes) != 0 {
+		return NonAssignableRelationError(objectType, relationName)
+	}
+
+	for _, related := range relatedTypes {
+		relatedObjectType := related.GetType()
+		relatedRelation := related.GetRelation()
+
+		if _, err := t.GetRelations(relatedObjectType); err != nil {
+			return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 		}
 
-		for name, relation := range relations {
-			relatedTypes := relation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			assignable := t.IsDirectlyAssignable(relation)
-
-			if assignable && len(relatedTypes) == 0 {
-				return AssignableRelationError(objectType, name)
+		if related.GetRelationOrWildcard() != nil {
+			// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
+			if ok, _ := t.IsTuplesetRelation(objectType, relationName); ok {
+				return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 			}
 
-			if assignable && len(relatedTypes) == 1 {
-				relatedObjectType := relatedTypes[0].GetType()
-				relatedRelation := relatedTypes[0].GetRelation()
-				if objectType == relatedObjectType && name == relatedRelation {
-					return &InvalidRelationError{ObjectType: objectType, Relation: name, Cause: ErrCycle}
+			if relatedRelation != "" {
+				if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
+					return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 				}
-			}
-
-			if !assignable && len(relatedTypes) != 0 {
-				return NonAssignableRelationError(objectType, name)
-			}
-
-			for _, related := range relatedTypes {
-				relatedObjectType := related.GetType()
-				relatedRelation := related.GetRelation()
-
-				if _, err := t.GetRelations(relatedObjectType); err != nil {
-					return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
-				}
-
-				if related.GetRelationOrWildcard() != nil {
-					// The type of the relation cannot contain a userset or wildcard if the relation is a tupleset relation.
-					if ok, _ := t.IsTuplesetRelation(objectType, name); ok {
-						return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
-					}
-
-					if relatedRelation != "" {
-						if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
-							return InvalidRelationTypeError(objectType, name, relatedObjectType, relatedRelation)
-						}
-					}
-				}
-
 			}
 		}
 	}

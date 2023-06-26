@@ -1,12 +1,149 @@
 package typesystem
 
 import (
+	"context"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
+
+func TestNewAndValidate(t *testing.T) {
+
+	tests := []struct {
+		name          string
+		model         string
+		expectedError error
+	}{
+		{
+			name: "direct_relationship_with_entrypoint",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [user] as self
+			`,
+		},
+		{
+			name: "computed_relationship_with_entrypoint",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define editor: [user] as self
+			    define viewer as editor
+			`,
+		},
+		{
+			name: "no_entrypoint_1",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define admin: [user] as self
+			    define action1 as admin and action2 and action3
+			    define action2 as admin and action1 and action3
+			    define action3 as admin and action1 and action2
+			`,
+			expectedError: ErrNoEntrypoints,
+		},
+		{
+			name: "no_entrypoint_2",
+			model: `
+			type user
+
+			type document
+			  relations
+				define admin: [user] as self
+				define action1 as admin but not action2
+				define action2 as admin but not action3
+				define action3 as admin but not action1
+			`,
+			expectedError: ErrNoEntrypoints,
+		},
+		{
+			name: "no_entrypoint_3a",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [document#viewer] as self and editor
+			    define editor: [user] as self
+			`,
+			expectedError: ErrNoEntrypoints,
+		},
+		{
+			name: "no_entrypoint_3b",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define viewer: [document#viewer] as self but not editor
+			    define editor: [user] as self
+			`,
+			expectedError: ErrNoEntrypoints,
+		},
+		{
+			name: "no_entrypoint_4",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define parent: [document] as self
+			    define viewer as editor from parent
+
+			type document
+			  relations
+			    define parent: [folder] as self
+				define editor as viewer
+			    define viewer as editor from parent
+			`,
+			expectedError: ErrNoEntrypoints,
+		},
+		{
+			name: "self_referencing_type_restriction_with_entrypoint_1",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define restricted: [user] as self
+			    define editor: [user] as self
+			    define viewer: [document#viewer] as self or editor
+			    define can_view as viewer but not restricted
+			    define can_view_actual as can_view
+			`,
+		},
+		{
+			name: "self_referencing_type_restriction_with_entrypoint_2",
+			model: `
+			type user
+
+			type document
+			  relations
+			    define editor: [user] as self
+			    define viewer: [document#viewer] as self or editor
+			`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewAndValidate(context.Background(), &openfgapb.AuthorizationModel{
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
+			})
+			require.ErrorIs(t, err, test.expectedError)
+		})
+	}
+}
 
 func TestSuccessfulRewriteValidations(t *testing.T) {
 	var tests = []struct {
@@ -36,11 +173,51 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "self_referencing_type_restriction_with_entrypoint",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define editor: [user] as self
+				    define viewer: [document#viewer] as self or editor
+				`),
+				SchemaVersion: SchemaVersion1_1,
+			},
+		},
+		{
+			name: "intersection_may_contain_repeated_relations",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+					define editor: [user] as self
+					define viewer as editor and editor
+				`),
+				SchemaVersion: SchemaVersion1_1,
+			},
+		},
+		{
+			name: "exclusion_may_contain_repeated_relations",
+			model: &openfgapb.AuthorizationModel{
+				TypeDefinitions: parser.MustParse(`
+				type user
+				type document
+				  relations
+					define editor: [user] as self
+					define viewer as editor but not editor
+				`),
+				SchemaVersion: SchemaVersion1_1,
+			},
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model)
+			_, err := NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -471,13 +648,13 @@ func TestInvalidRewriteValidations(t *testing.T) {
 					define viewer as viewer from parent
 				`),
 			},
-			err: ErrCycle,
+			err: ErrNoEntrypoints,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model)
+			_, err := NewAndValidate(context.Background(), test.model)
 			require.ErrorIs(t, err, test.err)
 		})
 	}
@@ -578,7 +755,7 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model)
+			_, err := NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 		})
 	}
@@ -1052,7 +1229,7 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewAndValidate(test.model)
+			_, err := NewAndValidate(context.Background(), test.model)
 			require.EqualError(t, err, test.err.Error())
 		})
 	}

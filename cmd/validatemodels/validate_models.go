@@ -126,7 +126,7 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 
 				// validate each model
 				for _, model := range models {
-					_, err := typesystem.NewAndValidate(model)
+					_, err := typesystem.NewAndValidate(context.Background(), model)
 
 					validationResult := validationResult{
 						StoreID:       store.Id,
