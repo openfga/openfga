@@ -8,6 +8,26 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.1.1] - 2023-06-26
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.1.0...v1.1.1)
+
+### Added
+* Official Homebrew installation instructions (#781) - thanks @chenrui333
+* The `--verbose` flag has been added to the `openfga migrate` command (#776)
+* The `openfga validate-models` CLI command has been introduced to validate all models across all stores (#817)
+
+### Changed
+* Updated the version of the `grpc-health-probe` binary included in OpenFGA builds (#784)
+* Cache inflight requests when looking up the latest authorization model (#820)
+
+### Fixed
+* Validation of models with non-zero entrypoints (#802)
+* Remove unintended newlines in model validation error messages (#816) - thanks @Galzzly
+
+### Security
+* Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional model validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out if you have questions.
+
 ## [1.1.0] - 2023-05-15
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.0.1...v1.1.0)
@@ -503,7 +523,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/openfga/openfga/releases/tag/v1.1.1
 [1.1.0]: https://github.com/openfga/openfga/releases/tag/v1.1.0
 [1.0.1]: https://github.com/openfga/openfga/releases/tag/v1.0.1
 [1.0.0]: https://github.com/openfga/openfga/releases/tag/v1.0.0
