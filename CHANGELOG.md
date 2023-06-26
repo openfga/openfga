@@ -27,7 +27,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Remove unintended newlines in model validation error messages (#816) - thanks @Galzzly
 
 ### Security
-* Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional model validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out.
+* Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional model validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out if you have questions.
 
 ## [1.1.0] - 2023-05-15
 
