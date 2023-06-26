@@ -91,6 +91,9 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "repo",
 						Relations: map[string]*openfgapb.Userset{
 							"admin":  typesystem.This(),
@@ -812,6 +815,9 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				SchemaVersion: typesystem.SchemaVersion1_1,
 				TypeDefinitions: []*openfgapb.TypeDefinition{
 					{
+						Type: "user",
+					},
+					{
 						Type: "document",
 						Relations: map[string]*openfgapb.Userset{
 							"parent": typesystem.This(),
@@ -822,6 +828,13 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 								"parent": {
 									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
 										typesystem.DirectRelationReference("document", "editor"),
+									},
+								},
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+										{
+											Type: "user",
+										},
 									},
 								},
 							},
@@ -844,286 +857,6 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 								Value: &openfgapb.UsersetTree_Leaf_Users{
 									Users: &openfgapb.UsersetTree_Users{
 										Users: []string{"document:2#editor"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "1.1_TupleToUserset_involving_wildcard_is_skipped",
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.WildcardRelationReference("user"),
-										{
-											Type: "user",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "user:*"),
-				tuple.NewTupleKey("document:X", "viewer", "user:jon"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: &openfgapb.ExpandResponse{
-				Tree: &openfgapb.UsersetTree{
-					Root: &openfgapb.UsersetTree_Node{
-						Name: "document:1#viewer",
-						Value: &openfgapb.UsersetTree_Node_Union{
-							Union: &openfgapb.UsersetTree_Nodes{
-								Nodes: []*openfgapb.UsersetTree_Node{
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_Users{},
-											},
-										},
-									},
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
-													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-														Tupleset: "document:1#parent",
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "1.1_Tuple_involving_userset_skipped_if_it_is_referenced_in_a_TTU_rewrite",
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "folder",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": typesystem.This(),
-						},
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"editor": typesystem.This(),
-							"viewer": typesystem.TupleToUserset("parent", "viewer"),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("document", "editor"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: &openfgapb.ExpandResponse{
-				Tree: &openfgapb.UsersetTree{
-					Root: &openfgapb.UsersetTree_Node{
-						Name: "document:1#viewer",
-						Value: &openfgapb.UsersetTree_Node_Leaf{
-							Leaf: &openfgapb.UsersetTree_Leaf{
-								Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
-									TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-										Tupleset: "document:1#parent",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "1.1_Tuple_involving_userset_skipped_if_same_ComputedUserset_involved_in_TTU_rewrite",
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(),
-								typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-								"parent": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										typesystem.DirectRelationReference("document", "viewer"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "parent", "document:2#viewer"),
-				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: &openfgapb.ExpandResponse{
-				Tree: &openfgapb.UsersetTree{
-					Root: &openfgapb.UsersetTree_Node{
-						Name: "document:1#viewer",
-						Value: &openfgapb.UsersetTree_Node_Union{
-							Union: &openfgapb.UsersetTree_Nodes{
-								Nodes: []*openfgapb.UsersetTree_Node{
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_Users{},
-											},
-										},
-									},
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
-													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-														Tupleset: "document:1#parent",
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "1.1_Tupleset_relation_involving_rewrite_skipped",
-			model: &openfgapb.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
-							"parent": typesystem.ComputedUserset("editor"),
-							"editor": typesystem.This(),
-							"viewer": typesystem.Union(
-								typesystem.This(), typesystem.TupleToUserset("parent", "viewer"),
-							),
-						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
-								"editor": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "document"},
-									},
-								},
-								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
-										{Type: "user"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			tuples: []*openfgapb.TupleKey{
-				tuple.NewTupleKey("document:1", "editor", "document:2"),
-				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
-			},
-			request: &openfgapb.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
-			},
-			expected: &openfgapb.ExpandResponse{
-				Tree: &openfgapb.UsersetTree{
-					Root: &openfgapb.UsersetTree_Node{
-						Name: "document:1#viewer",
-						Value: &openfgapb.UsersetTree_Node_Union{
-							Union: &openfgapb.UsersetTree_Nodes{
-								Nodes: []*openfgapb.UsersetTree_Node{
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_Users{},
-											},
-										},
-									},
-									{
-										Name: "document:1#viewer",
-										Value: &openfgapb.UsersetTree_Node_Leaf{
-											Leaf: &openfgapb.UsersetTree_Leaf{
-												Value: &openfgapb.UsersetTree_Leaf_TupleToUserset{
-													TupleToUserset: &openfgapb.UsersetTree_TupleToUserset{
-														Tupleset: "document:1#parent",
-													},
-												},
-											},
-										},
 									},
 								},
 							},

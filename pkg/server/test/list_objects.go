@@ -208,7 +208,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			connectedObjectsCmd := &commands.ConnectedObjectsCommand{
 				Datastore:        ds,
 				Typesystem:       typesys,
-				ResolveNodeLimit: defaultResolveNodeLimit,
+				ResolveNodeLimit: DefaultResolveNodeLimit,
 				Limit:            math.MaxUint32,
 			}
 
@@ -217,7 +217,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      defaultResolveNodeLimit,
+				ResolveNodeLimit:      DefaultResolveNodeLimit,
 				ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
 				CheckResolver: graph.NewLocalChecker(
 					ds,
@@ -331,14 +331,14 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
 		Datastore:        ds,
 		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 		Limit:            1000,
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 		ConnectedObjects: connectedObjectsCmd.StreamedConnectedObjects,
 		CheckResolver: graph.NewLocalChecker(
 			ds,
@@ -410,14 +410,14 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
 		Datastore:        ds,
 		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 		Limit:            1000,
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 		ConnectedObjects: connectedObjectsCmd.StreamedConnectedObjects,
 		CheckResolver: graph.NewLocalChecker(
 			ds,

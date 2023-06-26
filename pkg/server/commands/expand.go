@@ -51,7 +51,10 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgapb.ExpandRequest)
 		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
-	typesys := typesystem.New(model)
+	typesys, err := typesystem.NewAndValidate(ctx, model)
+	if err != nil {
+		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+	}
 
 	if err = validation.ValidateObject(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
