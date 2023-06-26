@@ -47,8 +47,7 @@ type ListObjectsQuery struct {
 	ListObjectsDeadline           time.Duration
 	ListObjectsMaxResults         uint32
 	ResolveNodeLimit              uint32
-	ConnectedObjects              func(ctx context.Context, req *ConnectedObjectsRequest, results chan<- *ConnectedObjectsResult) error
-	CheckResolver                 graph.CheckResolver
+	CheckConcurrencyLimit         uint32
 	OptimizeIntersectionExclusion bool
 }
 
@@ -142,8 +141,15 @@ func (q *ListObjectsQuery) evaluate(
 		connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
 		var objectsFound = new(uint32)
 
+		connectedObjectsCmd := &ConnectedObjectsCommand{
+			Datastore:        q.Datastore,
+			Typesystem:       typesys,
+			ResolveNodeLimit: q.ResolveNodeLimit,
+			Limit:            maxResults,
+		}
+
 		go func() {
-			err = q.ConnectedObjects(ctx, &ConnectedObjectsRequest{
+			err = connectedObjectsCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
 				StoreID:          req.GetStoreId(),
 				Typesystem:       typesys,
 				ObjectType:       targetObjectType,
@@ -157,6 +163,11 @@ func (q *ListObjectsQuery) evaluate(
 
 			close(connectedObjectsResChan)
 		}()
+
+		checkResolver := graph.NewLocalChecker(
+			q.Datastore,
+			q.CheckConcurrencyLimit,
+		)
 
 		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)
 
@@ -181,7 +192,7 @@ func (q *ListObjectsQuery) evaluate(
 
 				concurrencyLimiterCh <- struct{}{}
 
-				resp, err := q.CheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+				resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 					StoreID:              req.GetStoreId(),
 					AuthorizationModelID: req.GetAuthorizationModelId(),
 					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),

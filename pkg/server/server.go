@@ -120,39 +120,29 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
 	ds := storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys())
 
-	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        ds,
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
-
 	q := &commands.ListObjectsQuery{
-		Datastore:             ds,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
-		CheckResolver: graph.NewLocalChecker(
-			ds,
-			checkConcurrencyLimit,
-		),
+		Datastore:                     ds,
+		Logger:                        s.logger,
+		ListObjectsDeadline:           s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		CheckConcurrencyLimit:         checkConcurrencyLimit,
 		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
-	return q.Execute(ctx, &openfgapb.ListObjectsRequest{
-		StoreId:              storeID,
-		ContextualTuples:     req.GetContextualTuples(),
-		AuthorizationModelId: modelID,
-		Type:                 targetObjectType,
-		Relation:             req.Relation,
-		User:                 req.User,
-	})
+	return q.Execute(
+		typesystem.ContextWithTypesystem(ctx, typesys),
+		&openfgapb.ListObjectsRequest{
+			StoreId:              storeID,
+			ContextualTuples:     req.GetContextualTuples(),
+			AuthorizationModelId: modelID,
+			Type:                 targetObjectType,
+			Relation:             req.Relation,
+			User:                 req.User,
+		},
+	)
 }
 
 func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, srv openfgapb.OpenFGAService_StreamedListObjectsServer) error {
@@ -185,31 +175,23 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		return serverErrors.ValidationError(typesystem.ErrInvalidModel)
 	}
 
-	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-
-	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		Typesystem:       typesys,
-		ResolveNodeLimit: s.config.ResolveNodeLimit,
-		Limit:            s.config.ListObjectsMaxResults,
-	}
-
 	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
-		CheckResolver: graph.NewLocalChecker(
-			storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-			checkConcurrencyLimit,
-		),
+		Datastore:                     s.datastore,
+		Logger:                        s.logger,
+		ListObjectsDeadline:           s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		CheckConcurrencyLimit:         checkConcurrencyLimit,
 		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
 	req.AuthorizationModelId = modelID
-	return q.ExecuteStreamed(ctx, req, srv)
+
+	return q.ExecuteStreamed(
+		typesystem.ContextWithTypesystem(ctx, typesys),
+		req,
+		srv,
+	)
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {

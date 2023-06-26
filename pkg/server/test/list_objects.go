@@ -3,14 +3,12 @@ package test
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"testing"
 	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -200,29 +198,17 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 			ds := storage.NewCombinedTupleReader(datastore, test.contextualTuples.GetTupleKeys())
 
-			connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-				Datastore:        ds,
-				Typesystem:       typesys,
-				ResolveNodeLimit: DefaultResolveNodeLimit,
-				Limit:            math.MaxUint32,
-			}
-
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             ds,
-				Logger:                logger.NewNoopLogger(),
-				ListObjectsDeadline:   listObjectsDeadline,
-				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      DefaultResolveNodeLimit,
-				ConnectedObjects:      connectedObjectsCmd.StreamedConnectedObjects,
-				CheckResolver: graph.NewLocalChecker(
-					ds,
-					100,
-				),
+				Datastore:                     ds,
+				Logger:                        logger.NewNoopLogger(),
+				ListObjectsDeadline:           listObjectsDeadline,
+				ListObjectsMaxResults:         test.maxResults,
+				ResolveNodeLimit:              DefaultResolveNodeLimit,
+				CheckConcurrencyLimit:         100,
 				OptimizeIntersectionExclusion: true,
 			}
 
@@ -328,22 +314,13 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
-	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        ds,
-		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
-		Limit:            1000,
-	}
-
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
-		ConnectedObjects: connectedObjectsCmd.StreamedConnectedObjects,
-		CheckResolver: graph.NewLocalChecker(
-			ds,
-			100,
-		),
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ListObjectsDeadline:           3 * time.Second,
+		ListObjectsMaxResults:         1000,
+		ResolveNodeLimit:              DefaultResolveNodeLimit,
+		CheckConcurrencyLimit:         100,
 		OptimizeIntersectionExclusion: true,
 	}
 
@@ -407,22 +384,13 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		require.NoError(b, err)
 	}
 
-	connectedObjectsCmd := &commands.ConnectedObjectsCommand{
-		Datastore:        ds,
-		Typesystem:       typesystem.New(model),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
-		Limit:            1000,
-	}
-
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
-		ConnectedObjects: connectedObjectsCmd.StreamedConnectedObjects,
-		CheckResolver: graph.NewLocalChecker(
-			ds,
-			100,
-		),
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ListObjectsDeadline:           3 * time.Second,
+		ListObjectsMaxResults:         1000,
+		ResolveNodeLimit:              DefaultResolveNodeLimit,
+		CheckConcurrencyLimit:         100,
 		OptimizeIntersectionExclusion: true,
 	}
 
