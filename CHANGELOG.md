@@ -17,7 +17,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * The `--verbose` flag has been added to the `openfga migrate` command (#776)
 * The `openfga validate-models` CLI command has been introduced to validate all models across all stores (#817)
 
-
 ### Changed
 * Updated the version of the `grpc-health-probe` binary included in OpenFGA builds (#784)
 * Cache inflight requests when looking up the latest authorization model (#820)
