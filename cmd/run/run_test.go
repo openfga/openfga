@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/authn/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	mockstracing "github.com/openfga/openfga/pkg/telemetry/mocks"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -379,12 +380,12 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	}
 }
 
-func TestBuildServiceWithTailSpanExporterEnabled(t *testing.T) {
+func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, err := mocks.NewMockTracingServer(otlpServerPort)
+	otlpServer, err := mockstracing.NewMockTracingServer(otlpServerPort)
 	require.NoError(t, err)
 
 	// create OpenFGA server with tracing enabled

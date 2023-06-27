@@ -16,27 +16,27 @@ import (
 	"google.golang.org/grpc"
 )
 
-type TracerOption func(d *CustomTracer)
+type TracerOption func(d *customTracer)
 
 func WithOTLPEndpoint(endpoint string) TracerOption {
-	return func(d *CustomTracer) {
+	return func(d *customTracer) {
 		d.endpoint = endpoint
 	}
 }
 
 func WithSamplingRatio(samplingRatio float64) TracerOption {
-	return func(d *CustomTracer) {
+	return func(d *customTracer) {
 		d.samplingRatio = samplingRatio
 	}
 }
 
 func WithAttributes(attrs ...attribute.KeyValue) TracerOption {
-	return func(d *CustomTracer) {
+	return func(d *customTracer) {
 		d.attributes = attrs
 	}
 }
 
-type CustomTracer struct {
+type customTracer struct {
 	endpoint   string
 	attributes []attribute.KeyValue
 
@@ -44,7 +44,7 @@ type CustomTracer struct {
 }
 
 func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
-	tracer := &CustomTracer{
+	tracer := &customTracer{
 		endpoint:      "",
 		attributes:    []attribute.KeyValue{},
 		samplingRatio: 0,
