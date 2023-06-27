@@ -175,9 +175,13 @@ func (q *ListObjectsQuery) evaluate(
 
 		for res := range connectedObjectsResChan {
 
-			if res.ResultStatus == NoFurtherEvalStatus && atomic.AddUint32(objectsFound, 1) <= maxResults {
+			if res.ResultStatus == NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
-				resultsChan <- ListObjectsResult{ObjectID: res.Object}
+
+				if atomic.AddUint32(objectsFound, 1) <= maxResults {
+					resultsChan <- ListObjectsResult{ObjectID: res.Object}
+				}
+
 				continue
 			}
 
