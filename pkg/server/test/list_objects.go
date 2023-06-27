@@ -203,7 +203,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      defaultResolveNodeLimit,
+				ResolveNodeLimit:      DefaultResolveNodeLimit,
 			}
 			typesys := typesystem.New(model)
 			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
@@ -313,7 +313,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -379,7 +379,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	listObjectsQuery := commands.ListObjectsQuery{
 		Datastore:        ds,
 		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		ResolveNodeLimit: DefaultResolveNodeLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse

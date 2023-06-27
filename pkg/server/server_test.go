@@ -175,7 +175,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
+		ResolveNodeLimit: test.DefaultResolveNodeLimit,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -185,6 +185,93 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, true, checkResponse.Allowed)
+}
+
+func TestOperationsWithInvalidModel(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	// The model is invalid
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+        define admin: [user] as self
+	    define r1: [user] as self and r2 and r3
+	    define r2: [user] as self and r1 and r3
+	    define r3: [user] as self and r1 and r2
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "r1", "user:anne")
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgapb.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	// the model is error and err should return
+
+	s := New(&Dependencies{
+		Datastore: mockDatastore,
+		Logger:    logger.NewNoopLogger(),
+		Transport: gateway.NewNoopTransport(),
+	}, &Config{
+		ResolveNodeLimit: test.DefaultResolveNodeLimit,
+	})
+
+	_, err := s.Check(ctx, &openfgapb.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tk,
+		AuthorizationModelId: modelID,
+	})
+	require.Error(t, err)
+	e, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+
+	_, err = s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Type:                 "repo",
+		Relation:             "r1",
+		User:                 "user:anne",
+	})
+	require.Error(t, err)
+	e, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+
+	err = s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Type:                 "repo",
+		Relation:             "r1",
+		User:                 "user:anne",
+	}, NewMockStreamServer())
+	require.Error(t, err)
+	e, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+
+	_, err = s.Expand(ctx, &openfgapb.ExpandRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tk,
+	})
+	require.Error(t, err)
+	e, ok = status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.Code(openfgapb.ErrorCode_validation_error), e.Code())
+
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
@@ -245,7 +332,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: 25,
+		ResolveNodeLimit: test.DefaultResolveNodeLimit,
 	})
 
 	start := time.Now()
@@ -380,7 +467,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
+		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
 	})
@@ -440,7 +527,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
+		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
 	})
@@ -521,7 +608,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      25,
+		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
 	})
@@ -587,7 +674,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		transport: transport,
 		logger:    logger,
 		config: &Config{
-			ResolveNodeLimit:      25,
+			ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
