@@ -391,8 +391,6 @@ func TestBuildServiceWithTailSpanExporterEnabled(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
-	cfg.Trace.EnableTailLatencyExporter = true
-	cfg.Trace.TailLatencyInMs = 0
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -942,14 +940,6 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
-
-	val = res.Get("properties.trace.properties.enableTailLatencyExporter.default")
-	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.Trace.EnableTailLatencyExporter)
-
-	val = res.Get("properties.trace.properties.tailLatencyInMs.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Trace.TailLatencyInMs)
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {

@@ -119,12 +119,6 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("trace.sampleRatio", flags.Lookup("trace-sample-ratio"))
 		util.MustBindEnv("trace.sampleRatio", "OPENFGA_TRACE_SAMPLE_RATIO")
 
-		util.MustBindPFlag("trace.enableTailLatencyExporter", flags.Lookup("trace-enable-tail-latency-exporter"))
-		util.MustBindEnv("trace.enableTailLatencyExporter", "OPENFGA_TRACE_ENABLE_TAIL_LATENCY_EXPORTER")
-
-		util.MustBindPFlag("trace.tailLatencyInMs", flags.Lookup("trace-tail-latency-in-ms"))
-		util.MustBindEnv("trace.tailLatencyInMs", "OPENFGA_TRACE_TAIL_LATENCY")
-
 		util.MustBindPFlag("trace.serviceName", flags.Lookup("trace-service-name"))
 		util.MustBindEnv("trace.serviceName", "OPENFGA_TRACE_SERVICE_NAME")
 

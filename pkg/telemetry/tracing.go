@@ -30,18 +30,6 @@ func WithSamplingRatio(samplingRatio float64) TracerOption {
 	}
 }
 
-func WithEnableTailLatencySpanExporter(enable bool) TracerOption {
-	return func(d *CustomTracer) {
-		d.enableTailLatencySpanExporter = enable
-	}
-}
-
-func WithTailLatencyInMillisecond(latency int) TracerOption {
-	return func(d *CustomTracer) {
-		d.tailLatencyInMs = latency
-	}
-}
-
 func WithAttributes(attrs ...attribute.KeyValue) TracerOption {
 	return func(d *CustomTracer) {
 		d.attributes = attrs
@@ -53,18 +41,13 @@ type CustomTracer struct {
 	attributes []attribute.KeyValue
 
 	samplingRatio float64
-
-	enableTailLatencySpanExporter bool
-	tailLatencyInMs               int
 }
 
 func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	tracer := &CustomTracer{
-		endpoint:                      "",
-		attributes:                    []attribute.KeyValue{},
-		samplingRatio:                 0,
-		enableTailLatencySpanExporter: false,
-		tailLatencyInMs:               0,
+		endpoint:      "",
+		attributes:    []attribute.KeyValue{},
+		samplingRatio: 0,
 	}
 
 	for _, opt := range opts {
@@ -89,10 +72,6 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	)
 	if err != nil {
 		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
-	}
-
-	if tracer.enableTailLatencySpanExporter {
-		exp = NewTailLatencySpanExporter(exp, WithLatencyInMs(tracer.tailLatencyInMs))
 	}
 
 	tp := sdktrace.NewTracerProvider(

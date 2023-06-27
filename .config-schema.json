@@ -306,18 +306,6 @@
                     "type": "string",
                     "default": "openfga",
                     "x-env-variable": "OPENFGA_TRACE_SERVICE_NAME"
-                },
-                "enableTailLatencyExporter": {
-                    "description": "If true, only export top-level spans whose duration is higher than the value of trace-tail-latency-in-ms. If using this option, we recommend setting sample ratio to 1.",
-                    "type": "bool",
-                    "default": "false",
-                    "x-env-variable": "OPENFGA_TRACE_ENABLE_TAIL_LATENCY_EXPORTER"
-                },
-                "tailLatencyInMs": {
-                    "description": "Top-level spans under this duration (in milliseconds) will not be exported.",
-                    "type": "integer",
-                    "default": 1000,
-                    "x-env-variable": "OPENFGA_TRACE_TAIL_LATENCY"
                 }
             }
         },
