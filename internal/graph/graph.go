@@ -420,6 +420,11 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	case *openfgapb.Userset_Difference:
 
 		if findIngressOption == resolveAnyIngress {
+			// if we have 'a but not b', then we prune 'b' and only resolve 'a' with a
+			// condition that requires further evaluation. It's more likely the blacklist
+			// on 'but not b' is a larger set than the base set 'a', and so pruning the
+			// subtracted set is generally going to be a better choice.
+
 			child := t.Difference.GetBase()
 
 			childresults, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
