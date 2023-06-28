@@ -151,7 +151,6 @@ func (q *ListObjectsQuery) evaluate(
 		go func() {
 			err = connectedObjectsCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
 				StoreID:          req.GetStoreId(),
-				Typesystem:       typesys,
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
 				User:             sourceUserRef,
