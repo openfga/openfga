@@ -200,10 +200,8 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
-			ds := storage.NewCombinedTupleReader(datastore, test.contextualTuples.GetTupleKeys())
-
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:                     ds,
+				Datastore:                     datastore,
 				Logger:                        logger.NewNoopLogger(),
 				ListObjectsDeadline:           listObjectsDeadline,
 				ListObjectsMaxResults:         test.maxResults,

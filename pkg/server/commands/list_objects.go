@@ -165,7 +165,7 @@ func (q *ListObjectsQuery) evaluate(
 		}()
 
 		checkResolver := graph.NewLocalChecker(
-			q.Datastore,
+			storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys()),
 			q.CheckConcurrencyLimit,
 		)
 
