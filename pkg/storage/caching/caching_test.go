@@ -9,8 +9,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -58,7 +58,7 @@ func TestReadAuthorizationModel(t *testing.T) {
 func TestFindLatestAuthorizationModelID(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	expectedID := "expectedId"
 	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
 		time.Sleep(1 * time.Second)

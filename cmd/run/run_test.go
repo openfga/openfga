@@ -27,9 +27,8 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/internal/authn/mocks"
+	mocks "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	mockstracing "github.com/openfga/openfga/pkg/telemetry/mocks"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -385,7 +384,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, err := mockstracing.NewMockTracingServer(otlpServerPort)
+	otlpServer, err := mocks.NewMockTracingServer(otlpServerPort)
 	require.NoError(t, err)
 
 	// create OpenFGA server with tracing enabled

@@ -14,12 +14,12 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -145,7 +145,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
@@ -208,7 +208,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
@@ -294,7 +294,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
@@ -361,7 +361,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
 
 		s := New(&Dependencies{
@@ -383,7 +383,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
 
 		s := New(&Dependencies{
@@ -405,7 +405,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockController := gomock.NewController(t)
 		defer mockController.Finish()
 
-		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 		s := New(&Dependencies{
 			Datastore: mockDatastore,
@@ -454,7 +454,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	    define viewer: [user] as self and allowed
     `)
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -507,7 +507,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_1,
@@ -569,7 +569,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_1,
@@ -649,7 +649,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 

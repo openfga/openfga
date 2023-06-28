@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -30,7 +30,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	defer mockController.Finish()
 
 	maxTuplesInWriteOp := 10
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 
 	items := make([]*openfgapb.TupleKey, maxTuplesInWriteOp+1)
@@ -141,7 +141,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
-			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 			cmd := NewWriteCommand(mockDatastore, logger)
 

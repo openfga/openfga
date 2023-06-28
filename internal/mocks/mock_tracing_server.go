@@ -11,21 +11,23 @@ import (
 	"google.golang.org/grpc"
 )
 
-type MockTracingServer struct {
+type mockTracingServer struct {
 	otlpcollector.UnimplementedTraceServiceServer
 	exportCount int
 	serviceMu   sync.Mutex
 }
 
-func (s *MockTracingServer) Export(context.Context, *otlpcollector.ExportTraceServiceRequest) (*otlpcollector.ExportTraceServiceResponse, error) {
+var _ otlpcollector.TraceServiceServer = (*mockTracingServer)(nil)
+
+func (s *mockTracingServer) Export(context.Context, *otlpcollector.ExportTraceServiceRequest) (*otlpcollector.ExportTraceServiceResponse, error) {
 	s.serviceMu.Lock()
 	defer s.serviceMu.Unlock()
 	s.exportCount++
 	return &otlpcollector.ExportTraceServiceResponse{}, nil
 }
 
-func NewMockTracingServer(port int) (*MockTracingServer, error) {
-	mockServer := &MockTracingServer{exportCount: 0}
+func NewMockTracingServer(port int) (*mockTracingServer, error) {
+	mockServer := &mockTracingServer{exportCount: 0}
 
 	go func() {
 		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -41,7 +43,7 @@ func NewMockTracingServer(port int) (*MockTracingServer, error) {
 	return mockServer, nil
 }
 
-func (s *MockTracingServer) GetExportCount() int {
+func (s *mockTracingServer) GetExportCount() int {
 	s.serviceMu.Lock()
 	defer s.serviceMu.Unlock()
 	return s.exportCount
