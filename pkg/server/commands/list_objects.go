@@ -207,7 +207,7 @@ func (q *ListObjectsQuery) evaluate(
 				})
 				if err != nil {
 					resultsChan <- ListObjectsResult{Err: err}
-					return // is this the right thing here or should we try to find all of them we can up to some limit?
+					return
 				}
 
 				if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
@@ -412,7 +412,7 @@ func (q *ListObjectsQuery) internalCheck(
 	if err != nil {
 		// ignore the error. we don't want to abort everything if one of the checks failed.
 		q.Logger.ErrorWithContext(ctx, "check_error", zap.Error(err))
-		return nil
+		return err
 	}
 
 	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
