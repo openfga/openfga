@@ -410,8 +410,6 @@ func (q *ListObjectsQuery) internalCheck(
 		},
 	})
 	if err != nil {
-		// ignore the error. we don't want to abort everything if one of the checks failed.
-		q.Logger.ErrorWithContext(ctx, "check_error", zap.Error(err))
 		return err
 	}
 
