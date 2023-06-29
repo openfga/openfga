@@ -49,7 +49,7 @@ func TestNewAndValidate(t *testing.T) {
 			    define action2 as admin and action1 and action3
 			    define action3 as admin and action1 and action2
 			`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
 			name: "no_entrypoint_2",
@@ -63,7 +63,7 @@ func TestNewAndValidate(t *testing.T) {
 				define action2 as admin but not action3
 				define action3 as admin but not action1
 			`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
 			name: "no_entrypoint_3a",
