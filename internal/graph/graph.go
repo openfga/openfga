@@ -23,6 +23,13 @@ var (
 	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
 )
 
+type findIngressOption int
+
+const (
+	resolveAllIngresses findIngressOption = iota
+	resolveAnyIngress
+)
+
 // ContextWithResolutionDepth attaches the provided graph resolution depth to the parent context.
 func ContextWithResolutionDepth(parent context.Context, depth uint32) context.Context {
 	return context.WithValue(parent, resolutionDepthCtxKey, depth)
@@ -64,6 +71,24 @@ func (r RelationshipIngressType) String() string {
 	}
 }
 
+type IngressCondition int
+
+const (
+
+	// RequiresFurtherEvalCondition indicates an ingress condition whereby results expanded
+	// under such an ingress require further Check evaluation before a determination of the
+	// outcome can be made.
+	//
+	// Relationships involving intersection ('and') and/or exclusion ('but not') fall under
+	// ingresses with this condition.
+	RequiresFurtherEvalCondition IngressCondition = iota
+
+	// NoFurtherEvalCondition indicates an ingress condition whereby results are factual and
+	// known to be true and require no further evaluation before a determination of the outcome
+	// can be made.
+	NoFurtherEvalCondition
+)
+
 // RelationshipIngress represents a possible ingress point between some source object reference
 // and a target user reference.
 type RelationshipIngress struct {
@@ -78,6 +103,8 @@ type RelationshipIngress struct {
 	// object reference with a target if the type of the relationship ingress is that
 	// of a TupleToUserset
 	TuplesetRelation *openfgapb.RelationReference
+
+	Condition IngressCondition
 }
 
 func (r RelationshipIngress) String() string {
@@ -122,10 +149,37 @@ func BuildConnectedObjectGraph(typesystem *typesystem.TypeSystem) *ConnectedObje
 //  1. If parent's types includes `folder` type, and `folder` contains `viewer` relation then this is exactly a ttu rewrite and....?
 //  2. Otherwise, suppose the types contains `objectType` which has a relation `viewer`, then recurse on `objectType#viewer, folder#viewer`
 func (g *ConnectedObjectGraph) RelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
-	return g.findIngresses(target, source, map[string]struct{}{})
+	return g.findIngresses(target, source, map[string]struct{}{}, resolveAllIngresses)
 }
 
-func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference, visited map[string]struct{}) ([]*RelationshipIngress, error) {
+// PrunedRelationshipIngresses compute the minimum incoming endges (ingresses) that are possible between the target and the source.
+//
+// PrunedRelationshipIngresses is primarily used as the driver behind ingresses that work for models including intersection and exclusion.
+// If the ingresses from the source to the target pass through a relationship involving intersection or exclusion (directly or indirectly),
+// then the PrunedRelationshipIngresses will just return the first-most ingress involved in the rewrite.
+//
+// Consider the following model:
+//
+// type user
+// type document
+//
+//	relations
+//	  define allowed: [user]
+//	  define viewer: [user] and allowed
+//
+// The pruned relationship ingresses from the 'user' type to 'document#viewer' returns only the `document#viewer` ingress but with a 'RequiresFurtherEvalCondition' ingress condition.
+// This is because when evaluating relationships involving intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
+// we call Check on the result to evaluate the sub-condition on the 'and allowed' bit.
+func (g *ConnectedObjectGraph) PrunedRelationshipIngresses(target *openfgapb.RelationReference, source *openfgapb.RelationReference) ([]*RelationshipIngress, error) {
+	return g.findIngresses(target, source, map[string]struct{}{}, resolveAnyIngress)
+}
+
+func (g *ConnectedObjectGraph) findIngresses(
+	target *openfgapb.RelationReference,
+	source *openfgapb.RelationReference,
+	visited map[string]struct{},
+	findIngressOption findIngressOption,
+) ([]*RelationshipIngress, error) {
 	key := tuple.ToObjectRelationString(target.GetType(), target.GetRelation())
 	if _, ok := visited[key]; ok {
 		// We've already visited the target so no need to do so again.
@@ -138,7 +192,13 @@ func (g *ConnectedObjectGraph) findIngresses(target *openfgapb.RelationReference
 		return nil, err
 	}
 
-	return g.findIngressesWithTargetRewrite(target, source, relation.GetRewrite(), visited)
+	return g.findIngressesWithTargetRewrite(
+		target,
+		source,
+		relation.GetRewrite(),
+		visited,
+		findIngressOption,
+	)
 }
 
 // findIngressesWithTargetRewrite is what we use for recursive calls on the targetRewrite, particularly union where we don't
@@ -148,6 +208,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 	source *openfgapb.RelationReference,
 	targetRewrite *openfgapb.Userset,
 	visited map[string]struct{},
+	findIngressOption findIngressOption,
 ) ([]*RelationshipIngress, error) {
 	switch t := targetRewrite.GetUserset().(type) {
 	case *openfgapb.Userset_This: // e.g. define viewer:[user] as self
@@ -158,8 +219,9 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 		if directlyRelated || publiclyAssignable {
 			// if source=user, or define viewer:[user:*] as self
 			res = append(res, &RelationshipIngress{
-				Type:    DirectIngress,
-				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				Type:      DirectIngress,
+				Ingress:   typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				Condition: NoFurtherEvalCondition,
 			})
 		}
 
@@ -168,7 +230,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 		for _, typeRestriction := range typeRestrictions {
 			if typeRestriction.GetRelation() != "" { // e.g. define viewer:[team#member] as self
 				// recursively sub-collect any ingresses for (team#member, source)
-				ingresses, err := g.findIngresses(typeRestriction, source, visited)
+				ingresses, err := g.findIngresses(typeRestriction, source, visited, findIngressOption)
 				if err != nil {
 					return nil, err
 				}
@@ -187,8 +249,9 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 
 		if sourceRelMatchesRewritten {
 			ingresses = append(ingresses, &RelationshipIngress{
-				Type:    ComputedUsersetIngress,
-				Ingress: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				Type:      ComputedUsersetIngress,
+				Ingress:   typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				Condition: NoFurtherEvalCondition,
 			})
 		}
 
@@ -196,6 +259,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 			typesystem.DirectRelationReference(target.GetType(), t.ComputedUserset.GetRelation()),
 			source,
 			visited,
+			findIngressOption,
 		)
 		if err != nil {
 			return nil, err
@@ -238,10 +302,28 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 			//     define parent: [folder]
 			//     define viewer: viewer from parent
 			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
+
+				condition := NoFurtherEvalCondition
+
+				involvesIntersection, err := g.typesystem.RelationInvolvesIntersection(typeRestriction.GetType(), r.GetName())
+				if err != nil {
+					return nil, err
+				}
+
+				involvesExclusion, err := g.typesystem.RelationInvolvesExclusion(typeRestriction.GetType(), r.GetName())
+				if err != nil {
+					return nil, err
+				}
+
+				if involvesIntersection || involvesExclusion {
+					condition = RequiresFurtherEvalCondition
+				}
+
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+					Condition:        condition,
 				})
 			} else {
 				matchesSourceType := typeRestriction.GetType() == source.GetType()
@@ -269,6 +351,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 								Type:             TupleToUsersetIngress,
 								Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 								TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
+								Condition:        NoFurtherEvalCondition,
 							})
 						}
 					}
@@ -279,6 +362,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 				typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
 				source,
 				visited,
+				findIngressOption,
 			)
 			if err != nil {
 				return nil, err
@@ -293,15 +377,92 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 		var res []*RelationshipIngress
 		for _, child := range t.Union.GetChild() {
 			// we recurse through each child rewrite
-			childResults, err := g.findIngressesWithTargetRewrite(target, source, child, visited)
+			childResults, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
 			if err != nil {
 				return nil, err
 			}
 			res = append(res, childResults...)
 		}
 		return res, nil
-	case *openfgapb.Userset_Intersection, *openfgapb.Userset_Difference:
-		return nil, ErrNotImplemented
+	case *openfgapb.Userset_Intersection:
+
+		if findIngressOption == resolveAnyIngress {
+			child := t.Intersection.GetChild()[0]
+
+			childresults, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, childresult := range childresults {
+				childresult.Condition = RequiresFurtherEvalCondition
+			}
+
+			return childresults, nil
+		}
+
+		var ingresses []*RelationshipIngress
+		for _, child := range t.Intersection.GetChild() {
+
+			res, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
+			if err != nil {
+				return nil, err
+			}
+
+			ingresses = append(ingresses, res...)
+		}
+
+		if len(ingresses) > 0 {
+			ingresses[0].Condition = RequiresFurtherEvalCondition
+		}
+
+		return ingresses, nil
+	case *openfgapb.Userset_Difference:
+
+		if findIngressOption == resolveAnyIngress {
+			// if we have 'a but not b', then we prune 'b' and only resolve 'a' with a
+			// condition that requires further evaluation. It's more likely the blacklist
+			// on 'but not b' is a larger set than the base set 'a', and so pruning the
+			// subtracted set is generally going to be a better choice.
+
+			child := t.Difference.GetBase()
+
+			childresults, err := g.findIngressesWithTargetRewrite(target, source, child, visited, findIngressOption)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, childresult := range childresults {
+				childresult.Condition = RequiresFurtherEvalCondition
+			}
+
+			return childresults, nil
+		}
+
+		var ingresses []*RelationshipIngress
+
+		baseRewrite := t.Difference.GetBase()
+
+		baseIngresses, err := g.findIngressesWithTargetRewrite(target, source, baseRewrite, visited, findIngressOption)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(baseIngresses) > 0 {
+			baseIngresses[0].Condition = RequiresFurtherEvalCondition
+		}
+
+		ingresses = append(ingresses, baseIngresses...)
+
+		subtractRewrite := t.Difference.GetSubtract()
+
+		subIngresses, err := g.findIngressesWithTargetRewrite(target, source, subtractRewrite, visited, findIngressOption)
+		if err != nil {
+			return nil, err
+		}
+		ingresses = append(ingresses, subIngresses...)
+
+		return ingresses, nil
 	default:
 		panic("unexpected userset rewrite encountered")
 	}

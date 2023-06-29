@@ -198,15 +198,17 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
+			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             datastore,
-				Logger:                logger.NewNoopLogger(),
-				ListObjectsDeadline:   listObjectsDeadline,
-				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      DefaultResolveNodeLimit,
+				Datastore:                     datastore,
+				Logger:                        logger.NewNoopLogger(),
+				ListObjectsDeadline:           listObjectsDeadline,
+				ListObjectsMaxResults:         test.maxResults,
+				ResolveNodeLimit:              DefaultResolveNodeLimit,
+				CheckConcurrencyLimit:         100,
+				OptimizeIntersectionExclusion: true,
 			}
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -311,9 +313,13 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ListObjectsDeadline:           3 * time.Second,
+		ListObjectsMaxResults:         1000,
+		ResolveNodeLimit:              DefaultResolveNodeLimit,
+		CheckConcurrencyLimit:         100,
+		OptimizeIntersectionExclusion: true,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -377,9 +383,13 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: DefaultResolveNodeLimit,
+		Datastore:                     ds,
+		Logger:                        logger.NewNoopLogger(),
+		ListObjectsDeadline:           3 * time.Second,
+		ListObjectsMaxResults:         1000,
+		ResolveNodeLimit:              DefaultResolveNodeLimit,
+		CheckConcurrencyLimit:         100,
+		OptimizeIntersectionExclusion: true,
 	}
 
 	var r *openfgapb.ListObjectsResponse
