@@ -434,7 +434,7 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 	return nil
 }
 
-// This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
+// This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -460,6 +460,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
 	}, nil)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := New(&Dependencies{
 		Datastore: mockDatastore,
