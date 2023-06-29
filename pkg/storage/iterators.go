@@ -2,9 +2,7 @@ package storage
 
 import (
 	"errors"
-	"sync"
 
-	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -16,10 +14,6 @@ type Iterator[T any] interface {
 	// Stop terminates iteration over the underlying iterator.
 	Stop()
 }
-
-// ObjectIterator is an iterator for Objects (type + id). It is closed by explicitly calling Stop() or by calling Next() until it
-// returns an ErrIteratorDone error.
-type ObjectIterator = Iterator[*openfgapb.Object]
 
 // TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
 // returns an ErrIteratorDone error.
@@ -37,69 +31,6 @@ func (e *emptyTupleIterator) Next() (*openfgapb.Tuple, error) {
 	return nil, ErrIteratorDone
 }
 func (e *emptyTupleIterator) Stop() {}
-
-type uniqueObjectIterator struct {
-	iter1, iter2 ObjectIterator
-	objects      sync.Map
-}
-
-// NewUniqueObjectIterator returns an ObjectIterator that iterates over two ObjectIterators and yields only distinct
-// objects with the duplicates removed.
-//
-// iter1 should generally be provided by a constrained iterator (e.g. contextual tuples) and iter2 should be provided
-// by a storage iterator that already guarantees uniqueness.
-func NewUniqueObjectIterator(iter1, iter2 ObjectIterator) ObjectIterator {
-	return &uniqueObjectIterator{
-		iter1: iter1,
-		iter2: iter2,
-	}
-}
-
-var _ ObjectIterator = (*uniqueObjectIterator)(nil)
-
-// Next returns the next unique object from the two underlying iterators.
-func (u *uniqueObjectIterator) Next() (*openfgapb.Object, error) {
-	for {
-		obj, err := u.iter1.Next()
-		if err != nil {
-			if err == ErrIteratorDone {
-				break
-			}
-
-			return nil, err
-		}
-
-		// if the object has not already been seen, then store it and return it
-		_, ok := u.objects.Load(tuple.ObjectKey(obj))
-		if !ok {
-			u.objects.Store(tuple.ObjectKey(obj), struct{}{})
-			return obj, nil
-		}
-
-	}
-
-	// assumption is that iter2 yields unique values to begin with
-	for {
-		obj, err := u.iter2.Next()
-		if err != nil {
-			if err == ErrIteratorDone {
-				return nil, ErrIteratorDone
-			}
-
-			return nil, err
-		}
-
-		_, ok := u.objects.Load(tuple.ObjectKey(obj))
-		if !ok {
-			return obj, nil
-		}
-	}
-}
-
-func (u *uniqueObjectIterator) Stop() {
-	u.iter1.Stop()
-	u.iter2.Stop()
-}
 
 type combinedIterator[T any] struct {
 	iters []Iterator[T]
@@ -179,42 +110,6 @@ func NewTupleKeyIteratorFromTupleIterator(iter TupleIterator) TupleKeyIterator {
 	return &tupleKeyIterator{iter}
 }
 
-// NewTupleKeyObjectIterator returns an ObjectIterator that iterates over the objects
-// contained in the provided list of TupleKeys.
-func NewTupleKeyObjectIterator(tupleKeys []*openfgapb.TupleKey) ObjectIterator {
-	objects := make([]*openfgapb.Object, 0, len(tupleKeys))
-	for _, tk := range tupleKeys {
-		objectType, objectID := tuple.SplitObject(tk.GetObject())
-		objects = append(objects, &openfgapb.Object{Type: objectType, Id: objectID})
-	}
-
-	return NewStaticObjectIterator(objects)
-}
-
-type tupleKeyObjectIterator struct {
-	iter TupleKeyIterator
-}
-
-var _ ObjectIterator = (*tupleKeyObjectIterator)(nil)
-
-func (t *tupleKeyObjectIterator) Next() (*openfgapb.Object, error) {
-	tk, err := t.iter.Next()
-	if err != nil {
-		return nil, err
-	}
-	objectType, objectID := tuple.SplitObject(tk.GetObject())
-	return &openfgapb.Object{Type: objectType, Id: objectID}, nil
-}
-
-func (t *tupleKeyObjectIterator) Stop() {
-	t.iter.Stop()
-}
-
-// NewObjectIteratorFromTupleKeyIterator takes a TupleKeyIterator and yields all the objects from it as a ObjectIterator.
-func NewObjectIteratorFromTupleKeyIterator(iter TupleKeyIterator) ObjectIterator {
-	return &tupleKeyObjectIterator{iter}
-}
-
 type staticIterator[T any] struct {
 	items []T
 }
@@ -232,14 +127,6 @@ func (s *staticIterator[T]) Next() (T, error) {
 }
 
 func (s *staticIterator[T]) Stop() {}
-
-// NewStaticObjectIterator returns an ObjectIterator that iterates over the provided slice of objects.
-func NewStaticObjectIterator(objects []*openfgapb.Object) ObjectIterator {
-
-	return &staticIterator[*openfgapb.Object]{
-		items: objects,
-	}
-}
 
 // TupleKeyFilterFunc is a filter function that is used to filter out tuples from a TupleKey iterator
 // that don't meet some criteria. Implementations should return true if the tuple should be returned

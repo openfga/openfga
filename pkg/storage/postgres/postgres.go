@@ -119,26 +119,6 @@ func (p *Postgres) Close() {
 	p.db.Close()
 }
 
-func (p *Postgres) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	ctx, span := tracer.Start(ctx, "postgres.ListObjectsByType")
-	defer span.End()
-
-	rows, err := p.stbl.
-		Select("object_type", "object_id").
-		Distinct().
-		From("tuple").
-		Where(sq.Eq{
-			"store":       store,
-			"object_type": objectType,
-		}).
-		QueryContext(ctx)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	return sqlcommon.NewSQLObjectIterator(rows), nil
-}
-
 func (p *Postgres) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "postgres.Read")
 	defer span.End()
