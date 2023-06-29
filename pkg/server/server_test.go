@@ -520,7 +520,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		    define viewer: [user] as self and allowed
 		`),
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := New(&Dependencies{
 		Datastore: mockDatastore,
@@ -530,6 +530,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
+		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -611,6 +612,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
+		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -678,6 +680,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			ListObjectsDeadline:   5 * time.Second,
 			ListObjectsMaxResults: 1000,
 		},
+		optimizeListObjects: true,
 	}
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
