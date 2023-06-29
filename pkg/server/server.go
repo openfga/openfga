@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,6 +38,10 @@ const (
 	checkConcurrencyLimit = 100
 
 	optimizedListObjects ExperimentalFeatureFlag = "optimized-list-objects"
+
+	defaultResolveNodeLimit      = 25
+	defaultListObjectsDeadline   = 5 * time.Second
+	defaultListObjectsMaxResults = 1000
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -46,46 +51,109 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	logger              logger.Logger
-	datastore           storage.OpenFGADatastore
-	encoder             encoder.Encoder
-	transport           gateway.Transport
-	config              *Config
+	logger                 logger.Logger
+	datastore              storage.OpenFGADatastore
+	encoder                encoder.Encoder
+	transport              gateway.Transport
+	resolveNodeLimit       uint32
+	changelogHorizonOffset int
+	listObjectsDeadline    time.Duration
+	listObjectsMaxResults  uint32
+	experimentals          []ExperimentalFeatureFlag
+
 	optimizeListObjects bool
 }
 
-type Dependencies struct {
-	Datastore    storage.OpenFGADatastore
-	Logger       logger.Logger
-	Transport    gateway.Transport
-	TokenEncoder encoder.Encoder
+type OpenFGASeviceV1Option func(s *Server)
+
+func WithDatastore(ds storage.OpenFGADatastore) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.datastore = ds
+	}
 }
 
-type Config struct {
-	ResolveNodeLimit       uint32
-	ChangelogHorizonOffset int
-	ListObjectsDeadline    time.Duration
-	ListObjectsMaxResults  uint32
-	Experimentals          []ExperimentalFeatureFlag
+func WithLogger(l logger.Logger) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.logger = l
+	}
 }
 
-// New creates a new Server which uses the supplied backends
-// for managing data.
-func New(dependencies *Dependencies, config *Config) *Server {
+func WithTokenEncoder(encoder encoder.Encoder) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.encoder = encoder
+	}
+}
 
-	optimizeListObjects := false
-	if slices.Contains(config.Experimentals, optimizedListObjects) {
-		optimizeListObjects = true
+func WithTransport(t gateway.Transport) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.transport = t
+	}
+}
+
+func WithResolveNodeLimit(limit uint32) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.resolveNodeLimit = limit
+	}
+}
+
+func WithChangelogHorizonOffset(offset int) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.changelogHorizonOffset = offset
+	}
+}
+
+func WithListObjectsDeadline(deadline time.Duration) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.listObjectsDeadline = deadline
+	}
+}
+
+func WithListObjectsMaxResults(limit uint32) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.listObjectsMaxResults = limit
+	}
+}
+
+func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGASeviceV1Option {
+	return func(s *Server) {
+		s.experimentals = experimentals
+	}
+}
+
+func MustNewServerWithOpts(opts ...OpenFGASeviceV1Option) *Server {
+	s, err := NewServerWithOpts(opts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to construct the OpenFGA server: %v", err))
 	}
 
-	return &Server{
-		logger:              dependencies.Logger,
-		datastore:           dependencies.Datastore,
-		encoder:             dependencies.TokenEncoder,
-		transport:           dependencies.Transport,
-		config:              config,
-		optimizeListObjects: optimizeListObjects,
+	return s
+}
+
+func NewServerWithOpts(opts ...OpenFGASeviceV1Option) (*Server, error) {
+
+	s := &Server{
+		logger:                logger.NewNoopLogger(),
+		encoder:               encoder.NewBase64Encoder(),
+		transport:             gateway.NewNoopTransport(),
+		resolveNodeLimit:      defaultResolveNodeLimit,
+		listObjectsDeadline:   defaultListObjectsDeadline,
+		listObjectsMaxResults: defaultListObjectsMaxResults,
+		optimizeListObjects:   false,
 	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if slices.Contains(s.experimentals, optimizedListObjects) {
+		s.optimizeListObjects = true
+	}
+
+	return s, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
@@ -125,9 +193,9 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	q := &commands.ListObjectsQuery{
 		Datastore:                     ds,
 		Logger:                        s.logger,
-		ListObjectsDeadline:           s.config.ListObjectsDeadline,
-		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		ListObjectsDeadline:           s.listObjectsDeadline,
+		ListObjectsMaxResults:         s.listObjectsMaxResults,
+		ResolveNodeLimit:              s.resolveNodeLimit,
 		CheckConcurrencyLimit:         checkConcurrencyLimit,
 		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
@@ -178,9 +246,9 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	q := &commands.ListObjectsQuery{
 		Datastore:                     s.datastore,
 		Logger:                        s.logger,
-		ListObjectsDeadline:           s.config.ListObjectsDeadline,
-		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		ListObjectsDeadline:           s.listObjectsDeadline,
+		ListObjectsMaxResults:         s.listObjectsMaxResults,
+		ResolveNodeLimit:              s.resolveNodeLimit,
 		CheckConcurrencyLimit:         checkConcurrencyLimit,
 		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
@@ -292,7 +360,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.config.ResolveNodeLimit,
+			Depth: s.resolveNodeLimit,
 		},
 	})
 	if err != nil {
@@ -412,7 +480,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 

@@ -13,8 +13,6 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/gateway"
-	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -170,13 +168,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 				return nil, errors.New("some error")
 			})
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Logger:    logger.NewNoopLogger(),
-		Transport: gateway.NewNoopTransport(),
-	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
 		StoreId:              storeID,
@@ -220,13 +214,9 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 
 	// the model is error and err should return
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Logger:    logger.NewNoopLogger(),
-		Transport: gateway.NewNoopTransport(),
-	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
 
 	_, err := s.Check(ctx, &openfgapb.CheckRequest{
 		StoreId:              storeID,
@@ -327,13 +317,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 				return storage.NewStaticTupleIterator([]*openfgapb.Tuple{tuple}), nil
 			})
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Logger:    logger.NewNoopLogger(),
-		Transport: gateway.NewNoopTransport(),
-	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
 
 	start := time.Now()
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -351,8 +337,6 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 
 func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
 
@@ -364,11 +348,9 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return("", storage.ErrNotFound)
 
-		s := New(&Dependencies{
-			Datastore: mockDatastore,
-			Transport: transport,
-			Logger:    logger,
-		}, &Config{})
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
@@ -386,11 +368,9 @@ func TestResolveAuthorizationModel(t *testing.T) {
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
 
-		s := New(&Dependencies{
-			Datastore: mockDatastore,
-			Transport: transport,
-			Logger:    logger,
-		}, &Config{})
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
 
 		got, err := s.resolveAuthorizationModelID(ctx, store, "")
 		require.NoError(t, err)
@@ -407,11 +387,9 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-		s := New(&Dependencies{
-			Datastore: mockDatastore,
-			Transport: transport,
-			Logger:    logger,
-		}, &Config{})
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
 
 		_, err := s.resolveAuthorizationModelID(ctx, store, modelID)
 		require.Equal(t, want, err)
@@ -437,8 +415,7 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 // This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -462,15 +439,10 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Transport: transport,
-		Logger:    logger,
-	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithListObjectsDeadline(5*time.Second),
+	)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -499,8 +471,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 // This test ensures that when the data storage fails, ListObjects v0 throws an error
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -522,16 +493,11 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	}, nil)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Transport: transport,
-		Logger:    logger,
-	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithListObjectsDeadline(5*time.Second),
+		WithExperimentals(optimizedListObjects),
+	)
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
@@ -562,8 +528,7 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 // This test ensures that when the data storage fails, ListObjects v1 throws an error
 func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -604,16 +569,11 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 			{Object: "user:bob"},
 		}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
-	s := New(&Dependencies{
-		Datastore: mockDatastore,
-		Transport: transport,
-		Logger:    logger,
-	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
-	})
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithListObjectsDeadline(5*time.Second),
+		WithExperimentals(optimizedListObjects),
+	)
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
 		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
@@ -643,8 +603,7 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 
 func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	transport := gateway.NewNoopTransport()
+
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -671,17 +630,11 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	}, nil)
 	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
-	s := Server{
-		datastore: mockDatastore,
-		transport: transport,
-		logger:    logger,
-		config: &Config{
-			ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-			ListObjectsDeadline:   5 * time.Second,
-			ListObjectsMaxResults: 1000,
-		},
-		optimizeListObjects: true,
-	}
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithListObjectsDeadline(5*time.Second),
+		WithExperimentals(optimizedListObjects),
+	)
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgapb.CheckRequest{
