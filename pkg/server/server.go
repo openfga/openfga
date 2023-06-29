@@ -22,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -33,6 +34,8 @@ const (
 	authorizationModelIDKey    = "authorization_model_id"
 
 	checkConcurrencyLimit = 100
+
+	optimizedListObjects ExperimentalFeatureFlag = "optimized-list-objects"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -42,11 +45,12 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	transport gateway.Transport
-	config    *Config
+	logger              logger.Logger
+	datastore           storage.OpenFGADatastore
+	encoder             encoder.Encoder
+	transport           gateway.Transport
+	config              *Config
+	optimizeListObjects bool
 
 	typesystemResolver typesystem.TypesystemResolverFunc
 }
@@ -72,13 +76,19 @@ func New(dependencies *Dependencies, config *Config) *Server {
 
 	typesysResolverFunc := typesystem.MemoizedTypesystemResolverFunc(dependencies.Datastore)
 
+	optimizeListObjects := false
+	if slices.Contains(config.Experimentals, optimizedListObjects) {
+		optimizeListObjects = true
+	}
+
 	return &Server{
-		logger:             dependencies.Logger,
-		datastore:          dependencies.Datastore,
-		encoder:            dependencies.TokenEncoder,
-		transport:          dependencies.Transport,
-		config:             config,
-		typesystemResolver: typesysResolverFunc,
+		logger:              dependencies.Logger,
+		datastore:           dependencies.Datastore,
+		encoder:             dependencies.TokenEncoder,
+		transport:           dependencies.Transport,
+		config:              config,
+		optimizeListObjects: optimizeListObjects,
+		typesystemResolver:  typesysResolverFunc,
 	}
 }
 
@@ -101,11 +111,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		Datastore:                     storage.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
+		Logger:                        s.logger,
+		ListObjectsDeadline:           s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		CheckConcurrencyLimit:         checkConcurrencyLimit,
+		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
 	return q.Execute(
@@ -138,11 +150,13 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
+		Datastore:                     s.datastore,
+		Logger:                        s.logger,
+		ListObjectsDeadline:           s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:         s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:              s.config.ResolveNodeLimit,
+		CheckConcurrencyLimit:         checkConcurrencyLimit,
+		OptimizeIntersectionExclusion: s.optimizeListObjects,
 	}
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
@@ -228,7 +242,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit)
+		checkConcurrencyLimit,
+	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),

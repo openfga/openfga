@@ -43,7 +43,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["otel-metrics"]
+                "enum": ["optimized-list-objects"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
