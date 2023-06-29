@@ -135,7 +135,13 @@ func ValidateAllAuthorizationModels(ctx context.Context, db storage.OpenFGADatas
 					}
 
 					if err != nil {
-						validationResult.Error = err.Error()
+						if invalidRelation, ok := err.(*typesystem.InvalidRelationError); ok {
+							// This will give a more detailed error
+							validationResult.Error = invalidRelation.Error() + " : " + invalidRelation.Cause.Error()
+						} else {
+							validationResult.Error = err.Error()
+
+						}
 					}
 					validationResults = append(validationResults, validationResult)
 				}
