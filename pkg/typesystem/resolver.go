@@ -19,13 +19,13 @@ const (
 // resolution of a Typesystem.
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
-// MemoizedTypesystemResolver returns a TypesystemResolverFunc that either fetches the provided authorization
+// MemoizedTypesystemResolverFunc returns a TypesystemResolverFunc that either fetches the provided authorization
 // model (if provided) or looks up the latest authorizaiton model, and then it constructs a TypeSystem from
 // the resolved model. The type-system resolution is memoized so if another lookup of the same model occurs,
 // then the earlier TypeSystem that was constructed will be used.
 //
 // The memoized resolver function is safe for concurrent use.
-func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
+func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
 
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
@@ -42,7 +42,7 @@ func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend
 		}
 
 		if modelID == "" {
-			if modelID, err = reader.FindLatestAuthorizationModelID(ctx, storeID); err != nil {
+			if modelID, err = datastore.FindLatestAuthorizationModelID(ctx, storeID); err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return nil, ErrModelNotFound
 				}
@@ -58,7 +58,7 @@ func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend
 			return item.Value(), nil
 		}
 
-		model, err := reader.ReadAuthorizationModel(ctx, storeID, modelID)
+		model, err := datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return nil, ErrModelNotFound
