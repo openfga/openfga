@@ -43,7 +43,7 @@ func MemoizedTypesystemResolverFunc(reader storage.AuthorizationModelReadBackend
 
 		if modelID == "" {
 			if modelID, err = reader.FindLatestAuthorizationModelID(ctx, storeID); err != nil {
-				if !errors.Is(err, storage.ErrNotFound) {
+				if errors.Is(err, storage.ErrNotFound) {
 					return nil, ErrModelNotFound
 				}
 

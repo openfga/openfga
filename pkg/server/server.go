@@ -342,12 +342,13 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
+
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
-	return q.Execute(ctx, req.GetStoreId(), modelID)
+	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
@@ -419,17 +420,21 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 // resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
 // it sets some response metadata based on the model resolution.
 func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
-	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
+	ctx, span := tracer.Start(ctx, "resolveTypesystem")
 	defer span.End()
 
 	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrModelNotFound) {
+			if modelID == "" {
+				return nil, serverErrors.LatestAuthorizationModelNotFound(storeID)
+			}
+
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
 		if errors.Is(err, typesystem.ErrInvalidModel) {
-			return nil, serverErrors.InvalidAuthorizationModelInput(err)
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		return nil, serverErrors.HandleError("", err)
