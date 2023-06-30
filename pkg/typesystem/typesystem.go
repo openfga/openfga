@@ -35,7 +35,7 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
-	ErrNoEntryPointsLoop     = errors.New("potential loop in relations definitions")
+	ErrNoEntryPointsLoop     = errors.New("potential loop in relation definitions")
 )
 
 func ErrorNoEntryPoints(typeName string, relationName string) error {
