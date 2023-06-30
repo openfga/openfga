@@ -8,6 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.2.0] - 2023-07-01
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.1.1...v1.2.0)
+
+### Added
+* Optimizations for [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects) for models involving intersection (`and`) and exclusion (`but not`) (#797)
+
+### Changed
+* Memoize typesystem resolution and model validation instead of requiring re-evaluation (#831)
+
 ## [1.1.1] - 2023-06-26
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.1.0...v1.1.1)
@@ -523,7 +533,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/openfga/openfga/releases/tag/v1.2.0
 [1.1.1]: https://github.com/openfga/openfga/releases/tag/v1.1.1
 [1.1.0]: https://github.com/openfga/openfga/releases/tag/v1.1.0
 [1.0.1]: https://github.com/openfga/openfga/releases/tag/v1.0.1
