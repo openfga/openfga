@@ -19,16 +19,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
-	listObjectsOptimizedKey = "list_objects_optimized"
 )
 
 var (
@@ -42,13 +38,12 @@ var (
 )
 
 type ListObjectsQuery struct {
-	Datastore                     storage.RelationshipTupleReader
-	Logger                        logger.Logger
-	ListObjectsDeadline           time.Duration
-	ListObjectsMaxResults         uint32
-	ResolveNodeLimit              uint32
-	CheckConcurrencyLimit         uint32
-	OptimizeIntersectionExclusion bool
+	Datastore             storage.RelationshipTupleReader
+	Logger                logger.Logger
+	ListObjectsDeadline   time.Duration
+	ListObjectsMaxResults uint32
+	ResolveNodeLimit      uint32
+	CheckConcurrencyLimit uint32
 }
 
 type ListObjectsResult struct {
@@ -74,8 +69,6 @@ func (q *ListObjectsQuery) evaluate(
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 ) error {
-
-	span := trace.SpanFromContext(ctx)
 
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
@@ -220,23 +213,6 @@ func (q *ListObjectsQuery) evaluate(
 		close(resultsChan)
 	}
 
-	containsIntersection, _ := typesys.RelationInvolvesIntersection(targetObjectType, targetRelation)
-	containsExclusion, _ := typesys.RelationInvolvesExclusion(targetObjectType, targetRelation)
-
-	if (containsIntersection || containsExclusion) && !q.OptimizeIntersectionExclusion {
-		handler = func() {
-			defer close(resultsChan)
-
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
-			span.SetAttributes(attribute.Bool(listObjectsOptimizedKey, false))
-
-			err = q.performChecks(ctx, req, resultsChan, maxResults)
-			if err != nil {
-				resultsChan <- ListObjectsResult{Err: err}
-			}
-		}
-	}
-
 	go handler()
 
 	return nil
@@ -348,73 +324,4 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			}
 		}
 	}
-}
-
-func (q *ListObjectsQuery) performChecks(ctx context.Context, req listObjectsRequest, resultsChan chan<- ListObjectsResult, maxResults uint32) error {
-	ctx, span := tracer.Start(ctx, "performChecks")
-	defer span.End()
-	var objectsFound = new(uint32)
-
-	combinedDatastore := storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys())
-
-	iter, err := combinedDatastore.ListObjectsByType(ctx, req.GetStoreId(), req.GetType())
-	if err != nil {
-		return err
-	}
-	defer iter.Stop()
-
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(maximumConcurrentChecks)
-
-	checkResolver := graph.NewLocalChecker(combinedDatastore, maximumConcurrentChecks)
-	// iterate over all object IDs in the store and check if the user has relation with each
-	for {
-		object, err := iter.Next()
-		if err != nil {
-			if !errors.Is(err, storage.ErrIteratorDone) {
-				return err
-			}
-			break
-		}
-		if atomic.LoadUint32(objectsFound) >= maxResults {
-			break
-		}
-
-		checkFunction := func() error {
-			return q.internalCheck(ctx, checkResolver, object, req, objectsFound, resultsChan, maxResults)
-		}
-
-		g.Go(checkFunction)
-	}
-
-	return g.Wait()
-}
-
-func (q *ListObjectsQuery) internalCheck(
-	ctx context.Context,
-	checkResolver *graph.LocalChecker,
-	obj *openfgapb.Object,
-	req listObjectsRequest,
-	objectsFound *uint32,
-	resultsChan chan<- ListObjectsResult,
-	maxResults uint32,
-) error {
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
-		TupleKey:             tuple.NewTupleKey(tuple.ObjectKey(obj), req.GetRelation(), req.GetUser()),
-		ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: q.ResolveNodeLimit,
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-		resultsChan <- ListObjectsResult{ObjectID: tuple.ObjectKey(obj)}
-	}
-
-	return nil
 }
