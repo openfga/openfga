@@ -20,7 +20,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: openfga/openfga:v1.1.1
+    image: openfga/openfga:latest
     container_name: migrate
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
@@ -29,28 +29,13 @@ services:
     networks:
       - default
 
-  validate:
-    depends_on:
-      postgres:
-        condition: service_healthy
-    image: openfga/openfga:latest
-    container_name: validate
-    environment:
-      - OPENFGA_DATASTORE_ENGINE=postgres
-      - OPENFGA_DATASTORE_URI=postgres://postgres:password@postgres:5432/postgres?sslmode=disable
-    command: validate-models
-    networks:
-      - default
-
   openfga:
     depends_on:
-      validate:
-        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
       otel-collector:
         condition: service_started
-    image: openfga/openfga:v1.1.1
+    image: openfga/openfga:latest
     container_name: openfga
     command: run
     environment:
