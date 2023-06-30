@@ -214,6 +214,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
+			Id:              modelID,
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
 		}, nil)
@@ -372,7 +373,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
-		_, err := s.resolveAuthorizationModelID(ctx, store, "")
+		_, err := s.resolveTypesystem(ctx, store, "")
 		require.ErrorIs(t, err, expectedError)
 	})
 
@@ -385,6 +386,13 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+			&openfgapb.AuthorizationModel{
+				Id:            modelID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			},
+			nil,
+		)
 
 		s := New(&Dependencies{
 			Datastore: mockDatastore,
@@ -392,9 +400,9 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			Logger:    logger,
 		}, &Config{})
 
-		got, err := s.resolveAuthorizationModelID(ctx, store, "")
+		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
-		require.Equal(t, modelID, got)
+		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
 	})
 
 	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
@@ -413,7 +421,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			Logger:    logger,
 		}, &Config{})
 
-		_, err := s.resolveAuthorizationModelID(ctx, store, modelID)
+		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
 	})
 }
@@ -651,8 +659,6 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
-
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
 		TypeDefinitions: []*openfgapb.TypeDefinition{
@@ -668,16 +674,16 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		},
 	}, nil)
 
-	s := Server{
-		datastore: mockDatastore,
-		transport: transport,
-		logger:    logger,
-		config: &Config{
-			ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-			ListObjectsDeadline:   5 * time.Second,
-			ListObjectsMaxResults: 1000,
-		},
-	}
+	s := New(&Dependencies{
+		Datastore: mockDatastore,
+		Transport: transport,
+		Logger:    logger,
+	}, &Config{
+		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
+		ListObjectsDeadline:   5 * time.Second,
+		ListObjectsMaxResults: 1000,
+		Experimentals:         []ExperimentalFeatureFlag{},
+	})
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
 		_, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -753,6 +759,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	})
 
 	t.Run("invalid_schema_error_in_write_model", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
 		_, err := s.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
 			StoreId:         store,
 			SchemaVersion:   typesystem.SchemaVersion1_0,

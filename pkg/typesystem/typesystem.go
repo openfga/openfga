@@ -25,6 +25,7 @@ const (
 )
 
 var (
+	ErrModelNotFound         = errors.New("authorization model not found")
 	ErrDuplicateTypes        = errors.New("an authorization model cannot contain duplicate types")
 	ErrInvalidSchemaVersion  = errors.New("invalid schema version")
 	ErrInvalidModel          = errors.New("invalid authorization model encountered")
