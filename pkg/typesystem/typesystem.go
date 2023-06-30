@@ -35,16 +35,8 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
-	ErrNoEntryPointsLoop     = errors.New("potential loop in relation definitions")
+	ErrNoEntryPointsLoop     = errors.New("potential loop")
 )
-
-func ErrorNoEntryPoints(typeName string, relationName string) error {
-	return fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints)
-}
-
-func ErrorNoEntryPointsLoop(typeName string, relationName string) error {
-	return fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntryPointsLoop)
-}
 
 func IsSchemaVersionSupported(version string) bool {
 	switch version {
@@ -880,9 +872,9 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 	}
 
 	if !hasEntrypoints {
-		cause := ErrorNoEntryPoints(typeName, relationName)
+		cause := ErrNoEntrypoints
 		if loop {
-			cause = ErrorNoEntryPointsLoop(typeName, relationName)
+			cause = ErrNoEntryPointsLoop
 		}
 		return &InvalidRelationError{
 			ObjectType: typeName,

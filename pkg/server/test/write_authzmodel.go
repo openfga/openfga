@@ -166,7 +166,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "viewer")},
+				Cause:      typesystem.ErrNoEntrypoints},
 			),
 		},
 		{
@@ -185,7 +185,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "viewer"),
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 		{
@@ -204,7 +204,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "viewer"),
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 		{
@@ -226,7 +226,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "action1",
-				Cause:      typesystem.ErrorNoEntryPointsLoop("document", "action1"),
+				Cause:      typesystem.ErrNoEntryPointsLoop,
 			}),
 		},
 		{
@@ -275,7 +275,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "action1",
-				Cause:      typesystem.ErrorNoEntryPointsLoop("document", "action1"),
+				Cause:      typesystem.ErrNoEntryPointsLoop,
 			}),
 		},
 		{
@@ -294,7 +294,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "viewer"),
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 
@@ -314,7 +314,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "viewer"),
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 		{
@@ -339,7 +339,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "editor",
-				Cause:      typesystem.ErrorNoEntryPoints("document", "editor"),
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 		{
