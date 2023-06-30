@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
@@ -19,6 +20,8 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
+
+var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
 
 type individualTest struct {
 	Name   string
@@ -137,13 +140,19 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			})
 			require.NoError(t, err)
 
+			tuples := stage.Tuples
+			tuplesLength := len(tuples)
 			// arrange: write tuples
-			if len(stage.Tuples) > 0 && !contextTupleTest {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
-				})
-				require.NoError(t, err)
+			if tuplesLength > 0 && !contextTupleTest {
+				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+					writeChunk := (tuples)[i:end]
+					_, err = client.Write(ctx, &pb.WriteRequest{
+						StoreId: storeID,
+						Writes:  &pb.TupleKeys{TupleKeys: writeChunk},
+					})
+					require.NoError(t, err)
+				}
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {
