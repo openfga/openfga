@@ -38,6 +38,14 @@ var (
 	ErrNoEntryPointsLoop     = errors.New("potential loop in relations definitions")
 )
 
+func ErrorNoEntryPoints(typeName string, relationName string) error {
+	return fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints)
+}
+
+func ErrorNoEntryPointsLoop(typeName string, relationName string) error {
+	return fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntryPointsLoop)
+}
+
 func IsSchemaVersionSupported(version string) bool {
 	switch version {
 	case SchemaVersion1_1:
@@ -872,9 +880,9 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 	}
 
 	if !hasEntrypoints {
-		cause := fmt.Errorf("no entrypoints found for relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints)
+		cause := ErrorNoEntryPoints(typeName, relationName)
 		if loop {
-			cause = fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntryPointsLoop)
+			cause = ErrorNoEntryPointsLoop(typeName, relationName)
 		}
 		return &InvalidRelationError{
 			ObjectType: typeName,
