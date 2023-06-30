@@ -73,7 +73,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				SchemaVersion: typesystem.SchemaVersion1_1,
 			},
 			allowSchema10: false,
-			err:           serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner"}),
+			err:           serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{ObjectType: "repo", Relation: "owner", Cause: typesystem.ErrInvalidUsersetRewrite}),
 		},
 		{
 			name: "Fails_if_type_info_metadata_is_omitted_in_1.1_model",
@@ -166,8 +166,8 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrCycle,
-			}),
+				Cause:      typesystem.ErrNoEntrypoints},
+			),
 		},
 		{
 			name: "self_referencing_type_restriction_without_entrypoint_2",
@@ -204,7 +204,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "viewer",
-				Cause:      typesystem.ErrCycle,
+				Cause:      typesystem.ErrNoEntrypoints,
 			}),
 		},
 		{
@@ -226,7 +226,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "action1",
-				Cause:      typesystem.ErrNoEntrypoints,
+				Cause:      typesystem.ErrNoEntryPointsLoop,
 			}),
 		},
 		{
@@ -275,7 +275,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(&typesystem.InvalidRelationError{
 				ObjectType: "document",
 				Relation:   "action1",
-				Cause:      typesystem.ErrNoEntrypoints,
+				Cause:      typesystem.ErrNoEntryPointsLoop,
 			}),
 		},
 		{
