@@ -16,7 +16,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Optimizations for [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects) for models involving intersection (`and`) and exclusion (`but not`) (#797)
 
 ### Changed
-* Memoize typesystem resolution and model validation instead of requiring re-evaluation (#831)
+* Cache model validation results on first model load (#831)
+* Cache inflight requests when looking up any authorization model (#831)
+* Update postgres max connections in docker compose file (#829)
 
 ## [1.1.1] - 2023-06-26
 
