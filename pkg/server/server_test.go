@@ -442,7 +442,7 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 	return nil
 }
 
-// This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
+// This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -468,7 +468,7 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := New(&Dependencies{
 		Datastore: mockDatastore,
@@ -538,7 +538,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -620,7 +619,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -675,7 +673,6 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := New(&Dependencies{
 		Datastore: mockDatastore,
@@ -685,7 +682,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
 		ListObjectsDeadline:   5 * time.Second,
 		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{optimizedListObjects},
+		Experimentals:         []ExperimentalFeatureFlag{},
 	})
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {

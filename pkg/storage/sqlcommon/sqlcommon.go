@@ -231,43 +231,6 @@ func (t *SQLTupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type SQLObjectIterator struct {
-	rows     *sql.Rows
-	resultCh chan *openfgapb.Object
-	errCh    chan error
-}
-
-// NewSQLObjectIterator returns a tuple iterator for Postgres
-func NewSQLObjectIterator(rows *sql.Rows) *SQLObjectIterator {
-	return &SQLObjectIterator{
-		rows:     rows,
-		resultCh: make(chan *openfgapb.Object, 1),
-		errCh:    make(chan error, 1),
-	}
-}
-
-var _ storage.ObjectIterator = (*SQLObjectIterator)(nil)
-
-func (o *SQLObjectIterator) Next() (*openfgapb.Object, error) {
-	if !o.rows.Next() {
-		if err := o.rows.Err(); err != nil {
-			return nil, err
-		}
-		return nil, storage.ErrIteratorDone
-	}
-
-	var object openfgapb.Object
-	if err := o.rows.Scan(&object.Type, &object.Id); err != nil {
-		return nil, err
-	}
-
-	return &object, nil
-}
-
-func (o *SQLObjectIterator) Stop() {
-	_ = o.rows.Close()
-}
-
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound

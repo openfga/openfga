@@ -68,10 +68,3 @@ func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store s
 
 	return c.OpenFGADatastore.ReadStartingWithUser(queryCtx, store, opts)
 }
-
-func (c *ContextTracerWrapper) ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error) {
-	queryCtx, cancel := queryContext(ctx)
-	defer cancel()
-
-	return c.OpenFGADatastore.ListObjectsByType(queryCtx, store, objectType)
-}
