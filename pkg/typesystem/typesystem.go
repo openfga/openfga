@@ -35,7 +35,7 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
-	ErrNoEntryPointsLoop     = errors.New("no entrypoints defined with potential loop")
+	ErrNoEntryPointsLoop     = errors.New("potential loop in relations definitions")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -872,17 +872,14 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 	}
 
 	if !hasEntrypoints {
+		cause := fmt.Errorf("no entrypoints found for relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints)
 		if loop {
-			return &InvalidRelationError{
-				ObjectType: typeName,
-				Relation:   relationName,
-				Cause:      fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntryPointsLoop),
-			}
+			cause = fmt.Errorf("relation '%s#%s': %w", typeName, relationName, ErrNoEntryPointsLoop)
 		}
 		return &InvalidRelationError{
 			ObjectType: typeName,
 			Relation:   relationName,
-			Cause:      fmt.Errorf("no entrypoints found for relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints),
+			Cause:      cause,
 		}
 	}
 
@@ -1211,7 +1208,7 @@ type InvalidRelationError struct {
 }
 
 func (e *InvalidRelationError) Error() string {
-	return fmt.Sprintf("the definition of relation '%s' in object type '%s' is invalid", e.Relation, e.ObjectType)
+	return fmt.Sprintf("the definition of relation '%s' in object type '%s' is invalid: %s", e.Relation, e.ObjectType, e.Cause)
 }
 
 func (e *InvalidRelationError) Unwrap() error {
