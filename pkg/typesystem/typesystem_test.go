@@ -49,7 +49,7 @@ func TestNewAndValidate(t *testing.T) {
 			    define action2 as admin and action1 and action3
 			    define action3 as admin and action1 and action2
 			`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
 			name: "no_entrypoint_2",
@@ -63,7 +63,7 @@ func TestNewAndValidate(t *testing.T) {
 				define action2 as admin but not action3
 				define action3 as admin but not action1
 			`,
-			expectedError: ErrNoEntrypoints,
+			expectedError: ErrNoEntryPointsLoop,
 		},
 		{
 			name: "no_entrypoint_3a",
@@ -1428,6 +1428,24 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 			`,
 			rr:       DirectRelationReference("node", "editor"),
 			expected: false,
+		},
+		{
+			name: "nested_intersection_1",
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self
+			    define viewer: [user] as self and allowed
+
+			type document
+			  relations
+			    define parent: [folder] as self
+				define viewer as viewer from parent
+			`,
+			rr:       DirectRelationReference("document", "viewer"),
+			expected: true,
 		},
 	}
 

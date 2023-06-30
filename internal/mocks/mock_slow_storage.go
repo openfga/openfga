@@ -25,11 +25,6 @@ func NewMockSlowDataStorage(ds storage.OpenFGADatastore, readTuplesDelay time.Du
 
 func (m *slowDataStorage) Close() {}
 
-func (m *slowDataStorage) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	time.Sleep(m.readTuplesDelay)
-	return m.ds.ListObjectsByType(ctx, store, objectType)
-}
-
 func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.ds.Read(ctx, store, key)

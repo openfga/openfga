@@ -33,7 +33,6 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	// tuples
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
-	t.Run("TestListObjectsByType", func(t *testing.T) { ListObjectsByTypeTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
 

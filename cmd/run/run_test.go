@@ -27,7 +27,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
-	mocks "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

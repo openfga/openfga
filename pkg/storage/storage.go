@@ -100,16 +100,6 @@ type RelationshipTupleReader interface {
 		store string,
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
-
-	// ListObjectsByType returns all the objects of a specific type.
-	// You can assume that the type has already been validated.
-	// The result can't have duplicate elements.
-	// There is NO guarantee on the order returned on the iterator.
-	ListObjectsByType(
-		ctx context.Context,
-		store string,
-		objectType string,
-	) (ObjectIterator, error)
 }
 
 type RelationshipTupleWriter interface {
@@ -334,22 +324,4 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 	}
 
 	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error) {
-
-	iter1 := NewObjectIteratorFromTupleKeyIterator(NewFilteredTupleKeyIterator(
-		NewStaticTupleKeyIterator(c.contextualTuples),
-		func(tk *openfgapb.TupleKey) bool {
-			return tuple.GetType(tk.GetObject()) == objectType
-		}))
-
-	iter2, err := c.wrapped.ListObjectsByType(ctx, store, objectType)
-	if err != nil {
-		return nil, err
-	}
-
-	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
-	iter := NewUniqueObjectIterator(iter1, iter2)
-	return iter, nil
 }
