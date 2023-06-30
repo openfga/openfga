@@ -9,8 +9,6 @@ import (
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -29,8 +27,6 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 // The memoized resolver function is safe for concurrent use.
 func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
 
-	lookupGroup := singleflight.Group{}
-
 	cache := ccache.New(ccache.Configure[*TypeSystem]())
 
 	return func(ctx context.Context, storeID, modelID string) (*TypeSystem, error) {
@@ -46,18 +42,13 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 		}
 
 		if modelID == "" {
-			v, err, _ := lookupGroup.Do(fmt.Sprintf("FindLatestAuthorizationModelID:%s", storeID), func() (interface{}, error) {
-				return datastore.FindLatestAuthorizationModelID(ctx, storeID)
-			})
-			if err != nil {
+			if modelID, err = datastore.FindLatestAuthorizationModelID(ctx, storeID); err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return nil, ErrModelNotFound
 				}
 
 				return nil, fmt.Errorf("failed to FindLatestAuthorizationModelID: %w", err)
 			}
-
-			modelID = v.(string)
 		}
 
 		key := fmt.Sprintf("%s/%s", storeID, modelID)
@@ -67,18 +58,14 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			return item.Value(), nil
 		}
 
-		v, err, _ := lookupGroup.Do(fmt.Sprintf("ReadAuthorizationModel:%s/%s", storeID, modelID), func() (interface{}, error) {
-			return datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-		})
+		model, err := datastore.ReadAuthorizationModel(ctx, storeID, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return nil, ErrModelNotFound
 			}
 
-			return nil, fmt.Errorf("failed to FindLatestAuthorizationModelID: %w", err)
+			return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
 		}
-
-		model := v.(*openfgapb.AuthorizationModel)
 
 		typesys, err := NewAndValidate(ctx, model)
 		if err != nil {
