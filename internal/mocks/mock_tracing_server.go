@@ -15,6 +15,7 @@ type mockTracingServer struct {
 	otlpcollector.UnimplementedTraceServiceServer
 	exportCount int
 	serviceMu   sync.Mutex
+	server      *grpc.Server
 }
 
 var _ otlpcollector.TraceServiceServer = (*mockTracingServer)(nil)
@@ -26,21 +27,22 @@ func (s *mockTracingServer) Export(context.Context, *otlpcollector.ExportTraceSe
 	return &otlpcollector.ExportTraceServiceResponse{}, nil
 }
 
-func NewMockTracingServer(port int) (*mockTracingServer, error) {
-	mockServer := &mockTracingServer{exportCount: 0}
+func NewMockTracingServer(port int) (*mockTracingServer, func(), error) {
+	mockServer := &mockTracingServer{exportCount: 0, server: grpc.NewServer()}
+	otlpcollector.RegisterTraceServiceServer(mockServer.server, mockServer)
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
 
 	go func() {
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-		if err != nil {
-			log.Fatalf("failed to listen: %v", err)
-		}
-		server := grpc.NewServer()
-		otlpcollector.RegisterTraceServiceServer(server, mockServer)
-		if err := server.Serve(lis); err != nil {
+		if err := mockServer.server.Serve(listener); err != nil {
 			log.Fatalf("failed to serve: %v", err)
 		}
+		log.Println("server closed")
 	}()
-	return mockServer, nil
+
+	return mockServer, mockServer.server.Stop, nil
 }
 
 func (s *mockTracingServer) GetExportCount() int {

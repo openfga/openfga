@@ -384,7 +384,8 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
 	otlpServerPortReleaser()
-	otlpServer, err := mocks.NewMockTracingServer(otlpServerPort)
+	otlpServer, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
+	defer serverStopFunc()
 	require.NoError(t, err)
 
 	// create OpenFGA server with tracing enabled
