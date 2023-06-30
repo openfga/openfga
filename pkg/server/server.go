@@ -179,9 +179,6 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	// todo(jon-whit): read/write API endpoints (e.g. non-query endpoints) don't necessarily need
-	// the typesystem.NewAndValidate overhead. Consider adding a different resolver mechanism for these
-	// cases.
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.AuthorizationModelId)
 	if err != nil {
 		return nil, err
