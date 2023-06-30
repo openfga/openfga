@@ -2,7 +2,9 @@ package typesystem
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
@@ -72,4 +74,49 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	relation, err = typesys.GetRelation("document", "viewer")
 	require.NoError(t, err)
 	require.NotNil(t, relation)
+}
+
+func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	gomock.InOrder(
+		mockDatastore.EXPECT().
+			FindLatestAuthorizationModelID(gomock.Any(), storeID).
+			DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
+				time.Sleep(1 * time.Second)
+				return modelID, nil
+			}).
+			Times(1),
+
+		mockDatastore.EXPECT().
+			ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+			Return(&openfgav1.AuthorizationModel{
+				Id:            modelID,
+				SchemaVersion: SchemaVersion1_1,
+			}, nil).Times(1),
+	)
+
+	resolver := MemoizedTypesystemResolverFunc(
+		mockDatastore,
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			typesys, err := resolver(context.Background(), storeID, "")
+			require.NoError(t, err)
+			require.Equal(t, modelID, typesys.GetAuthorizationModelID())
+		}()
+	}
+
+	wg.Wait()
 }
