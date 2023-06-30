@@ -13,29 +13,29 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.1.1...v1.2.0)
 
 ### Added
-* Optimizations for [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects) for models involving intersection (`and`) and exclusion (`but not`) (#797)
+* Optimizations for [ListObjects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) and [StreamedListObjects](https://openfga.dev/api/service#/Relationship%20Queries/StreamedListObjects) for models involving intersection (`and`) and exclusion (`but not`) ([#797](https://github.com/openfga/openfga/pull/797))
 
 ### Changed
-* Cache model validation results on first model load (#831)
-* Cache inflight requests when looking up any authorization model (#831)
-* Update postgres max connections in docker compose file (#829)
+* Cache model validation results on first model load ([#831](https://github.com/openfga/openfga/pull/831))
+* Cache inflight requests when looking up any authorization model ([#831](https://github.com/openfga/openfga/pull/831))
+* Update postgres max connections in docker compose file ([#829](https://github.com/openfga/openfga/pull/829))
 
 ## [1.1.1] - 2023-06-26
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.1.0...v1.1.1)
 
 ### Added
-* Official Homebrew installation instructions (#781) - thanks @chenrui333
-* The `--verbose` flag has been added to the `openfga migrate` command (#776)
-* The `openfga validate-models` CLI command has been introduced to validate all models across all stores (#817)
+* Official Homebrew installation instructions ([#781](https://github.com/openfga/openfga/pull/781)) - thanks @chenrui333
+* The `--verbose` flag has been added to the `openfga migrate` command ([#776](https://github.com/openfga/openfga/pull/776))
+* The `openfga validate-models` CLI command has been introduced to validate all models across all stores ([#817](https://github.com/openfga/openfga/pull/817))
 
 ### Changed
-* Updated the version of the `grpc-health-probe` binary included in OpenFGA builds (#784)
-* Cache inflight requests when looking up the latest authorization model (#820)
+* Updated the version of the `grpc-health-probe` binary included in OpenFGA builds ([#784](https://github.com/openfga/openfga/pull/784))
+* Cache inflight requests when looking up the latest authorization model ([#820](https://github.com/openfga/openfga/pull/820))
 
 ### Fixed
-* Validation of models with non-zero entrypoints (#802)
-* Remove unintended newlines in model validation error messages (#816) - thanks @Galzzly
+* Validation of models with non-zero entrypoints ([#802](https://github.com/openfga/openfga/pull/802))
+* Remove unintended newlines in model validation error messages ([#816](https://github.com/openfga/openfga/pull/816)) - thanks @Galzzly
 
 ### Security
 * Patches [CVE-2023-35933](https://github.com/openfga/openfga/security/advisories/GHSA-hr9r-8phq-5x8j) - additional model validations are now applied to models that can lead to the vulnerability. See the CVE report for more details, and don't hesitate to reach out if you have questions.
@@ -80,7 +80,7 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.2...v0.4.3)
 
 ## Added
-* Release artifacts are now signed and include a Software Bill of Materials (SBOM) (#683)
+* Release artifacts are now signed and include a Software Bill of Materials (SBOM) ([#683](https://github.com/openfga/openfga/pull/683))
 
   The SBOM (Software Bill of Materials) is included in each Github release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
 
@@ -116,19 +116,19 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
   cosign verify -key cosign.pub openfga/openfga:<tag>
   ```
 
-* `openfga migrate` now accepts reading configuration from a config file and environment variables like the `openfga run` command (#655) - thanks @suttod!
+* `openfga migrate` now accepts reading configuration from a config file and environment variables like the `openfga run` command ([#655](https://github.com/openfga/openfga/pull/655)) - thanks @suttod!
 
-* The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces (#652) - thanks @jmiettinen
+* The `--trace-service-name` command-line flag has been added to allow for customizing the service name in traces ([#652](https://github.com/openfga/openfga/pull/652)) - thanks @jmiettinen
 
 ## Fixed
-* Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores (#677)
-* Synchronize concurrent access to in-memory storage iterators (#587)
-* Improve error logging in the `openfga migrate` command (#663)
-* Fix middleware ordering so that `requestid` middleware is registered earlier(#662)
+* Postgres and MySQL implementations have been fixed to avoid ordering relationship tuple queries by `ulid` when it is not needed. This can improve read query performance on larger OpenFGA stores ([#677](https://github.com/openfga/openfga/pull/677))
+* Synchronize concurrent access to in-memory storage iterators ([#587](https://github.com/openfga/openfga/pull/587))
+* Improve error logging in the `openfga migrate` command ([#663](https://github.com/openfga/openfga/pull/663))
+* Fix middleware ordering so that `requestid` middleware is registered earlier ([#662](https://github.com/openfga/openfga/pull/662))
 
 ## Changed
-* Bumped up to Go version 1.20 (#664)
-* Default model schema versions to 1.1 (#669)
+* Bumped up to Go version 1.20 ([#664](https://github.com/openfga/openfga/pull/664))
+* Default model schema versions to 1.1 ([#669](https://github.com/openfga/openfga/pull/669))
 
   In preparation for sunsetting support for models with schema version 1.0, the [WriteAuthorizationModel API](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel) will now interpret any model provided to it as a 1.1 model if the `schema_version` field is omitted in the request. This shouldn't affect default behavior since 1.0 model support is enabled by default.
 
@@ -137,7 +137,7 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.1...v0.4.2)
 
 ### Fixed
-* Correct migration path for mysql in `openfga migrate` (openfga/openfga#644)
+* Correct migration path for mysql in `openfga migrate` ([#644](https://github.com/openfga/openfga/pull/664))
 
 ## [0.4.1] - 2023-03-16
 
@@ -166,22 +166,22 @@ The `v0.4.1` release includes everything in `v0.4.0` which includes breaking cha
   * Note that these flags will be removed and support fully dropped in a future release. Read the [Schema v1.0 Deprecation Timeline](https://openfga.dev/docs/modeling/migrating/migrating-schema-1-1#deprecation-timeline) for more details.
 
 ### Added
-* Add OpenFGA version command to the CLI (openfga/openfga#625)
-* Add `timeout` flag to `migrate` command (openfga/openfga#634)
+* Add OpenFGA version command to the CLI ([#625](https://github.com/openfga/openfga/pull/625))
+* Add `timeout` flag to `migrate` command ([#634](https://github.com/openfga/openfga/pull/634))
 
 ### Fixed
 
-* Improve the speed of Check for 1.1 models by using type restrictions (openfga/openfga#545, openfga/openfga#596)
+* Improve the speed of Check for 1.1 models by using type restrictions (([#545](https://github.com/openfga/openfga/pull/545), ([#596](https://github.com/openfga/openfga/pull/596))
 * Various important fixes to the experimental ListObjects endpoint
-  * Improve readUsersets query by dropping unnecessary sorting (openfga/openfga#631, openfga/openfga#633)
-  * Fix null pointer exception if computed userset does not exist (openfga/openfga#572)
-  * Fix race condition in memory store (openfga/openfga#585)
-  * Ensure no objects returned that would not have been allowed in Checks (openfga/openfga#577)
-  * Reverse expansion with indirect computed userset relationship (openfga/openfga#611)
-  * Improved tests (openfga/openfga#582, openfga/openfga#599, openfga/openfga#601, openfga/openfga#620)
-* Tuning of OTEL parameters (openfga/openfga#570)
-* Fix tracing in Check API (openfga/openfga#627)
-* Use chainguard images in Dockerfile (openfga/openfga#628)
+  * Improve readUsersets query by dropping unnecessary sorting ([#631](https://github.com/openfga/openfga/pull/631),([#633](https://github.com/openfga/openfga/pull/633))
+  * Fix null pointer exception if computed userset does not exist ([#572](https://github.com/openfga/openfga/pull/572))
+  * Fix race condition in memory store ([#585](https://github.com/openfga/openfga/pull/585))
+  * Ensure no objects returned that would not have been allowed in Checks ([#577](https://github.com/openfga/openfga/pull/577))
+  * Reverse expansion with indirect computed userset relationship ([#611](https://github.com/openfga/openfga/pull/611))
+  * Improved tests ([#582](https://github.com/openfga/openfga/pull/582), [#599](https://github.com/openfga/openfga/pull/599), [#601](https://github.com/openfga/openfga/pull/601), [#620](https://github.com/openfga/openfga/pull/620))
+* Tuning of OTEL parameters ([#570](https://github.com/openfga/openfga/pull/570))
+* Fix tracing in Check API ([#627](https://github.com/openfga/openfga/pull/627))
+* Use chainguard images in Dockerfile ([#628](https://github.com/openfga/openfga/pull/628))
 
 
 ## [0.3.7] - 2023-02-21
@@ -189,7 +189,7 @@ The `v0.4.1` release includes everything in `v0.4.0` which includes breaking cha
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.6...v0.3.7)
 
 ### Fixed
-* Contextual tuple propagation in the unoptimized ListObjects implementation (#565)
+* Contextual tuple propagation in the unoptimized ListObjects implementation ([#565](https://github.com/openfga/openfga/pull/565))
 
 ## [0.3.6] - 2023-02-16
 
@@ -202,11 +202,11 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.3.4...v0.3.5)
 
 ### Added
-* [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) for Health Checks (#520)
+* [`grpc-health-probe`](https://github.com/grpc-ecosystem/grpc-health-probe) for Health Checks ([#520](https://github.com/openfga/openfga/pull/520))
 
   OpenFGA containers now include an embedded `grpc_health_probe` binary that can be used to probe the Health Check endpoints of OpenFGA servers. Take a look at the [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) file for an example.
 
-* Improvements to telemetry: logging, tracing, and metrics (#468, #514, #517, #522)
+* Improvements to telemetry: logging, tracing, and metrics ([#468](https://github.com/openfga/openfga/pull/468), [#514](https://github.com/openfga/openfga/pull/514), [#517](https://github.com/openfga/openfga/pull/517), [#522](https://github.com/openfga/openfga/pull/522))
 
   * We have added Prometheus as the standard metrics provided for OpenFGA and provide a way to launch Grafana to view the metrics locally. See [docker-compose.yaml](https://github.com/openfga/openfga/blob/main/docker-compose.yaml) for more information.
 
@@ -216,12 +216,12 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
   These features will allow operators of OpenFGA to improve their monitoring and observability processes.
 
-* Nightly releases (#508) - thanks @Siddhant-K-code!
+* Nightly releases ([#508](https://github.com/openfga/openfga/pull/508)) - thanks @Siddhant-K-code!
 
   You should now be able to run nightly releases of OpenFGA using `docker pull openfga/openfga:nightly`
 
 ### Fixed
-* Undefined computed relations on tuplesets now behave properly (#532)
+* Undefined computed relations on tuplesets now behave properly ([#532](https://github.com/openfga/openfga/pull/532))
 
   If you had a model involing two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
   ```
@@ -240,7 +240,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   ```
   Given the tuple `{ user: "org:contoso", relation: "parent", object: "document:1" }`, then `Check({ user: "jon", relation: "viewer", object: "document:1" })` would return an error prior to this fix because the `x` computed relation on the `document#parent` tupleset relation is not defined for the `org` object type.
 
-* Eliminate duplicate objects in ListObjects response (#528)
+* Eliminate duplicate objects in ListObjects response ([#528](https://github.com/openfga/openfga/pull/528))
 
 ## [0.3.4] - 2023-02-02
 
@@ -248,16 +248,16 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
 ### Fixed
 
-* Fixed the environment variable mapping (#498). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
-* Fix for stack overflow error in ListObjects (#506). Thank you for reporting the issue @wonderbeyond!
+* Fixed the environment variable mapping ([#498](https://github.com/openfga/openfga/pull/498)). For the full list of environment variables see [.config-schema.json](https://github.com/openfga/openfga/blob/main/.config-schema.json).
+* Fix for stack overflow error in ListObjects ([#506](https://github.com/openfga/openfga/pull/506)). Thank you for reporting the issue @wonderbeyond!
 
 ### Added
 
-* Added OpenTelemetry tracing (#499)
+* Added OpenTelemetry tracing ([#499](https://github.com/openfga/openfga/pull/499))
 
 ### Removed
 
-* The ReadTuples endpoint has been removed (#495). Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead (e.g. `POST /stores/<store_id>/read` with `{}` as the body).  
+* The ReadTuples endpoint has been removed ([#495](https://github.com/openfga/openfga/pull/495)). Please use [Read](https://openfga.dev/api/service#/Relationship%20Tuples/Read) with no tuple key instead (e.g. `POST /stores/<store_id>/read` with `{}` as the body).
 
 ## [0.3.3] - 2023-01-31
 
@@ -265,7 +265,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
 ### Added
 
-* Environment variable names have been updated (#472).
+* Environment variable names have been updated ([#472](https://github.com/openfga/openfga/pull/472)).
 
   For example, `OPENFGA_MAX_TUPLES_PER_WRITE` instead of `OPENFGA_MAXTUPLESPERWRITE`.
 
@@ -273,15 +273,15 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
   The old form still works but is considered deprecated and should not be used anymore.
 
-* Optimized ListObjects is now on by default (#489) (`--experimentals="list-objects-optimized"` is no longer needed)
+* Optimized ListObjects is now on by default ([#489](https://github.com/openfga/openfga/pull/489)) (`--experimentals="list-objects-optimized"` is no longer needed)
 
-* Avoid connection churn in our datastore implementations (#474)
+* Avoid connection churn in our datastore implementations ([#474](https://github.com/openfga/openfga/pull/474))
 
-* The default values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively (#492)
+* The default values for `OPENFGA_DATASTORE_MAX_OPEN_CONNS` and `OPENFGA_DATASTORE_MAX_IDLE_CONNS` have been set to 30 and 10 respectively ([#492](https://github.com/openfga/openfga/pull/492))
 
 ### Fixed
 
-* ListObjects should no longer return duplicates (#475)
+* ListObjects should no longer return duplicates ([#475](https://github.com/openfga/openfga/pull/475))
 
 ## [0.3.2] - 2023-01-18
 
@@ -289,7 +289,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
 
 ### Added
-* OpenTelemetry metrics integration with an `otlp` exporter (#360) - thanks @AlexandreBrg!
+* OpenTelemetry metrics integration with an `otlp` exporter ([#360](https://github.com/openfga/openfga/pull/360)) - thanks @AlexandreBrg!
 
   To export OpenTelemetry metrics from an OpenFGA instance you can now provide the `otel-metrics` experimental flag along with the `--otel-telemetry-endpoint` and `--otel-telemetry-protocol` flags. For example,
 
@@ -299,11 +299,11 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 
   For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry-metrics-and-tracing).
 
-* Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) (#444)
+* Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) ([#444](https://github.com/openfga/openfga/pull/444))
 
 ### Fixed
-* Tuple validations for models with schema version 1.1 (#446, #457)
-* Evaluate rewrites on nested usersets in the optimized ListObjects implementation (#432)
+* Tuple validations for models with schema version 1.1 ([#446](https://github.com/openfga/openfga/pull/446), [#457](https://github.com/openfga/openfga/pull/457))
+* Evaluate rewrites on nested usersets in the optimized ListObjects implementation ([#432](https://github.com/openfga/openfga/pull/432))
 
 ## [0.3.1] - 2022-12-19
 
@@ -324,7 +324,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features).
 
 ### Security
-* Patches [CVE-2022-23542](https://github.com/openfga/openfga/security/advisories/GHSA-m3q4-7qmj-657m) - relationship reads now respect type restrictions from prior models (#422).
+* Patches [CVE-2022-23542](https://github.com/openfga/openfga/security/advisories/GHSA-m3q4-7qmj-657m) - relationship reads now respect type restrictions from prior models ([#422](https://github.com/openfga/openfga/pull/422)).
 
 ## [0.3.0] - 2022-12-12
 
@@ -375,21 +375,21 @@ no tuple key instead.
 * Patches [CVE-2022-39352](https://github.com/openfga/openfga/security/advisories/GHSA-3gfj-fxx4-f22w)
 
 ### Added
-* Multi-platform container build manifests to releases (#323)
+* Multi-platform container build manifests to releases ([#323](https://github.com/openfga/openfga/pull/323))
 
 ### Fixed
-* Read RPC returns correct error when authorization model id is not found (#312)
-* Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` (#315)
+* Read RPC returns correct error when authorization model id is not found ([#312](https://github.com/openfga/openfga/pull/312))
+* Throw error if `http.upstreamTimeout` config is less than `listObjectsDeadline` ([#315](https://github.com/openfga/openfga/pull/315))
 
 ## [0.2.4] - 2022-10-24
 ### Security
 * Patches [CVE-2022-39340](https://github.com/openfga/openfga/security/advisories/GHSA-95x7-mh78-7w2r), [CVE-2022-39341](https://github.com/openfga/openfga/security/advisories/GHSA-vj4m-83m8-xpw5), and [CVE-2022-39342](https://github.com/openfga/openfga/security/advisories/GHSA-f4mm-2r69-mg5f)
 
 ### Fixed
-* TLS certificate config path mappings (#285)
-* Error message when a `user` field is invalid (#278)
-* host:port mapping with unspecified host (#275)
-* Wait for connection to postgres before starting (#270)
+* TLS certificate config path mappings ([#285](https://github.com/openfga/openfga/pull/285))
+* Error message when a `user` field is invalid ([#278](https://github.com/openfga/openfga/pull/278))
+* host:port mapping with unspecified host ([#275](https://github.com/openfga/openfga/pull/275))
+* Wait for connection to postgres before starting ([#270](https://github.com/openfga/openfga/pull/270))
 
 
 ### Added
@@ -397,35 +397,35 @@ no tuple key instead.
 
 ## [0.2.3] - 2022-10-05
 ### Added
-* Support for MySQL storage backend (#210). Thank you @MidasLamb!
-* Allow specification of type restrictions in authorization models (#223). Note: Type restriction is not enforced yet, this just allows storing them.
-* Tuple validation against type restrictions in Write API (#232)
-* Upgraded the Postgres storage backend to use pgx v5 (#225)
+* Support for MySQL storage backend ([#210](https://github.com/openfga/openfga/pull/210)). Thank you @MidasLamb!
+* Allow specification of type restrictions in authorization models ([#223](https://github.com/openfga/openfga/pull/223)). Note: Type restriction is not enforced yet, this just allows storing them.
+* Tuple validation against type restrictions in Write API ([#232](https://github.com/openfga/openfga/pull/232))
+* Upgraded the Postgres storage backend to use pgx v5 ([#225](https://github.com/openfga/openfga/pull/225))
 
 ### Fixed
-* Close database connections after migration (#252)
-* Race condition in streaming ListObjects (#255, #256)
+* Close database connections after migration ([#252](https://github.com/openfga/openfga/pull/252))
+* Race condition in streaming ListObjects ([#255](https://github.com/openfga/openfga/pull/255), [#256](https://github.com/openfga/openfga/pull/256))
 
 
 ## [0.2.2] - 2022-09-15
 ### Fixed
-* Reject direct writes if only indirect relationship allowed (#114). Thanks @dblclik!
-* Log internal errors at the grpc layer (#222)
-* Authorization model validation (#224)
-* Bug in `migrate` command (#236)
-* Skip malformed tuples involving tuple to userset definitions (#234)
+* Reject direct writes if only indirect relationship allowed ([#114](https://github.com/openfga/openfga/pull/114)). Thanks @dblclik!
+* Log internal errors at the grpc layer ([#222](https://github.com/openfga/openfga/pull/222))
+* Authorization model validation ([#224](https://github.com/openfga/openfga/pull/224))
+* Bug in `migrate` command ([#236](https://github.com/openfga/openfga/pull/236))
+* Skip malformed tuples involving tuple to userset definitions ([#234](https://github.com/openfga/openfga/pull/234))
 
 ## [0.2.1] - 2022-08-30
 ### Added
-* Support Check API calls on userset types of users (#146)
-* Add backoff when connecting to Postgres (#188)
+* Support Check API calls on userset types of users ([#146](https://github.com/openfga/openfga/pull/146))
+* Add backoff when connecting to Postgres ([#188](https://github.com/openfga/openfga/pull/188))
 
 ### Fixed
-* Improve logging of internal server errors (#193)
-* Use Postgres in the sample Docker Compose file (#195)
-* Emit authorization errors (#144)
-* Telemetry in Check and ListObjects APIs (#177)
-* ListObjects API: respect the value of ListObjectsMaxResults (#181)
+* Improve logging of internal server errors ([#193](https://github.com/openfga/openfga/pull/193))
+* Use Postgres in the sample Docker Compose file ([#195](https://github.com/openfga/openfga/pull/195))
+* Emit authorization errors ([#144](https://github.com/openfga/openfga/pull/144))
+* Telemetry in Check and ListObjects APIs ([#177](https://github.com/openfga/openfga/pull/177))
+* ListObjects API: respect the value of ListObjectsMaxResults ([#181](https://github.com/openfga/openfga/pull/181))
 
 
 ## [0.2.0] - 2022-08-12
@@ -438,14 +438,14 @@ no tuple key instead.
 
   > ⚠️ If `--listObjects-deadline` or `--listObjects-max-results` are provided, the endpoint may only return a subset of the data. If you provide the deadline but returning all of the results would take longer than the deadline, then you may not get all of the results. If you limit the max results to 1, then you'll get at most 1 result.
 
-* Support for presharedkey authentication in the Playground (#141)
+* Support for presharedkey authentication in the Playground ([#141](https://github.com/openfga/openfga/pull/141))
 
   The embedded Playground now works if you run OpenFGA using one or more preshared keys for authentication. OIDC authentication remains unsupported for the Playground at this time.
 
 
 ## [0.1.7] - 2022-07-29
 ### Added
-* `migrate` CLI command (#56)
+* `migrate` CLI command ([#56](https://github.com/openfga/openfga/pull/56))
 
   The `migrate` command has been added to the OpenFGA CLI to assist with bootstrapping and managing database schema migrations. See the usage for more info.
 
@@ -465,11 +465,11 @@ no tuple key instead.
 
 ## [0.1.6] - 2022-07-27
 ### Fixed
-* Issue with embedded Playground assets found in the `v0.1.5` released docker image (#129)
+* Issue with embedded Playground assets found in the `v0.1.5` released docker image ([#129](https://github.com/openfga/openfga/pull/129))
 
 ## [0.1.5] - 2022-07-27
 ### Added
-* Support for defining server configuration in `config.yaml`, CLI flags, or env variables (#63 #92 #100)
+* Support for defining server configuration in `config.yaml`, CLI flags, or env variables ([#63](https://github.com/openfga/openfga/pull/63), [#92](https://github.com/openfga/openfga/pull/92), [#100](https://github.com/openfga/openfga/pull/100))
 
   `v0.1.5` introduces multiple ways to support a variety of server configuration strategies. You can configure the server with CLI flags, env variables, or a `config.yaml` file.
 
@@ -481,7 +481,7 @@ no tuple key instead.
 
   If a `config.yaml` file is provided, the OpenFGA server will look for it in `"/etc/openfga"`, `"$HOME/.openfga"`, or `"."` (the current working directory), in that order.
 
-* Support for grpc health checks (#86)
+* Support for grpc health checks ([#86](https://github.com/openfga/openfga/pull/86))
 
   `v0.1.5` introduces support for the [GRPC Health Checking Protocol](https://github.com/grpc/grpc/blob/master/doc/health-checking.md). The server's health can be checked with the grpc or HTTP health check endpoints (the `/healthz` endpoint is just a proxy to the grpc health check RPC).
 
@@ -496,11 +496,11 @@ no tuple key instead.
   curl --request GET -d '{"service":"openfga.v1.OpenFGAService"}' http://localhost:8080/healthz
   ```
 
-* Profiling support (pprof) (#111)
+* Profiling support (pprof) ([#111](https://github.com/openfga/openfga/pull/111))
 
   You can now profile the OpenFGA server while it's running using the [pprof](https://github.com/google/pprof/blob/main/doc/README.md) profiler. To enable the pprof profiler set `profiler.enabled=true`. It is served on the `/debug/pprof` endpoint and port `3001` by default.
 
-* Configuration to enable/disable the HTTP server (#84)
+* Configuration to enable/disable the HTTP server ([#84](https://github.com/openfga/openfga/pull/84))
 
   You can now enable/disable the HTTP server by setting `http.enabled=true/false`. It is enabled by default.
 
@@ -510,12 +510,12 @@ no tuple key instead.
   Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
 
 ### Fixed
-* goroutine leaks in Check resolution. (#113)
+* goroutine leaks in Check resolution. ([#113](https://github.com/openfga/openfga/pull/113))
 
 ## [0.1.4] - 2022-06-27
 ### Added
-* OpenFGA Playground support (#68)
-* CORS policy configuration (#65)
+* OpenFGA Playground support ([#68](https://github.com/openfga/openfga/pull/68))
+* CORS policy configuration ([#65](https://github.com/openfga/openfga/pull/65))
 
 ## [0.1.2] - 2022-06-20
 ### Added
