@@ -1,3 +1,4 @@
+// Package listobjects contains integration tests for the ListObjects and StreamedListObjects APIs.
 package listobjects
 
 import (

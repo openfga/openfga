@@ -1,3 +1,4 @@
+// Package storage contains containers that can be used to test all available data stores.
 package storage
 
 import (

@@ -1,3 +1,4 @@
+// Package validatemodels contains the command to run validations on authorization models.
 package validatemodels
 
 import (
