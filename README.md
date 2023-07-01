@@ -28,7 +28,7 @@ The following section aims to help you get started quickly. Please look at our o
 
 > ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment. Data written to an OpenFGA instance using the default configuration with the memory storage engine will *not* persist after the service is stopped.
 >
-> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
+> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Running in Production](https://openfga.dev/docs/getting-started/running-in-production).
 
 #### Docker
 
@@ -202,7 +202,7 @@ Don't hesitate to browse the official [Documentation](https://openfga.dev/), [AP
 
 ## Limitations
 ### MySQL Storage engine
-The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga#mysql-limitations)
+The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga/docker#configuring-data-storage).
 
 ## Production Readiness
 
@@ -225,7 +225,7 @@ See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md)
 [doc]: https://openfga.dev/docs
 [config-doc]: https://openfga.dev/docs/getting-started/setup-openfga
 [api]: https://openfga.dev/api/service
-[prod-checklist]: https://openfga.dev/docs/getting-started/setup-openfga#production-checklist
+[prod-checklist]: https://openfga.dev/docs/getting-started/running-in-production
 
 ## Community Meetings
 
