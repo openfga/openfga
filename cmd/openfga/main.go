@@ -1,3 +1,4 @@
+// Package main contains the root of all commands.
 package main
 
 import (

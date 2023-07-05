@@ -1,3 +1,4 @@
+// Package caching contains wrappers that cache storage data
 package caching
 
 import (

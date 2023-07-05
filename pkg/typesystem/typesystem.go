@@ -1,3 +1,4 @@
+// Package typesystem contains code to manipulate authorization models
 package typesystem
 
 import (
@@ -142,6 +143,7 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 	}
 }
 
+// TypeSystem is a wrapper over an [openfgapb.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgapb.TypeDefinition
