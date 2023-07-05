@@ -1,3 +1,4 @@
+// Package server contains the endpoint handlers.
 package server
 
 import (

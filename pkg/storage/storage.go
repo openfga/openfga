@@ -1,3 +1,5 @@
+// Package storage contains storage interfaces and implementations
+//
 //go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
 package storage
 

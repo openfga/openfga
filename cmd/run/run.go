@@ -1,3 +1,4 @@
+// Package run contains the command to run an OpenFGA server.
 package run
 
 import (

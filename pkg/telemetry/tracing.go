@@ -1,3 +1,4 @@
+// Package telemetry contains code that emits telemetry (logging, metrics, tracing).
 package telemetry
 
 import (

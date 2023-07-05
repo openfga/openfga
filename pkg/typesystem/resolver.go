@@ -22,7 +22,7 @@ const (
 type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (*TypeSystem, error)
 
 // MemoizedTypesystemResolverFunc returns a TypesystemResolverFunc that either fetches the provided authorization
-// model (if provided) or looks up the latest authorizaiton model, and then it constructs a TypeSystem from
+// model (if provided) or looks up the latest authorization model, and then it constructs a TypeSystem from
 // the resolved model. The type-system resolution is memoized so if another lookup of the same model occurs,
 // then the earlier TypeSystem that was constructed will be used.
 //

@@ -6,8 +6,6 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-// This file provides validation utility that are shared across different commands
-
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
 	Cause    error

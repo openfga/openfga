@@ -155,7 +155,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 			TypeDefinitions: typedefs,
 		}, nil)
 
-	// it could happen that one of the following two mockstorage.won't be necessary because the goroutine will be short-circuited
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
 		AnyTimes().
@@ -305,7 +305,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 			TypeDefinitions: typedefs,
 		}, nil)
 
-	// it could happen that one of the following two mockstorage.won't be necessary because the goroutine will be short-circuited
+	// it could happen that one of the following two mocks won't be necessary because the goroutine will be short-circuited
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
 		AnyTimes().
