@@ -1,3 +1,4 @@
+// Package errors contains custom error codes that are sent to clients.
 package errors
 
 import (
