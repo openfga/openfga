@@ -226,9 +226,14 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	checkResolver := graph.NewLocalChecker(
+	localCheckResolver := graph.NewLocalChecker(
 		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 		checkConcurrencyLimit,
+	)
+
+	checkResolver := graph.MustNewLimitedLocalChecker(
+		graph.WithCheckResolver(localCheckResolver),
+		graph.WithConcurrencyLimit(checkConcurrencyLimit),
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
