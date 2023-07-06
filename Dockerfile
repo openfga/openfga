@@ -5,7 +5,7 @@ WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -o openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:ee47224a2afc674c1f1089b9dea97d5ee400cf2fff3797398778450a4cfb2a8d
+FROM cgr.dev/chainguard/static@sha256:54b589146d4dbc80a094fcbcd6b09414f3df94cde8ea6d31c44fd02692c58203
 
 EXPOSE 8081
 EXPOSE 8080
