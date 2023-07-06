@@ -20,6 +20,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -259,6 +261,10 @@ func (q *ListObjectsQuery) Execute(
 
 		case result, channelOpen := <-resultsChan:
 			if result.Err != nil {
+				code := status.Code(result.Err)
+				if code != codes.Unknown {
+					return nil, result.Err
+				}
 				return nil, serverErrors.NewInternalError("", result.Err)
 			}
 
@@ -314,6 +320,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			}
 
 			if result.Err != nil {
+				code := status.Code(result.Err)
+				if code != codes.Unknown {
+					return result.Err
+				}
 				return serverErrors.NewInternalError("", result.Err)
 			}
 
