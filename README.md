@@ -41,12 +41,12 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
 
 #### Docker Compose
 
-[`docker-compose.yaml`](./docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.
+[`docker-compose.yaml`](.docker/docker-compose.yaml) provides an example of how to launch OpenFGA with Postgres using `docker compose`.
 
 1. First, either clone this repo or curl the `docker-compose.yaml` file with the following command:
 
    ```bash
-   curl -LO https://openfga.dev/docker-compose.yaml
+   curl -LO https://openfga.dev/.docker/docker-compose.yaml
    ```
 
 2. Then, run the following command:

@@ -1,3 +1,4 @@
+name: openfga-dev
 services:
   postgres:
     image: postgres:14
@@ -20,7 +21,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    image: openfga/openfga:latest
+    build:
+      context: ..
     container_name: migrate
     environment:
       - OPENFGA_DATASTORE_ENGINE=postgres
@@ -35,9 +37,10 @@ services:
         condition: service_completed_successfully
       jaeger:
         condition: service_started
-      prometheus:
+      grafana:
         condition: service_started
-    image: openfga/openfga:latest
+    build:
+      context: ..
     container_name: openfga
     command: run
     environment:
@@ -47,15 +50,15 @@ services:
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
+      - OPENFGA_METRICS_ENABLED=true
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
-      - OPENFGA_PROFILER_ENABLED=false
+      - OPENFGA_PLAYGROUND_ENABLED=false
     networks:
       - default
     ports:
       - "8080:8080" #http
       - "8081:8081" #grpc
-      - "3000:3000" #playground
-#      - "3001:3001" #profiler
+      - "3001:3001" #profiler
       - "2112:2112" #prometheus metrics
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
@@ -68,7 +71,7 @@ services:
     container_name: otel-collector
     command: [ "--config=/etc/otel-collector-config.yaml" ]
     volumes:
-      - "./telemetry/otel-collector-config.yaml:/etc/otel-collector-config.yaml"
+      - "../telemetry/otel-collector-config.yaml:/etc/otel-collector-config.yaml"
     networks:
       - default
     ports:
@@ -90,13 +93,13 @@ services:
       - default
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.30.3
     ports:
       - 9090:9090 # UI
     depends_on:
       - otel-collector
     volumes:
-      - ./telemetry/prometheus:/etc/prometheus
+      - ../telemetry/prometheus:/etc/prometheus
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -104,18 +107,18 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
 
   grafana:
-      image: grafana/grafana
-      ports:
-        - 3002:3000 # UI
-      restart: unless-stopped
-      depends_on:
-        prometheus:
-          condition: service_started
-      volumes:
-        - ./telemetry/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
-        - ./telemetry/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
-        - ./telemetry/grafana/dashboards:/etc/grafana/dashboards
-        - grafana_data:/var/lib/grafana
+    image: grafana/grafana
+    ports:
+      - 3002:3000 # UI
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_started
+    volumes:
+      - ../telemetry/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ../telemetry/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/main.yaml
+      - ../telemetry/grafana/dashboards:/etc/grafana/dashboards
+      - grafana_data:/var/lib/grafana
 volumes:
   prometheus_data:
   grafana_data:
