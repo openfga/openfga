@@ -33,7 +33,9 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      otel-collector:
+      jaeger:
+        condition: service_started
+      prometheus:
         condition: service_started
     image: openfga/openfga:latest
     container_name: openfga
@@ -46,12 +48,14 @@ services:
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
+      - OPENFGA_PROFILER_ENABLED=false
     networks:
       - default
     ports:
       - "8080:8080" #http
       - "8081:8081" #grpc
       - "3000:3000" #playground
+#      - "3001:3001" #profiler
       - "2112:2112" #prometheus metrics
     healthcheck:
       test: ["CMD", "/usr/local/bin/grpc_health_probe", "-addr=openfga:8081"]
@@ -86,7 +90,7 @@ services:
       - default
 
   prometheus:
-    image: prom/prometheus:v2.30.3
+    image: prom/prometheus:latest
     ports:
       - 9090:9090 # UI
     depends_on:
@@ -102,7 +106,7 @@ services:
   grafana:
       image: grafana/grafana
       ports:
-        - 3001:3000 # UI
+        - 3002:3000 # UI
       restart: unless-stopped
       depends_on:
         prometheus:
