@@ -1,3 +1,4 @@
+// Package check contains integration tests for the Check API.
 package check
 
 import (

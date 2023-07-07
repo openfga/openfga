@@ -1,3 +1,4 @@
+// Package encoder contains data encoding and continuation token encoding implementations.
 package encoder
 
 type Encoder interface {

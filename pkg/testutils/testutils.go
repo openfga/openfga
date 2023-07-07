@@ -1,3 +1,4 @@
+// Package testutils contains code that is useful in tests.
 package testutils
 
 import (
