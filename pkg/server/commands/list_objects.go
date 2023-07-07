@@ -156,14 +156,9 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		localCheckResolver := graph.NewLocalChecker(
+		checkResolver := graph.NewCheckResolver(
 			storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys()),
 			q.CheckConcurrencyLimit,
-		)
-
-		checkResolver := graph.MustNewLimitedLocalChecker(
-			graph.WithCheckResolver(localCheckResolver),
-			graph.WithConcurrencyLimit(q.CheckConcurrencyLimit),
 		)
 
 		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)

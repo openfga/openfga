@@ -89,9 +89,30 @@ type checkOutcome struct {
 	err  error
 }
 
+// NewCheckResolver creates a CheckResolver that resolves Checks locally with a concurrency
+// limit applied to the top-level resolution (as opposed to per-branch).
+func NewCheckResolver(
+	ds storage.RelationshipTupleReader,
+	concurrencyLimit uint32,
+) CheckResolver {
+
+	localChecker := &LocalChecker{
+		ds:               ds,
+		concurrencyLimit: concurrencyLimit,
+	}
+
+	localChecker.resolver = MustNewLimitedLocalChecker(
+		WithCheckResolver(localChecker),
+		WithConcurrencyLimit(concurrencyLimit),
+	)
+
+	return localChecker
+}
+
 // LocalChecker implements Check in a highly concurrent and localized manner. The
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
+	resolver         CheckResolver
 	ds               storage.RelationshipTupleReader
 	concurrencyLimit uint32
 }
@@ -103,6 +124,8 @@ func NewLocalChecker(
 	concurrencyLimit uint32,
 ) *LocalChecker {
 	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit}
+	checker.resolver = checker
+
 	return checker
 }
 
@@ -316,7 +339,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		resp, err := c.ResolveCheck(ctx, req)
+		resp, err := c.resolver.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}
