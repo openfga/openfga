@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
@@ -156,8 +157,10 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
+		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.Datastore, q.CheckConcurrencyLimit)
+
 		checkResolver := graph.NewLocalChecker(
-			storage.NewCombinedTupleReader(q.Datastore, req.GetContextualTuples().GetTupleKeys()),
+			storage.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
 			q.CheckConcurrencyLimit,
 		)
 
