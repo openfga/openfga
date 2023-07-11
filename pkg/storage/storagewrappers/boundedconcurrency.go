@@ -8,12 +8,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
-
-var tracer = otel.Tracer("pkg/storage/boundedconcurrency")
 
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
