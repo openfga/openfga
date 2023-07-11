@@ -160,7 +160,6 @@ func (q *ListObjectsQuery) evaluate(
 		}()
 
 		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.Datastore, q.CheckConcurrencyLimit)
-		defer limitedTupleReader.Close()
 
 		checkResolver := graph.NewLocalChecker(
 			storage.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),

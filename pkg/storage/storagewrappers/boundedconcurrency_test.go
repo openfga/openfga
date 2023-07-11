@@ -26,7 +26,6 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 	// create a limited tuple reader that allows 1 concurrent read a time
 	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
-	defer limitedTupleReader.Close()
 
 	// do reads from 3 goroutines - each should be run serially
 	var wg sync.WaitGroup
