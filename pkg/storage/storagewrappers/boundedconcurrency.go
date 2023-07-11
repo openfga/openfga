@@ -12,13 +12,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const TimeWaitingSpanAttribute = "time_waiting"
+
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
 var (
 	timeWaitingCounter = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "time_waiting_for_read_queries",
+		Name:    "time_waiting_for_bounded_query",
 		Help:    "Time (in ms) spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
-		Buckets: []float64{1, 10, 25, 50, 100, 1000, 5000}, // milliseconds
+		Buckets: []float64{10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
 	})
 )
 
@@ -38,16 +40,7 @@ func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, N
 }
 
 func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
-	start := time.Now()
-
-	b.limiter <- struct{}{}
-
-	end := time.Now()
-
-	timeWaiting := end.Sub(start).Milliseconds()
-	timeWaitingCounter.Observe(float64(timeWaiting))
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
+	b.waitForLimiter(ctx)
 
 	defer func() {
 		<-b.limiter
@@ -57,15 +50,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store
 }
 
 func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
-	start := time.Now()
-
-	b.limiter <- struct{}{}
-
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
-	timeWaitingCounter.Observe(float64(timeWaiting))
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
+	b.waitForLimiter(ctx)
 
 	defer func() {
 		<-b.limiter
@@ -75,15 +60,7 @@ func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, 
 }
 
 func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
-	start := time.Now()
-
-	b.limiter <- struct{}{}
-
-	end := time.Now()
-	timeWaiting := end.Sub(start).Milliseconds()
-	timeWaitingCounter.Observe(float64(timeWaiting))
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
+	b.waitForLimiter(ctx)
 
 	defer func() {
 		<-b.limiter
@@ -94,4 +71,16 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, s
 
 func (b *boundedConcurrencyTupleReader) Close() {
 	close(b.limiter)
+}
+
+func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
+	start := time.Now()
+
+	b.limiter <- struct{}{}
+
+	end := time.Now()
+	timeWaiting := end.Sub(start).Milliseconds()
+	timeWaitingCounter.Observe(float64(timeWaiting))
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Int64(TimeWaitingSpanAttribute, timeWaiting))
 }
