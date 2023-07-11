@@ -31,10 +31,12 @@ const (
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "list_objects_further_eval_required_count",
+		Help: "Number of ListObjects calls that need to issue a Check call to determine a final result",
 	})
 
 	noFurtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "list_objects_no_further_eval_required_count",
+		Help: "Number of ListObjects calls that don't need to issue a Check call to determine a final result",
 	})
 )
 
@@ -54,7 +56,7 @@ type ListObjectsResult struct {
 
 // listObjectsRequest captures the RPC request definition interface for the ListObjects API.
 // The unary and streaming RPC definitions implement this interface, and so it can be used
-// interchangably for a canonical representation between the two.
+// interchangeably for a canonical representation between the two.
 type listObjectsRequest interface {
 	GetStoreId() string
 	GetAuthorizationModelId() string
