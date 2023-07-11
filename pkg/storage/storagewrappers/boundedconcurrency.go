@@ -8,7 +8,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("pkg/storage/boundedconcurrency")
 
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
@@ -41,7 +46,11 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store
 	b.limiter <- struct{}{}
 
 	end := time.Now()
-	timeWaitingCounter.Observe(float64(end.Sub(start).Milliseconds()))
+
+	timeWaiting := end.Sub(start).Milliseconds()
+	timeWaitingCounter.Observe(float64(timeWaiting))
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
 
 	defer func() {
 		<-b.limiter
@@ -56,7 +65,10 @@ func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, 
 	b.limiter <- struct{}{}
 
 	end := time.Now()
-	timeWaitingCounter.Observe(float64(end.Sub(start).Milliseconds()))
+	timeWaiting := end.Sub(start).Milliseconds()
+	timeWaitingCounter.Observe(float64(timeWaiting))
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
 
 	defer func() {
 		<-b.limiter
@@ -71,7 +83,10 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, s
 	b.limiter <- struct{}{}
 
 	end := time.Now()
-	timeWaitingCounter.Observe(float64(end.Sub(start).Milliseconds()))
+	timeWaiting := end.Sub(start).Milliseconds()
+	timeWaitingCounter.Observe(float64(timeWaiting))
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.Int64("time_waiting", timeWaiting))
 
 	defer func() {
 		<-b.limiter
