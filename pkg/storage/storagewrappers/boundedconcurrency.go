@@ -12,14 +12,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-const TimeWaitingSpanAttribute = "time_waiting"
+const timeWaitingSpanAttribute = "time_waiting"
 
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
 var (
-	timeWaitingCounter = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "time_waiting_for_bounded_query",
-		Help:    "Time (in ms) spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
+	timeWaitingHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "datastore_bounded_read_delay_ms",
+		Help:    "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
 		Buckets: []float64{10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
 	})
 )
@@ -30,12 +30,12 @@ type boundedConcurrencyTupleReader struct {
 }
 
 // NewBoundedConcurrencyTupleReader returns a wrapper over a datastore that makes sure that there are, at most,
-// N concurrent calls to Read, ReadUserTuple and ReadUsersetTuples.
+// "concurrency" concurrent calls to Read, ReadUserTuple and ReadUsersetTuples.
 // Consumers can then rest assured that one client will not hoard all the database connections available.
-func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, N uint32) *boundedConcurrencyTupleReader {
+func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, concurrency uint32) *boundedConcurrencyTupleReader {
 	return &boundedConcurrencyTupleReader{
 		RelationshipTupleReader: wrapped,
-		limiter:                 make(chan struct{}, N),
+		limiter:                 make(chan struct{}, concurrency),
 	}
 }
 
@@ -80,7 +80,7 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
-	timeWaitingCounter.Observe(float64(timeWaiting))
+	timeWaitingHistogram.Observe(float64(timeWaiting))
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.Int64(TimeWaitingSpanAttribute, timeWaiting))
+	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
 }

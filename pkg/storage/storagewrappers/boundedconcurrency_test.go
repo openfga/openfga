@@ -17,20 +17,18 @@ import (
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
 	store := ulid.Make().String()
-	t.Logf("create a slow backend that takes 1 second per read call")
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
-	t.Logf("write a tuple")
 	err := slowBackend.Write(context.Background(), store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
 	})
 	require.NoError(t, err)
 
-	t.Logf("create a limited tuple reader that allows 1 concurrent read a time")
+	// create a limited tuple reader that allows 1 concurrent read a time
 	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
 	defer limitedTupleReader.Close()
 
-	t.Logf("Read the tuple from 3 goroutines: Each should be run serially")
+	// do reads from 3 goroutines - each should be run serially
 	var wg sync.WaitGroup
 	wg.Add(3)
 
