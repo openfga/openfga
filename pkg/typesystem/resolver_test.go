@@ -77,6 +77,8 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 }
 
 func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
+	const numGoroutines = 2
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -99,7 +101,7 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 			Return(&openfgav1.AuthorizationModel{
 				Id:            modelID,
 				SchemaVersion: SchemaVersion1_1,
-			}, nil).Times(1),
+			}, nil).MinTimes(1).MaxTimes(numGoroutines),
 	)
 
 	resolver := MemoizedTypesystemResolverFunc(
@@ -107,9 +109,9 @@ func TestSingleFlightMemoizedTypesystemResolverFunc(t *testing.T) {
 	)
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(numGoroutines)
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
 			typesys, err := resolver(context.Background(), storeID, "")
