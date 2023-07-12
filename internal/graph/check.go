@@ -97,7 +97,9 @@ type LocalChecker struct {
 }
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
-// request locally and with a high degree of concurrency.
+// request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
+// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
+// There is also a limit on the depth that will be evaluated before returning an error.
 func NewLocalChecker(
 	ds storage.RelationshipTupleReader,
 	concurrencyLimit uint32,

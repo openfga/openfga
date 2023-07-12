@@ -50,11 +50,8 @@ jobs:
           verbose: true
           fail_ci_if_error: false
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@b43f5afc876383b2adc0ec0d3ff1998fe58eeda0 # v0.1.0
-
       - name: Run govulncheck
-        run: govulncheck ./...
+        uses: golang/govulncheck-action@a46a9b37e1aeb4ccad626d440f1d51246f6b0ba6 # v0.2.0
 
   functional-tests:
       runs-on: ubuntu-latest
