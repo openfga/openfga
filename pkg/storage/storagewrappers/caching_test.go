@@ -1,4 +1,4 @@
-package caching
+package storagewrappers
 
 import (
 	"context"
@@ -55,24 +55,28 @@ func TestReadAuthorizationModel(t *testing.T) {
 	require.Equal(t, model, gotModel)
 }
 
-func TestFindLatestAuthorizationModelID(t *testing.T) {
+func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
+	const numGoroutines = 2
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	expectedID := "expectedId"
+	expectedModelID := "expectedId"
 	mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, storeID string) (string, error) {
 		time.Sleep(1 * time.Second)
-		return expectedID, nil
+		return expectedModelID, nil
 	}).Times(1)
+
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+
 	var wg sync.WaitGroup
-	wg.Add(2)
-	for i := 0; i < 2; i++ {
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			defer wg.Done()
 			id, err := cachingBackend.FindLatestAuthorizationModelID(context.Background(), "id")
 			require.NoError(t, err)
-			require.Equal(t, expectedID, id)
+			require.Equal(t, expectedModelID, id)
 		}()
 	}
 	wg.Wait()

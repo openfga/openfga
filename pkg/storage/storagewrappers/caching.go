@@ -1,5 +1,5 @@
-// Package caching contains wrappers that cache storage data
-package caching
+// Package storagewrappers contains decorators for storage data
+package storagewrappers
 
 import (
 	"context"
@@ -22,7 +22,7 @@ type cachedOpenFGADatastore struct {
 	cache       *ccache.Cache[*openfgapb.AuthorizationModel]
 }
 
-// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches *openfgapb.AuthorizationModel
+// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize *openfgapb.AuthorizationModel
 // on every call to storage.ReadAuthorizationModel.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
