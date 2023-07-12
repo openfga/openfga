@@ -201,12 +201,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             datastore,
-				Logger:                logger.NewNoopLogger(),
-				ListObjectsDeadline:   listObjectsDeadline,
-				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      DefaultResolveNodeLimit,
-				CheckConcurrencyLimit: 100,
+				Datastore:               datastore,
+				Logger:                  logger.NewNoopLogger(),
+				ListObjectsDeadline:     listObjectsDeadline,
+				ListObjectsMaxResults:   test.maxResults,
+				ResolveNodeLimit:        DefaultResolveNodeLimit,
+				ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
 			}
 
 			// assertions
@@ -312,12 +312,12 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:             ds,
-		Logger:                logger.NewNoopLogger(),
-		ListObjectsDeadline:   3 * time.Second,
-		ListObjectsMaxResults: 1000,
-		ResolveNodeLimit:      DefaultResolveNodeLimit,
-		CheckConcurrencyLimit: 100,
+		Datastore:               ds,
+		Logger:                  logger.NewNoopLogger(),
+		ListObjectsDeadline:     3 * time.Second,
+		ListObjectsMaxResults:   1000,
+		ResolveNodeLimit:        DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -381,12 +381,12 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:             ds,
-		Logger:                logger.NewNoopLogger(),
-		ListObjectsDeadline:   3 * time.Second,
-		ListObjectsMaxResults: 1000,
-		ResolveNodeLimit:      DefaultResolveNodeLimit,
-		CheckConcurrencyLimit: 100,
+		Datastore:               ds,
+		Logger:                  logger.NewNoopLogger(),
+		ListObjectsDeadline:     3 * time.Second,
+		ListObjectsMaxResults:   1000,
+		ResolveNodeLimit:        DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse

@@ -220,6 +220,15 @@ type authTest struct {
 }
 
 func TestVerifyConfig(t *testing.T) {
+	t.Run("MaxConcurrentReads_cannot_be_higher_than_DatastoreMaxOpenConns", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.MaxConcurrentReads = 100
+		cfg.Datastore.MaxOpenConns = 1
+
+		err := VerifyConfig(cfg)
+		require.EqualError(t, err, "config 'maxConcurrentReads' (100) cannot be higher than 'datastore.maxOpenConns' config (1)")
+	})
+
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute

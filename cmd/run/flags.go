@@ -137,11 +137,17 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("maxTypesPerAuthorizationModel", flags.Lookup("max-types-per-authorization-model"))
 		util.MustBindEnv("maxTypesPerAuthorizationModel", "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "OPENFGA_MAXTYPESPERAUTHORIZATIONMODEL")
 
+		util.MustBindPFlag("maxConcurrentReads", flags.Lookup("max-concurrent-reads"))
+		util.MustBindEnv("maxConcurrentReads", "OPENFGA_MAX_CONCURRENT_READS", "OPENFGA_MAXCONCURRENTREADS")
+
 		util.MustBindPFlag("changelogHorizonOffset", flags.Lookup("changelog-horizon-offset"))
 		util.MustBindEnv("changelogHorizonOffset", "OPENFGA_CHANGELOG_HORIZON_OFFSET", "OPENFGA_CHANGELOGHORIZONOFFSET")
 
 		util.MustBindPFlag("resolveNodeLimit", flags.Lookup("resolve-node-limit"))
 		util.MustBindEnv("resolveNodeLimit", "OPENFGA_RESOLVE_NODE_LIMIT", "OPENFGA_RESOLVENODELIMIT")
+
+		util.MustBindPFlag("resolveNodeBreadthLimit", flags.Lookup("resolve-node-breadth-limit"))
+		util.MustBindEnv("resolveNodeBreadthLimit", "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT", "OPENFGA_RESOLVENODEBREADTHLIMIT")
 
 		util.MustBindPFlag("listObjectsDeadline", flags.Lookup("listObjects-deadline"))
 		util.MustBindEnv("listObjectsDeadline", "OPENFGA_LIST_OBJECTS_DEADLINE", "OPENFGA_LISTOBJECTSDEADLINE")

@@ -12,6 +12,12 @@
             "default": 100,
             "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
+        "maxConcurrentReads": {
+            "description": "The maximum allowed number of concurrent reads during queries.",
+            "type": "integer",
+            "default": 30,
+            "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS"
+        },
         "changelogHorizonOffset": {
             "description": "The offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.",
             "type": "integer",
@@ -19,10 +25,16 @@
             "x-env-variable": "OPENFGA_CHANGELOG_HORIZON_OFFSET"
         },
         "resolveNodeLimit": {
-            "description": "Defines how deeply nested an authorization model can be.",
+            "description": "Defines how deeply nested an authorization model can be before a Check request errors out.",
             "type": "integer",
             "default": 25,
             "x-env-variable": "OPENFGA_RESOLVE_NODE_LIMIT"
+        },
+        "resolveNodeBreadthLimit": {
+            "description": "Defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree.",
+            "type": "integer",
+            "default": 100,
+            "x-env-variable": "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT"
         },
         "listObjectsDeadline": {
             "description": "The timeout deadline for serving ListObjects requests",

@@ -91,9 +91,10 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore        storage.RelationshipTupleReader
-	Typesystem       *typesystem.TypeSystem
-	ResolveNodeLimit uint32
+	Datastore               storage.RelationshipTupleReader
+	Typesystem              *typesystem.TypeSystem
+	ResolveNodeLimit        uint32
+	ResolveNodeBreadthLimit uint32
 
 	// Limit limits the results yielded by the ConnectedObjects API.
 	Limit uint32
@@ -176,7 +177,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	}
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for i, ingress := range ingresses {
 		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
@@ -308,7 +309,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -457,7 +458,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
