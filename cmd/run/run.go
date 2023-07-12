@@ -39,11 +39,11 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/caching"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -555,7 +555,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
+	datastore = storagewrappers.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
