@@ -17,10 +17,13 @@ const timeWaitingSpanAttribute = "time_waiting"
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
 var (
-	timeWaitingHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "datastore_bounded_read_delay_ms",
-		Help:    "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
-		Buckets: []float64{10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
+	boundedReadDelayMsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:                            "datastore_bounded_read_delay_ms",
+		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
+		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	})
 )
 
@@ -76,7 +79,7 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
-	timeWaitingHistogram.Observe(float64(timeWaiting))
+	boundedReadDelayMsHistogram.Observe(float64(timeWaiting))
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
 }
