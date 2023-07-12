@@ -9,8 +9,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

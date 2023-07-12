@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"

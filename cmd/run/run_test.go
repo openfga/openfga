@@ -27,13 +27,14 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
-	"github.com/openfga/openfga/internal/authn/mocks"
+	"github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/credentials"
@@ -376,6 +377,44 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 			tryStreamingListObjects(t, test, cfg.HTTP.Addr, retryClient, cfg.Authn.AuthnPresharedKeyConfig.Keys[0])
 		})
 	}
+}
+
+func TestBuildServiceWithTracingEnabled(t *testing.T) {
+	// create mock OTLP server
+	otlpServerPort, otlpServerPortReleaser := TCPRandomPort()
+	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
+	otlpServerPortReleaser()
+	otlpServer, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
+	defer serverStopFunc()
+	require.NoError(t, err)
+
+	// create OpenFGA server with tracing enabled
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Trace.Enabled = true
+	cfg.Trace.SampleRatio = 1
+	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := RunServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	// attempt a random request
+	client := retryablehttp.NewClient()
+	_, err = client.Get(fmt.Sprintf("http://%s/healthz", cfg.HTTP.Addr))
+	require.NoError(t, err)
+
+	// wait for trace exporting
+	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
+
+	require.Equal(t, 1, otlpServer.GetExportCount())
+
 }
 
 func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client, validToken string) {

@@ -9,7 +9,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
+	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
