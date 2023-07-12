@@ -15,7 +15,7 @@ import (
 
 func TestResolveCheckDeterministic(t *testing.T) {
 
-	ds := memory.New(10, 24)
+	ds := memory.New()
 
 	storeID := ulid.Make().String()
 
@@ -71,4 +71,51 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 	require.Nil(t, resp)
+}
+
+func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
+	const concurrencyLimit = 1
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
+		tuple.NewTupleKey("document:1", "viewer", "group:2#member"),
+		tuple.NewTupleKey("group:1", "member", "group:1a#member"),
+		tuple.NewTupleKey("group:1", "member", "group:1b#member"),
+		tuple.NewTupleKey("group:2", "member", "group:2a#member"),
+		tuple.NewTupleKey("group:2", "member", "group:2b#member"),
+		tuple.NewTupleKey("group:2b", "member", "user:jon"),
+	})
+	require.NoError(t, err)
+
+	checker := NewLocalChecker(ds, concurrencyLimit)
+
+	typedefs := parser.MustParse(`
+	type user
+	type group
+	  relations
+		define member: [user, group#member] as self
+	type document
+	  relations
+		define viewer: [group#member] as self
+	`)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+		&openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			TypeDefinitions: typedefs,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+		},
+	))
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
 }

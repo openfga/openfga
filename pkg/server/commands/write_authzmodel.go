@@ -45,7 +45,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		TypeDefinitions: req.GetTypeDefinitions(),
 	}
 
-	_, err := typesystem.NewAndValidate(model)
+	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}

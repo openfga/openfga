@@ -9,10 +9,10 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -198,15 +198,16 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
+			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+
 			listObjectsQuery := &commands.ListObjectsQuery{
 				Datastore:             datastore,
 				Logger:                logger.NewNoopLogger(),
 				ListObjectsDeadline:   listObjectsDeadline,
 				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      defaultResolveNodeLimit,
+				ResolveNodeLimit:      DefaultResolveNodeLimit,
+				CheckConcurrencyLimit: 100,
 			}
-			typesys := typesystem.New(model)
-			ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -311,9 +312,12 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:             ds,
+		Logger:                logger.NewNoopLogger(),
+		ListObjectsDeadline:   3 * time.Second,
+		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:      DefaultResolveNodeLimit,
+		CheckConcurrencyLimit: 100,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -377,9 +381,12 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:        ds,
-		Logger:           logger.NewNoopLogger(),
-		ResolveNodeLimit: defaultResolveNodeLimit,
+		Datastore:             ds,
+		Logger:                logger.NewNoopLogger(),
+		ListObjectsDeadline:   3 * time.Second,
+		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:      DefaultResolveNodeLimit,
+		CheckConcurrencyLimit: 100,
 	}
 
 	var r *openfgapb.ListObjectsResponse

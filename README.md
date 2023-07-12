@@ -18,7 +18,7 @@ OpenFGA is designed to make it easy for developers to model their application pe
 
 It allows in-memory data storage for quick development, as well as pluggable database modules. It currently supports PostgreSQL 14 and MySQL 8.
 
-It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools. 
+It offers an [HTTP API](https://openfga.dev/api/service) and a [gRPC API](https://buf.build/openfga/api/file/main:openfga/v1/openfga_service.proto). It has SDKs for [Node.js/JavaScript](https://www.npmjs.com/package/@openfga/sdk), [GoLang](https://github.com/openfga/go-sdk), [Python](https://github.com/openfga/python-sdk) and [.NET](https://www.nuget.org/packages/OpenFga.Sdk). Look in our [Community section](https://github.com/openfga/community#community-projects) for third-party SDKs and tools.
 
 ## Getting Started
 
@@ -28,7 +28,7 @@ The following section aims to help you get started quickly. Please look at our o
 
 > ℹ️ The following sections setup an OpenFGA server using the default configuration values. These are for rapid development and not for a production environment. Data written to an OpenFGA instance using the default configuration with the memory storage engine will *not* persist after the service is stopped.
 >
-> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Configuring OpenFGA](https://openfga.dev/docs/getting-started/setup-openfga#configuring-the-server) or our [Production Checklist](https://openfga.dev/docs/getting-started/setup-openfga#production-checklist).
+> For more information on how to configure the OpenFGA server, please take a look at our official documentation on [Running in Production](https://openfga.dev/docs/getting-started/running-in-production).
 
 #### Docker
 
@@ -54,6 +54,14 @@ docker run -p 8080:8080 -p 3000:3000 openfga/openfga run
    ```bash
    docker compose up
    ```
+
+### Package Managers
+
+If you are a [Homebrew](https://brew.sh/) user, you can install [OpenFGA](https://formulae.brew.sh/formula/openfga) with the following command:
+
+```bash
+brew install openfga
+```
 
 #### Pre-compiled Binaries
 
@@ -154,16 +162,31 @@ In the event that a port other than the default port is required, the `--playgro
 ```
 
 ## Profiler (pprof)
-Profiling through pprof can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
+Profiling through [pprof](https://github.com/google/pprof) can be enabled on the OpenFGA server by providing the `--profiler-enabled` flag.
 
 ```sh
 ./openfga run --profiler-enabled
 ```
 
-If you need to serve the profiler on a different address than the default `:3001`, you can do so by specifying the `--profiler-addr` flag. For example,
+This will start serving profiling data on port `3001`. You can see that data by visiting `http://localhost:3001/debug/pprof`.
+
+If you need to serve the profiler on a different address, you can do so by specifying the `--profiler-addr` flag. For example,
 
 ```sh
 ./openfga run --profiler-enabled --profiler-addr :3002
+```
+
+Once the OpenFGA server is running, in another window you can run the following command to generate a compressed CPU profile:
+
+```sh
+go tool pprof -proto -seconds 60 http://localhost:3001/debug/pprof/profile
+# will collect data for 60 seconds and generate a file like pprof.samples.cpu.001.pb.gz
+```
+
+That file can be analyzed visually by running the following command and then visiting `http://localhost:8084`:
+
+```shell
+go tool pprof -http=localhost:8084 pprof.samples.cpu.001.pb.gz
 ```
 
 ## Next Steps
@@ -179,11 +202,13 @@ Don't hesitate to browse the official [Documentation](https://openfga.dev/), [AP
 
 ## Limitations
 ### MySQL Storage engine
-The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga#mysql-limitations)
+The MySQL storage engine has a lower length limit for some properties of a tuple compared with other storage backends. For more information see [the docs](https://openfga.dev/docs/getting-started/setup-openfga/docker#configuring-data-storage).
 
 ## Production Readiness
 
 The core [OpenFGA](https://github.com/openfga/openfga) service has been in use by [Auth0 FGA](https://fga.dev) in production since December 2021.
+
+OpenFGA's Memory Storage Adapter was built for development purposes only and is not recommended for a production environment, because it is not designed for scalable queries and has no support for persistence.
 
 OpenFGA's PostgreSQL Storage Adapter was purposely built for OpenFGA. Auth0 is not using it in a production environment.
 
@@ -200,7 +225,7 @@ See [CONTRIBUTING](https://github.com/openfga/.github/blob/main/CONTRIBUTING.md)
 [doc]: https://openfga.dev/docs
 [config-doc]: https://openfga.dev/docs/getting-started/setup-openfga
 [api]: https://openfga.dev/api/service
-[prod-checklist]: https://openfga.dev/docs/getting-started/setup-openfga#production-checklist
+[prod-checklist]: https://openfga.dev/docs/getting-started/running-in-production
 
 ## Community Meetings
 

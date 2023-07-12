@@ -20,7 +20,6 @@ import (
 
 type ConnectedObjectsRequest struct {
 	StoreID          string
-	Typesystem       *typesystem.TypeSystem
 	ObjectType       string
 	Relation         string
 	User             isUserRef
@@ -92,18 +91,30 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore storage.OpenFGADatastore
-
+	Datastore        storage.RelationshipTupleReader
+	Typesystem       *typesystem.TypeSystem
 	ResolveNodeLimit uint32
 
 	// Limit limits the results yielded by the ConnectedObjects API.
 	Limit uint32
 }
 
+type ConditionalResultStatus int
+
+const (
+	RequiresFurtherEvalStatus ConditionalResultStatus = iota
+	NoFurtherEvalStatus
+)
+
+type ConnectedObjectsResult struct {
+	Object       string
+	ResultStatus ConditionalResultStatus
+}
+
 func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -153,13 +164,13 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
-	g := graph.BuildConnectedObjectGraph(req.Typesystem)
+	g := graph.BuildConnectedObjectGraph(c.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
 	span.SetAttributes(
 		attribute.String("_sourceUserRef", sourceUserRef.String()),
 		attribute.String("_targetObjRef", targetObjRef.String()))
-	ingresses, err := g.RelationshipIngresses(targetObjRef, sourceUserRef)
+	ingresses, err := g.PrunedRelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
 	}
@@ -173,7 +184,6 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
-				typesystem:       req.Typesystem,
 				ingress:          innerLoopIngress,
 				targetObjectRef:  targetObjRef,
 				sourceUserRef:    req.User,
@@ -188,7 +198,6 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 				// lookup the rewritten target relation on the computed_userset ingress
 				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
-					Typesystem: req.Typesystem,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
 					User: &UserRefObjectRelation{
@@ -211,14 +220,14 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	return subg.Wait()
 }
 
-// StreamedConnectedObjects yields all of the objects of the provided objectType that
+// StreamedConnectedObjects yields all the objects of the provided objectType that
 // the given user has a specific relation with. The results will be limited by the request
 // limit. If a 0 limit is provided then all objects of the provided objectType will be
 // returned.
 func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
-	resultChan chan<- string, // object string (e.g. document:1)
+	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
 ) error {
 	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
@@ -238,7 +247,6 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 
 type reverseExpandRequest struct {
 	storeID          string
-	typesystem       *typesystem.TypeSystem
 	ingress          *graph.RelationshipIngress
 	targetObjectRef  *openfgapb.RelationReference
 	sourceUserRef    isUserRef
@@ -248,7 +256,7 @@ type reverseExpandRequest struct {
 func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -330,7 +338,15 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 				break
 			}
 
-			resultChan <- foundObject
+			resultStatus := NoFurtherEvalStatus
+			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
+				resultStatus = RequiresFurtherEvalStatus
+			}
+
+			resultChan <- &ConnectedObjectsResult{
+				Object:       foundObject,
+				ResultStatus: resultStatus,
+			}
 		}
 
 		var sourceUserRef isUserRef
@@ -357,7 +373,6 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
-				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
@@ -372,7 +387,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
-	resultChan chan<- string,
+	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
@@ -397,7 +412,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
-	publiclyAssignable, err := req.typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
+	publiclyAssignable, err := c.Typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
 	if err != nil {
 		return err
 	}
@@ -472,7 +487,15 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 				break
 			}
 
-			resultChan <- foundObject
+			resultStatus := NoFurtherEvalStatus
+			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
+				resultStatus = RequiresFurtherEvalStatus
+			}
+
+			resultChan <- &ConnectedObjectsResult{
+				Object:       foundObject,
+				ResultStatus: resultStatus,
+			}
 		}
 
 		sourceUserRef := &UserRefObjectRelation{
@@ -485,7 +508,6 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		subg.Go(func() error {
 			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
-				Typesystem:       req.typesystem,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
