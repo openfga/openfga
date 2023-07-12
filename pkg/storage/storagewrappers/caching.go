@@ -1,5 +1,5 @@
-// Package caching contains wrappers that cache storage data
-package caching
+// Package storagewrappers contains decorators for storage data
+package storagewrappers
 
 import (
 	"context"
