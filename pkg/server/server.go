@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
@@ -102,7 +103,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             storage.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
+		Datastore:             storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
 		Logger:                s.logger,
 		ListObjectsDeadline:   s.config.ListObjectsDeadline,
 		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
@@ -227,7 +228,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	checkResolver := graph.NewLocalChecker(
-		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 		checkConcurrencyLimit,
 	)
 

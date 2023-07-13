@@ -68,6 +68,7 @@ func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
 	}).Times(1)
 
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
+	defer cachingBackend.Close()
 
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
