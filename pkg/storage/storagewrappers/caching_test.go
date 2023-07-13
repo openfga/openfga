@@ -66,6 +66,7 @@ func TestSingleFlightFindLatestAuthorizationModelID(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return expectedModelID, nil
 	}).Times(1)
+	mockDatastore.EXPECT().Close().Times(1)
 
 	cachingBackend := NewCachedOpenFGADatastore(mockDatastore, 5)
 	defer cachingBackend.Close()
