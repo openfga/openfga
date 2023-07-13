@@ -213,6 +213,7 @@ func (q *ListObjectsQuery) execute(
 
 		checkResolver := graph.NewLocalChecker(limitedTupleReader,
 			graph.WithConcurrencyLimit(q.checkConcurrencyLimit),
+			graph.WithResolveNodeLimit(q.resolveNodeLimit),
 		)
 
 		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)
@@ -247,9 +248,6 @@ func (q *ListObjectsQuery) execute(
 					AuthorizationModelID: req.AuthorizationModelID,
 					TupleKey:             tuple.NewTupleKey(res.Object, req.Relation, req.User),
 					ContextualTuples:     req.ContextualTuples,
-					ResolutionMetadata: &graph.ResolutionMetadata{
-						Depth: q.resolveNodeLimit,
-					},
 				})
 				if err != nil {
 					resultsChan <- ListObjectsResult{Err: err}

@@ -227,7 +227,7 @@ func (c *ConnectedObjectsCommand) Execute(
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
 ) error {
-	ctx, span := tracer.Start(ctx, "Execute", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "execute", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
 		attribute.String("relation", req.Relation),
 		attribute.String("user", req.User.String()),

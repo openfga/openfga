@@ -21,16 +21,16 @@ var tracer = otel.Tracer("internal/graph/check")
 // CheckResolver represents an interface that can be implemented to provide recursive resolution
 // of a Check.
 type CheckResolver interface {
-	Execute(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
+	execute(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
 }
 
 type ResolveCheckRequest struct {
-	datastore            storage.RelationshipTupleReader
 	StoreID              string
 	AuthorizationModelID string
 	TupleKey             *openfgapb.TupleKey
 	ContextualTuples     []*openfgapb.TupleKey
-	ResolutionMetadata   *ResolutionMetadata
+	resolutionMetadata   *ResolutionMetadata
+	datastore            storage.RelationshipTupleReader
 }
 
 type ResolveCheckResponse struct {
@@ -71,7 +71,7 @@ func (r *ResolveCheckRequest) GetContextualTuples() []*openfgapb.TupleKey {
 
 func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
 	if r != nil {
-		return r.ResolutionMetadata
+		return r.resolutionMetadata
 	}
 
 	return nil
@@ -341,7 +341,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		resp, err := c.Execute(ctx, req)
+		resp, err := c.execute(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -356,14 +356,25 @@ func (c *LocalChecker) Execute(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "Execute")
+
+	req.resolutionMetadata = &ResolutionMetadata{Depth: 0}
+
+	return c.execute(ctx, req)
+}
+
+// execute is the recursive version of Execute
+func (c *LocalChecker) execute(
+	ctx context.Context,
+	req *ResolveCheckRequest,
+) (*ResolveCheckResponse, error) {
+	ctx, span := tracer.Start(ctx, "execute")
 	defer span.End()
 
 	req.datastore = storage.NewCombinedTupleReader(c.ds, req.ContextualTuples)
 
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
-	if req.GetResolutionMetadata().Depth == 0 {
+	if req.GetResolutionMetadata().Depth >= c.resolveNodeLimit {
 		return nil, ErrResolutionDepthExceeded
 	}
 
@@ -516,8 +527,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							StoreID:              storeID,
 							AuthorizationModelID: req.GetAuthorizationModelID(),
 							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
-							ResolutionMetadata: &ResolutionMetadata{
-								Depth: req.GetResolutionMetadata().Depth - 1,
+							resolutionMetadata: &ResolutionMetadata{
+								Depth: req.GetResolutionMetadata().Depth + 1,
 							},
 						}))
 				}
@@ -553,8 +564,8 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 					rewrite.ComputedUserset.GetRelation(),
 					req.TupleKey.GetUser(),
 				),
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth: req.ResolutionMetadata.Depth - 1,
+				resolutionMetadata: &ResolutionMetadata{
+					Depth: req.resolutionMetadata.Depth + 1,
 				},
 			})(ctx)
 	}
@@ -632,8 +643,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					StoreID:              req.GetStoreID(),
 					AuthorizationModelID: req.GetAuthorizationModelID(),
 					TupleKey:             tupleKey,
-					ResolutionMetadata: &ResolutionMetadata{
-						Depth: req.GetResolutionMetadata().Depth - 1,
+					resolutionMetadata: &ResolutionMetadata{
+						Depth: req.GetResolutionMetadata().Depth + 1,
 					},
 				}))
 		}
