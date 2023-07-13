@@ -107,7 +107,6 @@ type ListObjectsResult struct {
 }
 
 type ListObjectsRequest struct {
-	Datastore            storage.RelationshipTupleReader
 	StoreID              string
 	AuthorizationModelID string
 	Type                 string
@@ -209,7 +208,7 @@ func (q *ListObjectsQuery) execute(
 			close(connectedObjectsResChan)
 		}()
 
-		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(req.Datastore, q.checkConcurrencyLimit)
+		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.datastore, q.checkConcurrencyLimit)
 
 		checkResolver := graph.NewLocalChecker(limitedTupleReader,
 			graph.WithConcurrencyLimit(q.checkConcurrencyLimit),
