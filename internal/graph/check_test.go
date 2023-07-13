@@ -31,7 +31,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, WithResolveNodeLimit(25))
+	checker := NewLocalChecker(ds, WithResolveNodeLimit(2))
 
 	typedefs := parser.MustParse(`
 	type user
@@ -64,9 +64,8 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	require.True(t, resp.Allowed)
 
 	resp, err = checker.Execute(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
-		resolutionMetadata: &ResolutionMetadata{Depth: 2},
+		StoreID:  storeID,
+		TupleKey: tuple.NewTupleKey("document:2", "editor", "user:x"),
 	})
 	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
 	require.Nil(t, resp)
