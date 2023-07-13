@@ -207,6 +207,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				ListObjectsMaxResults:   test.maxResults,
 				ResolveNodeLimit:        DefaultResolveNodeLimit,
 				ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
+				MaxConcurrentReads:      DefaultMaxConcurrentReads,
 			}
 
 			// assertions

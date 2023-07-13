@@ -147,6 +147,7 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		ListObjectsMaxResults:   s.config.ListObjectsMaxResults,
 		ResolveNodeLimit:        s.config.ResolveNodeLimit,
 		ResolveNodeBreadthLimit: s.config.ResolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.config.MaxConcurrentReads,
 	}
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
