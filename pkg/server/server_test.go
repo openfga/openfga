@@ -228,7 +228,9 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
 	})
 
 	_, err := s.Check(ctx, &openfgapb.CheckRequest{
@@ -335,7 +337,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
 	})
 
 	start := time.Now()
@@ -477,9 +481,11 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
 	})
 
 	b.ResetTimer()
@@ -537,9 +543,11 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -599,9 +607,11 @@ func TestListObjects_Unoptimized_UnhappyPaths_Known_Error(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -680,9 +690,11 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -761,9 +773,11 @@ func TestListObjects_UnhappyPaths_Known_Error(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
 	})
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -824,10 +838,12 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		Transport: transport,
 		Logger:    logger,
 	}, &Config{
-		ResolveNodeLimit:      test.DefaultResolveNodeLimit,
-		ListObjectsDeadline:   5 * time.Second,
-		ListObjectsMaxResults: 1000,
-		Experimentals:         []ExperimentalFeatureFlag{},
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
+		ListObjectsDeadline:     5 * time.Second,
+		ListObjectsMaxResults:   1000,
+		Experimentals:           []ExperimentalFeatureFlag{},
 	})
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
