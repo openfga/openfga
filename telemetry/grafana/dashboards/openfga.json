@@ -103,14 +103,7 @@
             "__systemRef": "hideSeriesFrom",
             "matcher": {
               "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "openfga.v1.OpenFGAService/CreateStore"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
+              "options": "openfga.v1.OpenFGAService/CreateStore"
             },
             "properties": [
               {
@@ -222,14 +215,7 @@
             "__systemRef": "hideSeriesFrom",
             "matcher": {
               "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "openfga.v1.OpenFGAService/CreateStore"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
+              "options": "openfga.v1.OpenFGAService/CreateStore"
             },
             "properties": [
               {
@@ -343,14 +329,7 @@
             "__systemRef": "hideSeriesFrom",
             "matcher": {
               "id": "byNames",
-              "options": {
-                "mode": "exclude",
-                "names": [
-                  "openfga.v1.OpenFGAService/CreateStore"
-                ],
-                "prefix": "All except:",
-                "readOnly": true
-              }
+              "options": "openfga.v1.OpenFGAService/CreateStore"
             },
             "properties": [
               {
