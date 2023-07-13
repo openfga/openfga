@@ -141,8 +141,8 @@ func (q *ListObjectsQuery) evaluate(
 			Datastore:               q.Datastore,
 			Typesystem:              typesys,
 			ResolveNodeLimit:        q.ResolveNodeLimit,
-			Limit:                   maxResults,
 			ResolveNodeBreadthLimit: q.ResolveNodeBreadthLimit,
+			Limit:                   maxResults,
 		}
 
 		go func() {

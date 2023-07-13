@@ -1181,10 +1181,11 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			}
 
 			connectedObjectsCmd := commands.ConnectedObjectsCommand{
-				Datastore:        ds,
-				Typesystem:       typesystem.New(model),
-				ResolveNodeLimit: test.resolveNodeLimit,
-				Limit:            test.limit,
+				Datastore:               ds,
+				Typesystem:              typesystem.New(model),
+				ResolveNodeLimit:        test.resolveNodeLimit,
+				ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
+				Limit:                   test.limit,
 			}
 
 			resultChan := make(chan *commands.ConnectedObjectsResult, 100)
