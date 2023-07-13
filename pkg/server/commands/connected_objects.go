@@ -112,6 +112,7 @@ type ConnectedObjectsResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
+// execute is the recursive entrypoint of Execute
 func (c *ConnectedObjectsCommand) execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
@@ -163,7 +164,7 @@ func (c *ConnectedObjectsCommand) execute(
 	g := graph.BuildConnectedObjectGraph(c.Typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
-	span.SetAttributes(
+	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String("_sourceUserRef", sourceUserRef.String()),
 		attribute.String("_targetObjRef", targetObjRef.String()))
 	ingresses, err := g.PrunedRelationshipIngresses(targetObjRef, sourceUserRef)
@@ -175,7 +176,7 @@ func (c *ConnectedObjectsCommand) execute(
 	subg.SetLimit(maximumConcurrentChecks)
 
 	for i, ingress := range ingresses {
-		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
+		trace.SpanFromContext(ctx).SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
 		innerLoopIngress := ingress
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
