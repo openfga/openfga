@@ -26,6 +26,9 @@ import (
 const (
 	streamedBufferSize      = 100
 	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	defaultResolveNodeLimit = 25
+	defaultMaxResults       = 1000
+	defaultDeadline         = 3 * time.Second
 )
 
 var (
@@ -41,12 +44,61 @@ var (
 )
 
 type ListObjectsQuery struct {
-	Datastore             storage.RelationshipTupleReader
-	Logger                logger.Logger
-	ListObjectsDeadline   time.Duration
-	ListObjectsMaxResults uint32
-	ResolveNodeLimit      uint32
-	CheckConcurrencyLimit uint32
+	datastore             storage.RelationshipTupleReader
+	logger                logger.Logger
+	listObjectsDeadline   time.Duration
+	listObjectsMaxResults uint32
+	resolveNodeLimit      uint32
+	checkConcurrencyLimit uint32
+}
+
+type ListOptionsQueryOption func(d *ListObjectsQuery)
+
+func WithCheckConcurrencyLimit(limit uint32) ListOptionsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.checkConcurrencyLimit = limit
+	}
+}
+
+func WithListObjectsDeadline(deadline time.Duration) ListOptionsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.listObjectsDeadline = deadline
+	}
+}
+
+func WithListObjectsMaxResults(max uint32) ListOptionsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.listObjectsMaxResults = max
+	}
+}
+
+func WithResolveNodeLimit(limit uint32) ListOptionsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.resolveNodeLimit = limit
+	}
+}
+
+func WithLogger(l logger.Logger) ListOptionsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.logger = l
+	}
+}
+
+func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListOptionsQueryOption) *ListObjectsQuery {
+	query := &ListObjectsQuery{
+		datastore:             ds,
+		logger:                logger.NewNoopLogger(),
+		listObjectsDeadline:   defaultDeadline,
+		listObjectsMaxResults: defaultMaxResults,
+		resolveNodeLimit:      defaultResolveNodeLimit,
+		checkConcurrencyLimit: maximumConcurrentChecks,
+	}
+
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	return query
 }
 
 type ListObjectsResult struct {
@@ -54,27 +106,25 @@ type ListObjectsResult struct {
 	Err      error
 }
 
-// listObjectsRequest captures the RPC request definition interface for the ListObjects API.
-// The unary and streaming RPC definitions implement this interface, and so it can be used
-// interchangeably for a canonical representation between the two.
-type listObjectsRequest interface {
-	GetStoreId() string
-	GetAuthorizationModelId() string
-	GetType() string
-	GetRelation() string
-	GetUser() string
-	GetContextualTuples() *openfgapb.ContextualTupleKeys
+type ListObjectsRequest struct {
+	Datastore            storage.RelationshipTupleReader
+	StoreID              string
+	AuthorizationModelID string
+	Type                 string
+	Relation             string
+	User                 string
+	ContextualTuples     []*openfgapb.TupleKey
 }
 
-func (q *ListObjectsQuery) evaluate(
+func (q *ListObjectsQuery) execute(
 	ctx context.Context,
-	req listObjectsRequest,
+	req *ListObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 ) error {
 
-	targetObjectType := req.GetType()
-	targetRelation := req.GetRelation()
+	targetObjectType := req.Type
+	targetRelation := req.Relation
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
@@ -85,7 +135,7 @@ func (q *ListObjectsQuery) evaluate(
 		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
 	}
 
-	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
+	for _, ctxTuple := range req.ContextualTuples {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
 			return serverErrors.HandleTupleValidateError(err)
 		}
@@ -104,12 +154,12 @@ func (q *ListObjectsQuery) evaluate(
 		return serverErrors.NewInternalError("", err)
 	}
 
-	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
+	if err := validation.ValidateUser(typesys, req.User); err != nil {
 		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
 	handler := func() {
-		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
+		userObj, userRel := tuple.SplitObjectRelation(req.User)
 		userObjType, userObjID := tuple.SplitObject(userObj)
 
 		var sourceUserRef isUserRef
@@ -138,19 +188,19 @@ func (q *ListObjectsQuery) evaluate(
 		var objectsFound = new(uint32)
 
 		connectedObjectsCmd := &ConnectedObjectsCommand{
-			Datastore:        q.Datastore,
+			Datastore:        q.datastore,
 			Typesystem:       typesys,
-			ResolveNodeLimit: q.ResolveNodeLimit,
+			ResolveNodeLimit: q.resolveNodeLimit,
 			Limit:            maxResults,
 		}
 
 		go func() {
-			err = connectedObjectsCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
-				StoreID:          req.GetStoreId(),
+			err = connectedObjectsCmd.Execute(ctx, &ConnectedObjectsRequest{
+				StoreID:          req.StoreID,
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
 				User:             sourceUserRef,
-				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				ContextualTuples: req.ContextualTuples,
 			}, connectedObjectsResChan)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
@@ -159,11 +209,10 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.Datastore, q.CheckConcurrencyLimit)
+		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(req.Datastore, q.checkConcurrencyLimit)
 
-		checkResolver := graph.NewLocalChecker(
-			storage.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
-			q.CheckConcurrencyLimit,
+		checkResolver := graph.NewLocalChecker(limitedTupleReader,
+			graph.WithConcurrencyLimit(q.checkConcurrencyLimit),
 		)
 
 		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)
@@ -193,13 +242,13 @@ func (q *ListObjectsQuery) evaluate(
 
 				concurrencyLimiterCh <- struct{}{}
 
-				resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
-					StoreID:              req.GetStoreId(),
-					AuthorizationModelID: req.GetAuthorizationModelId(),
-					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
-					ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+				resp, err := checkResolver.Execute(ctx, &graph.ResolveCheckRequest{
+					StoreID:              req.StoreID,
+					AuthorizationModelID: req.AuthorizationModelID,
+					TupleKey:             tuple.NewTupleKey(res.Object, req.Relation, req.User),
+					ContextualTuples:     req.ContextualTuples,
 					ResolutionMetadata: &graph.ResolutionMetadata{
-						Depth: q.ResolveNodeLimit,
+						Depth: q.resolveNodeLimit,
 					},
 				})
 				if err != nil {
@@ -223,27 +272,34 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.ListObjectsMaxResults
-// or until q.ListObjectsDeadline is hit, whichever happens first.
+// Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
+// or until q.listObjectsDeadline is hit, whichever happens first.
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgapb.ListObjectsRequest,
 ) (*openfgapb.ListObjectsResponse, error) {
 
 	resultsChan := make(chan ListObjectsResult, 1)
-	maxResults := q.ListObjectsMaxResults
+	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
 		resultsChan = make(chan ListObjectsResult, maxResults)
 	}
 
 	timeoutCtx := ctx
-	if q.ListObjectsDeadline != 0 {
+	if q.listObjectsDeadline != 0 {
 		var cancel context.CancelFunc
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	err := q.execute(timeoutCtx, &ListObjectsRequest{
+		StoreID:              req.StoreId,
+		AuthorizationModelID: req.AuthorizationModelId,
+		Type:                 req.Type,
+		Relation:             req.Relation,
+		User:                 req.User,
+		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+	}, resultsChan, maxResults)
 	if err != nil {
 		return nil, err
 	}
@@ -254,9 +310,9 @@ func (q *ListObjectsQuery) Execute(
 		select {
 
 		case <-timeoutCtx.Done():
-			q.Logger.WarnWithContext(
+			q.logger.WarnWithContext(
 				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+				zap.String("timeout duration", q.listObjectsDeadline.String()),
 			)
 			return &openfgapb.ListObjectsResponse{
 				Objects: objects,
@@ -281,8 +337,8 @@ func (q *ListObjectsQuery) Execute(
 }
 
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
-// It ignores the value of q.ListObjectsMaxResults and returns all available results
-// until q.ListObjectsDeadline is hit
+// It ignores the value of q.listObjectsMaxResults and returns all available results
+// until q.listObjectsDeadline is hit
 func (q *ListObjectsQuery) ExecuteStreamed(
 	ctx context.Context,
 	req *openfgapb.StreamedListObjectsRequest,
@@ -294,13 +350,20 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
 
 	timeoutCtx := ctx
-	if q.ListObjectsDeadline != 0 {
+	if q.listObjectsDeadline != 0 {
 		var cancel context.CancelFunc
-		timeoutCtx, cancel = context.WithTimeout(ctx, q.ListObjectsDeadline)
+		timeoutCtx, cancel = context.WithTimeout(ctx, q.listObjectsDeadline)
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	err := q.execute(timeoutCtx, &ListObjectsRequest{
+		StoreID:              req.StoreId,
+		AuthorizationModelID: req.AuthorizationModelId,
+		Type:                 req.Type,
+		Relation:             req.Relation,
+		User:                 req.User,
+		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+	}, resultsChan, maxResults)
 	if err != nil {
 		return err
 	}
@@ -309,9 +372,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		select {
 
 		case <-timeoutCtx.Done():
-			q.Logger.WarnWithContext(
+			q.logger.WarnWithContext(
 				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.ListObjectsDeadline.String()),
+				zap.String("timeout duration", q.listObjectsDeadline.String()),
 			)
 			return nil
 

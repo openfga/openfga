@@ -101,14 +101,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	q := &commands.ListObjectsQuery{
-		Datastore:             storage.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		CheckConcurrencyLimit: checkConcurrencyLimit,
-	}
+	q := commands.NewListObjectsQuery(s.datastore,
+		commands.WithLogger(s.logger),
+		commands.WithCheckConcurrencyLimit(checkConcurrencyLimit),
+		commands.WithListObjectsDeadline(s.config.ListObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.config.ListObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.config.ResolveNodeLimit),
+	)
 
 	return q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
@@ -139,14 +138,13 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		return err
 	}
 
-	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		CheckConcurrencyLimit: checkConcurrencyLimit,
-	}
+	q := commands.NewListObjectsQuery(s.datastore,
+		commands.WithLogger(s.logger),
+		commands.WithCheckConcurrencyLimit(checkConcurrencyLimit),
+		commands.WithListObjectsDeadline(s.config.ListObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.config.ListObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.config.ResolveNodeLimit),
+	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 	return q.ExecuteStreamed(
@@ -226,19 +224,16 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	checkResolver := graph.NewLocalChecker(
-		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit,
+	checkResolver := graph.NewLocalChecker(s.datastore,
+		graph.WithResolveNodeLimit(s.config.ResolveNodeLimit),
+		graph.WithConcurrencyLimit(checkConcurrencyLimit),
 	)
 
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resp, err := checkResolver.Execute(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
-		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.config.ResolveNodeLimit,
-		},
 	})
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {

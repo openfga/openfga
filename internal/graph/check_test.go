@@ -31,7 +31,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, 100)
+	checker := NewLocalChecker(ds)
 
 	typedefs := parser.MustParse(`
 	type user
@@ -56,7 +56,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 		},
 	))
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+	resp, err := checker.Execute(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
@@ -64,7 +64,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, resp.Allowed)
 
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+	resp, err = checker.Execute(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
 		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
@@ -91,7 +91,9 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, concurrencyLimit)
+	checker := NewLocalChecker(ds,
+		WithConcurrencyLimit(concurrencyLimit),
+	)
 
 	typedefs := parser.MustParse(`
 	type user
@@ -111,7 +113,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 		},
 	))
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+	resp, err := checker.Execute(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},

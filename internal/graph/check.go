@@ -21,10 +21,11 @@ var tracer = otel.Tracer("internal/graph/check")
 // CheckResolver represents an interface that can be implemented to provide recursive resolution
 // of a Check.
 type CheckResolver interface {
-	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
+	Execute(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
 }
 
 type ResolveCheckRequest struct {
+	datastore            storage.RelationshipTupleReader
 	StoreID              string
 	AuthorizationModelID string
 	TupleKey             *openfgapb.TupleKey
@@ -82,6 +83,8 @@ const (
 	unionSetOperator setOperatorType = iota
 	intersectionSetOperator
 	exclusionSetOperator
+	defaultConcurrencyLimit = 100
+	defaultResolveNodeLimit = 25
 )
 
 type checkOutcome struct {
@@ -94,17 +97,37 @@ type checkOutcome struct {
 type LocalChecker struct {
 	ds               storage.RelationshipTupleReader
 	concurrencyLimit uint32
+	resolveNodeLimit uint32
+}
+
+type CheckQueryOption func(d *LocalChecker)
+
+func WithResolveNodeLimit(limit uint32) CheckQueryOption {
+	return func(d *LocalChecker) {
+		d.resolveNodeLimit = limit
+	}
+}
+
+func WithConcurrencyLimit(limit uint32) CheckQueryOption {
+	return func(d *LocalChecker) {
+		d.concurrencyLimit = limit
+	}
 }
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // There is also a limit on the depth that will be evaluated before returning an error.
-func NewLocalChecker(
-	ds storage.RelationshipTupleReader,
-	concurrencyLimit uint32,
-) *LocalChecker {
-	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit}
+func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...CheckQueryOption) *LocalChecker {
+	checker := &LocalChecker{
+		ds:               ds,
+		concurrencyLimit: defaultConcurrencyLimit,
+		resolveNodeLimit: defaultResolveNodeLimit,
+	}
+
+	for _, opt := range opts {
+		opt(checker)
+	}
 	return checker
 }
 
@@ -318,7 +341,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		resp, err := c.ResolveCheck(ctx, req)
+		resp, err := c.Execute(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -329,12 +352,14 @@ func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) C
 	}
 }
 
-func (c *LocalChecker) ResolveCheck(
+func (c *LocalChecker) Execute(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-	ctx, span := tracer.Start(ctx, "ResolveCheck")
+	ctx, span := tracer.Start(ctx, "Execute")
 	defer span.End()
+
+	req.datastore = storage.NewCombinedTupleReader(c.ds, req.ContextualTuples)
 
 	span.SetAttributes(attribute.String("tuple_key", req.GetTupleKey().String()))
 
@@ -390,7 +415,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
 			defer span.End()
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			t, err := req.datastore.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return &openfgapb.CheckResponse{Allowed: false}, nil
@@ -434,7 +459,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
 			}
 
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			iter, err := req.datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      tk.Object,
 				Relation:                    tk.Relation,
 				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
@@ -559,7 +584,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
 		span.SetAttributes(attribute.String("computed_relation", computedRelation))
 
-		iter, err := c.ds.Read(
+		iter, err := req.datastore.Read(
 			ctx,
 			req.GetStoreID(),
 			tuple.NewTupleKey(object, tuplesetRelation, ""),

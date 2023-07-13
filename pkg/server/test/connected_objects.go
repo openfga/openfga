@@ -1203,7 +1203,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			defer cancel()
 
 			go func() {
-				err = connectedObjectsCmd.StreamedConnectedObjects(timeoutCtx, test.request, resultChan)
+				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan)
 				require.ErrorIs(err, test.expectedError)
 				close(resultChan)
 			}()

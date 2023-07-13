@@ -10,7 +10,6 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -200,14 +199,10 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
-			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:             datastore,
-				Logger:                logger.NewNoopLogger(),
-				ListObjectsDeadline:   listObjectsDeadline,
-				ListObjectsMaxResults: test.maxResults,
-				ResolveNodeLimit:      DefaultResolveNodeLimit,
-				CheckConcurrencyLimit: 100,
-			}
+			listObjectsQuery := commands.NewListObjectsQuery(datastore,
+				commands.WithListObjectsDeadline(listObjectsDeadline),
+				commands.WithListObjectsMaxResults(test.maxResults),
+			)
 
 			// assertions
 			t.Run("streaming_endpoint", func(t *testing.T) {
@@ -311,14 +306,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 		require.NoError(b, err)
 	}
 
-	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:             ds,
-		Logger:                logger.NewNoopLogger(),
-		ListObjectsDeadline:   3 * time.Second,
-		ListObjectsMaxResults: 1000,
-		ResolveNodeLimit:      DefaultResolveNodeLimit,
-		CheckConcurrencyLimit: 100,
-	}
+	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
 	var r *openfgapb.ListObjectsResponse
 
@@ -380,14 +368,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 		require.NoError(b, err)
 	}
 
-	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:             ds,
-		Logger:                logger.NewNoopLogger(),
-		ListObjectsDeadline:   3 * time.Second,
-		ListObjectsMaxResults: 1000,
-		ResolveNodeLimit:      DefaultResolveNodeLimit,
-		CheckConcurrencyLimit: 100,
-	}
+	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
 	var r *openfgapb.ListObjectsResponse
 

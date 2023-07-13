@@ -19,6 +19,7 @@ import (
 )
 
 type ConnectedObjectsRequest struct {
+	datastore        storage.RelationshipTupleReader
 	StoreID          string
 	ObjectType       string
 	Relation         string
@@ -111,19 +112,14 @@ type ConnectedObjectsResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
-func (c *ConnectedObjectsCommand) streamedConnectedObjects(
+func (c *ConnectedObjectsCommand) execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
-	ctx, span := tracer.Start(ctx, "streamedConnectedObjects", trace.WithAttributes(
-		attribute.String("object_type", req.ObjectType),
-		attribute.String("relation", req.Relation),
-		attribute.String("user", req.User.String()),
-	))
-	defer span.End()
+	req.datastore = storage.NewCombinedTupleReader(c.Datastore, req.ContextualTuples)
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
 	if !ok {
@@ -183,6 +179,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 		innerLoopIngress := ingress
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
+				datastore:        req.datastore,
 				storeID:          storeID,
 				ingress:          innerLoopIngress,
 				targetObjectRef:  targetObjRef,
@@ -196,7 +193,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 			case graph.ComputedUsersetIngress:
 
 				// lookup the rewritten target relation on the computed_userset ingress
-				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+				return c.execute(ctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
@@ -220,16 +217,16 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	return subg.Wait()
 }
 
-// StreamedConnectedObjects yields all the objects of the provided objectType that
+// Execute yields all the objects of the provided objectType that
 // the given user has a specific relation with. The results will be limited by the request
 // limit. If a 0 limit is provided then all objects of the provided objectType will be
 // returned.
-func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
+func (c *ConnectedObjectsCommand) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
 ) error {
-	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "Execute", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
 		attribute.String("relation", req.Relation),
 		attribute.String("user", req.User.String()),
@@ -242,10 +239,11 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	}
 
 	var foundObjects sync.Map
-	return c.streamedConnectedObjects(ctx, req, resultChan, &foundObjects, foundCount)
+	return c.execute(ctx, req, resultChan, &foundObjects, foundCount)
 }
 
 type reverseExpandRequest struct {
+	datastore        storage.RelationshipTupleReader
 	storeID          string
 	ingress          *graph.RelationshipIngress
 	targetObjectRef  *openfgapb.RelationReference
@@ -295,9 +293,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
-
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := req.datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
 		Relation:   tuplesetRelation,
 		UserFilter: userFilter,
@@ -371,7 +367,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		}
 
 		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
@@ -444,9 +440,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
-
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := req.datastore.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
 		UserFilter: userFilter,
@@ -506,7 +500,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
