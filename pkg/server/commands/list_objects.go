@@ -165,6 +165,7 @@ func (q *ListObjectsQuery) evaluate(
 		checkResolver := graph.NewLocalChecker(
 			storage.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
 			q.ResolveNodeBreadthLimit,
+			q.MaxConcurrentReads,
 		)
 
 		concurrencyLimiterCh := make(chan struct{}, q.ResolveNodeBreadthLimit)

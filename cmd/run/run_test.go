@@ -220,15 +220,6 @@ type authTest struct {
 }
 
 func TestVerifyConfig(t *testing.T) {
-	t.Run("MaxConcurrentReads_cannot_be_higher_than_DatastoreMaxOpenConns", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.MaxConcurrentReads = 100
-		cfg.Datastore.MaxOpenConns = 1
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "config 'maxConcurrentReads' (100) cannot be higher than 'datastore.maxOpenConns' config (1)")
-	})
-
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
 		cfg.ListObjectsDeadline = 5 * time.Minute
@@ -907,9 +898,21 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTypesPerAuthorizationModel)
 
+	val = res.Get("properties.maxConcurrentReadsForListObjects.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListObjects)
+
+	val = res.Get("properties.maxConcurrentReadsForCheck.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
+
+	val = res.Get("properties.resolveNodeBreadthLimit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ResolveNodeBreadthLimit)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())

@@ -165,11 +165,13 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 
-	flags.Uint32("max-concurrent-reads", defaultConfig.MaxConcurrentReads, "the maximum allowed number of concurrent datastore reads during queries (for now it only applies to Checks executed within ListObjects requests. A high number means that you want ListObjects latency to be low, with the downside that Check latency may be impacted)")
+	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads during a ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
+
+	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads during a Check query. A high number means that you want Check latency to be low, at the expense of other queries performance")
 
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
-	flags.Uint32("resolve-node-limit", defaultConfig.ResolveNodeLimit, "defines how deeply nested an authorization model can be before a Check request errors out")
+	flags.Uint32("resolve-node-limit", defaultConfig.ResolveNodeLimit, "defines how deeply nested an authorization model can be before a query errors out")
 
 	flags.Uint32("resolve-node-breadth-limit", defaultConfig.ResolveNodeBreadthLimit, "defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree")
 
@@ -318,8 +320,11 @@ type Config struct {
 	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per authorization model for the WriteAuthorizationModel endpoint.
 	MaxTypesPerAuthorizationModel int
 
-	// MaxConcurrentReads defines the maximum number of concurrent database reads allowed in queries
-	MaxConcurrentReads uint32
+	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads allowed in ListObjects queries
+	MaxConcurrentReadsForListObjects uint32
+
+	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in Check queries
+	MaxConcurrentReadsForCheck uint32
 
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
@@ -327,10 +332,10 @@ type Config struct {
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
 
-	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a Check request errors out.
+	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query errors out.
 	ResolveNodeLimit uint32
 
-	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a Check request
+	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
 	Datastore  DatastoreConfig
@@ -347,15 +352,16 @@ type Config struct {
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:             100,
-		MaxTypesPerAuthorizationModel: 100,
-		MaxConcurrentReads:            30, // same as Datastore.MaxOpenConns
-		ChangelogHorizonOffset:        0,
-		ResolveNodeLimit:              25,
-		ResolveNodeBreadthLimit:       100,
-		Experimentals:                 []string{},
-		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
-		ListObjectsMaxResults:         1000,
+		MaxTuplesPerWrite:                100,
+		MaxTypesPerAuthorizationModel:    100,
+		MaxConcurrentReadsForCheck:       30, // same as Datastore.MaxOpenConns
+		MaxConcurrentReadsForListObjects: 30, // same as Datastore.MaxOpenConns
+		ChangelogHorizonOffset:           0,
+		ResolveNodeLimit:                 25,
+		ResolveNodeBreadthLimit:          100,
+		Experimentals:                    []string{},
+		ListObjectsDeadline:              3 * time.Second, // there is a 3-second timeout elsewhere
+		ListObjectsMaxResults:            1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -460,8 +466,12 @@ func ReadConfig() (*Config, error) {
 }
 
 func VerifyConfig(cfg *Config) error {
-	if int(cfg.MaxConcurrentReads) > cfg.Datastore.MaxOpenConns {
-		return fmt.Errorf("config 'maxConcurrentReads' (%d) cannot be higher than 'datastore.maxOpenConns' config (%d)", cfg.MaxConcurrentReads, cfg.Datastore.MaxOpenConns)
+	if int(cfg.MaxConcurrentReadsForCheck) > cfg.Datastore.MaxOpenConns {
+		fmt.Printf("config 'maxConcurrentReadsForCheck' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForCheck, cfg.Datastore.MaxOpenConns)
+	}
+
+	if int(cfg.MaxConcurrentReadsForListObjects) > cfg.Datastore.MaxOpenConns {
+		fmt.Printf("config 'maxConcurrentReadsForListObjects' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForListObjects, cfg.Datastore.MaxOpenConns)
 	}
 
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
@@ -700,13 +710,14 @@ func RunServer(ctx context.Context, config *Config) error {
 		TokenEncoder: encoder.NewBase64Encoder(),
 		Transport:    gateway.NewRPCTransport(logger),
 	}, &server.Config{
-		ResolveNodeLimit:        config.ResolveNodeLimit,
-		ResolveNodeBreadthLimit: config.ResolveNodeBreadthLimit,
-		MaxConcurrentReads:      config.MaxConcurrentReads,
-		ChangelogHorizonOffset:  config.ChangelogHorizonOffset,
-		ListObjectsDeadline:     config.ListObjectsDeadline,
-		ListObjectsMaxResults:   config.ListObjectsMaxResults,
-		Experimentals:           experimentals,
+		ResolveNodeLimit:                 config.ResolveNodeLimit,
+		ResolveNodeBreadthLimit:          config.ResolveNodeBreadthLimit,
+		MaxConcurrentReadsForCheck:       config.MaxConcurrentReadsForCheck,
+		MaxConcurrentReadsForListObjects: config.MaxConcurrentReadsForListObjects,
+		ChangelogHorizonOffset:           config.ChangelogHorizonOffset,
+		ListObjectsDeadline:              config.ListObjectsDeadline,
+		ListObjectsMaxResults:            config.ListObjectsMaxResults,
+		Experimentals:                    experimentals,
 	})
 
 	logger.Info(
