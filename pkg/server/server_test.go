@@ -175,7 +175,9 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		Logger:    logger.NewNoopLogger(),
 		Transport: gateway.NewNoopTransport(),
 	}, &Config{
-		ResolveNodeLimit: test.DefaultResolveNodeLimit,
+		ResolveNodeLimit:        test.DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: test.DefaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      test.DefaultMaxConcurrentReads,
 	})
 
 	checkResponse, err := s.Check(ctx, &openfgapb.CheckRequest{
