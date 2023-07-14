@@ -24,8 +24,7 @@ import (
 )
 
 const (
-	streamedBufferSize      = 100
-	maximumConcurrentChecks = 100 // todo(jon-whit): make this configurable, but for now limit to 100 concurrent checks
+	streamedBufferSize = 100
 )
 
 var (
@@ -41,12 +40,13 @@ var (
 )
 
 type ListObjectsQuery struct {
-	Datastore             storage.RelationshipTupleReader
-	Logger                logger.Logger
-	ListObjectsDeadline   time.Duration
-	ListObjectsMaxResults uint32
-	ResolveNodeLimit      uint32
-	CheckConcurrencyLimit uint32
+	Datastore               storage.RelationshipTupleReader
+	Logger                  logger.Logger
+	ListObjectsDeadline     time.Duration
+	ListObjectsMaxResults   uint32
+	ResolveNodeLimit        uint32
+	ResolveNodeBreadthLimit uint32
+	MaxConcurrentReads      uint32
 }
 
 type ListObjectsResult struct {
@@ -138,10 +138,11 @@ func (q *ListObjectsQuery) evaluate(
 		var objectsFound = new(uint32)
 
 		connectedObjectsCmd := &ConnectedObjectsCommand{
-			Datastore:        q.Datastore,
-			Typesystem:       typesys,
-			ResolveNodeLimit: q.ResolveNodeLimit,
-			Limit:            maxResults,
+			Datastore:               q.Datastore,
+			Typesystem:              typesys,
+			ResolveNodeLimit:        q.ResolveNodeLimit,
+			ResolveNodeBreadthLimit: q.ResolveNodeBreadthLimit,
+			Limit:                   maxResults,
 		}
 
 		go func() {
@@ -159,14 +160,15 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.Datastore, q.CheckConcurrencyLimit)
+		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.Datastore, q.MaxConcurrentReads)
 
 		checkResolver := graph.NewLocalChecker(
 			storage.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
-			q.CheckConcurrencyLimit,
+			q.ResolveNodeBreadthLimit,
+			q.MaxConcurrentReads,
 		)
 
-		concurrencyLimiterCh := make(chan struct{}, maximumConcurrentChecks)
+		concurrencyLimiterCh := make(chan struct{}, q.ResolveNodeBreadthLimit)
 
 		wg := sync.WaitGroup{}
 
