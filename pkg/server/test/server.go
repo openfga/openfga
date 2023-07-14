@@ -7,7 +7,9 @@ import (
 )
 
 const (
-	DefaultResolveNodeLimit = 25
+	DefaultResolveNodeLimit        = 25
+	DefaultResolveNodeBreadthLimit = 100
+	DefaultMaxConcurrentReads      = 30
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {

@@ -31,7 +31,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, 100)
+	checker := NewLocalChecker(ds, 100, 100)
 
 	typedefs := parser.MustParse(`
 	type user
@@ -91,7 +91,7 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, concurrencyLimit)
+	checker := NewLocalChecker(ds, concurrencyLimit, 100)
 
 	typedefs := parser.MustParse(`
 	type user

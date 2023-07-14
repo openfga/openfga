@@ -898,9 +898,21 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTypesPerAuthorizationModel)
 
+	val = res.Get("properties.maxConcurrentReadsForListObjects.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListObjects)
+
+	val = res.Get("properties.maxConcurrentReadsForCheck.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
+
+	val = res.Get("properties.resolveNodeBreadthLimit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ResolveNodeBreadthLimit)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
