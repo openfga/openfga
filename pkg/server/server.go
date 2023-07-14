@@ -145,7 +145,7 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
-		panic(fmt.Sprintf("failed to construct the OpenFGA server: %v", err))
+		panic(fmt.Errorf("failed to construct the OpenFGA server: %w", err))
 	}
 
 	return s

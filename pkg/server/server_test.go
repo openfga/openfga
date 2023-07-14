@@ -40,6 +40,12 @@ func init() {
 	}
 }
 
+func TestServerPanicIfNoDatastore(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
+		_ = MustNewServerWithOpts()
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	ds := MustBootstrapDatastore(t, "postgres")
 	defer ds.Close()
