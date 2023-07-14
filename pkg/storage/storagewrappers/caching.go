@@ -61,4 +61,5 @@ func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Cont
 
 func (c *cachedOpenFGADatastore) Close() {
 	c.cache.Stop()
+	c.OpenFGADatastore.Close()
 }

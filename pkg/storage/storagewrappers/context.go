@@ -1,8 +1,9 @@
-package storage
+package storagewrappers
 
 import (
 	"context"
 
+	"github.com/openfga/openfga/pkg/storage"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -14,12 +15,12 @@ import (
 //
 // ContextTracerWrapper must be the first wrapper around the datastore if traces are to work properly.
 type ContextTracerWrapper struct {
-	OpenFGADatastore
+	storage.OpenFGADatastore
 }
 
-var _ OpenFGADatastore = (*ContextTracerWrapper)(nil)
+var _ storage.OpenFGADatastore = (*ContextTracerWrapper)(nil)
 
-func NewContextWrapper(inner OpenFGADatastore) *ContextTracerWrapper {
+func NewContextWrapper(inner storage.OpenFGADatastore) *ContextTracerWrapper {
 	return &ContextTracerWrapper{inner}
 }
 
@@ -34,14 +35,14 @@ func (c *ContextTracerWrapper) Close() {
 	c.OpenFGADatastore.Close()
 }
 
-func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (TupleIterator, error) {
+func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
 	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey)
 }
 
-func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
@@ -55,14 +56,14 @@ func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, 
 	return c.OpenFGADatastore.ReadUserTuple(queryCtx, store, tupleKey)
 }
 
-func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter ReadUsersetTuplesFilter) (TupleIterator, error) {
+func (c *ContextTracerWrapper) ReadUsersetTuples(ctx context.Context, store string, filter storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
 	return c.OpenFGADatastore.ReadUsersetTuples(queryCtx, store, filter)
 }
 
-func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts ReadStartingWithUserFilter) (TupleIterator, error) {
+func (c *ContextTracerWrapper) ReadStartingWithUser(ctx context.Context, store string, opts storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
