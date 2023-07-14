@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -33,6 +34,15 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
 	authorizationModelIDKey    = "authorization_model_id"
+
+	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
+	defaultChangelogHorizonOffset           = 0
+	defaultResolveNodeLimit                 = 25
+	defaultResolveNodeBreadthLimit          = 100
+	defaultListObjectsDeadline              = 3 * time.Second
+	defaultListObjectsMaxResults            = 1000
+	defaultMaxConcurrentReadsForCheck       = 100
+	defaultMaxConcurrentReadsForListObjects = 30
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -42,47 +52,132 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
-	encoder   encoder.Encoder
-	transport gateway.Transport
-	config    *Config
+	logger                           logger.Logger
+	datastore                        storage.OpenFGADatastore
+	encoder                          encoder.Encoder
+	transport                        gateway.Transport
+	resolveNodeLimit                 uint32
+	resolveNodeBreadthLimit          uint32
+	changelogHorizonOffset           int
+	listObjectsDeadline              time.Duration
+	listObjectsMaxResults            uint32
+	maxConcurrentReadsForListObjects uint32
+	maxConcurrentReadsForCheck       uint32
+	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
-type Dependencies struct {
-	Datastore    storage.OpenFGADatastore
-	Logger       logger.Logger
-	Transport    gateway.Transport
-	TokenEncoder encoder.Encoder
-}
+type OpenFGAServiceV1Option func(s *Server)
 
-type Config struct {
-	ResolveNodeLimit                 uint32
-	ResolveNodeBreadthLimit          uint32
-	MaxConcurrentReadsForCheck       uint32
-	MaxConcurrentReadsForListObjects uint32
-	ChangelogHorizonOffset           int
-	ListObjectsDeadline              time.Duration
-	ListObjectsMaxResults            uint32
-	Experimentals                    []ExperimentalFeatureFlag
-}
-
-// New creates a new Server which uses the supplied backends
-// for managing data.
-func New(dependencies *Dependencies, config *Config) *Server {
-
-	typesysResolverFunc := typesystem.MemoizedTypesystemResolverFunc(dependencies.Datastore)
-
-	return &Server{
-		logger:             dependencies.Logger,
-		datastore:          dependencies.Datastore,
-		encoder:            dependencies.TokenEncoder,
-		transport:          dependencies.Transport,
-		config:             config,
-		typesystemResolver: typesysResolverFunc,
+func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.datastore = ds
 	}
+}
+
+func WithLogger(l logger.Logger) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.logger = l
+	}
+}
+
+func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.encoder = encoder
+	}
+}
+
+func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.transport = t
+	}
+}
+
+func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.resolveNodeLimit = limit
+	}
+}
+
+func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.resolveNodeBreadthLimit = limit
+	}
+}
+
+func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.changelogHorizonOffset = offset
+	}
+}
+
+func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsDeadline = deadline
+	}
+}
+
+func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.listObjectsMaxResults = limit
+	}
+}
+
+func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListObjects = max
+	}
+}
+
+func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.experimentals = experimentals
+	}
+}
+
+func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
+	s, err := NewServerWithOpts(opts...)
+	if err != nil {
+		panic(fmt.Errorf("failed to construct the OpenFGA server: %w", err))
+	}
+
+	return s
+}
+
+func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
+
+	s := &Server{
+		logger:                           logger.NewNoopLogger(),
+		encoder:                          encoder.NewBase64Encoder(),
+		transport:                        gateway.NewNoopTransport(),
+		changelogHorizonOffset:           defaultChangelogHorizonOffset,
+		resolveNodeLimit:                 defaultResolveNodeLimit,
+		resolveNodeBreadthLimit:          defaultResolveNodeBreadthLimit,
+		listObjectsDeadline:              defaultListObjectsDeadline,
+		listObjectsMaxResults:            defaultListObjectsMaxResults,
+		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
+		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
+		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+	}
+
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	if s.datastore == nil {
+		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+
+	return s, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
@@ -106,11 +201,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	q := &commands.ListObjectsQuery{
 		Datastore:               storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
 		Logger:                  s.logger,
-		ListObjectsDeadline:     s.config.ListObjectsDeadline,
-		ListObjectsMaxResults:   s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:        s.config.ResolveNodeLimit,
-		ResolveNodeBreadthLimit: s.config.ResolveNodeBreadthLimit,
-		MaxConcurrentReads:      s.config.MaxConcurrentReadsForListObjects,
+		ListObjectsDeadline:     s.listObjectsDeadline,
+		ListObjectsMaxResults:   s.listObjectsMaxResults,
+		ResolveNodeLimit:        s.resolveNodeLimit,
+		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
 	}
 
 	return q.Execute(
@@ -145,11 +240,11 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	q := &commands.ListObjectsQuery{
 		Datastore:               s.datastore,
 		Logger:                  s.logger,
-		ListObjectsDeadline:     s.config.ListObjectsDeadline,
-		ListObjectsMaxResults:   s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:        s.config.ResolveNodeLimit,
-		ResolveNodeBreadthLimit: s.config.ResolveNodeBreadthLimit,
-		MaxConcurrentReads:      s.config.MaxConcurrentReadsForListObjects,
+		ListObjectsDeadline:     s.listObjectsDeadline,
+		ListObjectsMaxResults:   s.listObjectsMaxResults,
+		ResolveNodeLimit:        s.resolveNodeLimit,
+		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
 	}
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
@@ -232,8 +327,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		s.config.ResolveNodeBreadthLimit,
-		s.config.MaxConcurrentReadsForCheck,
+		s.resolveNodeBreadthLimit,
+		s.maxConcurrentReadsForCheck,
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
@@ -242,7 +337,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.config.ResolveNodeLimit,
+			Depth: s.resolveNodeLimit,
 		},
 	})
 	if err != nil {
@@ -363,7 +458,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequ
 	))
 	defer span.End()
 
-	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.config.ChangelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
 

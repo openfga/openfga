@@ -6,6 +6,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+// TODO remove by creating constructors with default values for ListObjectsQuery and ConnectedObjectsCommand
 const (
 	DefaultResolveNodeLimit        = 25
 	DefaultResolveNodeBreadthLimit = 100

@@ -29,7 +29,6 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
@@ -704,21 +703,19 @@ func RunServer(ctx context.Context, config *Config) error {
 		}()
 	}
 
-	svr := server.New(&server.Dependencies{
-		Datastore:    datastore,
-		Logger:       logger,
-		TokenEncoder: encoder.NewBase64Encoder(),
-		Transport:    gateway.NewRPCTransport(logger),
-	}, &server.Config{
-		ResolveNodeLimit:                 config.ResolveNodeLimit,
-		ResolveNodeBreadthLimit:          config.ResolveNodeBreadthLimit,
-		MaxConcurrentReadsForCheck:       config.MaxConcurrentReadsForCheck,
-		MaxConcurrentReadsForListObjects: config.MaxConcurrentReadsForListObjects,
-		ChangelogHorizonOffset:           config.ChangelogHorizonOffset,
-		ListObjectsDeadline:              config.ListObjectsDeadline,
-		ListObjectsMaxResults:            config.ListObjectsMaxResults,
-		Experimentals:                    experimentals,
-	})
+	svr := server.MustNewServerWithOpts(
+		server.WithDatastore(datastore),
+		server.WithLogger(logger),
+		server.WithTransport(gateway.NewRPCTransport(logger)),
+		server.WithResolveNodeLimit(config.ResolveNodeLimit),
+		server.WithResolveNodeBreadthLimit(config.ResolveNodeBreadthLimit),
+		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
+		server.WithListObjectsDeadline(config.ListObjectsDeadline),
+		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
+		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
+		server.WithExperimentals(experimentals...),
+	)
 
 	logger.Info(
 		"🚀 starting openfga service...",
