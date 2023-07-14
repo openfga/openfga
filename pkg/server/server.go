@@ -32,8 +32,6 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
 	authorizationModelIDKey    = "authorization_model_id"
-
-	checkConcurrencyLimit = 100
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -60,11 +58,14 @@ type Dependencies struct {
 }
 
 type Config struct {
-	ResolveNodeLimit       uint32
-	ChangelogHorizonOffset int
-	ListObjectsDeadline    time.Duration
-	ListObjectsMaxResults  uint32
-	Experimentals          []ExperimentalFeatureFlag
+	ResolveNodeLimit                 uint32
+	ResolveNodeBreadthLimit          uint32
+	MaxConcurrentReadsForCheck       uint32
+	MaxConcurrentReadsForListObjects uint32
+	ChangelogHorizonOffset           int
+	ListObjectsDeadline              time.Duration
+	ListObjectsMaxResults            uint32
+	Experimentals                    []ExperimentalFeatureFlag
 }
 
 // New creates a new Server which uses the supplied backends
@@ -102,12 +103,13 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             storage.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		CheckConcurrencyLimit: checkConcurrencyLimit,
+		Datastore:               storage.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
+		Logger:                  s.logger,
+		ListObjectsDeadline:     s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:   s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:        s.config.ResolveNodeLimit,
+		ResolveNodeBreadthLimit: s.config.ResolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.config.MaxConcurrentReadsForListObjects,
 	}
 
 	return q.Execute(
@@ -140,12 +142,13 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 	}
 
 	q := &commands.ListObjectsQuery{
-		Datastore:             s.datastore,
-		Logger:                s.logger,
-		ListObjectsDeadline:   s.config.ListObjectsDeadline,
-		ListObjectsMaxResults: s.config.ListObjectsMaxResults,
-		ResolveNodeLimit:      s.config.ResolveNodeLimit,
-		CheckConcurrencyLimit: checkConcurrencyLimit,
+		Datastore:               s.datastore,
+		Logger:                  s.logger,
+		ListObjectsDeadline:     s.config.ListObjectsDeadline,
+		ListObjectsMaxResults:   s.config.ListObjectsMaxResults,
+		ResolveNodeLimit:        s.config.ResolveNodeLimit,
+		ResolveNodeBreadthLimit: s.config.ResolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.config.MaxConcurrentReadsForListObjects,
 	}
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
@@ -228,7 +231,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit,
+		s.config.ResolveNodeBreadthLimit,
+		s.config.MaxConcurrentReadsForCheck,
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
