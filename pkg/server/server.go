@@ -1,3 +1,4 @@
+// Package server contains the endpoint handlers.
 package server
 
 import (
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -19,12 +19,12 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -35,13 +35,14 @@ const (
 	AuthorizationModelIDHeader = "openfga-authorization-model-id"
 	authorizationModelIDKey    = "authorization_model_id"
 
-	checkConcurrencyLimit = 100
-
-	optimizedListObjects ExperimentalFeatureFlag = "optimized-list-objects"
-
-	defaultResolveNodeLimit      = 25
-	defaultListObjectsDeadline   = 5 * time.Second
-	defaultListObjectsMaxResults = 1000
+	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
+	defaultChangelogHorizonOffset           = 0
+	defaultResolveNodeLimit                 = 25
+	defaultResolveNodeBreadthLimit          = 100
+	defaultListObjectsDeadline              = 3 * time.Second
+	defaultListObjectsMaxResults            = 1000
+	defaultMaxConcurrentReadsForCheck       = 100
+	defaultMaxConcurrentReadsForListObjects = 30
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -51,76 +52,97 @@ var tracer = otel.Tracer("openfga/pkg/server")
 type Server struct {
 	openfgapb.UnimplementedOpenFGAServiceServer
 
-	logger                 logger.Logger
-	datastore              storage.OpenFGADatastore
-	encoder                encoder.Encoder
-	transport              gateway.Transport
-	resolveNodeLimit       uint32
-	changelogHorizonOffset int
-	listObjectsDeadline    time.Duration
-	listObjectsMaxResults  uint32
-	experimentals          []ExperimentalFeatureFlag
+	logger                           logger.Logger
+	datastore                        storage.OpenFGADatastore
+	encoder                          encoder.Encoder
+	transport                        gateway.Transport
+	resolveNodeLimit                 uint32
+	resolveNodeBreadthLimit          uint32
+	changelogHorizonOffset           int
+	listObjectsDeadline              time.Duration
+	listObjectsMaxResults            uint32
+	maxConcurrentReadsForListObjects uint32
+	maxConcurrentReadsForCheck       uint32
+	experimentals                    []ExperimentalFeatureFlag
 
-	optimizeListObjects bool
+	typesystemResolver typesystem.TypesystemResolverFunc
 }
 
-type OpenFGASeviceV1Option func(s *Server)
+type OpenFGAServiceV1Option func(s *Server)
 
-func WithDatastore(ds storage.OpenFGADatastore) OpenFGASeviceV1Option {
+func WithDatastore(ds storage.OpenFGADatastore) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.datastore = ds
 	}
 }
 
-func WithLogger(l logger.Logger) OpenFGASeviceV1Option {
+func WithLogger(l logger.Logger) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.logger = l
 	}
 }
 
-func WithTokenEncoder(encoder encoder.Encoder) OpenFGASeviceV1Option {
+func WithTokenEncoder(encoder encoder.Encoder) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.encoder = encoder
 	}
 }
 
-func WithTransport(t gateway.Transport) OpenFGASeviceV1Option {
+func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.transport = t
 	}
 }
 
-func WithResolveNodeLimit(limit uint32) OpenFGASeviceV1Option {
+func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeLimit = limit
 	}
 }
 
-func WithChangelogHorizonOffset(offset int) OpenFGASeviceV1Option {
+func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.resolveNodeBreadthLimit = limit
+	}
+}
+
+func WithChangelogHorizonOffset(offset int) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.changelogHorizonOffset = offset
 	}
 }
 
-func WithListObjectsDeadline(deadline time.Duration) OpenFGASeviceV1Option {
+func WithListObjectsDeadline(deadline time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsDeadline = deadline
 	}
 }
 
-func WithListObjectsMaxResults(limit uint32) OpenFGASeviceV1Option {
+func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.listObjectsMaxResults = limit
 	}
 }
 
-func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGASeviceV1Option {
+func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForListObjects = max
+	}
+}
+
+func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxConcurrentReadsForCheck = max
+	}
+}
+
+func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.experimentals = experimentals
 	}
 }
 
-func MustNewServerWithOpts(opts ...OpenFGASeviceV1Option) *Server {
+func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
 		panic(fmt.Sprintf("failed to construct the OpenFGA server: %v", err))
@@ -129,16 +151,20 @@ func MustNewServerWithOpts(opts ...OpenFGASeviceV1Option) *Server {
 	return s
 }
 
-func NewServerWithOpts(opts ...OpenFGASeviceV1Option) (*Server, error) {
+func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	s := &Server{
-		logger:                logger.NewNoopLogger(),
-		encoder:               encoder.NewBase64Encoder(),
-		transport:             gateway.NewNoopTransport(),
-		resolveNodeLimit:      defaultResolveNodeLimit,
-		listObjectsDeadline:   defaultListObjectsDeadline,
-		listObjectsMaxResults: defaultListObjectsMaxResults,
-		optimizeListObjects:   false,
+		logger:                           logger.NewNoopLogger(),
+		encoder:                          encoder.NewBase64Encoder(),
+		transport:                        gateway.NewNoopTransport(),
+		changelogHorizonOffset:           defaultChangelogHorizonOffset,
+		resolveNodeLimit:                 defaultResolveNodeLimit,
+		resolveNodeBreadthLimit:          defaultResolveNodeBreadthLimit,
+		listObjectsDeadline:              defaultListObjectsDeadline,
+		listObjectsMaxResults:            defaultListObjectsMaxResults,
+		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
+		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
+		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 	}
 
 	for _, opt := range opts {
@@ -149,15 +175,13 @@ func NewServerWithOpts(opts ...OpenFGASeviceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
 
-	if slices.Contains(s.experimentals, optimizedListObjects) {
-		s.optimizeListObjects = true
-	}
+	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
 
 	return s, nil
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequest) (*openfgapb.ListObjectsResponse, error) {
-	storeID := req.GetStoreId()
+
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
@@ -167,37 +191,21 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 	))
 	defer span.End()
 
-	modelID := req.GetAuthorizationModelId()
+	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, modelID)
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-
-		return nil, err
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
-	}
-
-	ds := storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys())
 
 	q := &commands.ListObjectsQuery{
-		Datastore:                     ds,
-		Logger:                        s.logger,
-		ListObjectsDeadline:           s.listObjectsDeadline,
-		ListObjectsMaxResults:         s.listObjectsMaxResults,
-		ResolveNodeLimit:              s.resolveNodeLimit,
-		CheckConcurrencyLimit:         checkConcurrencyLimit,
-		OptimizeIntersectionExclusion: s.optimizeListObjects,
+		Datastore:               storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
+		Logger:                  s.logger,
+		ListObjectsDeadline:     s.listObjectsDeadline,
+		ListObjectsMaxResults:   s.listObjectsMaxResults,
+		ResolveNodeLimit:        s.resolveNodeLimit,
+		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
 	}
 
 	return q.Execute(
@@ -205,7 +213,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		&openfgapb.ListObjectsRequest{
 			StoreId:              storeID,
 			ContextualTuples:     req.GetContextualTuples(),
-			AuthorizationModelId: modelID,
+			AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 			Type:                 targetObjectType,
 			Relation:             req.Relation,
 			User:                 req.User,
@@ -224,37 +232,22 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return err
 	}
 
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
-		}
-
-		return serverErrors.HandleError("", err)
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	if err != nil {
-		return serverErrors.ValidationError(typesystem.ErrInvalidModel)
-	}
-
 	q := &commands.ListObjectsQuery{
-		Datastore:                     s.datastore,
-		Logger:                        s.logger,
-		ListObjectsDeadline:           s.listObjectsDeadline,
-		ListObjectsMaxResults:         s.listObjectsMaxResults,
-		ResolveNodeLimit:              s.resolveNodeLimit,
-		CheckConcurrencyLimit:         checkConcurrencyLimit,
-		OptimizeIntersectionExclusion: s.optimizeListObjects,
+		Datastore:               s.datastore,
+		Logger:                  s.logger,
+		ListObjectsDeadline:     s.listObjectsDeadline,
+		ListObjectsMaxResults:   s.listObjectsMaxResults,
+		ResolveNodeLimit:        s.resolveNodeLimit,
+		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
+		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
 	}
 
-	req.AuthorizationModelId = modelID
-
+	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 	return q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		req,
@@ -286,7 +279,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.AuthorizationModelId)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +287,7 @@ func (s *Server) Write(ctx context.Context, req *openfgapb.WriteRequest) (*openf
 	cmd := commands.NewWriteCommand(s.datastore, s.logger)
 	return cmd.Execute(ctx, &openfgapb.WriteRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Writes:               req.GetWrites(),
 		Deletes:              req.GetDeletes(),
 	})
@@ -315,26 +308,9 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
-	}
-
-	model, err := s.datastore.ReadAuthorizationModel(ctx, storeID, modelID)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AuthorizationModelNotFound(modelID)
-		}
-		return nil, err
-	}
-
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
-	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
 	}
 
 	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
@@ -350,13 +326,14 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	checkResolver := graph.NewLocalChecker(
-		storage.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		checkConcurrencyLimit,
+		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		s.resolveNodeBreadthLimit,
+		s.maxConcurrentReadsForCheck,
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
-		AuthorizationModelID: req.GetAuthorizationModelId(),
+		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
@@ -390,7 +367,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +375,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgapb.ExpandRequest) (*ope
 	q := commands.NewExpandQuery(s.datastore, s.logger)
 	return q.Execute(ctx, &openfgapb.ExpandRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             tk,
 	})
 }
@@ -442,7 +419,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 
 	storeID := req.GetStoreId()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, storeID, req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +427,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgapb.WriteAssert
 	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, &openfgapb.WriteAssertionsRequest{
 		StoreId:              storeID,
-		AuthorizationModelId: modelID,
+		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
 		Assertions:           req.GetAssertions(),
 	})
 	if err != nil {
@@ -466,12 +443,13 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgapb.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	modelID, err := s.resolveAuthorizationModelID(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
+	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
 	}
+
 	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
-	return q.Execute(ctx, req.GetStoreId(), modelID)
+	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
 }
 
 func (s *Server) ReadChanges(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
@@ -540,40 +518,34 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	return s.datastore.IsReady(ctx)
 }
 
-// resolveAuthorizationModelID takes a modelID. If it is empty, it will find
-// and return the latest authorization modelID. If is not empty, it will
-// validate it and return it.
-//
-// This allows caching of types. If the user inserts a new authorization model
-// and doesn't provide this field (which should be rate limited more
-// aggressively) the in-flight requests won't be affected and newer calls will
-// use the updated authorization model.
-func (s *Server) resolveAuthorizationModelID(ctx context.Context, store, modelID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "resolveAuthorizationModelID")
+// resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and
+// it sets some response metadata based on the model resolution.
+func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string) (*typesystem.TypeSystem, error) {
+	ctx, span := tracer.Start(ctx, "resolveTypesystem")
 	defer span.End()
 
-	defer func() {
-		span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(modelID)})
-		grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, modelID)
-		_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, modelID))
-	}()
+	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
+	if err != nil {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
+			if modelID == "" {
+				return nil, serverErrors.LatestAuthorizationModelNotFound(storeID)
+			}
 
-	var err error
-	if modelID != "" {
-		if _, err := ulid.Parse(modelID); err != nil {
-			return "", serverErrors.AuthorizationModelNotFound(modelID)
+			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
 
-		return modelID, nil
-	}
-
-	if modelID, err = s.datastore.FindLatestAuthorizationModelID(ctx, store); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return "", serverErrors.LatestAuthorizationModelNotFound(store)
+		if errors.Is(err, typesystem.ErrInvalidModel) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
-		return "", serverErrors.HandleError("", err)
+		return nil, serverErrors.HandleError("", err)
 	}
 
-	return modelID, nil
+	resolvedModelID := typesys.GetAuthorizationModelID()
+
+	span.SetAttributes(attribute.KeyValue{Key: authorizationModelIDKey, Value: attribute.StringValue(resolvedModelID)})
+	grpc_ctxtags.Extract(ctx).Set(authorizationModelIDKey, resolvedModelID)
+	_ = grpc.SetHeader(ctx, metadata.Pairs(AuthorizationModelIDHeader, resolvedModelID))
+
+	return typesys, nil
 }

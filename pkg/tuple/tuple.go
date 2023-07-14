@@ -1,3 +1,4 @@
+// Package tuple contains code to manipulate tuples and errors related to tuples.
 package tuple
 
 import (

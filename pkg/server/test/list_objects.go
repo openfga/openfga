@@ -9,10 +9,10 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -201,13 +201,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
 			listObjectsQuery := &commands.ListObjectsQuery{
-				Datastore:                     datastore,
-				Logger:                        logger.NewNoopLogger(),
-				ListObjectsDeadline:           listObjectsDeadline,
-				ListObjectsMaxResults:         test.maxResults,
-				ResolveNodeLimit:              DefaultResolveNodeLimit,
-				CheckConcurrencyLimit:         100,
-				OptimizeIntersectionExclusion: true,
+				Datastore:               datastore,
+				Logger:                  logger.NewNoopLogger(),
+				ListObjectsDeadline:     listObjectsDeadline,
+				ListObjectsMaxResults:   test.maxResults,
+				ResolveNodeLimit:        DefaultResolveNodeLimit,
+				ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
+				MaxConcurrentReads:      DefaultMaxConcurrentReads,
 			}
 
 			// assertions
@@ -313,13 +313,12 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:                     ds,
-		Logger:                        logger.NewNoopLogger(),
-		ListObjectsDeadline:           3 * time.Second,
-		ListObjectsMaxResults:         1000,
-		ResolveNodeLimit:              DefaultResolveNodeLimit,
-		CheckConcurrencyLimit:         100,
-		OptimizeIntersectionExclusion: true,
+		Datastore:               ds,
+		Logger:                  logger.NewNoopLogger(),
+		ListObjectsDeadline:     3 * time.Second,
+		ListObjectsMaxResults:   1000,
+		ResolveNodeLimit:        DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse
@@ -383,13 +382,12 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 	}
 
 	listObjectsQuery := commands.ListObjectsQuery{
-		Datastore:                     ds,
-		Logger:                        logger.NewNoopLogger(),
-		ListObjectsDeadline:           3 * time.Second,
-		ListObjectsMaxResults:         1000,
-		ResolveNodeLimit:              DefaultResolveNodeLimit,
-		CheckConcurrencyLimit:         100,
-		OptimizeIntersectionExclusion: true,
+		Datastore:               ds,
+		Logger:                  logger.NewNoopLogger(),
+		ListObjectsDeadline:     3 * time.Second,
+		ListObjectsMaxResults:   1000,
+		ResolveNodeLimit:        DefaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
 	}
 
 	var r *openfgapb.ListObjectsResponse

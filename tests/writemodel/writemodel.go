@@ -1,3 +1,4 @@
+// Package writemodel contains integration tests for the WriteAuthorizationModel API.
 package writemodel
 
 import (

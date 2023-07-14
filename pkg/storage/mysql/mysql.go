@@ -1,3 +1,4 @@
+// Package mysql contains an implementation of the storage interface that works with MySQL.
 package mysql
 
 import (
@@ -9,10 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -104,26 +104,6 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close() {
 	m.db.Close()
-}
-
-func (m *MySQL) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	ctx, span := tracer.Start(ctx, "mysql.ListObjectsByType")
-	defer span.End()
-
-	rows, err := m.stbl.
-		Select("object_type", "object_id").
-		Distinct().
-		From("tuple").
-		Where(sq.Eq{
-			"store":       store,
-			"object_type": objectType,
-		}).
-		QueryContext(ctx)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	return sqlcommon.NewSQLObjectIterator(rows), nil
 }
 
 func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {

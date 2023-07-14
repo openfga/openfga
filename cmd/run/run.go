@@ -1,3 +1,4 @@
+// Package run contains the command to run an OpenFGA server.
 package run
 
 import (
@@ -37,11 +38,11 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/caching"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/cors"
@@ -50,6 +51,7 @@ import (
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -162,9 +164,15 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 
+	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
+
+	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number means that you want Check latency to be low, at the expense of other queries performance")
+
 	flags.Int("changelog-horizon-offset", defaultConfig.ChangelogHorizonOffset, "the offset (in minutes) from the current time. Changes that occur after this offset will not be included in the response of ReadChanges")
 
-	flags.Uint32("resolve-node-limit", defaultConfig.ResolveNodeLimit, "defines how deeply nested an authorization model can be")
+	flags.Uint32("resolve-node-limit", defaultConfig.ResolveNodeLimit, "maximum resolution depth to attempt before throwing an error (defines how deeply nested an authorization model can be before a query errors out).")
+
+	flags.Uint32("resolve-node-breadth-limit", defaultConfig.ResolveNodeBreadthLimit, "defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree")
 
 	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
 
@@ -311,14 +319,23 @@ type Config struct {
 	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per authorization model for the WriteAuthorizationModel endpoint.
 	MaxTypesPerAuthorizationModel int
 
+	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads allowed in ListObjects queries
+	MaxConcurrentReadsForListObjects uint32
+
+	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in Check queries
+	MaxConcurrentReadsForCheck uint32
+
 	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
 
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
 
-	// ResolveNodeLimit indicates how deeply nested an authorization model can be.
+	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query errors out.
 	ResolveNodeLimit uint32
+
+	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
+	ResolveNodeBreadthLimit uint32
 
 	Datastore  DatastoreConfig
 	GRPC       GRPCConfig
@@ -334,13 +351,16 @@ type Config struct {
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:             100,
-		MaxTypesPerAuthorizationModel: 100,
-		ChangelogHorizonOffset:        0,
-		ResolveNodeLimit:              25,
-		Experimentals:                 []string{},
-		ListObjectsDeadline:           3 * time.Second, // there is a 3-second timeout elsewhere
-		ListObjectsMaxResults:         1000,
+		MaxTuplesPerWrite:                100,
+		MaxTypesPerAuthorizationModel:    100,
+		MaxConcurrentReadsForCheck:       30, // same as Datastore.MaxOpenConns
+		MaxConcurrentReadsForListObjects: 30, // same as Datastore.MaxOpenConns
+		ChangelogHorizonOffset:           0,
+		ResolveNodeLimit:                 25,
+		ResolveNodeBreadthLimit:          100,
+		Experimentals:                    []string{},
+		ListObjectsDeadline:              3 * time.Second, // there is a 3-second timeout elsewhere
+		ListObjectsMaxResults:            1000,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -445,6 +465,14 @@ func ReadConfig() (*Config, error) {
 }
 
 func VerifyConfig(cfg *Config) error {
+	if int(cfg.MaxConcurrentReadsForCheck) > cfg.Datastore.MaxOpenConns {
+		fmt.Printf("config 'maxConcurrentReadsForCheck' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForCheck, cfg.Datastore.MaxOpenConns)
+	}
+
+	if int(cfg.MaxConcurrentReadsForListObjects) > cfg.Datastore.MaxOpenConns {
+		fmt.Printf("config 'maxConcurrentReadsForListObjects' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForListObjects, cfg.Datastore.MaxOpenConns)
+	}
+
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
 		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
 	}
@@ -509,7 +537,14 @@ func RunServer(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
 		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(config.Trace.OTLP.Endpoint, config.Trace.ServiceName, config.Trace.SampleRatio)
+		tp = telemetry.MustNewTracerProvider(
+			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+			telemetry.WithAttributes(
+				semconv.ServiceNameKey.String(config.Trace.ServiceName),
+				semconv.ServiceVersionKey.String(build.Version),
+			),
+			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
+		)
 	}
 
 	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -553,7 +588,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
 	}
-	datastore = caching.NewCachedOpenFGADatastore(storage.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
+	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
 	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
@@ -673,9 +708,12 @@ func RunServer(ctx context.Context, config *Config) error {
 		server.WithLogger(logger),
 		server.WithTransport(gateway.NewRPCTransport(logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
+		server.WithResolveNodeBreadthLimit(config.ResolveNodeBreadthLimit),
 		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
 		server.WithListObjectsDeadline(config.ListObjectsDeadline),
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
+		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
+		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
 		server.WithExperimentals(experimentals...),
 	)
 

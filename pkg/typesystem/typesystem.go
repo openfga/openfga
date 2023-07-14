@@ -1,3 +1,4 @@
+// Package typesystem contains code to manipulate authorization models
 package typesystem
 
 import (
@@ -25,6 +26,7 @@ const (
 )
 
 var (
+	ErrModelNotFound         = errors.New("authorization model not found")
 	ErrDuplicateTypes        = errors.New("an authorization model cannot contain duplicate types")
 	ErrInvalidSchemaVersion  = errors.New("invalid schema version")
 	ErrInvalidModel          = errors.New("invalid authorization model encountered")
@@ -34,6 +36,7 @@ var (
 	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
+	ErrNoEntryPointsLoop     = errors.New("potential loop")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -140,6 +143,7 @@ func Difference(base *openfgapb.Userset, sub *openfgapb.Userset) *openfgapb.User
 	}
 }
 
+// TypeSystem is a wrapper over an [openfgapb.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgapb.TypeDefinition
@@ -614,7 +618,7 @@ func hasEntrypoints(
 	typeName, relationName string,
 	rewrite *openfgapb.Userset,
 	visitedRelations map[string]map[string]struct{},
-) (bool, error) {
+) (bool, bool, error) {
 
 	v := maps.Clone(visitedRelations)
 
@@ -628,14 +632,14 @@ func hasEntrypoints(
 
 	relation, ok := typedefs[typeName][relationName]
 	if !ok {
-		return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
+		return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, relationName)
 	}
 
 	switch rw := rewrite.Userset.(type) {
 	case *openfgapb.Userset_This:
 		for _, assignableType := range relation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
 			if assignableType.GetRelationOrWildcard() == nil || assignableType.GetWildcard() != nil {
-				return true, nil
+				return true, false, nil
 			}
 
 			assignableTypeName := assignableType.GetType()
@@ -643,49 +647,49 @@ func hasEntrypoints(
 
 			assignableRelation, ok := typedefs[assignableTypeName][assignableRelationName]
 			if !ok {
-				return false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
+				return false, false, fmt.Errorf("undefined type definition for '%s#%s'", assignableTypeName, assignableRelationName)
 			}
 
 			if _, ok := v[assignableTypeName][assignableRelationName]; ok {
 				continue
 			}
 
-			hasEntrypoint, err := hasEntrypoints(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
+			hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, assignableRelationName, assignableRelation.GetRewrite(), v)
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 
 			if hasEntrypoint {
-				return true, nil
+				return true, false, nil
 			}
 		}
 
-		return false, nil
+		return false, false, nil
 	case *openfgapb.Userset_ComputedUserset:
 
 		computedRelationName := rw.ComputedUserset.GetRelation()
 		computedRelation, ok := typedefs[typeName][computedRelationName]
 		if !ok {
-			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
+			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, computedRelationName)
 		}
 
 		if _, ok := v[typeName][computedRelationName]; ok {
-			return false, nil
+			return false, true, nil
 		}
 
-		hasEntrypoint, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
+		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, computedRelationName, computedRelation.GetRewrite(), v)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 
-		return hasEntrypoint, nil
+		return hasEntrypoint, loop, nil
 	case *openfgapb.Userset_TupleToUserset:
 		tuplesetRelationName := rw.TupleToUserset.GetTupleset().GetRelation()
 		computedRelationName := rw.TupleToUserset.ComputedUserset.GetRelation()
 
 		tuplesetRelation, ok := typedefs[typeName][tuplesetRelationName]
 		if !ok {
-			return false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
+			return false, false, fmt.Errorf("undefined type definition for '%s#%s'", typeName, tuplesetRelationName)
 		}
 
 		for _, assignableType := range tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes() {
@@ -696,76 +700,78 @@ func hasEntrypoints(
 					continue
 				}
 
-				hasEntrypoint, err := hasEntrypoints(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
+				hasEntrypoint, _, err := hasEntrypoints(typedefs, assignableTypeName, computedRelationName, assignableRelation.GetRewrite(), v)
 				if err != nil {
-					return false, err
+					return false, false, err
 				}
 
 				if hasEntrypoint {
-					return true, nil
+					return true, false, nil
 				}
 			}
 		}
 
-		return false, nil
+		return false, false, nil
 
 	case *openfgapb.Userset_Union:
 
+		loop := false
 		for _, child := range rw.Union.Child {
 
-			hasEntrypoints, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 
 			if hasEntrypoints {
-				return true, nil
+				return true, false, nil
 			}
+			loop = loop || childLoop
 		}
 
-		return false, nil
+		return false, loop, nil
 	case *openfgapb.Userset_Intersection:
 
 		for _, child := range rw.Intersection.Child {
 
 			// all of the children must have an entrypoint
-			hasEntrypoints, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
+			hasEntrypoints, childLoop, err := hasEntrypoints(typedefs, typeName, relationName, child, maps.Clone(visitedRelations))
 			if err != nil {
-				return false, err
+				return false, false, err
 			}
 
 			if !hasEntrypoints {
-				return false, nil
+				return false, childLoop, nil
 			}
 		}
 
-		return true, nil
+		return true, false, nil
 	case *openfgapb.Userset_Difference:
 
 		v := maps.Clone(visitedRelations)
 
-		hasEntrypoint, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), v)
+		hasEntrypoint, loop, err := hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetBase(), v)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 
 		if !hasEntrypoint {
-			return false, nil
+			return false, loop, nil
 		}
 
-		hasEntrypoint, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), v)
+		hasEntrypoint, loop, err = hasEntrypoints(typedefs, typeName, relationName, rw.Difference.GetSubtract(), v)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 
 		if !hasEntrypoint {
-			return false, nil
+			return false, loop, nil
 		}
 
-		return true, nil
+		return true, false, nil
 	}
 
-	return false, nil
+	return false, false, nil
 }
 
 // NewAndValidate is like New but also validates the model according to the following rules:
@@ -843,9 +849,9 @@ func NewAndValidate(ctx context.Context, model *openfgapb.AuthorizationModel) (*
 	return t, nil
 }
 
-// validateRelation applies all of the validation rules to a relation definition in a model. A relation
-// must meet all of the rewrite validation, type restriction valdiation, and entrypoint validation criteria
-// for it to be valid. Otherrwise an error is returned.
+// validateRelation applies all the validation rules to a relation definition in a model. A relation
+// must meet all the rewrite validation, type restriction validation, and entrypoint validation criteria
+// for it to be valid. Otherwise, an error is returned.
 func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap map[string]*openfgapb.Userset) error {
 
 	rewrite := relationMap[relationName]
@@ -862,16 +868,20 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 
 	visitedRelations := map[string]map[string]struct{}{}
 
-	hasEntrypoints, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
+	hasEntrypoints, loop, err := hasEntrypoints(t.relations, typeName, relationName, rewrite, visitedRelations)
 	if err != nil {
 		return err
 	}
 
 	if !hasEntrypoints {
+		cause := ErrNoEntrypoints
+		if loop {
+			cause = ErrNoEntryPointsLoop
+		}
 		return &InvalidRelationError{
 			ObjectType: typeName,
 			Relation:   relationName,
-			Cause:      fmt.Errorf("no entrypoints found for relation '%s#%s': %w", typeName, relationName, ErrNoEntrypoints),
+			Cause:      cause,
 		}
 	}
 
@@ -1200,7 +1210,7 @@ type InvalidRelationError struct {
 }
 
 func (e *InvalidRelationError) Error() string {
-	return fmt.Sprintf("the definition of relation '%s' in object type '%s' is invalid", e.Relation, e.ObjectType)
+	return fmt.Sprintf("the definition of relation '%s' in object type '%s' is invalid: %s", e.Relation, e.ObjectType, e.Cause)
 }
 
 func (e *InvalidRelationError) Unwrap() error {

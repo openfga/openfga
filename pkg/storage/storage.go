@@ -1,11 +1,12 @@
-//go:generate mockgen -source storage.go -destination ./mocks/mock_storage.go -package mocks OpenFGADatastore
+// Package storage contains storage interfaces and implementations
+//
+//go:generate mockgen -source storage.go -destination ../../internal/mocks/mock_storage.go -package mocks OpenFGADatastore
 package storage
 
 import (
 	"context"
 	"time"
 
-	"github.com/openfga/openfga/pkg/tuple"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -100,16 +101,6 @@ type RelationshipTupleReader interface {
 		store string,
 		filter ReadStartingWithUserFilter,
 	) (TupleIterator, error)
-
-	// ListObjectsByType returns all the objects of a specific type.
-	// You can assume that the type has already been validated.
-	// The result can't have duplicate elements.
-	// There is NO guarantee on the order returned on the iterator.
-	ListObjectsByType(
-		ctx context.Context,
-		store string,
-		objectType string,
-	) (ObjectIterator, error)
 }
 
 type RelationshipTupleWriter interface {
@@ -197,159 +188,4 @@ type OpenFGADatastore interface {
 
 	// Close closes the datastore and cleans up any residual resources.
 	Close()
-}
-
-// NewCombinedTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
-// tuples specified in the request
-func NewCombinedTupleReader(ds RelationshipTupleReader, contextualTuples []*openfgapb.TupleKey) RelationshipTupleReader {
-	return &combinedTupleReader{wrapped: ds, contextualTuples: contextualTuples}
-}
-
-type combinedTupleReader struct {
-	wrapped          RelationshipTupleReader
-	contextualTuples []*openfgapb.TupleKey
-}
-
-var _ RelationshipTupleReader = (*combinedTupleReader)(nil)
-
-// filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
-// that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgapb.TupleKey, targetObject, targetRelation string) []*openfgapb.Tuple {
-	var filtered []*openfgapb.Tuple
-	for _, tk := range tuples {
-		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
-			filtered = append(filtered, &openfgapb.Tuple{
-				Key: tk,
-			})
-		}
-	}
-
-	return filtered
-}
-
-func (c *combinedTupleReader) Read(
-	ctx context.Context,
-	storeID string,
-	tk *openfgapb.TupleKey,
-) (TupleIterator, error) {
-
-	iter1 := NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
-
-	iter2, err := c.wrapped.Read(ctx, storeID, tk)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ReadPage(
-	ctx context.Context,
-	store string,
-	tk *openfgapb.TupleKey,
-	opts PaginationOptions,
-) ([]*openfgapb.Tuple, []byte, error) {
-
-	// no reading from contextual tuples
-
-	return c.wrapped.ReadPage(ctx, store, tk, opts)
-}
-
-func (c *combinedTupleReader) ReadUserTuple(
-	ctx context.Context,
-	store string,
-	tk *openfgapb.TupleKey,
-) (*openfgapb.Tuple, error) {
-
-	filteredContextualTuples := filterTuples(c.contextualTuples, tk.Object, tk.Relation)
-
-	for _, t := range filteredContextualTuples {
-		if t.GetKey().GetUser() == tk.GetUser() {
-			return t, nil
-		}
-	}
-
-	return c.wrapped.ReadUserTuple(ctx, store, tk)
-}
-
-func (c *combinedTupleReader) ReadUsersetTuples(
-	ctx context.Context,
-	store string,
-	filter ReadUsersetTuplesFilter,
-) (TupleIterator, error) {
-
-	var usersetTuples []*openfgapb.Tuple
-
-	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation) {
-		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
-			usersetTuples = append(usersetTuples, t)
-		}
-	}
-
-	iter1 := NewStaticTupleIterator(usersetTuples)
-
-	iter2, err := c.wrapped.ReadUsersetTuples(ctx, store, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ReadStartingWithUser(
-	ctx context.Context,
-	store string,
-	filter ReadStartingWithUserFilter,
-) (TupleIterator, error) {
-
-	var filteredTuples []*openfgapb.Tuple
-	for _, t := range c.contextualTuples {
-		if tuple.GetType(t.GetObject()) != filter.ObjectType {
-			continue
-		}
-
-		if t.GetRelation() != filter.Relation {
-			continue
-		}
-
-		for _, u := range filter.UserFilter {
-			targetUser := u.GetObject()
-			if u.GetRelation() != "" {
-				targetUser = tuple.ToObjectRelationString(targetUser, u.GetRelation())
-			}
-
-			if t.GetUser() == targetUser {
-				filteredTuples = append(filteredTuples, &openfgapb.Tuple{
-					Key: t,
-				})
-			}
-		}
-	}
-
-	iter1 := NewStaticTupleIterator(filteredTuples)
-
-	iter2, err := c.wrapped.ReadStartingWithUser(ctx, store, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ListObjectsByType(ctx context.Context, store string, objectType string) (ObjectIterator, error) {
-
-	iter1 := NewObjectIteratorFromTupleKeyIterator(NewFilteredTupleKeyIterator(
-		NewStaticTupleKeyIterator(c.contextualTuples),
-		func(tk *openfgapb.TupleKey) bool {
-			return tuple.GetType(tk.GetObject()) == objectType
-		}))
-
-	iter2, err := c.wrapped.ListObjectsByType(ctx, store, objectType)
-	if err != nil {
-		return nil, err
-	}
-
-	// pass contextual tuples iterator (iter1) first to exploit uniqueness optimization
-	iter := NewUniqueObjectIterator(iter1, iter2)
-	return iter, nil
 }

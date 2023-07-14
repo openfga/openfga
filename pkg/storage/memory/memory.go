@@ -1,3 +1,4 @@
+// Package memory contains an implementation of the storage interface that lives in memory.
 package memory
 
 import (
@@ -133,34 +134,6 @@ func WithMaxTypesPerAuthorizationModel(n int) StorageOption {
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
 func (s *MemoryBackend) Close() {
-}
-
-func (s *MemoryBackend) ListObjectsByType(ctx context.Context, store string, objectType string) (storage.ObjectIterator, error) {
-	_, span := tracer.Start(ctx, "memory.ListObjectsByType")
-	defer span.End()
-
-	uniqueObjects := make(map[string]bool, 0)
-	matches := make([]*openfgapb.Object, 0)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, t := range s.tuples[store] {
-		if objectType == "" || !strings.HasPrefix(t.Key.Object, objectType+":") {
-			continue
-		}
-		_, found := uniqueObjects[t.Key.Object]
-		if !found {
-			uniqueObjects[t.Key.Object] = true
-			objectType, objectID := tupleUtils.SplitObject(t.Key.Object)
-			matches = append(matches, &openfgapb.Object{
-				Type: objectType,
-				Id:   objectID,
-			})
-		}
-	}
-
-	return storage.NewStaticObjectIterator(matches), nil
 }
 
 // Read See storage.TupleBackend.Read

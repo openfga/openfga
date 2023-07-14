@@ -10,6 +10,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -91,9 +92,10 @@ type UserRef struct {
 }
 
 type ConnectedObjectsCommand struct {
-	Datastore        storage.RelationshipTupleReader
-	Typesystem       *typesystem.TypeSystem
-	ResolveNodeLimit uint32
+	Datastore               storage.RelationshipTupleReader
+	Typesystem              *typesystem.TypeSystem
+	ResolveNodeLimit        uint32
+	ResolveNodeBreadthLimit uint32
 
 	// Limit limits the results yielded by the ConnectedObjects API.
 	Limit uint32
@@ -176,7 +178,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	}
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for i, ingress := range ingresses {
 		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
@@ -295,7 +297,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
@@ -308,7 +310,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -444,7 +446,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	combinedTupleReader := storage.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
@@ -457,7 +459,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(maximumConcurrentChecks)
+	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()

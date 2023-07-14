@@ -1,3 +1,4 @@
+// Package assets contains database migration scripts and test files
 package assets
 
 import "embed"

@@ -92,17 +92,21 @@ type checkOutcome struct {
 // LocalChecker implements Check in a highly concurrent and localized manner. The
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
-	ds               storage.RelationshipTupleReader
-	concurrencyLimit uint32
+	ds                 storage.RelationshipTupleReader
+	concurrencyLimit   uint32
+	maxConcurrentReads uint32 //TODO not used yet
 }
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
-// request locally and with a high degree of concurrency.
+// request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
+// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
+// There is also a limit on the depth that will be evaluated before returning an error.
 func NewLocalChecker(
 	ds storage.RelationshipTupleReader,
 	concurrencyLimit uint32,
+	maxConcurrentReads uint32,
 ) *LocalChecker {
-	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit}
+	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit, maxConcurrentReads: maxConcurrentReads}
 	return checker
 }
 

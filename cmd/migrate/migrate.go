@@ -1,3 +1,4 @@
+// Package migrate contains the command to perform database migrations.
 package migrate
 
 import (

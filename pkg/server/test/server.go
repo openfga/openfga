@@ -6,8 +6,11 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
+// TODO remove by creating constructors with default values for ListObjectsQuery and ConnectedObjectsCommand
 const (
-	DefaultResolveNodeLimit = 25
+	DefaultResolveNodeLimit        = 25
+	DefaultResolveNodeBreadthLimit = 100
+	DefaultMaxConcurrentReads      = 30
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {

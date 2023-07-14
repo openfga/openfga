@@ -13,11 +13,11 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	mockstorage "github.com/openfga/openfga/pkg/storage/mocks"
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -208,6 +208,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(&openfgapb.AuthorizationModel{
+			Id:              modelID,
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: typedefs,
 		}, nil)
@@ -354,7 +355,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		expectedError := serverErrors.LatestAuthorizationModelNotFound(store)
 
-		_, err := s.resolveAuthorizationModelID(ctx, store, "")
+		_, err := s.resolveTypesystem(ctx, store, "")
 		require.ErrorIs(t, err, expectedError)
 	})
 
@@ -367,14 +368,21 @@ func TestResolveAuthorizationModel(t *testing.T) {
 
 		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 		mockDatastore.EXPECT().FindLatestAuthorizationModelID(gomock.Any(), store).Return(modelID, nil)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).Return(
+			&openfgapb.AuthorizationModel{
+				Id:            modelID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+			},
+			nil,
+		)
 
 		s := MustNewServerWithOpts(
 			WithDatastore(mockDatastore),
 		)
 
-		got, err := s.resolveAuthorizationModelID(ctx, store, "")
+		typesys, err := s.resolveTypesystem(ctx, store, "")
 		require.NoError(t, err)
-		require.Equal(t, modelID, got)
+		require.Equal(t, modelID, typesys.GetAuthorizationModelID())
 	})
 
 	t.Run("non-valid_modelID_returns_error", func(t *testing.T) {
@@ -391,7 +399,7 @@ func TestResolveAuthorizationModel(t *testing.T) {
 			WithDatastore(mockDatastore),
 		)
 
-		_, err := s.resolveAuthorizationModelID(ctx, store, modelID)
+		_, err := s.resolveTypesystem(ctx, store, modelID)
 		require.Equal(t, want, err)
 	})
 }
@@ -412,10 +420,9 @@ func (m *mockStreamServer) Send(*openfgapb.StreamedListObjectsResponse) error {
 	return nil
 }
 
-// This runs TestListObjects_Unoptimized_UnhappyPaths many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
+// This runs ListObjects and StreamedListObjects many times over to ensure no race conditions (see https://github.com/openfga/openfga/pull/762)
 func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -437,11 +444,10 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: typedefs,
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithListObjectsDeadline(5*time.Second),
 	)
 
 	b.ResetTimer()
@@ -471,7 +477,6 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 // This test ensures that when the data storage fails, ListObjects v0 throws an error
 func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -495,8 +500,6 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithListObjectsDeadline(5*time.Second),
-		WithExperimentals(optimizedListObjects),
 	)
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -525,10 +528,63 @@ func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
 	})
 }
 
+// This test ensures that when the data storage fails for known eror, ListObjects v0 throws the correct error
+func TestListObjects_Unoptimized_UnhappyPaths_Known_Error(t *testing.T) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type repo
+		  relations
+		    define allowed: [user] as self
+		    define viewer: [user] as self and allowed
+		`),
+	}, nil)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, serverErrors.AuthorizationModelResolutionTooComplex)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+
+	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
+		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		})
+
+		require.Nil(t, res)
+		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+	})
+
+	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "repo",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		}, NewMockStreamServer())
+
+		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+	})
+}
+
 // This test ensures that when the data storage fails, ListObjects v1 throws an error
 func TestListObjects_UnhappyPaths(t *testing.T) {
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -571,8 +627,6 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithListObjectsDeadline(5*time.Second),
-		WithExperimentals(optimizedListObjects),
 	)
 
 	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
@@ -601,9 +655,9 @@ func TestListObjects_UnhappyPaths(t *testing.T) {
 	})
 }
 
-func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
+// This test ensures that when the data storage fails with known errors, ListObjects v1 throws an error
+func TestListObjects_UnhappyPaths_Known_Error(t *testing.T) {
 	ctx := context.Background()
-
 	store := ulid.Make().String()
 	modelID := ulid.Make().String()
 
@@ -612,7 +666,77 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgapb.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgapb.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgapb.Metadata{
+					Relations: map[string]*openfgapb.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+								typesystem.WildcardRelationReference("user"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}, nil)
+	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
+		ObjectType: "document",
+		Relation:   "viewer",
+		UserFilter: []*openfgapb.ObjectRelation{
+			{Object: "user:*"},
+			{Object: "user:bob"},
+		}}).AnyTimes().Return(nil, serverErrors.AuthorizationModelResolutionTooComplex)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+	)
+
+	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
+		res, err := s.ListObjects(ctx, &openfgapb.ListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		})
+
+		require.Nil(t, res)
+		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+	})
+
+	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
+		err := s.StreamedListObjects(&openfgapb.StreamedListObjectsRequest{
+			StoreId:              store,
+			AuthorizationModelId: modelID,
+			Type:                 "document",
+			Relation:             "viewer",
+			User:                 "user:bob",
+		}, NewMockStreamServer())
+
+		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
+	})
+}
+
+func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
 	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgapb.AuthorizationModel{
 		SchemaVersion: typesystem.SchemaVersion1_0,
@@ -628,12 +752,9 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockDatastore.EXPECT().ListObjectsByType(gomock.Any(), store, "repo").AnyTimes().Return(nil, errors.New("error reading from storage"))
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithListObjectsDeadline(5*time.Second),
-		WithExperimentals(optimizedListObjects),
 	)
 
 	t.Run("invalid_schema_error_in_check", func(t *testing.T) {
@@ -710,6 +831,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 	})
 
 	t.Run("invalid_schema_error_in_write_model", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
 		_, err := s.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
 			StoreId:         store,
 			SchemaVersion:   typesystem.SchemaVersion1_0,

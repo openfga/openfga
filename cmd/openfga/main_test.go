@@ -17,9 +17,6 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/pkg/testutils"
-	"github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
@@ -31,6 +28,10 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type OpenFGATester interface {
@@ -309,7 +310,6 @@ func GRPCReadChangesTest(t *testing.T, tester OpenFGATester) {
 func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 
 	type output struct {
-		resp      *openfgapb.CreateStoreResponse
 		errorCode codes.Code
 	}
 
@@ -423,6 +423,7 @@ func TestGRPCListStores(t *testing.T) {
 	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
 		Name: "openfga-test",
 	})
+	require.NoError(t, err)
 
 	response1, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
 		PageSize: wrapperspb.Int32(1),
@@ -586,9 +587,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			storeID := test.input.StoreId
-			modelID := test.input.AuthorizationModelId
 			if test.testData != nil {
 				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
@@ -597,7 +596,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				})
 				require.NoError(t, err)
 
-				modelID = resp.GetAuthorizationModelId()
+				modelID := resp.GetAuthorizationModelId()
 
 				_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
 					StoreId:              storeID,
@@ -1118,19 +1117,13 @@ func TestExpandWorkflows(t *testing.T) {
 func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 	type output struct {
-		resp      *openfgapb.ReadAuthorizationModelResponse
 		errorCode codes.Code
 	}
 
-	type testData struct {
-		typeDefinitions []*openfgapb.TypeDefinition
-	}
-
 	tests := []struct {
-		name     string
-		input    *openfgapb.ReadAuthorizationModelRequest
-		output   output
-		testData *testData
+		name   string
+		input  *openfgapb.ReadAuthorizationModelRequest
+		output output
 	}{
 		{
 			name:  "empty_request",
@@ -1277,7 +1270,6 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 	type output struct {
-		resp      *openfgapb.WriteAuthorizationModelResponse
 		errorCode codes.Code
 	}
 
