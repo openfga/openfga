@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -713,8 +712,8 @@ func RunServer(ctx context.Context, config *Config) error {
 	}, &server.Config{
 		ResolveNodeLimit:                 config.ResolveNodeLimit,
 		ResolveNodeBreadthLimit:          config.ResolveNodeBreadthLimit,
-		MaxConcurrentReadsForCheck:       uint32(math.Max(float64(config.MaxConcurrentReadsForCheck), float64(config.Datastore.MaxOpenConns))),
-		MaxConcurrentReadsForListObjects: uint32(math.Max(float64(config.MaxConcurrentReadsForListObjects), float64(config.Datastore.MaxOpenConns))),
+		MaxConcurrentReadsForCheck:       config.MaxConcurrentReadsForCheck,
+		MaxConcurrentReadsForListObjects: config.MaxConcurrentReadsForListObjects,
 		ChangelogHorizonOffset:           config.ChangelogHorizonOffset,
 		ListObjectsDeadline:              config.ListObjectsDeadline,
 		ListObjectsMaxResults:            config.ListObjectsMaxResults,
