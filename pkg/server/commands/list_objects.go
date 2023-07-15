@@ -25,6 +25,13 @@ import (
 
 const (
 	streamedBufferSize = 100
+
+	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
+	defaultResolveNodeLimit        = 25
+	defaultResolveNodeBreadthLimit = 100
+	defaultListObjectsDeadline     = 3 * time.Second
+	defaultListObjectsMaxResults   = 1000
+	defaultMaxConcurrentReads      = 30
 )
 
 var (
@@ -47,6 +54,62 @@ type ListObjectsQuery struct {
 	ResolveNodeLimit        uint32
 	ResolveNodeBreadthLimit uint32
 	MaxConcurrentReads      uint32
+}
+
+type ListObjectsQueryOption func(d *ListObjectsQuery)
+
+func WithMaxConcurrentReads(max uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.MaxConcurrentReads = max
+	}
+}
+
+func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.ListObjectsDeadline = deadline
+	}
+}
+
+func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.ListObjectsMaxResults = max
+	}
+}
+
+func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.ResolveNodeLimit = limit
+	}
+}
+
+func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.ResolveNodeBreadthLimit = limit
+	}
+}
+
+func WithLogger(l logger.Logger) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.Logger = l
+	}
+}
+
+func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
+	query := &ListObjectsQuery{
+		Datastore:               ds,
+		Logger:                  logger.NewNoopLogger(),
+		ListObjectsDeadline:     defaultListObjectsDeadline,
+		ListObjectsMaxResults:   defaultListObjectsMaxResults,
+		ResolveNodeLimit:        defaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
+		MaxConcurrentReads:      defaultMaxConcurrentReads,
+	}
+
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	return query
 }
 
 type ListObjectsResult struct {
@@ -137,13 +200,11 @@ func (q *ListObjectsQuery) evaluate(
 		connectedObjectsResChan := make(chan *ConnectedObjectsResult, 1)
 		var objectsFound = new(uint32)
 
-		connectedObjectsCmd := &ConnectedObjectsCommand{
-			Datastore:               q.Datastore,
-			Typesystem:              typesys,
-			ResolveNodeLimit:        q.ResolveNodeLimit,
-			ResolveNodeBreadthLimit: q.ResolveNodeBreadthLimit,
-			Limit:                   maxResults,
-		}
+		connectedObjectsCmd := NewConnectedObjectsQuery(q.Datastore, typesys,
+			WithCOResolveNodeLimit(q.ResolveNodeLimit),
+			WithCOResolveNodeBreadthLimit(q.ResolveNodeBreadthLimit),
+			WithMaxResults(maxResults),
+		)
 
 		go func() {
 			err = connectedObjectsCmd.StreamedConnectedObjects(ctx, &ConnectedObjectsRequest{
@@ -164,8 +225,8 @@ func (q *ListObjectsQuery) evaluate(
 
 		checkResolver := graph.NewLocalChecker(
 			storagewrappers.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
-			q.ResolveNodeBreadthLimit,
-			q.MaxConcurrentReads,
+			graph.WithResolveNodeBreadthLimit(q.ResolveNodeBreadthLimit),
+			graph.WithMaxConcurrentReads(q.MaxConcurrentReads),
 		)
 
 		concurrencyLimiterCh := make(chan struct{}, q.ResolveNodeBreadthLimit)

@@ -198,15 +198,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
-	q := &commands.ListObjectsQuery{
-		Datastore:               storagewrappers.NewCombinedTupleReader(s.datastore, req.GetContextualTuples().GetTupleKeys()),
-		Logger:                  s.logger,
-		ListObjectsDeadline:     s.listObjectsDeadline,
-		ListObjectsMaxResults:   s.listObjectsMaxResults,
-		ResolveNodeLimit:        s.resolveNodeLimit,
-		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
-		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
-	}
+	q := commands.NewListObjectsQuery(s.datastore,
+		commands.WithLogger(s.logger),
+		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	)
 
 	return q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
@@ -237,15 +236,14 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		return err
 	}
 
-	q := &commands.ListObjectsQuery{
-		Datastore:               s.datastore,
-		Logger:                  s.logger,
-		ListObjectsDeadline:     s.listObjectsDeadline,
-		ListObjectsMaxResults:   s.listObjectsMaxResults,
-		ResolveNodeLimit:        s.resolveNodeLimit,
-		ResolveNodeBreadthLimit: s.resolveNodeBreadthLimit,
-		MaxConcurrentReads:      s.maxConcurrentReadsForListObjects,
-	}
+	q := commands.NewListObjectsQuery(s.datastore,
+		commands.WithLogger(s.logger),
+		commands.WithListObjectsDeadline(s.listObjectsDeadline),
+		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
+		commands.WithResolveNodeLimit(s.resolveNodeLimit),
+		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
 	return q.ExecuteStreamed(
@@ -327,8 +325,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		s.resolveNodeBreadthLimit,
-		s.maxConcurrentReadsForCheck,
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
