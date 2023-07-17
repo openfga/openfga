@@ -1176,17 +1176,17 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			err = ds.Write(ctx, store, nil, test.tuples)
 			require.NoError(err)
 
-			if test.resolveNodeLimit == 0 {
-				test.resolveNodeLimit = DefaultResolveNodeLimit
+			var opts []commands.ConnectedObjectsQueryOption
+
+			if test.resolveNodeLimit != 0 {
+				opts = append(opts, commands.WithCOResolveNodeLimit(test.resolveNodeLimit))
 			}
 
-			connectedObjectsCmd := commands.ConnectedObjectsCommand{
-				Datastore:               ds,
-				Typesystem:              typesystem.New(model),
-				ResolveNodeLimit:        test.resolveNodeLimit,
-				ResolveNodeBreadthLimit: DefaultResolveNodeBreadthLimit,
-				Limit:                   test.limit,
+			if test.limit != 0 {
+				opts = append(opts, commands.WithMaxResults(test.limit))
 			}
+
+			connectedObjectsCmd := commands.NewConnectedObjectsQuery(ds, typesystem.New(model), opts...)
 
 			resultChan := make(chan *commands.ConnectedObjectsResult, 100)
 			done := make(chan struct{})

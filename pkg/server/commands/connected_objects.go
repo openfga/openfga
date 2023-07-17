@@ -101,6 +101,42 @@ type ConnectedObjectsCommand struct {
 	Limit uint32
 }
 
+type ConnectedObjectsQueryOption func(d *ConnectedObjectsCommand)
+
+func WithCOResolveNodeLimit(limit uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsCommand) {
+		d.ResolveNodeLimit = limit
+	}
+}
+
+func WithCOResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsCommand) {
+		d.ResolveNodeBreadthLimit = limit
+	}
+}
+
+func WithMaxResults(limit uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsCommand) {
+		d.Limit = limit
+	}
+}
+
+func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ConnectedObjectsQueryOption) *ConnectedObjectsCommand {
+	query := &ConnectedObjectsCommand{
+		Datastore:               ds,
+		Typesystem:              ts,
+		ResolveNodeLimit:        defaultResolveNodeLimit,
+		ResolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
+		Limit:                   defaultListObjectsMaxResults,
+	}
+
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	return query
+}
+
 type ConditionalResultStatus int
 
 const (

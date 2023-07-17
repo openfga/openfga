@@ -18,6 +18,12 @@ import (
 
 var tracer = otel.Tracer("internal/graph/check")
 
+const (
+	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
+	defaultResolveNodeBreadthLimit    = 25
+	defaultMaxConcurrentReadsForCheck = 30
+)
+
 // CheckResolver represents an interface that can be implemented to provide recursive resolution
 // of a Check.
 type CheckResolver interface {
@@ -97,16 +103,34 @@ type LocalChecker struct {
 	maxConcurrentReads uint32 //TODO not used yet
 }
 
+type LocalCheckerOption func(d *LocalChecker)
+
+func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.concurrencyLimit = limit
+	}
+}
+
+func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.concurrencyLimit = limit
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
 // There is also a limit on the depth that will be evaluated before returning an error.
-func NewLocalChecker(
-	ds storage.RelationshipTupleReader,
-	concurrencyLimit uint32,
-	maxConcurrentReads uint32,
-) *LocalChecker {
-	checker := &LocalChecker{ds: ds, concurrencyLimit: concurrencyLimit, maxConcurrentReads: maxConcurrentReads}
+func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
+	checker := &LocalChecker{
+		ds:                 ds,
+		concurrencyLimit:   defaultResolveNodeBreadthLimit,
+		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
+	}
+
+	for _, opt := range opts {
+		opt(checker)
+	}
 	return checker
 }
 
