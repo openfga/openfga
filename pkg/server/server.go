@@ -329,7 +329,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resp, dbReads, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             req.GetTupleKey(),
@@ -349,7 +349,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 	res := &openfgapb.CheckResponse{
 		Allowed: resp.Allowed,
 	}
-
+	s.transport.SetHeader(ctx, "db-reads", strconv.Itoa(int(dbReads)))
+	span.SetAttributes(attribute.Int64("db-reads", int64(dbReads)))
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 	return res, nil
 }

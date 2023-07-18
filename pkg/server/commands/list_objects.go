@@ -256,7 +256,7 @@ func (q *ListObjectsQuery) evaluate(
 
 				concurrencyLimiterCh <- struct{}{}
 
-				resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+				resp, _, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 					StoreID:              req.GetStoreId(),
 					AuthorizationModelID: req.GetAuthorizationModelId(),
 					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
