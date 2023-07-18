@@ -21,7 +21,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var tracer = otel.Tracer("openfga/pkg/server/commands/connectedobjects")
+var tracer = otel.Tracer("openfga/pkg/server/commands/connected_objects")
 
 const (
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
