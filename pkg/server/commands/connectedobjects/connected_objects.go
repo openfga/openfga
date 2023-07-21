@@ -1,4 +1,5 @@
-package commands
+// Package connectedobjects contains the code that handles the ConnectedObjects API
+package connectedobjects
 
 import (
 	"context"
@@ -14,20 +15,30 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
+)
+
+var tracer = otel.Tracer("openfga/pkg/server/commands/connected_objects")
+
+const (
+	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
+	defaultResolveNodeLimit        = 25
+	defaultResolveNodeBreadthLimit = 100
+	defaultMaxResults              = 1000
 )
 
 type ConnectedObjectsRequest struct {
 	StoreID          string
 	ObjectType       string
 	Relation         string
-	User             isUserRef
+	User             IsUserRef
 	ContextualTuples []*openfgapb.TupleKey
 }
 
-type isUserRef interface {
+type IsUserRef interface {
 	isUserRef()
 	GetObjectType() string
 	String() string
@@ -37,7 +48,7 @@ type UserRefObject struct {
 	Object *openfgapb.Object
 }
 
-var _ isUserRef = (*UserRefObject)(nil)
+var _ IsUserRef = (*UserRefObject)(nil)
 
 func (u *UserRefObject) isUserRef() {}
 
@@ -53,7 +64,7 @@ type UserRefTypedWildcard struct {
 	Type string
 }
 
-var _ isUserRef = (*UserRefTypedWildcard)(nil)
+var _ IsUserRef = (*UserRefTypedWildcard)(nil)
 
 func (*UserRefTypedWildcard) isUserRef() {}
 
@@ -88,46 +99,44 @@ type UserRef struct {
 	//  *UserRef_Object
 	//  *UserRef_TypedWildcard
 	//  *UserRef_ObjectRelation
-	Ref isUserRef
+	Ref IsUserRef
 }
 
-type ConnectedObjectsCommand struct {
-	Datastore               storage.RelationshipTupleReader
-	Typesystem              *typesystem.TypeSystem
-	ResolveNodeLimit        uint32
-	ResolveNodeBreadthLimit uint32
-
-	// Limit limits the results yielded by the ConnectedObjects API.
-	Limit uint32
+type ConnectedObjectsQuery struct {
+	datastore               storage.RelationshipTupleReader
+	typesystem              *typesystem.TypeSystem
+	resolveNodeLimit        uint32
+	resolveNodeBreadthLimit uint32
+	maxResults              uint32
 }
 
-type ConnectedObjectsQueryOption func(d *ConnectedObjectsCommand)
+type ConnectedObjectsQueryOption func(d *ConnectedObjectsQuery)
 
-func WithCOResolveNodeLimit(limit uint32) ConnectedObjectsQueryOption {
-	return func(d *ConnectedObjectsCommand) {
-		d.ResolveNodeLimit = limit
+func WithResolveNodeLimit(limit uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsQuery) {
+		d.resolveNodeLimit = limit
 	}
 }
 
-func WithCOResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
-	return func(d *ConnectedObjectsCommand) {
-		d.ResolveNodeBreadthLimit = limit
+func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsQuery) {
+		d.resolveNodeBreadthLimit = limit
 	}
 }
 
-func WithMaxResults(limit uint32) ConnectedObjectsQueryOption {
-	return func(d *ConnectedObjectsCommand) {
-		d.Limit = limit
+func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
+	return func(d *ConnectedObjectsQuery) {
+		d.maxResults = maxResults
 	}
 }
 
-func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ConnectedObjectsQueryOption) *ConnectedObjectsCommand {
-	query := &ConnectedObjectsCommand{
-		Datastore:               ds,
-		Typesystem:              ts,
-		ResolveNodeLimit:        defaultResolveNodeLimit,
-		ResolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		Limit:                   defaultListObjectsMaxResults,
+func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ConnectedObjectsQueryOption) *ConnectedObjectsQuery {
+	query := &ConnectedObjectsQuery{
+		datastore:               ds,
+		typesystem:              ts,
+		resolveNodeLimit:        defaultResolveNodeLimit,
+		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
+		maxResults:              defaultMaxResults,
 	}
 
 	for _, opt := range opts {
@@ -149,14 +158,14 @@ type ConnectedObjectsResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
-func (c *ConnectedObjectsCommand) streamedConnectedObjects(
+func (c *ConnectedObjectsQuery) execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
 	foundObjectsMap *sync.Map,
 	foundCount *uint32,
 ) error {
-	ctx, span := tracer.Start(ctx, "streamedConnectedObjects", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "connectedObjects.execute", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
 		attribute.String("relation", req.Relation),
 		attribute.String("user", req.User.String()),
@@ -167,7 +176,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	if !ok {
 		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	} else {
-		if depth >= c.ResolveNodeLimit {
+		if depth >= c.resolveNodeLimit {
 			return serverErrors.AuthorizationModelResolutionTooComplex
 		}
 
@@ -202,7 +211,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
 
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
-	g := graph.BuildConnectedObjectGraph(c.Typesystem)
+	g := graph.BuildConnectedObjectGraph(c.typesystem)
 
 	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
 	span.SetAttributes(
@@ -214,7 +223,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	}
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
+	subg.SetLimit(int(c.resolveNodeBreadthLimit))
 
 	for i, ingress := range ingresses {
 		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
@@ -234,7 +243,7 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 			case graph.ComputedUsersetIngress:
 
 				// lookup the rewritten target relation on the computed_userset ingress
-				return c.streamedConnectedObjects(ctx, &ConnectedObjectsRequest{
+				return c.execute(ctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
@@ -258,16 +267,16 @@ func (c *ConnectedObjectsCommand) streamedConnectedObjects(
 	return subg.Wait()
 }
 
-// StreamedConnectedObjects yields all the objects of the provided objectType that
+// Execute yields all the objects of the provided objectType that
 // the given user has a specific relation with. The results will be limited by the request
-// limit. If a 0 limit is provided then all objects of the provided objectType will be
+// maxResults. If a 0 maxResults is provided then all objects of the provided objectType will be
 // returned.
-func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
+func (c *ConnectedObjectsQuery) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
 ) error {
-	ctx, span := tracer.Start(ctx, "StreamedConnectedObjects", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
 		attribute.String("relation", req.Relation),
 		attribute.String("user", req.User.String()),
@@ -275,23 +284,23 @@ func (c *ConnectedObjectsCommand) StreamedConnectedObjects(
 	defer span.End()
 
 	var foundCount *uint32
-	if c.Limit > 0 {
+	if c.maxResults > 0 {
 		foundCount = new(uint32)
 	}
 
 	var foundObjects sync.Map
-	return c.streamedConnectedObjects(ctx, req, resultChan, &foundObjects, foundCount)
+	return c.execute(ctx, req, resultChan, &foundObjects, foundCount)
 }
 
 type reverseExpandRequest struct {
 	storeID          string
 	ingress          *graph.RelationshipIngress
 	targetObjectRef  *openfgapb.RelationReference
-	sourceUserRef    isUserRef
+	sourceUserRef    IsUserRef
 	contextualTuples []*openfgapb.TupleKey
 }
 
-func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
+func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
@@ -333,7 +342,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		})
 	}
 
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
@@ -346,7 +355,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
+	subg.SetLimit(int(c.resolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -372,7 +381,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		}
 
 		if foundObjectType == targetObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
+			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.maxResults {
 				break
 			}
 
@@ -387,7 +396,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 			}
 		}
 
-		var sourceUserRef isUserRef
+		var sourceUserRef IsUserRef
 		sourceUserRef = &UserRefObject{
 			Object: &openfgapb.Object{
 				Type: foundObjectType,
@@ -409,7 +418,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 		}
 
 		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
@@ -422,7 +431,7 @@ func (c *ConnectedObjectsCommand) reverseExpandTupleToUserset(
 	return subg.Wait()
 }
 
-func (c *ConnectedObjectsCommand) reverseExpandDirect(
+func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
@@ -450,7 +459,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
-	publiclyAssignable, err := c.Typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
+	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(ingress, targetUserObjectType)
 	if err != nil {
 		return err
 	}
@@ -482,7 +491,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.Datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
@@ -495,7 +504,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 	defer iter.Stop()
 
 	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.ResolveNodeBreadthLimit))
+	subg.SetLimit(int(c.resolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -521,7 +530,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		if foundObjectType == targetObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.Limit {
+			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.maxResults {
 				break
 			}
 
@@ -544,7 +553,7 @@ func (c *ConnectedObjectsCommand) reverseExpandDirect(
 		}
 
 		subg.Go(func() error {
-			return c.streamedConnectedObjects(subgctx, &ConnectedObjectsRequest{
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
