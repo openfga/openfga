@@ -39,7 +39,8 @@ type ResolveCheckRequest struct {
 }
 
 type ResolveCheckResponse struct {
-	Allowed bool
+	Allowed            bool
+	ResolutionMetadata *ResolutionMetadata
 }
 
 func (r *ResolveCheckRequest) GetStoreID() string {
@@ -389,6 +390,9 @@ func (c *LocalChecker) ResolveCheck(
 
 	return &ResolveCheckResponse{
 		Allowed: resp.Allowed,
+		ResolutionMetadata: &ResolutionMetadata{
+			DatabaseReads: 0,
+		},
 	}, nil
 }
 

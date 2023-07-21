@@ -335,7 +335,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.resolveNodeLimit,
+			Depth:         s.resolveNodeLimit,
+			DatabaseReads: 0,
 		},
 	})
 	if err != nil {
