@@ -14,10 +14,12 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/openfga/openfga/internal/authn"
+
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/openfga/openfga/internal/authn"
 )
 
 type RemoteOidcAuthenticator struct {
@@ -44,10 +46,12 @@ var _ authn.Authenticator = (*RemoteOidcAuthenticator)(nil)
 var _ authn.OIDCAuthenticator = (*RemoteOidcAuthenticator)(nil)
 
 func NewRemoteOidcAuthenticator(issuerURL, audience string) (*RemoteOidcAuthenticator, error) {
+	client := retryablehttp.NewClient()
+	client.Logger = nil
 	oidc := &RemoteOidcAuthenticator{
 		IssuerURL:  issuerURL,
 		Audience:   audience,
-		httpClient: retryablehttp.NewClient().StandardClient(),
+		httpClient: client.StandardClient(),
 	}
 	err := oidc.fetchKeys()
 	if err != nil {
