@@ -595,18 +595,24 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', unsecure %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.Insecure))
+
+		options := []telemetry.TracerOption{
 			telemetry.WithOTLPEndpoint(
 				config.Trace.OTLP.Endpoint,
-				config.Trace.OTLP.Insecure,
 			),
 			telemetry.WithAttributes(
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),
 			),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
-		)
+		}
+
+		if config.Trace.OTLP.Insecure {
+			options = append(options, telemetry.WithOTLPInsecure())
+		}
+
+		tp = telemetry.MustNewTracerProvider(options...)
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))

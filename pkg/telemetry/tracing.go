@@ -19,10 +19,15 @@ import (
 
 type TracerOption func(d *customTracer)
 
-func WithOTLPEndpoint(endpoint string, insecure bool) TracerOption {
+func WithOTLPEndpoint(endpoint string) TracerOption {
 	return func(d *customTracer) {
 		d.endpoint = endpoint
-		d.insecure = insecure
+	}
+}
+
+func WithOTLPInsecure() TracerOption {
+	return func(d *customTracer) {
+		d.insecure = true
 	}
 }
 
