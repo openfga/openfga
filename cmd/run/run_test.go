@@ -431,6 +431,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+	cfg.Trace.OTLP.Insecure = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

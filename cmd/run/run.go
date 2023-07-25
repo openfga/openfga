@@ -152,6 +152,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
 
+	flags.Bool("trace-otlp-insecure", defaultConfig.Trace.OTLP.Insecure, "use insecure connection for trace collector")
+
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
@@ -290,6 +292,7 @@ type TraceConfig struct {
 
 type OTLPTraceConfig struct {
 	Endpoint string
+	Insecure bool
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -414,6 +417,7 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			OTLP: OTLPTraceConfig{
 				Endpoint: "0.0.0.0:4317",
+				Insecure: true,
 			},
 			SampleRatio: 0.2,
 			ServiceName: "openfga",
@@ -593,7 +597,10 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	if config.Trace.Enabled {
 		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(
-			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+			telemetry.WithOTLPEndpoint(
+				config.Trace.OTLP.Endpoint,
+				config.Trace.OTLP.Insecure,
+			),
 			telemetry.WithAttributes(
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),

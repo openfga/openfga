@@ -19,9 +19,10 @@ import (
 
 type TracerOption func(d *customTracer)
 
-func WithOTLPEndpoint(endpoint string) TracerOption {
+func WithOTLPEndpoint(endpoint string, insecure bool) TracerOption {
 	return func(d *customTracer) {
 		d.endpoint = endpoint
+		d.insecure = insecure
 	}
 }
 
@@ -39,6 +40,7 @@ func WithAttributes(attrs ...attribute.KeyValue) TracerOption {
 
 type customTracer struct {
 	endpoint   string
+	insecure   bool
 	attributes []attribute.KeyValue
 
 	samplingRatio float64
@@ -65,12 +67,17 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	var exp sdktrace.SpanExporter
-	exp, err = otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
+	options := []otlptracegrpc.Option{
 		otlptracegrpc.WithEndpoint(tracer.endpoint),
 		otlptracegrpc.WithDialOption(grpc.WithBlock()),
-	)
+	}
+
+	if tracer.insecure {
+		options = append(options, otlptracegrpc.WithInsecure())
+	}
+
+	var exp sdktrace.SpanExporter
+	exp, err = otlptracegrpc.New(ctx, options...)
 	if err != nil {
 		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
 	}
