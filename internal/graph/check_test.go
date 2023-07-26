@@ -165,49 +165,56 @@ func TestCheckDbReads(t *testing.T) {
 		name             string
 		check            *openfgav1.TupleKey
 		contextualTuples []*openfgav1.TupleKey
+		allowed          bool
 		minDBReads       uint32
 		maxDBReads       uint32
 	}{
 		{
 			name:       "no_direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:unknown"),
+			allowed:    false,
 			minDBReads: 2, // both checkDirectUserTuple and checkDirectUsersetTuples need to run
 			maxDBReads: 2,
 		},
 		{
 			name:       "direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
+			allowed:    true,
 			minDBReads: 1, // checkDirectUserTuple returns success before checkDirectUsersetTuples starts
 			maxDBReads: 2, // checkDirectUsersetTuples returns false, then checkDirectUserTuple returns true
 		},
 		{
 			name:       "union",
 			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
+			allowed:    true,
 			minDBReads: 1, // one direct tuple lookup
 			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
 		},
 		{
 			name:       "intersection",
 			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
+			allowed:    true,
 			minDBReads: 2, // need at minimum two direct tuple checks
 			maxDBReads: 4, // at most two tuple checks + two userset checks
 		},
 		{
 			name:       "difference",
 			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
+			allowed:    false,
 			minDBReads: 2, // need at minimum two direct tuple checks
 			maxDBReads: 4, // at most two tuple checks + two userset checks
 		},
 		{
 			name:       "ttu",
 			check:      tuple.NewTupleKey("document:x", "ttu", "user:maria"),
+			allowed:    true,
 			minDBReads: 2, // one read to find org:fga and another direct check to check membership
 			maxDBReads: 4,
 		},
 	}
 
 	// run the test many times to exercise all the possible DBReads
-	for i := 0; i < 1000; i++ {
+	for i := 1; i < 1000; i++ {
 		for _, test := range tests {
 			test := test
 			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
@@ -220,6 +227,7 @@ func TestCheckDbReads(t *testing.T) {
 					ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 				})
 				require.NoError(t, err)
+				require.Equal(t, res.Allowed, test.allowed)
 				// minDBReads <= dbReads <= maxDBReads
 				require.GreaterOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.minDBReads)
 				require.LessOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.maxDBReads)
