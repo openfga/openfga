@@ -189,7 +189,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			datastore := ds
 			if test.readTuplesDelay > 0 {
-				datastore = mocks.NewMockSlowDataStorage(ds, mocks.WithReadStartingWithUserDelay(test.readTuplesDelay))
+				datastore = mocks.NewMockSlowDataStorage(ds, test.readTuplesDelay)
 			}
 
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))

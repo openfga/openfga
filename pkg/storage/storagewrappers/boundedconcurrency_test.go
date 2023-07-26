@@ -17,11 +17,7 @@ import (
 
 func TestBoundedConcurrencyWrapper(t *testing.T) {
 	store := ulid.Make().String()
-	slowBackend := mocks.NewMockSlowDataStorage(memory.New(),
-		mocks.WithReadUserTupleDelay(time.Second),
-		mocks.WithReadUsersetTuplesDelay(time.Second),
-		mocks.WithReadDelay(time.Second),
-	)
+	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
 	err := slowBackend.Write(context.Background(), store, []*openfgapb.TupleKey{}, []*openfgapb.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
