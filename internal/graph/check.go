@@ -393,12 +393,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		resp, err := c.ResolveCheck(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-
-		return resp, nil
+		return c.ResolveCheck(ctx, req)
 	}
 }
 

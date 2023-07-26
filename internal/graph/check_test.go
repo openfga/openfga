@@ -153,6 +153,14 @@ func TestCheckDbReads(t *testing.T) {
 		define parent: [org] as self
 	`)
 
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+		&openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			TypeDefinitions: typedefs,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+		},
+	))
+
 	tests := []struct {
 		name             string
 		check            *openfgav1.TupleKey
@@ -161,10 +169,16 @@ func TestCheckDbReads(t *testing.T) {
 		maxDBReads       uint32
 	}{
 		{
-			name:       "direct access",
+			name:       "no_direct_access",
+			check:      tuple.NewTupleKey("document:x", "a", "user:unknown"),
+			minDBReads: 2, // both checkDirectUserTuple and checkDirectUsersetTuples need to run
+			maxDBReads: 2,
+		},
+		{
+			name:       "direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
 			minDBReads: 1, // checkDirectUserTuple returns success before checkDirectUsersetTuples starts
-			maxDBReads: 2,
+			maxDBReads: 2, // checkDirectUsersetTuples returns false, then checkDirectUserTuple returns true
 		},
 		{
 			name:       "union",
@@ -192,19 +206,13 @@ func TestCheckDbReads(t *testing.T) {
 		},
 	}
 
-	// repeat the test many times to exercise all the possible DBReads
+	// run the test many times to exercise all the possible DBReads
 	for i := 0; i < 1000; i++ {
 		for _, test := range tests {
 			test := test
-			t.Run(fmt.Sprintf("%v_%s", i, test.name), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
 				t.Parallel()
-				ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-					&openfgav1.AuthorizationModel{
-						Id:              ulid.Make().String(),
-						TypeDefinitions: typedefs,
-						SchemaVersion:   typesystem.SchemaVersion1_1,
-					},
-				))
+
 				res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 					StoreID:            storeID,
 					TupleKey:           test.check,
