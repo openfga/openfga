@@ -429,7 +429,12 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	return union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
+	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
