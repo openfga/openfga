@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
-	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -137,6 +135,8 @@ func TestCheckDbReads(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	checker := NewLocalChecker(ds, WithMaxConcurrentReads(1))
+
 	typedefs := parser.MustParse(`
 	type user
 	type org
@@ -153,70 +153,69 @@ func TestCheckDbReads(t *testing.T) {
 		define parent: [org] as self
 	`)
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
+	tests := []struct {
+		name             string
+		check            *openfgav1.TupleKey
+		contextualTuples []*openfgav1.TupleKey
+		minDBReads       uint32
+		maxDBReads       uint32
+	}{
+		{
+			name:       "direct access",
+			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
+			minDBReads: 1, // checkDirectUserTuple returns success before checkDirectUsersetTuples starts
+			maxDBReads: 2,
 		},
-	))
-	t.Run("direct_check_fast", func(t *testing.T) {
-		t.Parallel()
-		ds = mocks.NewMockSlowDataStorage(ds,
-			mocks.WithReadUsersetTuplesDelay(1*time.Second))
+		{
+			name:       "union",
+			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
+			minDBReads: 1, // one direct tuple lookup
+			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
+		},
+		{
+			name:       "intersection",
+			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
+			minDBReads: 2, // need at minimum two direct tuple checks
+			maxDBReads: 4, // at most two tuple checks + two userset checks
+		},
+		{
+			name:       "difference",
+			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
+			minDBReads: 2, // need at minimum two direct tuple checks
+			maxDBReads: 4, // at most two tuple checks + two userset checks
+		},
+		{
+			name:       "ttu",
+			check:      tuple.NewTupleKey("document:x", "ttu", "user:maria"),
+			minDBReads: 2, // one read to find org:fga and another direct check to check membership
+			maxDBReads: 3,
+		},
+	}
 
-		checker := NewLocalChecker(ds)
-		res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:x", "a", "user:maria"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, 1, res.ResolutionMetadata.DatabaseReads)
-	})
-	t.Run("direct_check_slow", func(t *testing.T) {
-		t.Parallel()
-		ds = mocks.NewMockSlowDataStorage(ds,
-			mocks.WithReadUserTupleDelay(1*time.Second))
-
-		checker := NewLocalChecker(ds)
-		fmt.Println(time.Now())
-		res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:x", "a", "user:maria"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, 2, res.ResolutionMetadata.DatabaseReads)
-	})
-
-	t.Run("union_fast", func(t *testing.T) {
-		t.Parallel()
-		ds = mocks.NewMockSlowDataStorage(ds,
-			mocks.WithReadUsersetTuplesDelay(1*time.Second))
-
-		checker := NewLocalChecker(ds)
-		res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:x", "union", "user:maria"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, 1, res.ResolutionMetadata.DatabaseReads)
-	})
-
-	t.Run("union_slow", func(t *testing.T) {
-		t.Parallel()
-		ds = mocks.NewMockSlowDataStorage(ds,
-			mocks.WithReadUserTupleDelay(1*time.Second))
-
-		checker := NewLocalChecker(ds)
-		res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           tuple.NewTupleKey("document:x", "union", "user:maria"),
-			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
-		})
-		require.NoError(t, err)
-		require.EqualValues(t, 2, res.ResolutionMetadata.DatabaseReads)
-	})
+	// repeat the test many times to exercise all the possible DBReads
+	for i := 0; i < 1000; i++ {
+		for _, test := range tests {
+			test := test
+			t.Run(fmt.Sprintf("%v_%s", i, test.name), func(t *testing.T) {
+				t.Parallel()
+				ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+					&openfgav1.AuthorizationModel{
+						Id:              ulid.Make().String(),
+						TypeDefinitions: typedefs,
+						SchemaVersion:   typesystem.SchemaVersion1_1,
+					},
+				))
+				res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+					StoreID:            storeID,
+					TupleKey:           test.check,
+					ContextualTuples:   test.contextualTuples,
+					ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+				})
+				require.NoError(t, err)
+				// minDBReads <= dbReads <= maxDBReads
+				require.GreaterOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.minDBReads)
+				require.LessOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.maxDBReads)
+			})
+		}
+	}
 }
