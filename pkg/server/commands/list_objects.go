@@ -222,10 +222,8 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.datastore, q.maxConcurrentReads)
-
 		checkResolver := graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
+			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
 			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
 		)

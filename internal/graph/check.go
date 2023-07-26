@@ -8,6 +8,7 @@ import (
 
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -100,7 +101,7 @@ type checkOutcome struct {
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
 	concurrencyLimit   uint32
-	maxConcurrentReads uint32 //TODO not used yet
+	maxConcurrentReads uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
@@ -113,7 +114,7 @@ func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.concurrencyLimit = limit
+		d.maxConcurrentReads = limit
 	}
 }
 
@@ -131,6 +132,9 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 	for _, opt := range opts {
 		opt(checker)
 	}
+
+	ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
+
 	return checker
 }
 
