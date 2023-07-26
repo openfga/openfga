@@ -278,7 +278,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolutionMetadata{
-				Depth:         0,
 				DatabaseReads: dbReads,
 			},
 		}, err
@@ -287,7 +286,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			Depth:         0,
 			DatabaseReads: dbReads,
 		},
 	}, nil
@@ -344,46 +342,40 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
 				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         0,
-						DatabaseReads: dbReads + baseResult.resp.ResolutionMetadata.DatabaseReads,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolutionMetadata{},
 				}, baseResult.err
 			}
+
+			dbReads += baseResult.resp.ResolutionMetadata.DatabaseReads
 
 			if !baseResult.resp.Allowed {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         0,
-						DatabaseReads: dbReads + baseResult.resp.ResolutionMetadata.DatabaseReads,
+						DatabaseReads: dbReads,
 					},
 				}, nil
 			}
 
-			dbReads += baseResult.resp.ResolutionMetadata.DatabaseReads
 		case subResult := <-subChan:
 			if subResult.err != nil {
 				return &ResolveCheckResponse{
-					Allowed: false,
-					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         0,
-						DatabaseReads: dbReads + subResult.resp.ResolutionMetadata.DatabaseReads,
-					},
+					Allowed:            false,
+					ResolutionMetadata: &ResolutionMetadata{},
 				}, subResult.err
 			}
+
+			dbReads += subResult.resp.ResolutionMetadata.DatabaseReads
 
 			if subResult.resp.Allowed {
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         0,
-						DatabaseReads: dbReads + subResult.resp.ResolutionMetadata.DatabaseReads,
+						DatabaseReads: dbReads,
 					},
 				}, nil
 			}
-			dbReads += subResult.resp.ResolutionMetadata.DatabaseReads
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -392,7 +384,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			Depth:         0,
 			DatabaseReads: dbReads,
 		},
 	}, nil
@@ -438,15 +429,7 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
-	if err != nil {
-		return nil, err
-	}
-
-	return &ResolveCheckResponse{
-		Allowed:            resp.Allowed,
-		ResolutionMetadata: resp.ResolutionMetadata,
-	}, nil
+	return union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 }
 
 // checkDirect composes two CheckHandlerFunc which evaluate direct relationships with the provided
@@ -476,7 +459,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth:         0,
 					DatabaseReads: req.ResolutionMetadata.DatabaseReads + 1,
 				},
 			}
@@ -529,7 +511,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth:         0,
 					DatabaseReads: req.ResolutionMetadata.DatabaseReads,
 				},
 			}
@@ -580,6 +561,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 					if tuple.GetType(tk.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
+						response.Allowed = true
 						return response, nil
 					}
 
@@ -670,11 +652,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		if err != nil {
 			return &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth:         0,
-					DatabaseReads: 0,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolutionMetadata{},
 			}, err
 		}
 		defer iter.Stop()
@@ -699,7 +678,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				return &ResolveCheckResponse{
 					Allowed: false,
 					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         0,
 						DatabaseReads: dbReads,
 					},
 				}, err
@@ -734,11 +712,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		if len(handlers) == 0 {
 			return &ResolveCheckResponse{
-				Allowed: false,
-				ResolutionMetadata: &ResolutionMetadata{
-					Depth:         0,
-					DatabaseReads: 0,
-				},
+				Allowed:            false,
+				ResolutionMetadata: &ResolutionMetadata{},
 			}, nil
 		}
 
