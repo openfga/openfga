@@ -321,6 +321,12 @@
                             "type": "string",
                             "default": "0.0.0.0:4317",
                             "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                        },
+                        "insecure": {
+                            "description": "Whether to use insecure connectio for the trace collector",
+                            "type": "boolean",
+                            "default": false,
+                            "x-env-variable": "OPENFGA_TRACE_OTLP_INSECURE"
                         }
                     }
                 },
