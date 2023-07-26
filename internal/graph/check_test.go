@@ -8,6 +8,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	"github.com/openfga/openfga/pkg/storage/memory"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -135,8 +136,6 @@ func TestCheckDbReads(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	checker := NewLocalChecker(ds, WithMaxConcurrentReads(1))
-
 	typedefs := parser.MustParse(`
 	type user
 	type org
@@ -184,6 +183,14 @@ func TestCheckDbReads(t *testing.T) {
 			maxDBReads: 2, // checkDirectUsersetTuples returns false, then checkDirectUserTuple returns true
 		},
 		{
+			name:             "direct_access_thanks_to_contextual_tuple", // NOTE: this is counting the read from memory as a database read!
+			check:            tuple.NewTupleKey("document:x", "a", "user:unknown"),
+			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
+			allowed:          true,
+			minDBReads:       1, // checkDirectUserTuple returns success from contextual tuples before checkDirectUsersetTuples starts
+			maxDBReads:       2,
+		},
+		{
 			name:       "union",
 			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
 			allowed:    true,
@@ -219,6 +226,11 @@ func TestCheckDbReads(t *testing.T) {
 			test := test
 			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
 				t.Parallel()
+
+				checker := NewLocalChecker(
+					// TODO build this wrapper inside ResolveCheck so that we don't need to construct a new Checker per test
+					storagewrappers.NewCombinedTupleReader(ds, test.contextualTuples),
+					WithMaxConcurrentReads(1))
 
 				res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 					StoreID:            storeID,
