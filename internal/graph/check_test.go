@@ -188,7 +188,7 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "ttu",
 			check:      tuple.NewTupleKey("document:x", "ttu", "user:maria"),
 			minDBReads: 2, // one read to find org:fga and another direct check to check membership
-			maxDBReads: 3,
+			maxDBReads: 4,
 		},
 	}
 

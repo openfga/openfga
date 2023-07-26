@@ -216,11 +216,11 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	for i := 0; i < len(handlers); i++ {
 		select {
 		case result := <-resultChan:
-			dbReads += result.resp.ResolutionMetadata.DatabaseReads
 			if result.err != nil {
 				err = result.err
 				continue
 			}
+			dbReads += result.resp.ResolutionMetadata.DatabaseReads
 
 			if result.resp.Allowed {
 				result.resp.ResolutionMetadata.DatabaseReads = dbReads
