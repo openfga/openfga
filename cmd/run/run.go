@@ -417,7 +417,7 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			OTLP: OTLPTraceConfig{
 				Endpoint: "0.0.0.0:4317",
-				Insecure: true,
+				Insecure: false,
 			},
 			SampleRatio: 0.2,
 			ServiceName: "openfga",

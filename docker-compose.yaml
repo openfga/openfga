@@ -45,6 +45,7 @@ services:
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
       - OPENFGA_TRACE_OTLP_ENDPOINT=otel-collector:4317
+      - OPENFGA_TRACE_OTLP_INSECURE=true
       - OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS=true
     networks:
       - default
