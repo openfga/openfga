@@ -339,7 +339,7 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 			DatabaseReads: 0,
 		},
 	})
-	span.SetAttributes(attribute.Int64("db-reads", int64(resp.ResolutionMetadata.DatabaseReads)))
+	span.SetAttributes(attribute.Int64("db_reads", int64(resp.ResolutionMetadata.DatabaseReads)))
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
