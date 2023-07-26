@@ -133,7 +133,7 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		opt(checker)
 	}
 
-	ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
+	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
 
 	return checker
 }
