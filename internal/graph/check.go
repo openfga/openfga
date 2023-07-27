@@ -236,10 +236,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				err = result.err
 				continue
 			}
-			dbReads += result.resp.GetResolutionMetadata().DatabaseReads
+			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatabaseReads = dbReads
+				result.resp.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -250,7 +250,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatabaseReads: dbReads,
+			DatastoreCallCount: dbReads,
 		},
 	}, err
 }
@@ -279,9 +279,10 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				err = result.err
 				continue
 			}
-			dbReads += result.resp.GetResolutionMetadata().DatabaseReads
+			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if !result.resp.GetAllowed() {
+				result.resp.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -293,7 +294,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolutionMetadata{
-				DatabaseReads: dbReads,
+				DatastoreCallCount: dbReads,
 			},
 		}, err
 	}
@@ -301,7 +302,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatabaseReads: dbReads,
+			DatastoreCallCount: dbReads,
 		},
 	}, nil
 }
@@ -354,7 +355,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	response := &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatabaseReads: 0,
+			DatastoreCallCount: 0,
 		},
 	}
 	var dbReads uint32
@@ -365,10 +366,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				return response, baseResult.err
 			}
 
-			dbReads += baseResult.resp.GetResolutionMetadata().DatabaseReads
+			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if !baseResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatabaseReads = dbReads
+				response.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return response, nil
 			}
 
@@ -377,10 +378,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				return response, subResult.err
 			}
 
-			dbReads += subResult.resp.GetResolutionMetadata().DatabaseReads
+			dbReads += subResult.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if subResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatabaseReads = dbReads
+				response.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -391,7 +392,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatabaseReads: dbReads,
+			DatastoreCallCount: dbReads,
 		},
 	}, nil
 }
@@ -466,7 +467,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					DatabaseReads: req.GetResolutionMetadata().DatabaseReads + 1,
+					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
 				},
 			}
 
@@ -518,7 +519,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					DatabaseReads: req.GetResolutionMetadata().DatabaseReads,
+					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
 				},
 			}
 
@@ -541,7 +542,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			var handlers []CheckHandlerFunc
 			for {
-				response.GetResolutionMetadata().DatabaseReads++
 				t, err := filteredIter.Next()
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
@@ -583,8 +583,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							AuthorizationModelID: req.GetAuthorizationModelID(),
 							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
 							ResolutionMetadata: &ResolutionMetadata{
-								Depth:         req.GetResolutionMetadata().Depth - 1,
-								DatabaseReads: response.GetResolutionMetadata().DatabaseReads,
+								Depth:              req.GetResolutionMetadata().Depth - 1,
+								DatastoreCallCount: response.GetResolutionMetadata().DatastoreCallCount,
 							},
 						}))
 				}
@@ -620,8 +620,8 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 					req.TupleKey.GetUser(),
 				),
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth:         req.GetResolutionMetadata().Depth - 1,
-					DatabaseReads: req.GetResolutionMetadata().DatabaseReads,
+					Depth:              req.GetResolutionMetadata().Depth - 1,
+					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount,
 				},
 			})(ctx)
 	}
@@ -640,13 +640,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		ctx, span := tracer.Start(ctx, "checkTTU")
 		defer span.End()
 
-		response := &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatabaseReads: req.GetResolutionMetadata().DatabaseReads,
-			},
-		}
-
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 		tuplesetRelation := rewrite.GetTupleToUserset().GetTupleset().GetRelation()
@@ -658,6 +651,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		span.SetAttributes(attribute.String("tupleset_relation", fmt.Sprintf("%s#%s", tuple.GetType(object), tuplesetRelation)))
 		span.SetAttributes(attribute.String("computed_relation", computedRelation))
 
+		response := &ResolveCheckResponse{
+			Allowed: false,
+			ResolutionMetadata: &ResolutionMetadata{
+				DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
+			},
+		}
 		iter, err := c.ds.Read(
 			ctx,
 			req.GetStoreID(),
@@ -677,7 +676,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 		var handlers []CheckHandlerFunc
 		for {
-			response.GetResolutionMetadata().DatabaseReads++
 			t, err := filteredIter.Next()
 			if err != nil {
 				if err == storage.ErrIteratorDone {
@@ -708,8 +706,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					AuthorizationModelID: req.GetAuthorizationModelID(),
 					TupleKey:             tupleKey,
 					ResolutionMetadata: &ResolutionMetadata{
-						Depth:         req.GetResolutionMetadata().Depth - 1,
-						DatabaseReads: response.GetResolutionMetadata().DatabaseReads,
+						Depth:              req.GetResolutionMetadata().Depth - 1,
+						DatastoreCallCount: response.GetResolutionMetadata().DatastoreCallCount,
 					},
 				}))
 		}

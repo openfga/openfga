@@ -335,11 +335,11 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth:         s.resolveNodeLimit,
-			DatabaseReads: 0,
+			Depth:              s.resolveNodeLimit,
+			DatastoreCallCount: 0,
 		},
 	})
-	span.SetAttributes(attribute.Int64("db_reads", int64(resp.ResolutionMetadata.DatabaseReads)))
+	span.SetAttributes(attribute.Int64("datastore_call_count", int64(resp.ResolutionMetadata.DatastoreCallCount)))
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex

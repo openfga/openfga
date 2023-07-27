@@ -271,8 +271,8 @@ func TestCheckDbReads(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, res.Allowed, test.allowed)
 				// minDBReads <= dbReads <= maxDBReads
-				require.GreaterOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.minDBReads)
-				require.LessOrEqual(t, res.ResolutionMetadata.DatabaseReads, test.maxDBReads)
+				require.GreaterOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.minDBReads)
+				require.LessOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.maxDBReads)
 			})
 		}
 	}

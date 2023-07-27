@@ -42,8 +42,9 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 }
 
 type ResolutionMetadata struct {
-	Depth         uint32
-	DatabaseReads uint32
+	Depth uint32
+	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read
+	DatastoreCallCount uint32
 }
 
 // RelationshipIngressType is used to define an enum of the type of ingresses between
