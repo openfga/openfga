@@ -129,6 +129,7 @@ func TestCheckDbReads(t *testing.T) {
 	storeID := ulid.Make().String()
 
 	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:x", "a", "user:jon"),
 		tuple.NewTupleKey("document:x", "a", "user:maria"),
 		tuple.NewTupleKey("document:x", "b", "user:maria"),
 		tuple.NewTupleKey("document:x", "parent", "org:fga"),
@@ -149,6 +150,7 @@ func TestCheckDbReads(t *testing.T) {
 		define intersection as a and b
 		define difference as a but not b
 		define ttu as member from parent
+        define intersection_and_ttu as union and ttu 
 		define parent: [org] as self
 	`)
 
@@ -198,6 +200,13 @@ func TestCheckDbReads(t *testing.T) {
 			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
 		},
 		{
+			name:       "union_no_access",
+			check:      tuple.NewTupleKey("document:x", "union", "user:unknown"),
+			allowed:    false,
+			minDBReads: 2, // need to check all the conditions in the union, so at minimum two direct tuple lookups
+			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
+		},
+		{
 			name:       "intersection",
 			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
 			allowed:    true,
@@ -205,7 +214,21 @@ func TestCheckDbReads(t *testing.T) {
 			maxDBReads: 4, // at most two tuple checks + two userset checks
 		},
 		{
+			name:       "intersection_no_access",
+			check:      tuple.NewTupleKey("document:x", "intersection", "user:unknown"),
+			allowed:    false,
+			minDBReads: 2, // need at minimum two direct tuple checks
+			maxDBReads: 4, // at most two tuple checks + two userset checks
+		},
+		{
 			name:       "difference",
+			check:      tuple.NewTupleKey("document:x", "difference", "user:jon"),
+			allowed:    true,
+			minDBReads: 2, // need at minimum two direct tuple checks
+			maxDBReads: 4, // at most two tuple checks + two userset checks
+		},
+		{
+			name:       "difference_no_access",
 			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
 			allowed:    false,
 			minDBReads: 2, // need at minimum two direct tuple checks
@@ -217,6 +240,13 @@ func TestCheckDbReads(t *testing.T) {
 			allowed:    true,
 			minDBReads: 2, // one read to find org:fga and another direct check to check membership
 			maxDBReads: 4,
+		},
+		{
+			name:       "intersection_and_ttu",
+			check:      tuple.NewTupleKey("document:x", "intersection_and_ttu", "user:maria"),
+			allowed:    true,
+			minDBReads: 3, // TODO should this not be four?
+			maxDBReads: 4 + 4,
 		},
 	}
 
