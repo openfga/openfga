@@ -97,8 +97,6 @@ type checkOutcome struct {
 	err  error
 }
 
-// LocalChecker implements Check in a highly concurrent and localized manner. The
-// Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
 	concurrencyLimit   uint32
@@ -107,12 +105,16 @@ type LocalChecker struct {
 
 type LocalCheckerOption func(d *LocalChecker)
 
+// TODO add WithResolveNodeLimit
+
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
 	}
 }
 
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.maxConcurrentReads = limit
@@ -120,9 +122,7 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 }
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
-// request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
-// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
-// There is also a limit on the depth that will be evaluated before returning an error.
+// request locally.
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		ds:                 ds,
@@ -360,6 +360,8 @@ func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) C
 	}
 }
 
+// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
+// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
