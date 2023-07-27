@@ -15,7 +15,7 @@
         "maxConcurrentReadsForCheck": {
             "description": "The maximum allowed number of concurrent reads in a single Check query.",
             "type": "integer",
-            "default": 30,
+            "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_CHECK"
         },
         "maxConcurrentReadsForListObjects": {
