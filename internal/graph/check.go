@@ -99,6 +99,7 @@ type checkOutcome struct {
 // Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
+	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32 //TODO not used yet
 }
@@ -117,6 +118,12 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
+func WithDelegate(delegate CheckResolver) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.delegate = delegate
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
@@ -127,6 +134,7 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		concurrencyLimit:   defaultResolveNodeBreadthLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
 	}
+	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 
 	for _, opt := range opts {
 		opt(checker)
@@ -340,11 +348,15 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &openfgapb.CheckResponse{Allowed: true}, nil
 }
 
+func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
-		resp, err := c.ResolveCheck(ctx, req)
+		resp, err := c.delegate.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}

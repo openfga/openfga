@@ -10,6 +10,7 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -43,6 +44,9 @@ const (
 	defaultListObjectsMaxResults            = 1000
 	defaultMaxConcurrentReadsForCheck       = 100
 	defaultMaxConcurrentReadsForListObjects = 30
+
+	defaultCheckQueryCacheLimit = 10000
+	defaultCheckQueryCacheTTL   = 10 * time.Second
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -66,6 +70,10 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
+
+	checkQueryCacheLimit uint32
+	checkQueryCacheTTL   time.Duration
+	checkCache           *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -142,6 +150,18 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheLimit = limit
+	}
+}
+
+func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheTTL = ttl
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -165,11 +185,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+
+		checkQueryCacheLimit: defaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:   defaultCheckQueryCacheTTL,
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	s.checkCache = ccache.New(
+		ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
+	)
 
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
@@ -329,7 +356,15 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
-	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	cachedCheckResolver := graph.NewCachedCheckResolver(
+		checkResolver,
+		graph.WithExistingCache(s.checkCache),
+		graph.WithCacheTTL(s.checkQueryCacheTTL),
+	)
+
+	checkResolver.SetDelegate(cachedCheckResolver)
+
+	resp, err := cachedCheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             req.GetTupleKey(),

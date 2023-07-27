@@ -8,6 +8,8 @@ import (
 
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
@@ -21,6 +23,18 @@ var (
 	ErrResolutionDepthExceeded = errors.New("resolution depth exceeded")
 	ErrTargetError             = errors.New("graph: target incorrectly specified")
 	ErrNotImplemented          = errors.New("graph: intersection and exclusion are not yet implemented")
+)
+
+var (
+	dispatchedCheckCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dispatched_check_count",
+		Help: "The total number of dispatched ResolveCheck calls made for a single Check resolution.",
+	})
+
+	dispatchedCheckCachedCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "dispatched_check_cached_count",
+		Help: "The total number of dispatched ResolveCheck calls that were for a single Check resolution.",
+	})
 )
 
 type findIngressOption int
