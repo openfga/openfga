@@ -105,8 +105,6 @@ type LocalChecker struct {
 
 type LocalCheckerOption func(d *LocalChecker)
 
-// TODO add WithResolveNodeLimit
-
 // WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
