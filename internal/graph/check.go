@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/openfga/openfga/internal/validation"
@@ -22,7 +23,7 @@ var tracer = otel.Tracer("internal/graph/check")
 const (
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultResolveNodeBreadthLimit    = 25
-	defaultMaxConcurrentReadsForCheck = 30
+	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
 // CheckResolver represents an interface that can be implemented to provide recursive resolution

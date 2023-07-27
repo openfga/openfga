@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -353,8 +354,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		MaxTuplesPerWrite:                100,
 		MaxTypesPerAuthorizationModel:    100,
-		MaxConcurrentReadsForCheck:       30, // same as Datastore.MaxOpenConns
-		MaxConcurrentReadsForListObjects: 30, // same as Datastore.MaxOpenConns
+		MaxConcurrentReadsForCheck:       math.MaxUint32, // ideally, this should be set manually and it should not be bigger than Datastore.MaxOpenConns
+		MaxConcurrentReadsForListObjects: 30,             // ideally, this should be set manually and it should not be bigger than Datastore.MaxOpenConns
 		ChangelogHorizonOffset:           0,
 		ResolveNodeLimit:                 25,
 		ResolveNodeBreadthLimit:          100,
@@ -365,7 +366,7 @@ func DefaultConfig() *Config {
 			Engine:       "memory",
 			MaxCacheSize: 100000,
 			MaxIdleConns: 10,
-			MaxOpenConns: 30,
+			MaxOpenConns: 30, // ideally, this should be set manually
 		},
 		GRPC: GRPCConfig{
 			Addr: "0.0.0.0:8081",
