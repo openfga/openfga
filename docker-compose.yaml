@@ -77,6 +77,12 @@ services:
     command: ["--query.max-clock-skew-adjustment", "500ms"]
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+    volumes:
+      - jaegar_data:/badger
     ports:
       - "16686:16686" # UI
       - "4317" # OTLP gRPC default port
@@ -115,3 +121,4 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+  jaegar_data:
