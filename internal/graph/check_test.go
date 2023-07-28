@@ -231,7 +231,7 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "difference_no_access",
 			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
 			allowed:    false,
-			minDBReads: 2, // need at minimum two direct tuple checks
+			minDBReads: 1, // if the "but not" condition returns quickly with "false", no need to evaluate the first branch
 			maxDBReads: 4, // at most two tuple checks + two userset checks
 		},
 		{
@@ -245,35 +245,38 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "intersection_and_ttu",
 			check:      tuple.NewTupleKey("document:x", "intersection_and_ttu", "user:maria"),
 			allowed:    true,
-			minDBReads: 3, // TODO should this not be four?
+			minDBReads: 3, // TODO should this not be four? one read + one check direct for TTU and two check directs to solve the intersection
 			maxDBReads: 4 + 4,
 		},
 	}
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
-		for _, test := range tests {
-			test := test
-			t.Run(fmt.Sprintf("%s_iteration_%v", test.name, i), func(t *testing.T) {
-				t.Parallel()
+		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
+			t.Parallel()
+			for _, test := range tests {
+				test := test
+				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
 
-				checker := NewLocalChecker(
-					// TODO build this wrapper inside ResolveCheck so that we don't need to construct a new Checker per test
-					storagewrappers.NewCombinedTupleReader(ds, test.contextualTuples),
-					WithMaxConcurrentReads(1))
+					checker := NewLocalChecker(
+						// TODO build this wrapper inside ResolveCheck so that we don't need to construct a new Checker per test
+						storagewrappers.NewCombinedTupleReader(ds, test.contextualTuples),
+						WithMaxConcurrentReads(1))
 
-				res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-					StoreID:            storeID,
-					TupleKey:           test.check,
-					ContextualTuples:   test.contextualTuples,
-					ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+					res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+						StoreID:            storeID,
+						TupleKey:           test.check,
+						ContextualTuples:   test.contextualTuples,
+						ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+					})
+					require.NoError(t, err)
+					require.Equal(t, res.Allowed, test.allowed)
+					// minDBReads <= dbReads <= maxDBReads
+					require.GreaterOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.minDBReads)
+					require.LessOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.maxDBReads)
 				})
-				require.NoError(t, err)
-				require.Equal(t, res.Allowed, test.allowed)
-				// minDBReads <= dbReads <= maxDBReads
-				require.GreaterOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.minDBReads)
-				require.LessOrEqual(t, res.ResolutionMetadata.DatastoreCallCount, test.maxDBReads)
-			})
-		}
+			}
+		})
 	}
 }
