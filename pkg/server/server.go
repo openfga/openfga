@@ -107,7 +107,9 @@ func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 // when evaluating a subtree of a Check or ListObjects call.
 // Thinking of a Check request as a tree of evaluations, this option controls,
 // on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
-// If your authorization models are very complex, you should set this option to be a low number (e.g. 1000)
+// If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
+// is deeply nested), or if you have lots of users for (object, relation) pairs,
+// you should set this option to be a low number (e.g. 1000)
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
