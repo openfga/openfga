@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
@@ -21,7 +23,7 @@ var tracer = otel.Tracer("internal/graph/check")
 const (
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultResolveNodeBreadthLimit    = 25
-	defaultMaxConcurrentReadsForCheck = 30
+	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
 // CheckResolver represents an interface that can be implemented to provide recursive resolution
@@ -112,32 +114,30 @@ type checkOutcome struct {
 	err  error
 }
 
-// LocalChecker implements Check in a highly concurrent and localized manner. The
-// Check resolution is limited per branch of evaluation by the concurrencyLimit.
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
 	concurrencyLimit   uint32
-	maxConcurrentReads uint32 //TODO not used yet
+	maxConcurrentReads uint32
 }
 
 type LocalCheckerOption func(d *LocalChecker)
 
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
 func WithResolveNodeBreadthLimit(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
 		d.concurrencyLimit = limit
 	}
 }
 
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForCheck
 func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		d.concurrencyLimit = limit
+		d.maxConcurrentReads = limit
 	}
 }
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
-// request locally. Thinking of a Check request as a tree of tuple evaluations, the concurrencyLimit parameter controls,
-// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
-// There is also a limit on the depth that will be evaluated before returning an error.
+// request locally.
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
 	checker := &LocalChecker{
 		ds:                 ds,
@@ -148,6 +148,9 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 	for _, opt := range opts {
 		opt(checker)
 	}
+
+	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
+
 	return checker
 }
 
@@ -405,6 +408,8 @@ func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) C
 	}
 }
 
+// ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
+// evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
 func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,

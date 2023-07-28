@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -20,8 +21,8 @@ import (
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
-	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/internal/authn"
 	"github.com/openfga/openfga/internal/authn/oidc"
@@ -353,8 +354,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		MaxTuplesPerWrite:                100,
 		MaxTypesPerAuthorizationModel:    100,
-		MaxConcurrentReadsForCheck:       30, // same as Datastore.MaxOpenConns
-		MaxConcurrentReadsForListObjects: 30, // same as Datastore.MaxOpenConns
+		MaxConcurrentReadsForCheck:       math.MaxUint32,
+		MaxConcurrentReadsForListObjects: 30,
 		ChangelogHorizonOffset:           0,
 		ResolveNodeLimit:                 25,
 		ResolveNodeBreadthLimit:          100,
