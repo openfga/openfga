@@ -138,9 +138,9 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
 // E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
-// - 1 OpenFGA replica and expected traffic of 100 RPS => set it to 1.
-// - 1 OpenFGA replica and expected traffic of 1 RPS => set it to 100.
-// - 2 OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
 func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForListObjects = max
@@ -151,9 +151,9 @@ func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 // This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
 // and the number of connections the datastore allows.
 // E.g. if Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
-// - 1 OpenFGA replica and expected traffic of 100 RPS => set it to 1.
-// - 1 OpenFGA replica and expected traffic of 1 RPS => set it to 100.
-// - 2 OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
 func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForCheck = max
