@@ -339,6 +339,8 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 			DatastoreCallCount: 0,
 		},
 	})
+
+	grpc_ctxtags.Extract(ctx).Set("datastore_call_count", int64(resp.ResolutionMetadata.DatastoreCallCount))
 	span.SetAttributes(attribute.Int64("datastore_call_count", int64(resp.ResolutionMetadata.DatastoreCallCount)))
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
