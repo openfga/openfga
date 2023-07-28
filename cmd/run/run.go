@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -353,8 +354,8 @@ func DefaultConfig() *Config {
 	return &Config{
 		MaxTuplesPerWrite:                100,
 		MaxTypesPerAuthorizationModel:    100,
-		MaxConcurrentReadsForCheck:       30, // same as Datastore.MaxOpenConns
-		MaxConcurrentReadsForListObjects: 30, // same as Datastore.MaxOpenConns
+		MaxConcurrentReadsForCheck:       math.MaxUint32,
+		MaxConcurrentReadsForListObjects: 30,
 		ChangelogHorizonOffset:           0,
 		ResolveNodeLimit:                 25,
 		ResolveNodeBreadthLimit:          100,

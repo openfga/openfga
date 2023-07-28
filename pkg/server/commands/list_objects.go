@@ -59,6 +59,7 @@ type ListObjectsQuery struct {
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
 
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
 func WithMaxConcurrentReads(max uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.maxConcurrentReads = max
@@ -77,12 +78,14 @@ func WithListObjectsMaxResults(max uint32) ListObjectsQueryOption {
 	}
 }
 
+// WithResolveNodeLimit see server.WithResolveNodeLimit
 func WithResolveNodeLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeLimit = limit
 	}
 }
 
+// WithResolveNodeBreadthLimit see server.WithResolveNodeBreadthLimit
 func WithResolveNodeBreadthLimit(limit uint32) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.resolveNodeBreadthLimit = limit
@@ -222,10 +225,8 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		limitedTupleReader := storagewrappers.NewBoundedConcurrencyTupleReader(q.datastore, q.maxConcurrentReads)
-
 		checkResolver := graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(limitedTupleReader, req.GetContextualTuples().GetTupleKeys()),
+			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
 			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
 		)

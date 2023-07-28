@@ -94,12 +94,22 @@ func WithTransport(t gateway.Transport) OpenFGAServiceV1Option {
 	}
 }
 
+// WithResolveNodeLimit sets a limit on the number of recursive calls that one Check or ListObjects call will allow.
+// Thinking of a request as a tree of evaluations, this option controls
+// how many levels we will evaluate before throwing an error that the authorization model is too complex.
 func WithResolveNodeLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeLimit = limit
 	}
 }
 
+// WithResolveNodeBreadthLimit sets a limit on the number of goroutines that can be created
+// when evaluating a subtree of a Check or ListObjects call.
+// Thinking of a Check request as a tree of evaluations, this option controls,
+// on a given level of the tree, the maximum number of nodes that can be evaluated concurrently (the breadth).
+// If your authorization models are very complex (e.g. one relation is a union of many relations, or one relation
+// is deeply nested), or if you have lots of users for (object, relation) pairs,
+// you should set this option to be a low number (e.g. 1000)
 func WithResolveNodeBreadthLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.resolveNodeBreadthLimit = limit
@@ -124,12 +134,26 @@ func WithListObjectsMaxResults(limit uint32) OpenFGAServiceV1Option {
 	}
 }
 
+// WithMaxConcurrentReadsForListObjects sets a limit on the number of datastore reads that can be in flight for a given ListObjects call.
+// This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. if Datastore.MaxOpenConns = 100 and assuming that each ListObjects call takes 1 second and no traffic to Check API:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
 func WithMaxConcurrentReadsForListObjects(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForListObjects = max
 	}
 }
 
+// WithMaxConcurrentReadsForCheck sets a limit on the number of datastore reads that can be in flight for a given Check call.
+// This number should be set depending on the RPS expected for Check and ListObjects APIs, the number of OpenFGA replicas running,
+// and the number of connections the datastore allows.
+// E.g. if Datastore.MaxOpenConns = 100 and assuming that each Check call takes 1 second and no traffic to ListObjects API:
+// - One OpenFGA replica and expected traffic of 100 RPS => set it to 1.
+// - One OpenFGA replica and expected traffic of 1 RPS => set it to 100.
+// - Two OpenFGA replicas and expected traffic of 1 RPS => set it to 50.
 func WithMaxConcurrentReadsForCheck(max uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.maxConcurrentReadsForCheck = max
