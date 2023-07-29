@@ -43,7 +43,10 @@ func ResolutionDepthFromContext(ctx context.Context) (uint32, bool) {
 
 type ResolutionMetadata struct {
 	Depth uint32
-	// Number of calls to ReadUserTuple + ReadUsersetTuples + Read
+	// Number of calls to RelationshipTupleReader.ReadUserTuple + ReadUsersetTuples + Read.
+	// Thinking of a Check as a tree of evaluations:
+	// If the solution is "allowed=true", one path was found. This is the value in the leaf node of that path
+	// If the solution is "allowed=false", no paths were found. This is the sum of all the reads in all the paths that had to be evaluated
 	DatastoreCallCount uint32
 }
 

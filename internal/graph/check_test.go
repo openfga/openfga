@@ -150,7 +150,9 @@ func TestCheckDbReads(t *testing.T) {
 		define intersection as a and b
 		define difference as a but not b
 		define ttu as member from parent
-        define intersection_and_ttu as union and ttu 
+        define union_and_ttu as union and ttu
+		define union_or_ttu as union or ttu
+		define intersection_of_ttus as union_or_ttu and union_and_ttu
 		define parent: [org] as self
 	`)
 
@@ -181,37 +183,37 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
 			allowed:    true,
-			minDBReads: 1, // checkDirectUserTuple returns success before checkDirectUsersetTuples starts
-			maxDBReads: 2, // checkDirectUsersetTuples returns false, then checkDirectUserTuple returns true
+			minDBReads: 1, // checkDirectUserTuple needs to run
+			maxDBReads: 1,
 		},
 		{
 			name:             "direct_access_thanks_to_contextual_tuple", // NOTE: this is counting the read from memory as a database read!
 			check:            tuple.NewTupleKey("document:x", "a", "user:unknown"),
 			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
 			allowed:          true,
-			minDBReads:       1, // checkDirectUserTuple returns success from contextual tuples before checkDirectUsersetTuples starts
-			maxDBReads:       2,
+			minDBReads:       1, // checkDirectUserTuple needs to run
+			maxDBReads:       1,
 		},
 		{
 			name:       "union",
 			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
 			allowed:    true,
-			minDBReads: 1, // one direct tuple lookup
-			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
+			minDBReads: 1, // checkDirectUserTuple needs to run
+			maxDBReads: 1,
 		},
 		{
 			name:       "union_no_access",
 			check:      tuple.NewTupleKey("document:x", "union", "user:unknown"),
 			allowed:    false,
-			minDBReads: 2, // need to check all the conditions in the union, so at minimum two direct tuple lookups
-			maxDBReads: 4, // very unlikely but possible, depending on goroutine scheduling
+			minDBReads: 4, // need to check all the conditions in the union, so two direct tuple lookups + two userset lookups
+			maxDBReads: 4,
 		},
 		{
 			name:       "intersection",
 			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
 			allowed:    true,
 			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			maxDBReads: 2,
 		},
 		{
 			name:       "intersection_no_access",
@@ -225,7 +227,7 @@ func TestCheckDbReads(t *testing.T) {
 			check:      tuple.NewTupleKey("document:x", "difference", "user:jon"),
 			allowed:    true,
 			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			maxDBReads: 3, // at most two tuple checks + two userset checks
 		},
 		{
 			name:       "difference_no_access",
@@ -238,15 +240,51 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "ttu",
 			check:      tuple.NewTupleKey("document:x", "ttu", "user:maria"),
 			allowed:    true,
-			minDBReads: 2, // one read to find org:fga and another direct check to check membership
-			maxDBReads: 4,
+			minDBReads: 2, // one read to find org:fga + one direct check if user:maria is a member of org:fga
+			maxDBReads: 2,
 		},
 		{
-			name:       "intersection_and_ttu",
-			check:      tuple.NewTupleKey("document:x", "intersection_and_ttu", "user:maria"),
+			name:       "ttu_no_access",
+			check:      tuple.NewTupleKey("document:x", "ttu", "user:jon"),
+			allowed:    false,
+			minDBReads: 3, // one read to find org:fga + (one direct check + userset check) to see if user:jon is a member of org:fga
+			maxDBReads: 3,
+		},
+		// more complex scenarios
+		{
+			name:       "union_and_ttu",
+			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:maria"),
 			allowed:    true,
-			minDBReads: 3, // TODO should this not be four? one read + one check direct for TTU and two check directs to solve the intersection
-			maxDBReads: 4 + 4,
+			minDBReads: 3, // union (1 read) + ttu (2 reads)
+			maxDBReads: 3,
+		},
+		{
+			name:       "union_and_ttu_no_access",
+			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
+			allowed:    false,
+			minDBReads: 3, // min(union (4 reads), ttu (3 reads)) = 3
+			maxDBReads: 4, // max(union (4 reads), ttu (3 reads)) = 4
+		},
+		{
+			name:       "union_or_ttu",
+			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:maria"),
+			allowed:    true,
+			minDBReads: 1, // union path (1 read)
+			maxDBReads: 2, // ttu path (2 reads)
+		},
+		{
+			name:       "union_or_ttu_no_access",
+			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:unknown"),
+			allowed:    false,
+			minDBReads: 7, // union (4 reads) + ttu (3 reads)
+			maxDBReads: 7,
+		},
+		{
+			name:       "intersection_of_ttus",
+			check:      tuple.NewTupleKey("document:x", "intersection_of_ttus", "user:maria"),
+			allowed:    true,
+			minDBReads: 4,
+			maxDBReads: 5,
 		},
 	}
 

@@ -242,7 +242,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -282,10 +281,9 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				err = result.err
 				continue
 			}
-			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
 
+			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
 			if !result.resp.GetAllowed() {
-				result.resp.GetResolutionMetadata().DatastoreCallCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -372,7 +370,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if !baseResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreCallCount = dbReads
+				response.GetResolutionMetadata().DatastoreCallCount = baseResult.resp.GetResolutionMetadata().DatastoreCallCount
 				return response, nil
 			}
 
@@ -384,7 +382,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreCallCount
 
 			if subResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreCallCount = dbReads
+				response.GetResolutionMetadata().DatastoreCallCount = subResult.resp.GetResolutionMetadata().DatastoreCallCount
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -712,7 +710,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					TupleKey:             tupleKey,
 					ResolutionMetadata: &ResolutionMetadata{
 						Depth:              req.GetResolutionMetadata().Depth - 1,
-						DatastoreCallCount: response.GetResolutionMetadata().DatastoreCallCount,
+						DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount, // add TTU read below
 					},
 				}))
 		}
@@ -721,7 +719,17 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			return response, nil
 		}
 
-		return union(ctx, c.concurrencyLimit, handlers...)
+		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
+
+		if err == nil {
+			// if we had 3 dispatched requests, and the final result is "allowed = false",
+			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
+			// if final result is "allowed = true", we want final reads to be N1 + 1
+			unionResponse.GetResolutionMetadata().DatastoreCallCount++
+		}
+
+		return unionResponse, err
+
 	}
 }
 
