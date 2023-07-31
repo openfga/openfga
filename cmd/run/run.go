@@ -178,6 +178,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
+	//ResolveCheckCacheConfig
+	flags.Bool("resolve-check-cache-config-enabled", defaultConfig.ResolveCheckCacheConfig.Enabled, "enables cache when resolving check result")
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
@@ -300,6 +302,13 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
+// ResolveCheckCacheConfig defines configuration for caching when resolving check
+type ResolveCheckCacheConfig struct {
+	Enabled    bool
+	CacheLimit uint32
+	CacheTTL   time.Duration
+}
+
 type Config struct {
 	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
@@ -337,15 +346,16 @@ type Config struct {
 	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore  DatastoreConfig
-	GRPC       GRPCConfig
-	HTTP       HTTPConfig
-	Authn      AuthnConfig
-	Log        LogConfig
-	Trace      TraceConfig
-	Playground PlaygroundConfig
-	Profiler   ProfilerConfig
-	Metrics    MetricConfig
+	Datastore               DatastoreConfig
+	GRPC                    GRPCConfig
+	HTTP                    HTTPConfig
+	Authn                   AuthnConfig
+	Log                     LogConfig
+	Trace                   TraceConfig
+	Playground              PlaygroundConfig
+	Profiler                ProfilerConfig
+	Metrics                 MetricConfig
+	ResolveCheckCacheConfig ResolveCheckCacheConfig
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -408,6 +418,11 @@ func DefaultConfig() *Config {
 			Enabled:             true,
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
+		},
+		ResolveCheckCacheConfig: ResolveCheckCacheConfig{
+			Enabled:    true,
+			CacheLimit: 10000,
+			CacheTTL:   10 * time.Second,
 		},
 	}
 }
@@ -714,6 +729,9 @@ func RunServer(ctx context.Context, config *Config) error {
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
+		server.WithCheckQueryCacheEnabled(config.ResolveCheckCacheConfig.Enabled),
+		server.WithCheckQueryCacheLimit(config.ResolveCheckCacheConfig.CacheLimit),
+		server.WithCheckQueryCacheTTL(config.ResolveCheckCacheConfig.CacheTTL),
 		server.WithExperimentals(experimentals...),
 	)
 

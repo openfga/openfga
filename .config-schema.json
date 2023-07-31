@@ -349,6 +349,30 @@
                     "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
                 }
             }
+        },
+        "resolveCheckCacheConfig": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "enable/disable cache for resolve check result",
+                    "type": "bool",
+                    "default": "true",
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_ENABLED"
+                },
+                "cacheLimit": {
+                    "description": "size limit for resolve check cache",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_LIMIT"
+                },
+                "cacheTTL": {
+                    "description": "time to live (TTL) value of resolve check cache",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_TTL"
+                }
+            }
         }
     },
     "definitions": {

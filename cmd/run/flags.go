@@ -157,5 +157,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
+
+		util.MustBindPFlag("resolveCheckCacheConfig.enabled", flags.Lookup("resolve-check-cache-config-enabled"))
+		util.MustBindEnv("resolveCheckCacheConfig.enabled", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_ENABLED")
+
 	}
 }

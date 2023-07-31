@@ -45,8 +45,9 @@ const (
 	defaultMaxConcurrentReadsForCheck       = 100
 	defaultMaxConcurrentReadsForListObjects = 30
 
-	defaultCheckQueryCacheLimit = 10000
-	defaultCheckQueryCacheTTL   = 10 * time.Second
+	defaultCheckQueryCacheLimit  = 10000
+	defaultCheckQueryCacheTTL    = 10 * time.Second
+	defaultCheckQueryCacheEnable = true
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -71,9 +72,10 @@ type Server struct {
 
 	typesystemResolver typesystem.TypesystemResolverFunc
 
-	checkQueryCacheLimit uint32
-	checkQueryCacheTTL   time.Duration
-	checkCache           *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
+	checkQueryCacheEnabled bool
+	checkQueryCacheLimit   uint32
+	checkQueryCacheTTL     time.Duration
+	checkCache             *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -150,6 +152,12 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheEnabled = enabled
+	}
+}
+
 func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheLimit = limit
@@ -186,8 +194,9 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
-		checkQueryCacheLimit: defaultCheckQueryCacheLimit,
-		checkQueryCacheTTL:   defaultCheckQueryCacheTTL,
+		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
+		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
 	}
 
 	for _, opt := range opts {
@@ -356,15 +365,17 @@ func (s *Server) Check(ctx context.Context, req *openfgapb.CheckRequest) (*openf
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
-	cachedCheckResolver := graph.NewCachedCheckResolver(
-		checkResolver,
-		graph.WithExistingCache(s.checkCache),
-		graph.WithCacheTTL(s.checkQueryCacheTTL),
-	)
+	if s.checkQueryCacheEnabled {
+		cachedCheckResolver := graph.NewCachedCheckResolver(
+			checkResolver,
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
 
-	checkResolver.SetDelegate(cachedCheckResolver)
+		checkResolver.SetDelegate(cachedCheckResolver)
+	}
 
-	resp, err := cachedCheckResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
+	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
 		TupleKey:             req.GetTupleKey(),

@@ -18,7 +18,7 @@ const (
 )
 
 // CachedCheckResolver implements the CheckResolver interface in way that attempts to resolve
-// Check subproblems via prior computations before delegating the request to some underlying
+// Check sub-problems via prior computations before delegating the request to some underlying
 // CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
@@ -29,7 +29,7 @@ type CachedCheckResolver struct {
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
 
-// CachedCheckResolverOpt defines an option that can be used to change the behavior of cachedCeckResolver
+// CachedCheckResolverOpt defines an option that can be used to change the behavior of cachedCheckResolver
 // instance.
 type CachedCheckResolverOpt func(*CachedCheckResolver)
 
@@ -48,6 +48,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 	}
 }
 
+// WithExistingCache sets the cache to the provided cache
 func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
@@ -55,9 +56,9 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 }
 
 // NewCachedCheckResolver constructs a CheckResolver that delegates Check resolution to the provided delegate,
-// but before delegating the query to the delegate a cache-key lookup is made to see if the Check subproblem
-// has already recently been computed. If the Check subproblem is in the cache, then the response is returned
-// immediately and no recomputation is necessary.
+// but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
+// has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
+// immediately and no re-computation is necessary.
 func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
 		delegate:     delegate,
@@ -105,7 +106,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 // checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
 // used for Check resolution cache key lookups.
 //
-// We use the 'gob' package to produce a determinstic byte ordering for the contextual tuples provided
+// We use the 'gob' package to produce a deterministic byte ordering for the contextual tuples provided
 // in the request body. The same tuple provided with the same contextual tuples should produce the same
 // cache key.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
