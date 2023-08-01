@@ -26,12 +26,6 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
-// CheckResolver represents an interface that can be implemented to provide recursive resolution
-// of a Check.
-type CheckResolver interface {
-	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
-}
-
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string

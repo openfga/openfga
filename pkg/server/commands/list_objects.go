@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -33,6 +34,8 @@ const (
 	defaultListObjectsDeadline     = 3 * time.Second
 	defaultListObjectsMaxResults   = 1000
 	defaultMaxConcurrentReads      = 30
+
+	defaultCheckQueryCacheTTL = 10 * time.Second
 )
 
 var (
@@ -55,6 +58,10 @@ type ListObjectsQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
+
+	// configurations for caching results
+	checkQueryCacheTTL time.Duration
+	checkCache         *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -98,6 +105,20 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
+// WithCheckQueryCacheTTL sets the check cache query TTL
+func WithCheckQueryCacheTTL(ttl time.Duration) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.checkQueryCacheTTL = ttl
+	}
+}
+
+// WithCheckCache sets the cache used for resolve check results
+func WithCheckCache(checkCache *ccache.Cache[*graph.ResolveCheckResponse]) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.checkCache = checkCache
+	}
+}
+
 func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
@@ -107,6 +128,8 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
 		maxConcurrentReads:      defaultMaxConcurrentReads,
+		checkCache:              nil,
+		checkQueryCacheTTL:      defaultCheckQueryCacheTTL,
 	}
 
 	for _, opt := range opts {
@@ -230,6 +253,15 @@ func (q *ListObjectsQuery) evaluate(
 			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
 		)
+
+		if q.checkCache != nil {
+			cachedCheckResolver := graph.NewCachedCheckResolver(
+				checkResolver,
+				graph.WithExistingCache(q.checkCache),
+				graph.WithCacheTTL(q.checkQueryCacheTTL),
+			)
+			checkResolver.SetDelegate(cachedCheckResolver)
+		}
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
