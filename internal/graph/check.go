@@ -116,6 +116,7 @@ type checkOutcome struct {
 
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
+	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
 }
@@ -136,6 +137,12 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
+func WithDelegate(delegate CheckResolver) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.delegate = delegate
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
@@ -144,6 +151,7 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		concurrencyLimit:   defaultResolveNodeBreadthLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
 	}
+	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 
 	for _, opt := range opts {
 		opt(checker)
@@ -400,11 +408,22 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}, nil
 }
 
+func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.ResolveCheck(ctx, req)
+		resp, err := c.delegate.ResolveCheck(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		return &ResolveCheckResponse{
+			Allowed: resp.Allowed,
+		}, nil
 	}
 }
 
