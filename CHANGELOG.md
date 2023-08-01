@@ -13,7 +13,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.2.0...v1.3.0)
 
 ### Added
-* Bounded concurrency limiter for Check and ListObjects queries (#860, #887)
+* Bounded concurrency limiter for Check and ListObjects queries ([#860](https://github.com/openfga/openfga/pull/860), [#887](https://github.com/openfga/openfga/pull/887))
   New server configurations can be provided to limit/bound the amount of concurrency that is allowed during query evaluation. These settings can help reduce the impact/burden that a single query (e.g. Check, ListObjects, etc..) can have on the underlying database and OpenFGA server.
 
   * `--maxConcurrentReadsForListObjects` - The maximum allowed number of concurrent reads in a single ListObjects query.
@@ -22,13 +22,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   * `--resolveNodeBreadthLimit` - Defines how many nodes on a given level can be evaluated concurrently in a Check resolution tree.
 
-* Jaeger persistent storage for traces in `docker-compose.yaml` (#888) - thanks @Azanul
+* Jaeger persistent storage for traces in `docker-compose.yaml` ([#888](https://github.com/openfga/openfga/pull/888)) - thanks @Azanul
 
 ### Fixed
-* Disable default debug level-logging in `retryablehttp` client (#882) - thanks @KlausVii
+* Disable default debug level-logging in `retryablehttp` client ([#882](https://github.com/openfga/openfga/pull/882)) - thanks @KlausVii
 
 ### Changed
-* [BREAKING] Imports for OpenFGA protobuf API dependencies (#898)
+* [BREAKING] Imports for OpenFGA protobuf API dependencies ([#898](https://github.com/openfga/openfga/pull/898))
   * **Problem** - Previously we depended on [Buf remote generated packages](https://buf.build/docs/bsr/remote-packages/overview), but they recently deprecated protobuf imports served from the `go.buf.build` domain (see [Migrate from remote generation alpha](https://buf.build/docs/migration-guides/migrate-remote-generation-alpha)). OpenFGA builds are currently broken as a result of this.
   * **Change** - We switched our protobuf API dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. So we no longer use Buf remote generated packages in favor of packages we managed in the [`openfga/api`](https://github.com/openfga/api) repository. This fixes existing build issues.
   * **Impact** - Developers using the OpenFGA as a library or the gRPC API must change their protobuf dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. A global find/replace and package depedency update should fix it. Here's a diff demonstrating the changes for a Go app, for example:
@@ -41,7 +41,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
     )
     ```
 
-* Refactor the `Server` constructor to use the options builder pattern (#833)
+* Refactor the `Server` constructor to use the options builder pattern ([#833](https://github.com/openfga/openfga/pull/833))
 
   ```go
   import (
