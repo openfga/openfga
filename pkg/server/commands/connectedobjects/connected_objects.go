@@ -8,13 +8,13 @@ import (
 	"sync"
 	"sync/atomic"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -35,7 +35,7 @@ type ConnectedObjectsRequest struct {
 	ObjectType       string
 	Relation         string
 	User             IsUserRef
-	ContextualTuples []*openfgapb.TupleKey
+	ContextualTuples []*openfgav1.TupleKey
 }
 
 type IsUserRef interface {
@@ -45,7 +45,7 @@ type IsUserRef interface {
 }
 
 type UserRefObject struct {
-	Object *openfgapb.Object
+	Object *openfgav1.Object
 }
 
 var _ IsUserRef = (*UserRefObject)(nil)
@@ -77,7 +77,7 @@ func (u *UserRefTypedWildcard) String() string {
 }
 
 type UserRefObjectRelation struct {
-	ObjectRelation *openfgapb.ObjectRelation
+	ObjectRelation *openfgav1.ObjectRelation
 }
 
 func (*UserRefObjectRelation) isUserRef() {}
@@ -185,7 +185,7 @@ func (c *ConnectedObjectsQuery) execute(
 
 	storeID := req.StoreID
 
-	var sourceUserRef *openfgapb.RelationReference
+	var sourceUserRef *openfgav1.RelationReference
 	var sourceUserType, sourceUserObj string
 
 	// e.g. 'user:bob'
@@ -248,7 +248,7 @@ func (c *ConnectedObjectsQuery) execute(
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
 					User: &UserRefObjectRelation{
-						ObjectRelation: &openfgapb.ObjectRelation{
+						ObjectRelation: &openfgav1.ObjectRelation{
 							Object:   sourceUserObj,
 							Relation: innerLoopIngress.Ingress.GetRelation(),
 						},
@@ -295,9 +295,9 @@ func (c *ConnectedObjectsQuery) Execute(
 type reverseExpandRequest struct {
 	storeID          string
 	ingress          *graph.RelationshipIngress
-	targetObjectRef  *openfgapb.RelationReference
+	targetObjectRef  *openfgav1.RelationReference
 	sourceUserRef    IsUserRef
-	contextualTuples []*openfgapb.TupleKey
+	contextualTuples []*openfgav1.TupleKey
 }
 
 func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
@@ -326,18 +326,18 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 
 	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
 
-	var userFilter []*openfgapb.ObjectRelation
+	var userFilter []*openfgav1.ObjectRelation
 
 	// e.g. 'user:bob'
 	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
 		})
 	}
 
 	// e.g. 'group:eng#member'
 	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: val.ObjectRelation.Object,
 		})
 	}
@@ -398,7 +398,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 
 		var sourceUserRef IsUserRef
 		sourceUserRef = &UserRefObject{
-			Object: &openfgapb.Object{
+			Object: &openfgav1.Object{
 				Type: foundObjectType,
 				Id:   foundObjectID,
 			},
@@ -410,7 +410,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 
 		if _, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
 			sourceUserRef = &UserRefObjectRelation{
-				ObjectRelation: &openfgapb.ObjectRelation{
+				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   foundObject,
 					Relation: ingress.GetRelation(),
 				},
@@ -455,7 +455,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	targetObjectType := req.targetObjectRef.GetType()
 	targetObjectRel := req.targetObjectRef.GetRelation()
 
-	var userFilter []*openfgapb.ObjectRelation
+	var userFilter []*openfgav1.ObjectRelation
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
@@ -466,25 +466,25 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 
 	if publiclyAssignable {
 		// e.g. 'user:*'
-		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: fmt.Sprintf("%s:*", targetUserObjectType),
 		})
 	}
 
-	sourceRelationRef := &openfgapb.RelationReference{
+	sourceRelationRef := &openfgav1.RelationReference{
 		Type: req.sourceUserRef.GetObjectType(),
 	}
 
 	// e.g. 'user:bob'
 	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-		userFilter = append(userFilter, &openfgapb.ObjectRelation{
+		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
 		})
 	}
 
 	// e.g. 'group:eng#member'
 	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-		sourceRelationRef.RelationOrWildcard = &openfgapb.RelationReference_Relation{
+		sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
 			Relation: val.ObjectRelation.Relation,
 		}
 
@@ -546,7 +546,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		}
 
 		sourceUserRef := &UserRefObjectRelation{
-			ObjectRelation: &openfgapb.ObjectRelation{
+			ObjectRelation: &openfgav1.ObjectRelation{
 				Object:   foundObject,
 				Relation: tk.GetRelation(),
 			},

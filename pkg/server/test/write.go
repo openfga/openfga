@@ -7,6 +7,7 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -14,16 +15,15 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type writeCommandTest struct {
 	_name    string
-	model    *openfgapb.AuthorizationModel
-	tuples   []*openfgapb.TupleKey
-	request  *openfgapb.WriteRequest
+	model    *openfgav1.AuthorizationModel
+	tuples   []*openfgav1.TupleKey
+	request  *openfgav1.WriteRequest
 	err      error
-	response *openfgapb.WriteResponse
+	response *openfgav1.WriteResponse
 }
 
 var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@openfga")
@@ -31,30 +31,30 @@ var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@o
 var writeCommandTests = []writeCommandTest{
 	{
 		_name: "invalid_schema_version",
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,
 			TypeDefinitions: parser.MustParse(`type repo`),
 		},
-		request: &openfgapb.WriteRequest{Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}}},
+		request: &openfgav1.WriteRequest{Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}}},
 		err:     serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion),
 	},
 	{
 		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`type repo`),
 		},
-		request: &openfgapb.WriteRequest{},
+		request: &openfgav1.WriteRequest{},
 		// output
 		err: serverErrors.InvalidWriteInput,
 	},
 	{
 		_name: "ExecuteWithSameTupleInWritesReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -66,8 +66,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk, tk}},
 		},
 
 		// output
@@ -76,7 +76,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteToIndirectUnionRelationshipReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -90,8 +90,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{{
 				Object:   "repo:openfga/openfga",
 				Relation: "viewer",
 				User:     "user:github|alice@openfga.com",
@@ -108,7 +108,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteToIndirectIntersectionRelationshipReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -122,8 +122,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{{
 				Object:   "repo:openfga/openfga",
 				Relation: "viewer",
 				User:     "user:github|alice@openfga.com",
@@ -140,7 +140,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteToIndirectDifferenceRelationshipReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -155,8 +155,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{{
 				Object:   "repo:openfga/openfga",
 				Relation: "viewer",
 				User:     "user:github|alice@openfga.com",
@@ -173,7 +173,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteToIndirectComputerUsersetRelationshipReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -187,8 +187,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{{
 				Object:   "repo:openfga/openfga",
 				Relation: "viewer",
 				User:     "user:github|alice@openfga.com",
@@ -205,7 +205,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteToIndirectTupleToUsersetRelationshipReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -222,8 +222,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{{
 				Object:   "repo:openfga/openfga",
 				Relation: "viewer",
 				User:     "user:github|alice@openfga.com",
@@ -240,7 +240,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithSameTupleInDeletesReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -252,8 +252,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk, tk}},
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk, tk}},
 		},
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
@@ -261,7 +261,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithSameTupleInWritesAndDeletesReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -273,9 +273,9 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes:  &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+		request: &openfgav1.WriteRequest{
+			Writes:  &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}},
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}},
 		},
 		// output
 		err: serverErrors.DuplicateTupleInWrite(tk),
@@ -283,7 +283,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteDeleteTupleWhichDoesNotExistReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -295,16 +295,16 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}},
 		},
 		// output
-		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)),
+		err: serverErrors.WriteFailedDueToInvalidInput(storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)),
 	},
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidAuthorizationModelReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -313,8 +313,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}},
 		},
 		// output
 		err: serverErrors.ValidationError(
@@ -327,7 +327,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithMissingUserError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -339,8 +339,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga", "owner", ""),
 			}},
 		},
@@ -355,7 +355,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithMissingObjectError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -367,8 +367,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("", "owner", "user:elbuo@github.com"),
 			}},
 		},
@@ -381,7 +381,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithInvalidRelationError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -393,8 +393,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga", "", "user:elbuo@github.com"),
 			}},
 		},
@@ -409,7 +409,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteWithWriteTupleWithNotFoundRelationError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -421,8 +421,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga", "undefined", "user:elbuo@github.com"),
 			}},
 		},
@@ -440,26 +440,26 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteDeleteTupleWithInvalidAuthorizationModelIgnoresAuthorizationModelValidation",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type:      "repo",
-					Relations: map[string]*openfgapb.Userset{},
+					Relations: map[string]*openfgav1.Userset{},
 				},
 			},
 		},
-		tuples: []*openfgapb.TupleKey{tk},
+		tuples: []*openfgav1.TupleKey{tk},
 		// input
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{tk}},
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{tk}},
 		},
 	},
 	{
 		_name: "ExecuteWithInvalidObjectFormatReturnsError",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -468,8 +468,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				// invalid because object has no :
 				tuple.NewTupleKey("openfga", "owner", "user:github|jose@openfga"),
 			}},
@@ -485,7 +485,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteReturnsErrorIfAuthModelNotFound",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -498,9 +498,9 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
+		request: &openfgav1.WriteRequest{
 			AuthorizationModelId: "01GZFXJ2XPAF8FBHDKJ83XAJQP",
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "writer", "user:github|jon@openfga"),
 			}},
@@ -510,7 +510,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteReturnsSuccessIfDeleteRelationDoesNotExistInAuthorizationModel",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -521,12 +521,12 @@ var writeCommandTests = []writeCommandTest{
 			    define manager: [user] as self
 			`),
 		},
-		tuples: []*openfgapb.TupleKey{
+		tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 			}},
 		},
@@ -534,7 +534,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForWriteOnly",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -555,8 +555,8 @@ var writeCommandTests = []writeCommandTest{
 			`),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
@@ -567,7 +567,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForDeleteOnly",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -587,15 +587,15 @@ var writeCommandTests = []writeCommandTest{
 			    define member: [user] as self
 			`),
 		},
-		tuples: []*openfgapb.TupleKey{
+		tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 			tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
 			tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
 			tuple.NewTupleKey("team:openfga/iam", "member", "user:iaco@openfga"),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
@@ -606,7 +606,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "ExecuteSucceedsForWriteAndDelete",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -626,19 +626,19 @@ var writeCommandTests = []writeCommandTest{
 			    define member: [user] as self
 			`),
 		},
-		tuples: []*openfgapb.TupleKey{
+		tuples: []*openfgav1.TupleKey{
 			tuple.NewTupleKey("org:openfga", "owner", "user:github|yenkel@openfga"),
 			tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 		},
 		// input
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "writer", "team:openfga/iam#member"),
 				tuple.NewTupleKey("team:openfga/iam", "member", "user:iaco@openfga"),
 			}},
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "user:github|yenkel@openfga"),
 				tuple.NewTupleKey("repo:openfga/openfga", "reader", "team:openfga/platform#member"),
 			}},
@@ -647,7 +647,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Execute_fails_if_type_in_userset_value_was_not_found",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -658,9 +658,9 @@ var writeCommandTests = []writeCommandTest{
 			    define viewer: [user] as self
 			`),
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:doc1", "viewer", "group:engineering#member"),
 				},
 			},
@@ -675,7 +675,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Execute_fails_if_relation_in_userset_value_was_not_found",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -686,9 +686,9 @@ var writeCommandTests = []writeCommandTest{
 			    define viewer: [user] as self
 			`),
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:doc1", "viewer", "document:doc1#editor"),
 				},
 			},
@@ -707,7 +707,7 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Delete_succeeds_even_if_user_field_contains_a_type_that_is_not_allowed_by_the_current_authorization_model",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
@@ -718,15 +718,15 @@ var writeCommandTests = []writeCommandTest{
 			    define owner: [user] as self
 			`),
 		},
-		tuples: []*openfgapb.TupleKey{
+		tuples: []*openfgav1.TupleKey{
 			{
 				Object:   "org:openfga",
 				Relation: "owner",
 				User:     "impossible:1",
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Deletes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Deletes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "impossible:1"),
 			},
 			},
@@ -735,22 +735,22 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_fails_if_user_field_contains_a_type_that_does_not_exist",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "org",
-					Relations: map[string]*openfgapb.Userset{
-						"owner": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"owner": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"owner": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "user",
 									},
@@ -761,8 +761,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:openfga", "owner", "undefined:1"),
 			},
 			},
@@ -777,10 +777,10 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_fails_if_user_field_contains_a_type_that_is_not_allowed_by_the_authorization_model_(which_only_allows_group:...)",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -789,13 +789,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "group",
 									},
@@ -806,8 +806,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
@@ -821,10 +821,10 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "1.1_Execute_fails_if_relation_in_userset_value_was_not_found",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -833,13 +833,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"reader": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "group",
 									},
@@ -850,8 +850,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
@@ -868,10 +868,10 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "1.1_Execute_fails_if_type_in_userset_value_was_not_found",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -880,13 +880,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"reader": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "group",
 									},
@@ -897,8 +897,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "undefined:abc#member"),
 			}},
 		},
@@ -912,22 +912,22 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_succeeds_if_user_field_contains_a_type_that_is_allowed_by_the_authorization_model_(which_only_allows_user:...)",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "user",
 									},
@@ -938,8 +938,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "user:bob"),
 			}},
 		},
@@ -947,10 +947,10 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_fails_if_user_field_contains_a_type_that_is_not_allowed_by_the_authorization_model_(which_only_allows_group:...#member)",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -959,13 +959,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
@@ -974,8 +974,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "user:abc"),
 			}},
 		},
@@ -989,22 +989,22 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_succeeds_if_user_field_contains_a_type_that_is_allowed_by_the_authorization_model_(which_only_allows_group:...#member)",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "group",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"member": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"member": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{Type: "user"},
 								},
 							},
@@ -1013,16 +1013,16 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type:               "group",
-										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
+										RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
@@ -1031,8 +1031,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 			}},
 		},
@@ -1040,22 +1040,22 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Multiple_writes_succeed_if_user_fields_contain_a_type_that_is_allowed_by_the_authorization_model",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "group",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"member": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"member": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{Type: "user"},
 								},
 							},
@@ -1064,19 +1064,19 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "user",
 									},
 									{
 										Type:               "group",
-										RelationOrWildcard: &openfgapb.RelationReference_Relation{Relation: "member"},
+										RelationOrWildcard: &openfgav1.RelationReference_Relation{Relation: "member"},
 									},
 								},
 							},
@@ -1085,8 +1085,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "group:abc#member"),
 				tuple.NewTupleKey("document:budget", "reader", "user:def"),
 			}},
@@ -1095,22 +1095,22 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_succeeds_if_user_is_wildcard_and_type_references_a_specific_type",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{
 										Type: "user",
 									},
@@ -1122,8 +1122,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "user:*"),
 			}},
 		},
@@ -1131,10 +1131,10 @@ var writeCommandTests = []writeCommandTest{
 	{
 		_name: "Write_fails_if_user_is_a_typed_wildcard_and_the_type_restrictions_do_not_permit_it",
 		// state
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -1143,13 +1143,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
-						"reader": {Userset: &openfgapb.Userset_This{}},
+					Relations: map[string]*openfgav1.Userset{
+						"reader": {Userset: &openfgav1.Userset_This{}},
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"reader": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
@@ -1158,8 +1158,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:budget", "reader", "group:*"),
 			}},
 		},
@@ -1172,22 +1172,22 @@ var writeCommandTests = []writeCommandTest{
 	},
 	{
 		_name: "invalid_type_restriction_in_write_body",
-		model: &openfgapb.AuthorizationModel{
+		model: &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "group",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"member": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"member": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("user", ""),
 								},
 							},
@@ -1196,13 +1196,13 @@ var writeCommandTests = []writeCommandTest{
 				},
 				{
 					Type: "resource",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"writer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"writer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("group", "member"),
 								},
 							},
@@ -1211,8 +1211,8 @@ var writeCommandTests = []writeCommandTest{
 				},
 			},
 		},
-		request: &openfgapb.WriteRequest{
-			Writes: &openfgapb.TupleKeys{TupleKeys: []*openfgapb.TupleKey{
+		request: &openfgav1.WriteRequest{
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:bad", "writer", "group:fga"),
 			}},
 		},
@@ -1238,7 +1238,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.tuples != nil {
-				err := datastore.Write(ctx, store, []*openfgapb.TupleKey{}, test.tuples)
+				err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
 				require.NoError(err)
 			}
 

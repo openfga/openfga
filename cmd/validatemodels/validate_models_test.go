@@ -7,13 +7,13 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestValidationResult(t *testing.T) {
@@ -33,7 +33,7 @@ func TestValidationResult(t *testing.T) {
 			var storeID string
 			for i := 0; i < totalStores; i++ {
 				storeID = ulid.Make().String()
-				_, err := ds.CreateStore(ctx, &openfgapb.Store{
+				_, err := ds.CreateStore(ctx, &openfgav1.Store{
 					Id:   storeID,
 					Name: fmt.Sprintf("store-%d", i),
 				})
@@ -44,7 +44,7 @@ func TestValidationResult(t *testing.T) {
 			// for the last store, write a bunch of models (to trigger pagination)
 			for j := 0; j < totalModelsForOneStore; j++ {
 				modelID := ulid.Make().String()
-				err = ds.WriteAuthorizationModel(ctx, storeID, &openfgapb.AuthorizationModel{
+				err = ds.WriteAuthorizationModel(ctx, storeID, &openfgav1.AuthorizationModel{
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid

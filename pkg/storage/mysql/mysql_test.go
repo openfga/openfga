@@ -6,13 +6,13 @@ import (
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
-	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestMySQLDatastore(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // slowDataStorage is a proxy to the actual ds except the Reads are slow time by the readTuplesDelay
@@ -25,17 +25,17 @@ func NewMockSlowDataStorage(ds storage.OpenFGADatastore, readTuplesDelay time.Du
 
 func (m *slowDataStorage) Close() {}
 
-func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (m *slowDataStorage) Read(ctx context.Context, store string, key *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.Read(ctx, store, key)
 }
 
-func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgapb.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (m *slowDataStorage) ReadPage(ctx context.Context, store string, key *openfgav1.TupleKey, paginationOptions storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadPage(ctx, store, key, paginationOptions)
 }
 
-func (m *slowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
+func (m *slowDataStorage) ReadUserTuple(ctx context.Context, store string, key *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	time.Sleep(m.readTuplesDelay)
 	return m.OpenFGADatastore.ReadUserTuple(ctx, store, key)
 }

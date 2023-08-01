@@ -7,12 +7,12 @@ import (
 	"math"
 	"sync"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -35,8 +35,8 @@ type CheckResolver interface {
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
-	TupleKey             *openfgapb.TupleKey
-	ContextualTuples     []*openfgapb.TupleKey
+	TupleKey             *openfgav1.TupleKey
+	ContextualTuples     []*openfgav1.TupleKey
 	ResolutionMetadata   *ResolutionMetadata
 }
 
@@ -60,7 +60,7 @@ func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
 	return ""
 }
 
-func (r *ResolveCheckRequest) GetTupleKey() *openfgapb.TupleKey {
+func (r *ResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
 	if r != nil {
 		return r.TupleKey
 	}
@@ -68,7 +68,7 @@ func (r *ResolveCheckRequest) GetTupleKey() *openfgapb.TupleKey {
 	return nil
 }
 
-func (r *ResolveCheckRequest) GetContextualTuples() []*openfgapb.TupleKey {
+func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r != nil {
 		return r.ContextualTuples
 	}
@@ -93,7 +93,7 @@ const (
 )
 
 type checkOutcome struct {
-	resp *openfgapb.CheckResponse
+	resp *openfgav1.CheckResponse
 	err  error
 }
 
@@ -139,12 +139,12 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
 // otherwise.
-type CheckHandlerFunc func(ctx context.Context) (*openfgapb.CheckResponse, error)
+type CheckHandlerFunc func(ctx context.Context) (*openfgav1.CheckResponse, error)
 
 // CheckFuncReducer defines a function that combines or reduces one or more CheckHandlerFunc into
 // a single CheckResponse with a maximum limit on the number of concurrent evaluations that can be
 // in flight at any given time.
-type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error)
+type CheckFuncReducer func(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, error)
 
 // resolver concurrently resolves one or more CheckHandlerFunc and yields the results on the provided resultChan.
 // Callers of the 'resolver' function should be sure to invoke the callback returned from this function to ensure
@@ -200,7 +200,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
-func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error) {
+func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
@@ -230,12 +230,12 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		}
 	}
 
-	return &openfgapb.CheckResponse{Allowed: false}, err
+	return &openfgav1.CheckResponse{Allowed: false}, err
 }
 
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
-func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error) {
+func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
@@ -266,16 +266,16 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	}
 
 	if err != nil {
-		return &openfgapb.CheckResponse{Allowed: false}, err
+		return &openfgav1.CheckResponse{Allowed: false}, err
 	}
 
-	return &openfgapb.CheckResponse{Allowed: true}, nil
+	return &openfgav1.CheckResponse{Allowed: true}, nil
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome. The base and sub computations are
 // handled concurrently relative to one another.
-func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgapb.CheckResponse, error) {
+func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*openfgav1.CheckResponse, error) {
 
 	if len(handlers) != 2 {
 		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
@@ -321,38 +321,38 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				return &openfgapb.CheckResponse{Allowed: false}, baseResult.err
+				return &openfgav1.CheckResponse{Allowed: false}, baseResult.err
 			}
 
 			if !baseResult.resp.Allowed {
-				return &openfgapb.CheckResponse{Allowed: false}, nil
+				return &openfgav1.CheckResponse{Allowed: false}, nil
 			}
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				return &openfgapb.CheckResponse{Allowed: false}, subResult.err
+				return &openfgav1.CheckResponse{Allowed: false}, subResult.err
 			}
 
 			if subResult.resp.Allowed {
-				return &openfgapb.CheckResponse{Allowed: false}, nil
+				return &openfgav1.CheckResponse{Allowed: false}, nil
 			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
 
-	return &openfgapb.CheckResponse{Allowed: true}, nil
+	return &openfgav1.CheckResponse{Allowed: true}, nil
 }
 
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 		resp, err := c.ResolveCheck(ctx, req)
 		if err != nil {
 			return nil, err
 		}
 
-		return &openfgapb.CheckResponse{
+		return &openfgav1.CheckResponse{
 			Allowed: resp.Allowed,
 		}, nil
 	}
@@ -403,7 +403,7 @@ func (c *LocalChecker) ResolveCheck(
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 
-	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
@@ -417,17 +417,17 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(tk.GetObject())
 		relation := tk.GetRelation()
 
-		fn1 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		fn1 := func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
 			defer span.End()
 
 			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
-					return &openfgapb.CheckResponse{Allowed: false}, nil
+					return &openfgav1.CheckResponse{Allowed: false}, nil
 				}
 
-				return &openfgapb.CheckResponse{Allowed: false}, err
+				return &openfgav1.CheckResponse{Allowed: false}, err
 			}
 
 			// filter out invalid tuples yielded by the database query
@@ -435,9 +435,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 			if t != nil && err == nil {
 				span.SetAttributes(attribute.Bool("allowed", true))
-				return &openfgapb.CheckResponse{Allowed: true}, nil
+				return &openfgav1.CheckResponse{Allowed: true}, nil
 			}
-			return &openfgapb.CheckResponse{Allowed: false}, nil
+			return &openfgav1.CheckResponse{Allowed: false}, nil
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -455,11 +455,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 		}
 
-		fn2 := func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+		fn2 := func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
 
-			var allowedUserTypeRestrictions []*openfgapb.RelationReference
+			var allowedUserTypeRestrictions []*openfgav1.RelationReference
 			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
 				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
@@ -471,7 +471,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
 			})
 			if err != nil {
-				return &openfgapb.CheckResponse{Allowed: false}, err
+				return &openfgav1.CheckResponse{Allowed: false}, err
 			}
 			defer iter.Stop()
 
@@ -490,7 +490,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						break
 					}
 
-					return &openfgapb.CheckResponse{Allowed: false}, err
+					return &openfgav1.CheckResponse{Allowed: false}, err
 				}
 
 				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
@@ -498,7 +498,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				// for 1.0 models, if the user is '*' then we're done searching
 				if usersetObject == tuple.Wildcard && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
 					span.SetAttributes(attribute.Bool("allowed", true))
-					return &openfgapb.CheckResponse{Allowed: true}, nil
+					return &openfgav1.CheckResponse{Allowed: true}, nil
 				}
 
 				// for 1.1 models, if the user value is a typed wildcard and the type of the wildcard
@@ -509,7 +509,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 					if tuple.GetType(tk.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
-						return &openfgapb.CheckResponse{Allowed: true}, nil
+						return &openfgav1.CheckResponse{Allowed: true}, nil
 					}
 
 					continue
@@ -530,7 +530,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			if len(handlers) == 0 {
-				return &openfgapb.CheckResponse{Allowed: false}, nil
+				return &openfgav1.CheckResponse{Allowed: false}, nil
 
 			}
 
@@ -544,8 +544,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset_ComputedUserset) CheckHandlerFunc {
-	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
 
@@ -568,9 +568,9 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 
-	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
@@ -596,7 +596,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
 		)
 		if err != nil {
-			return &openfgapb.CheckResponse{Allowed: false}, err
+			return &openfgav1.CheckResponse{Allowed: false}, err
 		}
 		defer iter.Stop()
 
@@ -615,12 +615,12 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					break
 				}
 
-				return &openfgapb.CheckResponse{Allowed: false}, err
+				return &openfgav1.CheckResponse{Allowed: false}, err
 			}
 
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
 
-			tupleKey := &openfgapb.TupleKey{
+			tupleKey := &openfgav1.TupleKey{
 				Object:   userObj,
 				Relation: computedRelation,
 				User:     tk.GetUser(),
@@ -645,7 +645,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		if len(handlers) == 0 {
-			return &openfgapb.CheckResponse{Allowed: false}, nil
+			return &openfgav1.CheckResponse{Allowed: false}, nil
 		}
 
 		return union(ctx, c.concurrencyLimit, handlers...)
@@ -657,7 +657,7 @@ func (c *LocalChecker) checkSetOperation(
 	req *ResolveCheckRequest,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
-	children ...*openfgapb.Userset,
+	children ...*openfgav1.Userset,
 ) CheckHandlerFunc {
 
 	var handlers []CheckHandlerFunc
@@ -684,7 +684,7 @@ func (c *LocalChecker) checkSetOperation(
 		panic("unexpected set operator type encountered")
 	}
 
-	return func(ctx context.Context) (*openfgapb.CheckResponse, error) {
+	return func(ctx context.Context) (*openfgav1.CheckResponse, error) {
 		ctx, span := tracer.Start(ctx, reducerKey)
 		defer span.End()
 
@@ -695,21 +695,21 @@ func (c *LocalChecker) checkSetOperation(
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-	rewrite *openfgapb.Userset,
+	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
 
 	switch rw := rewrite.Userset.(type) {
-	case *openfgapb.Userset_This:
+	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
-	case *openfgapb.Userset_ComputedUserset:
+	case *openfgav1.Userset_ComputedUserset:
 		return c.checkComputedUserset(ctx, req, rw)
-	case *openfgapb.Userset_TupleToUserset:
+	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
-	case *openfgapb.Userset_Union:
+	case *openfgav1.Userset_Union:
 		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
-	case *openfgapb.Userset_Intersection:
+	case *openfgav1.Userset_Intersection:
 		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
-	case *openfgapb.Userset_Difference:
+	case *openfgav1.Userset_Difference:
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		panic("unexpected userset rewrite encountered")

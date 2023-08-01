@@ -7,21 +7,21 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestStaticTupleKeyIterator(t *testing.T) {
-	expected := []*openfgapb.TupleKey{
+	expected := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 		tuple.NewTupleKey("document:doc2", "editor", "bob"),
 	}
 
 	iter := NewStaticTupleKeyIterator(expected)
 
-	var actual []*openfgapb.TupleKey
+	var actual []*openfgav1.TupleKey
 	for {
 		tk, err := iter.Next()
 		if err != nil {
@@ -39,16 +39,16 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 
 func TestCombinedIterator(t *testing.T) {
 
-	expected := []*openfgapb.TupleKey{
+	expected := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 		tuple.NewTupleKey("document:doc2", "editor", "bob"),
 	}
 
-	iter1 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[0]})
-	iter2 := NewStaticTupleKeyIterator([]*openfgapb.TupleKey{expected[1]})
+	iter1 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[0]})
+	iter2 := NewStaticTupleKeyIterator([]*openfgav1.TupleKey{expected[1]})
 	iter := NewCombinedIterator(iter1, iter2)
 
-	var actual []*openfgapb.TupleKey
+	var actual []*openfgav1.TupleKey
 	for {
 		tk, err := iter.Next()
 		if err != nil {
@@ -62,7 +62,7 @@ func TestCombinedIterator(t *testing.T) {
 	}
 
 	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(openfgapb.TupleKey{}),
+		cmpopts.IgnoreUnexported(openfgav1.TupleKey{}),
 		testutils.TupleKeyCmpTransformer,
 	}
 
@@ -73,14 +73,14 @@ func TestCombinedIterator(t *testing.T) {
 
 func ExampleNewFilteredTupleKeyIterator() {
 
-	tuples := []*openfgapb.TupleKey{
+	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 		tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
 	}
 
 	iter := NewFilteredTupleKeyIterator(
 		NewStaticTupleKeyIterator(tuples),
-		func(tk *openfgapb.TupleKey) bool {
+		func(tk *openfgav1.TupleKey) bool {
 			return tk.GetRelation() == "editor"
 		},
 	)

@@ -4,10 +4,10 @@ import (
 	"context"
 
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type CreateStoreCommand struct {
@@ -25,8 +25,8 @@ func NewCreateStoreCommand(
 	}
 }
 
-func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgapb.CreateStoreRequest) (*openfgapb.CreateStoreResponse, error) {
-	store, err := s.storesBackend.CreateStore(ctx, &openfgapb.Store{
+func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
+	store, err := s.storesBackend.CreateStore(ctx, &openfgav1.Store{
 		Id:   ulid.Make().String(),
 		Name: req.Name,
 	})
@@ -34,7 +34,7 @@ func (s *CreateStoreCommand) Execute(ctx context.Context, req *openfgapb.CreateS
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.CreateStoreResponse{
+	return &openfgav1.CreateStoreResponse{
 		Id:        store.Id,
 		Name:      store.Name,
 		CreatedAt: store.CreatedAt,

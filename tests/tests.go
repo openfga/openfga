@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 )
 
@@ -15,9 +15,9 @@ import (
 // to bootstrap OpenFGA resources (stores, models, relationship tuples, etc..) needed to
 // execute tests.
 type TestClientBootstrapper interface {
-	CreateStore(ctx context.Context, in *openfgapb.CreateStoreRequest, opts ...grpc.CallOption) (*openfgapb.CreateStoreResponse, error)
-	WriteAuthorizationModel(ctx context.Context, in *openfgapb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgapb.WriteAuthorizationModelResponse, error)
-	Write(ctx context.Context, in *openfgapb.WriteRequest, opts ...grpc.CallOption) (*openfgapb.WriteResponse, error)
+	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
+	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
+	Write(ctx context.Context, in *openfgav1.WriteRequest, opts ...grpc.CallOption) (*openfgav1.WriteResponse, error)
 }
 
 func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
