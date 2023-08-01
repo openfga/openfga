@@ -234,6 +234,12 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		return nil, err
 	}
 
+	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
+	if s.checkQueryCacheEnabled {
+		checkCache = s.checkCache
+		// otherwise when we pass nil to the list object query, the list query will not use cache
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -241,6 +247,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgapb.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithCheckCache(checkCache),
+		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
 	)
 
 	return q.Execute(
@@ -272,6 +280,12 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		return err
 	}
 
+	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
+	if s.checkQueryCacheEnabled {
+		checkCache = s.checkCache
+		// otherwise when we pass nil to the list object query, the list query will not use cache
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -279,6 +293,8 @@ func (s *Server) StreamedListObjects(req *openfgapb.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithCheckCache(checkCache),
+		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id

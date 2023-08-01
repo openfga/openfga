@@ -8,7 +8,9 @@ import (
 	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -194,9 +196,15 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
+			checkCache := ccache.New(
+				ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(100),
+			)
+
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(test.listObjectsDeadline),
+				commands.WithCheckCache(checkCache),
+				commands.WithCheckQueryCacheTTL(1 * time.Millisecond),
 			}
 
 			if test.listObjectsDeadline != 0 {
