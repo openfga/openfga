@@ -161,5 +161,10 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("resolveCheckCacheConfig.enabled", flags.Lookup("resolve-check-cache-config-enabled"))
 		util.MustBindEnv("resolveCheckCacheConfig.enabled", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_ENABLED")
 
+		util.MustBindPFlag("resolveCheckCacheConfig.cacheLimit", flags.Lookup("resolve-check-cache-config-cache-limit"))
+		util.MustBindEnv("resolveCheckCacheConfig.cacheLimit", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_LIMIT")
+
+		util.MustBindPFlag("resolveCheckCacheConfig.cacheTTL", flags.Lookup("resolve-check-cache-config-cache-ttl"))
+		util.MustBindEnv("resolveCheckCacheConfig.cacheTTL", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_TTL")
 	}
 }
