@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/golang/mock/gomock"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestResolveCheck(t *testing.T) {
