@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -17,26 +17,26 @@ func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	createStoreCmd := commands.NewCreateStoreCommand(datastore, logger)
-	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgapb.CreateStoreRequest{
+	createStoreResponse, err := createStoreCmd.Execute(ctx, &openfgav1.CreateStoreRequest{
 		Name: "acme",
 	})
 	require.NoError(t, err)
 
 	type deleteStoreTest struct {
 		_name   string
-		request *openfgapb.DeleteStoreRequest
+		request *openfgav1.DeleteStoreRequest
 		err     error
 	}
 	var tests = []deleteStoreTest{
 		{
 			_name: "Execute_Delete_Store_With_Non_Existent_Store_Succeeds",
-			request: &openfgapb.DeleteStoreRequest{
+			request: &openfgav1.DeleteStoreRequest{
 				StoreId: "unknownstore",
 			},
 		},
 		{
 			_name: "Execute_Succeeds",
-			request: &openfgapb.DeleteStoreRequest{
+			request: &openfgav1.DeleteStoreRequest{
 				StoreId: createStoreResponse.Id,
 			},
 		},

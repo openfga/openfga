@@ -9,11 +9,11 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestReadAuthorizationModel(t *testing.T) {
@@ -22,13 +22,13 @@ func TestReadAuthorizationModel(t *testing.T) {
 	cachingBackend := NewCachedOpenFGADatastore(memoryBackend, 5)
 	defer cachingBackend.Close()
 
-	model := &openfgapb.AuthorizationModel{
+	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "documents",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1.Userset{
 					"admin": typesystem.This(),
 				},
 			},

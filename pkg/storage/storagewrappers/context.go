@@ -3,8 +3,8 @@ package storagewrappers
 import (
 	"context"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -35,21 +35,21 @@ func (c *ContextTracerWrapper) Close() {
 	c.OpenFGADatastore.Close()
 }
 
-func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (c *ContextTracerWrapper) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
 	return c.OpenFGADatastore.Read(queryCtx, store, tupleKey)
 }
 
-func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (c *ContextTracerWrapper) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 
 	return c.OpenFGADatastore.ReadPage(queryCtx, store, tupleKey, opts)
 }
 
-func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
+func (c *ContextTracerWrapper) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	queryCtx, cancel := queryContext(ctx)
 	defer cancel()
 

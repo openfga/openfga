@@ -10,8 +10,8 @@ import (
 	time "time"
 
 	gomock "github.com/golang/mock/gomock"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	storage "github.com/openfga/openfga/pkg/storage"
-	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // MockTupleBackend is a mock of TupleBackend interface.

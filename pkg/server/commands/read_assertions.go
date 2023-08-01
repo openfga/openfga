@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type ReadAssertionsQuery struct {
@@ -22,7 +22,7 @@ func NewReadAssertionsQuery(backend storage.AssertionsBackend, logger logger.Log
 	}
 }
 
-func (q *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgapb.ReadAssertionsResponse, error) {
+func (q *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgav1.ReadAssertionsResponse, error) {
 	assertions, err := q.backend.ReadAssertions(ctx, store, authorizationModelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -30,7 +30,7 @@ func (q *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationM
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return &openfgapb.ReadAssertionsResponse{
+	return &openfgav1.ReadAssertionsResponse{
 		AuthorizationModelId: authorizationModelID,
 		Assertions:           assertions,
 	}, nil

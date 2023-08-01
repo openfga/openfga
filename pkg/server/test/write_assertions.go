@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -14,19 +15,18 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
 		_name   string
-		request *openfgapb.WriteAssertionsRequest
+		request *openfgav1.WriteAssertionsRequest
 		err     error
 	}
 
 	store := testutils.CreateRandomString(10)
 
-	githubModelReq := &openfgapb.WriteAuthorizationModelRequest{
+	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
 		TypeDefinitions: parser.MustParse(`
 		type user
@@ -42,9 +42,9 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	var tests = []writeAssertionsTestSettings{
 		{
 			_name: "writing_assertions_succeeds",
-			request: &openfgapb.WriteAssertionsRequest{
+			request: &openfgav1.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfgapb.Assertion{{
+				Assertions: []*openfgav1.Assertion{{
 					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				}},
@@ -52,9 +52,9 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
-			request: &openfgapb.WriteAssertionsRequest{
+			request: &openfgav1.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfgapb.Assertion{{
+				Assertions: []*openfgav1.Assertion{{
 					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				}},
@@ -62,16 +62,16 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 		{
 			_name: "writing_empty_assertions_succeeds",
-			request: &openfgapb.WriteAssertionsRequest{
+			request: &openfgav1.WriteAssertionsRequest{
 				StoreId:    store,
-				Assertions: []*openfgapb.Assertion{},
+				Assertions: []*openfgav1.Assertion{},
 			},
 		},
 		{
 			_name: "writing_assertion_with_invalid_relation_fails",
-			request: &openfgapb.WriteAssertionsRequest{
+			request: &openfgav1.WriteAssertionsRequest{
 				StoreId: store,
-				Assertions: []*openfgapb.Assertion{
+				Assertions: []*openfgav1.Assertion{
 					{
 						TupleKey:    tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
 						Expectation: false,

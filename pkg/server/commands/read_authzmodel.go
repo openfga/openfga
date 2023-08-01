@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // ReadAuthorizationModelQuery retrieves a single type definition from a storage backend.
@@ -20,7 +20,7 @@ func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBacken
 	return &ReadAuthorizationModelQuery{backend: backend, logger: logger}
 }
 
-func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgapb.ReadAuthorizationModelRequest) (*openfgapb.ReadAuthorizationModelResponse, error) {
+func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
 	modelID := req.GetId()
 	azm, err := q.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
 	if err != nil {
@@ -29,7 +29,7 @@ func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgap
 		}
 		return nil, serverErrors.HandleError("", err)
 	}
-	return &openfgapb.ReadAuthorizationModelResponse{
+	return &openfgav1.ReadAuthorizationModelResponse{
 		AuthorizationModel: azm,
 	}, nil
 }

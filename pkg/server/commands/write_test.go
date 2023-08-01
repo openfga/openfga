@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -13,14 +14,13 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfgapb.TupleKey
-		writes        []*openfgapb.TupleKey
+		deletes       []*openfgav1.TupleKey
+		writes        []*openfgav1.TupleKey
 		expectedError error
 	}
 
@@ -33,9 +33,9 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 
-	items := make([]*openfgapb.TupleKey, maxTuplesInWriteOp+1)
+	items := make([]*openfgav1.TupleKey, maxTuplesInWriteOp+1)
 	for i := 0; i < maxTuplesInWriteOp+1; i++ {
-		items[i] = &openfgapb.TupleKey{
+		items[i] = &openfgav1.TupleKey{
 			Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 			Relation: testutils.CreateRandomString(50),
 			User:     testutils.CreateRandomString(512),
@@ -47,30 +47,30 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	tests := []test{
 		{
 			name:    "empty_deletes_and_writes",
-			deletes: []*openfgapb.TupleKey{},
-			writes:  []*openfgapb.TupleKey{},
+			deletes: []*openfgav1.TupleKey{},
+			writes:  []*openfgav1.TupleKey{},
 		},
 		{
 			name:    "good_deletes_and_writes",
-			deletes: []*openfgapb.TupleKey{items[0], items[1]},
-			writes:  []*openfgapb.TupleKey{items[2], items[3]},
+			deletes: []*openfgav1.TupleKey{items[0], items[1]},
+			writes:  []*openfgav1.TupleKey{items[2], items[3]},
 		},
 		{
 			name:          "duplicate_deletes",
-			deletes:       []*openfgapb.TupleKey{items[0], items[1], items[0]},
-			writes:        []*openfgapb.TupleKey{},
+			deletes:       []*openfgav1.TupleKey{items[0], items[1], items[0]},
+			writes:        []*openfgav1.TupleKey{},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
 			name:          "duplicate_writes",
-			deletes:       []*openfgapb.TupleKey{},
-			writes:        []*openfgapb.TupleKey{items[0], items[1], items[0]},
+			deletes:       []*openfgav1.TupleKey{},
+			writes:        []*openfgav1.TupleKey{items[0], items[1], items[0]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
 			name:          "same_item_appeared_in_writes_and_deletes",
-			deletes:       []*openfgapb.TupleKey{items[2], items[1]},
-			writes:        []*openfgapb.TupleKey{items[0], items[1]},
+			deletes:       []*openfgav1.TupleKey{items[2], items[1]},
+			writes:        []*openfgav1.TupleKey{items[0], items[1]},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[1]),
 		},
 		{
@@ -92,12 +92,12 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfgapb.TupleKey
-		writes        []*openfgapb.TupleKey
+		deletes       []*openfgav1.TupleKey
+		writes        []*openfgav1.TupleKey
 		expectedError error
 	}
 
-	badItem := &openfgapb.TupleKey{
+	badItem := &openfgav1.TupleKey{
 		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(20)),
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
@@ -112,8 +112,8 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:    "write_failure_with_invalid_user",
-			deletes: []*openfgapb.TupleKey{},
-			writes:  []*openfgapb.TupleKey{badItem},
+			deletes: []*openfgav1.TupleKey{},
+			writes:  []*openfgav1.TupleKey{badItem},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -123,8 +123,8 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:    "delete_failure_with_invalid_user",
-			deletes: []*openfgapb.TupleKey{badItem},
-			writes:  []*openfgapb.TupleKey{},
+			deletes: []*openfgav1.TupleKey{badItem},
+			writes:  []*openfgav1.TupleKey{},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -146,16 +146,16 @@ func TestValidateWriteRequest(t *testing.T) {
 			cmd := NewWriteCommand(mockDatastore, logger)
 
 			if len(test.writes) > 0 {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgapb.AuthorizationModel{
+				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgav1.AuthorizationModel{
 					SchemaVersion: typesystem.SchemaVersion1_1,
 				}, nil)
 			}
 
 			ctx := context.Background()
-			req := &openfgapb.WriteRequest{
+			req := &openfgav1.WriteRequest{
 				StoreId: "abcd123",
-				Writes:  &openfgapb.TupleKeys{TupleKeys: test.writes},
-				Deletes: &openfgapb.TupleKeys{TupleKeys: test.deletes},
+				Writes:  &openfgav1.TupleKeys{TupleKeys: test.writes},
+				Deletes: &openfgav1.TupleKeys{TupleKeys: test.deletes},
 			}
 
 			err := cmd.validateWriteRequest(ctx, req)

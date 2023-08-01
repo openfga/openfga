@@ -3,7 +3,7 @@ package storage
 import (
 	"errors"
 
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 var ErrIteratorDone = errors.New("iterator done")
@@ -17,17 +17,17 @@ type Iterator[T any] interface {
 
 // TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
 // returns an ErrIteratorDone error.
-type TupleIterator = Iterator[*openfgapb.Tuple]
+type TupleIterator = Iterator[*openfgav1.Tuple]
 
 // TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next() until it
 // returns an ErrIteratorDone error.
-type TupleKeyIterator = Iterator[*openfgapb.TupleKey]
+type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
 type emptyTupleIterator struct{}
 
 var _ TupleIterator = (*emptyTupleIterator)(nil)
 
-func (e *emptyTupleIterator) Next() (*openfgapb.Tuple, error) {
+func (e *emptyTupleIterator) Next() (*openfgav1.Tuple, error) {
 	return nil, ErrIteratorDone
 }
 func (e *emptyTupleIterator) Stop() {}
@@ -73,8 +73,8 @@ func NewCombinedIterator[T any](iters ...Iterator[T]) Iterator[T] {
 }
 
 // NewStaticTupleIterator returns a TupleIterator that iterates over the provided slice.
-func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
-	iter := &staticIterator[*openfgapb.Tuple]{
+func NewStaticTupleIterator(tuples []*openfgav1.Tuple) TupleIterator {
+	iter := &staticIterator[*openfgav1.Tuple]{
 		items: tuples,
 	}
 
@@ -82,8 +82,8 @@ func NewStaticTupleIterator(tuples []*openfgapb.Tuple) TupleIterator {
 }
 
 // NewStaticTupleKeyIterator returns a TupleKeyIterator that iterates over the provided slice.
-func NewStaticTupleKeyIterator(tupleKeys []*openfgapb.TupleKey) TupleKeyIterator {
-	iter := &staticIterator[*openfgapb.TupleKey]{
+func NewStaticTupleKeyIterator(tupleKeys []*openfgav1.TupleKey) TupleKeyIterator {
+	iter := &staticIterator[*openfgav1.TupleKey]{
 		items: tupleKeys,
 	}
 
@@ -96,7 +96,7 @@ type tupleKeyIterator struct {
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
-func (t *tupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
+func (t *tupleKeyIterator) Next() (*openfgav1.TupleKey, error) {
 	tuple, err := t.iter.Next()
 	return tuple.GetKey(), err
 }
@@ -131,7 +131,7 @@ func (s *staticIterator[T]) Stop() {}
 // TupleKeyFilterFunc is a filter function that is used to filter out tuples from a TupleKey iterator
 // that don't meet some criteria. Implementations should return true if the tuple should be returned
 // and false if it should be filtered out.
-type TupleKeyFilterFunc func(tupleKey *openfgapb.TupleKey) bool
+type TupleKeyFilterFunc func(tupleKey *openfgav1.TupleKey) bool
 
 type filteredTupleKeyIterator struct {
 	iter   TupleKeyIterator
@@ -142,7 +142,7 @@ var _ TupleKeyIterator = &filteredTupleKeyIterator{}
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-func (f *filteredTupleKeyIterator) Next() (*openfgapb.TupleKey, error) {
+func (f *filteredTupleKeyIterator) Next() (*openfgav1.TupleKey, error) {
 
 	for {
 		tuple, err := f.iter.Next()

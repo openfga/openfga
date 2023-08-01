@@ -7,12 +7,12 @@ import (
 	"math"
 	"sync"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -35,8 +35,8 @@ type CheckResolver interface {
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
-	TupleKey             *openfgapb.TupleKey
-	ContextualTuples     []*openfgapb.TupleKey
+	TupleKey             *openfgav1.TupleKey
+	ContextualTuples     []*openfgav1.TupleKey
 	ResolutionMetadata   *ResolutionMetadata
 }
 
@@ -77,7 +77,7 @@ func (r *ResolveCheckRequest) GetAuthorizationModelID() string {
 	return ""
 }
 
-func (r *ResolveCheckRequest) GetTupleKey() *openfgapb.TupleKey {
+func (r *ResolveCheckRequest) GetTupleKey() *openfgav1.TupleKey {
 	if r != nil {
 		return r.TupleKey
 	}
@@ -85,7 +85,7 @@ func (r *ResolveCheckRequest) GetTupleKey() *openfgapb.TupleKey {
 	return nil
 }
 
-func (r *ResolveCheckRequest) GetContextualTuples() []*openfgapb.TupleKey {
+func (r *ResolveCheckRequest) GetContextualTuples() []*openfgav1.TupleKey {
 	if r != nil {
 		return r.ContextualTuples
 	}
@@ -513,7 +513,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
 
-			var allowedUserTypeRestrictions []*openfgapb.RelationReference
+			var allowedUserTypeRestrictions []*openfgav1.RelationReference
 			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
 				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
@@ -607,7 +607,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset_ComputedUserset) CheckHandlerFunc {
+func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
@@ -632,7 +632,7 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgapb.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -690,7 +690,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
 
-			tupleKey := &openfgapb.TupleKey{
+			tupleKey := &openfgav1.TupleKey{
 				Object:   userObj,
 				Relation: computedRelation,
 				User:     tk.GetUser(),
@@ -738,7 +738,7 @@ func (c *LocalChecker) checkSetOperation(
 	req *ResolveCheckRequest,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
-	children ...*openfgapb.Userset,
+	children ...*openfgav1.Userset,
 ) CheckHandlerFunc {
 
 	var handlers []CheckHandlerFunc
@@ -776,21 +776,21 @@ func (c *LocalChecker) checkSetOperation(
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-	rewrite *openfgapb.Userset,
+	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
 
 	switch rw := rewrite.Userset.(type) {
-	case *openfgapb.Userset_This:
+	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)
-	case *openfgapb.Userset_ComputedUserset:
+	case *openfgav1.Userset_ComputedUserset:
 		return c.checkComputedUserset(ctx, req, rw)
-	case *openfgapb.Userset_TupleToUserset:
+	case *openfgav1.Userset_TupleToUserset:
 		return c.checkTTU(ctx, req, rewrite)
-	case *openfgapb.Userset_Union:
+	case *openfgav1.Userset_Union:
 		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
-	case *openfgapb.Userset_Intersection:
+	case *openfgav1.Userset_Intersection:
 		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
-	case *openfgapb.Userset_Difference:
+	case *openfgav1.Userset_Difference:
 		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		panic("unexpected userset rewrite encountered")

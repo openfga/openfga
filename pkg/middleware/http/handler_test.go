@@ -9,16 +9,16 @@ import (
 	"testing"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/server/errors"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc/metadata"
 )
 
 func TestCustomHTTPErrorHandler(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_assertions_too_many_items), "some error")
+	e := errors.NewEncodedError(int32(openfgav1.ErrorCode_assertions_too_many_items), "some error")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",
@@ -47,7 +47,7 @@ func TestCustomHTTPErrorHandler(t *testing.T) {
 func TestCustomHTTPErrorHandlerSpecialEncoding(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/upper?word=abc", nil)
 	w := httptest.NewRecorder()
-	e := errors.NewEncodedError(int32(openfgapb.ErrorCode_assertions_too_many_items), "invalid character '<' looking for beginning of value,")
+	e := errors.NewEncodedError(int32(openfgav1.ErrorCode_assertions_too_many_items), "invalid character '<' looking for beginning of value,")
 	metaData := runtime.ServerMetadata{
 		HeaderMD: metadata.New(map[string]string{
 			"foo": "boo",

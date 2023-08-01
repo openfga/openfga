@@ -8,13 +8,13 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/server/commands/connectedobjects"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
@@ -22,7 +22,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 	tests := []struct {
 		name             string
 		model            string
-		tuples           []*openfgapb.TupleKey
+		tuples           []*openfgav1.TupleKey
 		request          *connectedobjects.ConnectedObjectsRequest
 		resolveNodeLimit uint32
 		limit            uint32
@@ -36,12 +36,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{},
+				ContextualTuples: []*openfgav1.TupleKey{},
 			},
 			model: `
 				type user
@@ -51,7 +51,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				    define allowed: [user] as self
 				    define viewer: [user] as self and allowed
 				`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:3", "allowed", "user:jon"),
@@ -74,12 +74,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{},
+				ContextualTuples: []*openfgav1.TupleKey{},
 			},
 			model: `
 			type user
@@ -95,7 +95,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				define parent: [folder] as self
 				define viewer as viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:X"),
 				tuple.NewTupleKey("folder:X", "writer", "user:jon"),
 				tuple.NewTupleKey("folder:X", "editor", "user:jon"),
@@ -114,12 +114,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "folder",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{},
+				ContextualTuples: []*openfgav1.TupleKey{},
 			},
 			limit: 2,
 			model: `
@@ -129,7 +129,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
@@ -152,12 +152,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{
+				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
 					tuple.NewTupleKey("document:doc3", "viewer", "user:jon"),
 				},
@@ -169,7 +169,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			},
 			expectedResult: []*connectedobjects.ConnectedObjectsResult{
@@ -189,7 +189,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -205,7 +205,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user, group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "viewer", "user:bob"),
 				tuple.NewTupleKey("document:doc3", "viewer", "group:openfga#member"),
@@ -228,7 +228,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -245,7 +245,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define owner: [user, group#member] as self
 			    define viewer as owner
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "owner", "user:jon"),
 				tuple.NewTupleKey("document:doc2", "owner", "user:bob"),
 				tuple.NewTupleKey("document:doc3", "owner", "group:openfga#member"),
@@ -269,12 +269,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{
+				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("folder:folder5", "parent", "folder:folder4"),
 					tuple.NewTupleKey("folder:folder6", "viewer", "user:bob"),
 				},
@@ -296,7 +296,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer as viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
@@ -327,7 +327,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "folder",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -341,7 +341,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer: [user] as self or viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
@@ -368,7 +368,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "folder",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -383,7 +383,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer: [user] as self or viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
@@ -397,7 +397,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "group",
 				Relation:   "member",
 				User: &connectedobjects.UserRefObjectRelation{
-					ObjectRelation: &openfgapb.ObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   "group:iam",
 						Relation: "member",
 					},
@@ -410,7 +410,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define member: [user, group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:opensource", "member", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
 				tuple.NewTupleKey("group:iam", "member", "user:jon"),
@@ -433,7 +433,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -448,7 +448,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define editor as owner
 			    define viewer: [document#editor] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "document:1#editor"),
 				tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			},
@@ -466,7 +466,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -484,7 +484,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "manager", "user:jon"),
 			},
@@ -502,7 +502,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "trial",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "fede",
 					},
@@ -522,7 +522,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define owner: [user] as self
 			    define viewer: [user,team#member] as self or editor
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("trial:1", "editor", "team:devs#member"),
 				tuple.NewTupleKey("team:devs", "admin", "user:fede"),
 			},
@@ -540,7 +540,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "view",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "organization",
 						Id:   "2",
 					},
@@ -557,7 +557,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [organization] as self
 			    define view as can_view from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "organization:1"),
 				tuple.NewTupleKey("organization:1", "viewer", "organization:2"),
 			},
@@ -583,7 +583,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user, user:*] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:3", "viewer", "user:jon"),
@@ -616,7 +616,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("document:2", "viewer", "group:fga#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
@@ -635,7 +635,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -653,7 +653,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:tigers", "member", "user:jon"),
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -672,7 +672,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -690,7 +690,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:tigers", "member", "user:*"),
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -709,7 +709,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{Type: "user", Id: "jon"},
+					Object: &openfgav1.Object{Type: "user", Id: "jon"},
 				},
 			},
 			model: `
@@ -718,7 +718,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user, user:*] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 			},
@@ -740,7 +740,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
 					},
@@ -755,7 +755,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 				tuple.NewTupleKey("group:fga", "member", "user:jon"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -779,7 +779,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "*",
 					},
@@ -794,7 +794,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 				tuple.NewTupleKey("group:other", "member", "employee:*"), // assume this comes from a prior model
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -815,7 +815,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "resource",
 				Relation:   "reader",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{
+					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "bev",
 					},
@@ -831,7 +831,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define reader: [user, user:*, group#member] as self or writer
 				define writer: [user, user:*, group#member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:x", "writer", "user:*"),
 			},
 			expectedResult: []*connectedobjects.ConnectedObjectsResult{
@@ -848,9 +848,9 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObject{
-					Object: &openfgapb.Object{Type: "user", Id: "jon"},
+					Object: &openfgav1.Object{Type: "user", Id: "jon"},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{
+				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "user:*"),
 					tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				},
@@ -879,7 +879,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User:       &connectedobjects.UserRefTypedWildcard{Type: "user"},
-				ContextualTuples: []*openfgapb.TupleKey{
+				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "employee:*"),
 					tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				},
@@ -905,12 +905,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				ObjectType: "document",
 				Relation:   "viewer",
 				User: &connectedobjects.UserRefObjectRelation{
-					ObjectRelation: &openfgapb.ObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   "group:eng",
 						Relation: "member",
 					},
 				},
-				ContextualTuples: []*openfgapb.TupleKey{
+				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				},
 			},
@@ -938,7 +938,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -955,7 +955,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer as viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("document:2", "parent", "folder:2"),
 				tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
@@ -978,7 +978,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -996,7 +996,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer as viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("document:2", "parent", "folder:2"),
 				tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
@@ -1015,7 +1015,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -1035,7 +1035,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [folder] as self
 			    define viewer as viewer from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "parent", "folder:1"),
 				tuple.NewTupleKey("folder:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
@@ -1053,7 +1053,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "resource",
 				Relation:   "writer",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "anne",
 				}},
@@ -1074,7 +1074,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define writer: [org#dept_member] as self
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
 				tuple.NewTupleKey("group:fga", "member", "user:anne"),
@@ -1092,7 +1092,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "resource",
 				Relation:   "reader",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "anne",
 				}},
@@ -1114,7 +1114,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define writer: [org#dept_member] as self
 			    define reader: [org#dept_member] as self or writer
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:eng_handbook", "writer", "org:eng#dept_member"),
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
 				tuple.NewTupleKey("group:fga", "member", "user:anne"),
@@ -1132,7 +1132,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				StoreID:    ulid.Make().String(),
 				ObjectType: "node",
 				Relation:   "editor",
-				User: &connectedobjects.UserRefObject{Object: &openfgapb.Object{
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "wonder",
 				}},
@@ -1145,7 +1145,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			    define parent: [node] as self
 			    define editor: [user] as self or editor from parent
 			`,
-			tuples: []*openfgapb.TupleKey{
+			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("node:abc", "editor", "user:wonder"),
 			},
 			expectedResult: []*connectedobjects.ConnectedObjectsResult{
@@ -1165,7 +1165,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			store := ulid.Make().String()
 			test.request.StoreID = store
 
-			model := &openfgapb.AuthorizationModel{
+			model := &openfgav1.AuthorizationModel{
 				Id:              ulid.Make().String(),
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.model),

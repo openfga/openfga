@@ -6,14 +6,14 @@ import (
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestHandleSQLError(t *testing.T) {
 	t.Run("duplicate_key_value_error_with_tuple_key_wraps_ErrInvalidWriteInput", func(t *testing.T) {
-		err := HandleSQLError(errors.New("duplicate key value"), &openfgapb.TupleKey{
+		err := HandleSQLError(errors.New("duplicate key value"), &openfgav1.TupleKey{
 			Object:   "object",
 			Relation: "relation",
 			User:     "user",
@@ -26,7 +26,7 @@ func TestHandleSQLError(t *testing.T) {
 			Number:  1062,
 			Message: "Duplicate entry '' for key ''",
 		}
-		err := HandleSQLError(duplicateKeyError, &openfgapb.TupleKey{
+		err := HandleSQLError(duplicateKeyError, &openfgav1.TupleKey{
 			Object:   "object",
 			Relation: "relation",
 			User:     "user",
