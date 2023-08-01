@@ -3,31 +3,31 @@ package storagewrappers
 import (
 	"context"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // NewCombinedTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
 // tuples specified in the request
-func NewCombinedTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgapb.TupleKey) storage.RelationshipTupleReader {
+func NewCombinedTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) storage.RelationshipTupleReader {
 	return &combinedTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
 }
 
 type combinedTupleReader struct {
 	storage.RelationshipTupleReader
-	contextualTuples []*openfgapb.TupleKey
+	contextualTuples []*openfgav1.TupleKey
 }
 
 var _ storage.RelationshipTupleReader = (*combinedTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgapb.TupleKey, targetObject, targetRelation string) []*openfgapb.Tuple {
-	var filtered []*openfgapb.Tuple
+func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation string) []*openfgav1.Tuple {
+	var filtered []*openfgav1.Tuple
 	for _, tk := range tuples {
 		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
-			filtered = append(filtered, &openfgapb.Tuple{
+			filtered = append(filtered, &openfgav1.Tuple{
 				Key: tk,
 			})
 		}
@@ -39,7 +39,7 @@ func filterTuples(tuples []*openfgapb.TupleKey, targetObject, targetRelation str
 func (c *combinedTupleReader) Read(
 	ctx context.Context,
 	storeID string,
-	tk *openfgapb.TupleKey,
+	tk *openfgav1.TupleKey,
 ) (storage.TupleIterator, error) {
 
 	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
@@ -55,9 +55,9 @@ func (c *combinedTupleReader) Read(
 func (c *combinedTupleReader) ReadPage(
 	ctx context.Context,
 	store string,
-	tk *openfgapb.TupleKey,
+	tk *openfgav1.TupleKey,
 	opts storage.PaginationOptions,
-) ([]*openfgapb.Tuple, []byte, error) {
+) ([]*openfgav1.Tuple, []byte, error) {
 
 	// no reading from contextual tuples
 
@@ -67,8 +67,8 @@ func (c *combinedTupleReader) ReadPage(
 func (c *combinedTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
-	tk *openfgapb.TupleKey,
-) (*openfgapb.Tuple, error) {
+	tk *openfgav1.TupleKey,
+) (*openfgav1.Tuple, error) {
 
 	filteredContextualTuples := filterTuples(c.contextualTuples, tk.Object, tk.Relation)
 
@@ -87,7 +87,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 	filter storage.ReadUsersetTuplesFilter,
 ) (storage.TupleIterator, error) {
 
-	var usersetTuples []*openfgapb.Tuple
+	var usersetTuples []*openfgav1.Tuple
 
 	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation) {
 		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
@@ -111,7 +111,7 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
 
-	var filteredTuples []*openfgapb.Tuple
+	var filteredTuples []*openfgav1.Tuple
 	for _, t := range c.contextualTuples {
 		if tuple.GetType(t.GetObject()) != filter.ObjectType {
 			continue
@@ -128,7 +128,7 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 			}
 
 			if t.GetUser() == targetUser {
-				filteredTuples = append(filteredTuples, &openfgapb.Tuple{
+				filteredTuples = append(filteredTuples, &openfgav1.Tuple{
 					Key: t,
 				})
 			}

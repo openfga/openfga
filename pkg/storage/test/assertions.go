@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -18,13 +18,13 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("writing_and_reading_assertions_succeeds", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
-		assertions := []*openfgapb.Assertion{
+		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 			{
-				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"},
+				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"},
 				Expectation: true,
 			},
 		}
@@ -43,11 +43,11 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("writing_twice_overwrites_assertions", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
-		assertions := []*openfgapb.Assertion{{TupleKey: &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
+		assertions := []*openfgav1.Assertion{{TupleKey: &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
 
-		err := datastore.WriteAssertions(ctx, store, modelID, []*openfgapb.Assertion{
+		err := datastore.WriteAssertions(ctx, store, modelID, []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 		})
@@ -68,9 +68,9 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		store := ulid.Make().String()
 		oldModelID := ulid.Make().String()
 		newModelID := ulid.Make().String()
-		assertions := []*openfgapb.Assertion{
+		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
 				Expectation: false,
 			},
 		}

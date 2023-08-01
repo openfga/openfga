@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -42,7 +42,7 @@ func NewBoundedConcurrencyTupleReader(wrapped storage.RelationshipTupleReader, c
 	}
 }
 
-func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
+func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	b.waitForLimiter(ctx)
 
 	defer func() {
@@ -52,7 +52,7 @@ func (b *boundedConcurrencyTupleReader) ReadUserTuple(ctx context.Context, store
 	return b.RelationshipTupleReader.ReadUserTuple(ctx, store, tupleKey)
 }
 
-func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (b *boundedConcurrencyTupleReader) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	b.waitForLimiter(ctx)
 
 	defer func() {

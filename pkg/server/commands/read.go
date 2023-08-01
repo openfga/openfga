@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // A ReadQuery can be used to read one or many tuplesets
@@ -34,7 +34,7 @@ func NewReadQuery(datastore storage.OpenFGADatastore, logger logger.Logger, enco
 
 // Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tuple. Return all tuples if the tuple is
 // nil or empty.
-func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*openfgapb.ReadResponse, error) {
+func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
 	store := req.GetStoreId()
 	tk := req.GetTupleKey()
 
@@ -65,7 +65,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgapb.ReadRequest) (*o
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.ReadResponse{
+	return &openfgav1.ReadResponse{
 		Tuples:            tuples,
 		ContinuationToken: encodedContToken,
 	}, nil

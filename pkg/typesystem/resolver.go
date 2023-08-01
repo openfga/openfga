@@ -8,8 +8,8 @@ import (
 
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -78,7 +78,7 @@ func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBack
 			return nil, fmt.Errorf("failed to ReadAuthorizationModel: %w", err)
 		}
 
-		model := v.(*openfgapb.AuthorizationModel)
+		model := v.(*openfgav1.AuthorizationModel)
 
 		typesys, err := NewAndValidate(ctx, model)
 		if err != nil {

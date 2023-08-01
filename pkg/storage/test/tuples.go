@@ -8,11 +8,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -21,28 +21,28 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_continuation_token", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		tk1 := &openfgapb.TupleKey{
+		tk1 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfgapb.TupleKey{
+		tk2 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder2"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
 		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: 1}, 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
-		expectedChanges := []*openfgapb.TupleChange{
+		expectedChanges := []*openfgav1.TupleChange{
 			{
 				TupleKey:  tk1,
-				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 
@@ -59,10 +59,10 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
-		expectedChanges = []*openfgapb.TupleChange{
+		expectedChanges = []*openfgav1.TupleChange{
 			{
 				TupleKey:  tk2,
-				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
@@ -80,18 +80,18 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_horizon_offset_should_return_not_found_(no_changes)", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		tk1 := &openfgapb.TupleKey{
+		tk1 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfgapb.TupleKey{
+		tk2 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("folder", "folder2"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
 		_, _, err = datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 1*time.Minute)
@@ -101,28 +101,28 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_with_non-empty_object_type_should_only_read_that_object_type", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		tk1 := &openfgapb.TupleKey{
+		tk1 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("folder", "1"),
 			Relation: "viewer",
 			User:     "bob",
 		}
-		tk2 := &openfgapb.TupleKey{
+		tk2 := &openfgav1.TupleKey{
 			Object:   tuple.BuildObject("document", "1"),
 			Relation: "viewer",
 			User:     "bill",
 		}
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk1, tk2})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
 		require.NoError(t, err)
 
 		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "folder", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
 		require.NoError(t, err)
 		require.NotEmpty(t, continuationToken)
 
-		expectedChanges := []*openfgapb.TupleChange{
+		expectedChanges := []*openfgav1.TupleChange{
 			{
 				TupleKey:  tk1,
-				Operation: openfgapb.TupleOperation_TUPLE_OPERATION_WRITE,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
@@ -136,7 +136,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("deletes_would_succeed_and_write_would_fail,_fails_and_introduces_no_changes", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
@@ -153,14 +153,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 				User:     "org:openfgapb#viewer",
 			},
 		}
-		expectedError := storage.InvalidWriteInputError(tks[2], openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+		expectedError := storage.InvalidWriteInputError(tks[2], openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// Write tks
 		err := datastore.Write(ctx, storeID, nil, tks)
 		require.NoError(t, err)
 
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		err = datastore.Write(ctx, storeID, []*openfgapb.TupleKey{tks[0], tks[1]}, []*openfgapb.TupleKey{tks[2]})
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tks[0], tks[1]}, []*openfgav1.TupleKey{tks[2]})
 		require.EqualError(t, err, expectedError.Error())
 
 		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
@@ -170,22 +170,22 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("delete_fails_if_the_tuple_does_not_exist", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		err := datastore.Write(ctx, storeID, []*openfgapb.TupleKey{tk}, nil)
+		err := datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tk}, nil)
 		require.ErrorContains(t, err, "cannot delete a tuple which does not exist")
 	})
 
 	t.Run("deleting_a_tuple_which_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		// Write
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.NoError(t, err)
 
 		// Then delete
-		err = datastore.Write(ctx, storeID, []*openfgapb.TupleKey{tk}, nil)
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tk}, nil)
 		require.NoError(t, err)
 
 		// Ensure it is not there
@@ -195,15 +195,15 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("inserting_a_tuple_twice_fails", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-		expectedError := storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		expectedError := storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 
 		// First write should succeed.
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.NoError(t, err)
 
 		// Second write of the same tuple should fail.
-		err = datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk})
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
 		require.EqualError(t, err, expectedError.Error())
 	})
 
@@ -213,7 +213,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		tuple2 := tuple.NewTupleKey("doc:readme", "viewer", "doc:other#viewer")
 		tuple3 := tuple.NewTupleKey("doc:readme", "viewer", "user:*")
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tuple1, tuple2, tuple3})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple1, tuple2, tuple3})
 		require.NoError(t, err)
 
 		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
@@ -240,7 +240,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_a_tuple_that_does_not_exist_returns_not_found", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tk := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
 		_, err := datastore.ReadUserTuple(ctx, storeID, tk)
 		require.ErrorIs(t, err, storage.ErrNotFound)
@@ -248,7 +248,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_userset_tuples_that_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			{
 				Object:   "doc:readme",
 				Relation: "owner",
@@ -283,7 +283,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		var gotTupleKeys []*openfgapb.TupleKey
+		var gotTupleKeys []*openfgav1.TupleKey
 		for {
 			tk, err := iter.Next()
 			if err != nil {
@@ -321,7 +321,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_userset_tuples_with_filter_made_of_direct_relation_reference", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 			tuple.NewTupleKey("document:1", "viewer", "users:*"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -334,7 +334,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 			},
 		})
@@ -357,7 +357,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_userset_tuples_with_filter_made_of_direct_relation_references", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 			tuple.NewTupleKey("document:1", "viewer", "users:*"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -370,7 +370,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.DirectRelationReference("grouping", "member"),
 			},
@@ -385,11 +385,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTwo, err := iter.Next()
 		require.NoError(t, err)
 
-		expected := []*openfgapb.TupleKey{
+		expected := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			tuple.NewTupleKey("document:1", "viewer", "grouping:eng#member"),
 		}
-		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(expected, []*openfgav1.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
@@ -399,7 +399,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_userset_tuples_with_filter_made_of_wildcard_relation_reference", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 			tuple.NewTupleKey("document:1", "viewer", "users:*"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -412,7 +412,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.WildcardRelationReference("user"),
 			},
 		})
@@ -435,7 +435,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 	t.Run("reading_userset_tuples_with_filter_made_of_mix_references", func(t *testing.T) {
 		storeID := ulid.Make().String()
-		tks := []*openfgapb.TupleKey{
+		tks := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 			tuple.NewTupleKey("document:1", "viewer", "users:*"),
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
@@ -448,7 +448,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTuples, err := datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   "document:1",
 			Relation: "viewer",
-			AllowedUserTypeRestrictions: []*openfgapb.RelationReference{
+			AllowedUserTypeRestrictions: []*openfgav1.RelationReference{
 				typesystem.DirectRelationReference("group", "member"),
 				typesystem.WildcardRelationReference("user"),
 			},
@@ -463,11 +463,11 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		gotTwo, err := iter.Next()
 		require.NoError(t, err)
 
-		expected := []*openfgapb.TupleKey{
+		expected := []*openfgav1.TupleKey{
 			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			tuple.NewTupleKey("document:1", "viewer", "user:*"),
 		}
-		if diff := cmp.Diff(expected, []*openfgapb.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
+		if diff := cmp.Diff(expected, []*openfgav1.TupleKey{gotOne, gotTwo}, cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
@@ -479,14 +479,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
-	tk0 := &openfgapb.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
-	tk1 := &openfgapb.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
+	tk0 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+	tk1 := &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}
 
-	err := datastore.Write(ctx, storeID, nil, []*openfgapb.TupleKey{tk0, tk1})
+	err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk0, tk1})
 	require.NoError(t, err)
 
 	t.Run("readPage_pagination_works_properly", func(t *testing.T) {
-		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples0, contToken0, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples0, 1)
 		require.NotEmpty(t, contToken0)
@@ -495,7 +495,7 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 
-		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
+		tuples1, contToken1, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1, From: string(contToken0)})
 		require.NoError(t, err)
 		require.Len(t, tuples1, 1)
 		require.Empty(t, contToken1)
@@ -506,14 +506,14 @@ func TuplePaginationOptionsTest(t *testing.T, datastore storage.OpenFGADatastore
 	})
 
 	t.Run("reading_a_page_completely_does_not_return_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 2})
 		require.NoError(t, err)
 		require.Len(t, tuples, 2)
 		require.Empty(t, contToken)
 	})
 
 	t.Run("reading_a_page_partially_returns_a_continuation_token", func(t *testing.T) {
-		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgapb.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
+		tuples, contToken, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{Object: "doc:readme"}, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 		require.Len(t, tuples, 1)
 		require.NotEmpty(t, contToken)
@@ -558,7 +558,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	require := require.New(t)
 	ctx := context.Background()
 
-	tuples := []*openfgapb.TupleKey{
+	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 		tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
 		tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
@@ -577,7 +577,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			storage.ReadStartingWithUserFilter{
 				ObjectType: "document",
 				Relation:   "viewer",
-				UserFilter: []*openfgapb.ObjectRelation{
+				UserFilter: []*openfgav1.ObjectRelation{
 					{
 						Object: "user:jon",
 					},
@@ -607,7 +607,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			storage.ReadStartingWithUserFilter{
 				ObjectType: "document",
 				Relation:   "viewer",
-				UserFilter: []*openfgapb.ObjectRelation{
+				UserFilter: []*openfgav1.ObjectRelation{
 					{
 						Object: "user:maria",
 					},
@@ -633,7 +633,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			storage.ReadStartingWithUserFilter{
 				ObjectType: "document",
 				Relation:   "non-existing",
-				UserFilter: []*openfgapb.ObjectRelation{
+				UserFilter: []*openfgav1.ObjectRelation{
 					{
 						Object: "user:jon",
 					},
@@ -659,7 +659,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 			storage.ReadStartingWithUserFilter{
 				ObjectType: "nonexisting",
 				Relation:   "viewer",
-				UserFilter: []*openfgapb.ObjectRelation{
+				UserFilter: []*openfgav1.ObjectRelation{
 					{
 						Object: "user:jon",
 					},

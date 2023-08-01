@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
@@ -12,7 +13,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -39,7 +39,7 @@ func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
 	modelID := "foo"
 	schemaVersion := "7.8"
 
-	bytes, err := proto.Marshal(&openfgapb.TypeDefinition{Type: "document"})
+	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
 	require.NoError(t, err)
 
 	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
@@ -68,8 +68,8 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
 		store,
-		[]*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{firstTuple},
+		[]*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{firstTuple},
 		time.Now())
 	require.NoError(t, err)
 
@@ -77,8 +77,8 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
 		store,
-		[]*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{secondTuple},
+		[]*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{secondTuple},
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
@@ -117,8 +117,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
 		store,
-		[]*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{firstTuple},
+		[]*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{firstTuple},
 		time.Now())
 	require.NoError(t, err)
 
@@ -126,8 +126,8 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	err = sqlcommon.Write(ctx,
 		sqlcommon.NewDBInfo(ds.db, ds.stbl, "NOW()"),
 		store,
-		[]*openfgapb.TupleKey{},
-		[]*openfgapb.TupleKey{secondTuple},
+		[]*openfgav1.TupleKey{},
+		[]*openfgav1.TupleKey{secondTuple},
 		time.Now().Add(time.Minute*-1))
 	require.NoError(t, err)
 
