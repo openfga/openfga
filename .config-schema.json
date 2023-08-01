@@ -61,7 +61,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": []
+                "enum": ["cache-resolve-check"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"

@@ -27,6 +27,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -34,8 +35,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader    = "openfga-authorization-model-id"
+	authorizationModelIDKey       = "authorization_model_id"
+	ExperimentalCacheResolveCheck = "cache-resolve-check"
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultChangelogHorizonOffset           = 0
@@ -259,9 +261,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	}
 
 	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
-	if s.checkQueryCacheEnabled {
-		checkCache = s.checkCache
-		// otherwise when we pass nil to the list object query, the list query will not use cache
+	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
+		if s.checkQueryCacheEnabled {
+			checkCache = s.checkCache
+			// otherwise when we pass nil to the list object query, the list query will not use cache
+		}
 	}
 
 	q := commands.NewListObjectsQuery(s.datastore,
@@ -305,9 +309,12 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	}
 
 	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
-	if s.checkQueryCacheEnabled {
-		checkCache = s.checkCache
-		// otherwise when we pass nil to the list object query, the list query will not use cache
+
+	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
+		if s.checkQueryCacheEnabled {
+			checkCache = s.checkCache
+			// otherwise when we pass nil to the list object query, the list query will not use cache
+		}
 	}
 
 	q := commands.NewListObjectsQuery(s.datastore,
@@ -405,14 +412,16 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
-	if s.checkQueryCacheEnabled {
-		cachedCheckResolver := graph.NewCachedCheckResolver(
-			checkResolver,
-			graph.WithExistingCache(s.checkCache),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
-		)
+	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
+		if s.checkQueryCacheEnabled {
+			cachedCheckResolver := graph.NewCachedCheckResolver(
+				checkResolver,
+				graph.WithExistingCache(s.checkCache),
+				graph.WithCacheTTL(s.checkQueryCacheTTL),
+			)
 
-		checkResolver.SetDelegate(cachedCheckResolver)
+			checkResolver.SetDelegate(cachedCheckResolver)
+		}
 	}
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
