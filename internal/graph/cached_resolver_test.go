@@ -165,7 +165,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			dut := NewCachedCheckResolver(initialMockResolver)
 			actualResult, err := dut.ResolveCheck(ctx, req)
 			require.Equal(t, result, actualResult)
-			require.Equal(t, nil, err)
+			require.Nil(t, err)
 
 			newCtrl := gomock.NewController(t)
 			defer newCtrl.Finish()
