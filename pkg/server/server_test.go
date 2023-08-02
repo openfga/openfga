@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"runtime"
@@ -864,6 +865,17 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
 	})
+}
+
+func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
+	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForCheck)
+	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForListObjects)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(memory.New()),
+	)
+	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
+	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
 func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
