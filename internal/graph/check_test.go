@@ -147,11 +147,12 @@ func TestCheckDbReads(t *testing.T) {
 		define a: [user] as self
 		define b: [user] as self
 		define union as a or b
+		define union_rewrite as union
 		define intersection as a and b
 		define difference as a but not b
 		define ttu as member from parent
         define union_and_ttu as union and ttu
-		define union_or_ttu as union or ttu
+		define union_or_ttu as union or ttu or union_rewrite
 		define intersection_of_ttus as union_or_ttu and union_and_ttu
 		define parent: [org] as self
 	`)
@@ -276,8 +277,8 @@ func TestCheckDbReads(t *testing.T) {
 			name:       "union_or_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 7, // union (4 reads) + ttu (3 reads)
-			maxDBReads: 7,
+			minDBReads: 11, // union (4 reads) + ttu (3 reads) + union rewrite (4 reads)
+			maxDBReads: 11,
 		},
 		{
 			name:       "intersection_of_ttus",
