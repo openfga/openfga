@@ -13,15 +13,15 @@
             "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
         "maxConcurrentReadsForCheck": {
-            "description": "The maximum allowed number of concurrent reads in a single Check query. The default is MaxUint32",
+            "description": "The maximum allowed number of concurrent reads in a single Check query (default is MaxUint32).",
             "type": "integer",
             "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_CHECK"
         },
         "maxConcurrentReadsForListObjects": {
-            "description": "The maximum allowed number of concurrent reads in a single ListObjects query.",
+            "description": "The maximum allowed number of concurrent reads in a single ListObjects query (default is MaxUint32).",
             "type": "integer",
-            "default": 30,
+            "default": 4294967295,
             "x-env-variable": "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS"
         },
         "changelogHorizonOffset": {
