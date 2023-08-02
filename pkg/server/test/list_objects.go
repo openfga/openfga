@@ -45,6 +45,7 @@ type listObjectsTestCase struct {
 	minimumResultsExpected uint32
 	listObjectsDeadline    time.Duration // 1 minute if not set
 	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
+	useCheckCache          bool
 }
 
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
@@ -71,6 +72,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"repo:1", "repo:2", "repo:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_ttu_in_model_and_reverse_expansion_implementation",
@@ -97,6 +99,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"document:1", "document:2", "document:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
@@ -121,6 +124,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"org:1", "org:2", "org:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
@@ -141,6 +145,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 1,
 			allResults:             []string{"team:1"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
@@ -164,6 +169,32 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			allResults:          []string{},
 			listObjectsDeadline: 1 * time.Second,
 			readTuplesDelay:     2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
+			useCheckCache:       false,
+		},
+		{
+			name:   "list_object_use_check_cache",
+			schema: typesystem.SchemaVersion1_1,
+			model: `
+			type user
+			type repo
+			  relations
+				define admin: [user] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
+				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
+			},
+			user:       "user:alice",
+			objectType: "repo",
+			relation:   "admin",
+			contextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("repo:3", "admin", "user:alice")},
+			},
+			maxResults:             2,
+			minimumResultsExpected: 2,
+			allResults:             []string{"repo:1", "repo:2", "repo:3"},
+			// when we use cache, the regular_endpoint should pick up the cached value from the streaming_endpoint run
+			useCheckCache: true,
 		},
 	}
 
@@ -196,19 +227,22 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
-			checkCache := ccache.New(
-				ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(100),
-			)
-
 			opts := []commands.ListObjectsQueryOption{
 				commands.WithListObjectsMaxResults(test.maxResults),
 				commands.WithListObjectsDeadline(test.listObjectsDeadline),
-				commands.WithCheckCache(checkCache),
-				commands.WithCheckQueryCacheTTL(1 * time.Millisecond),
 			}
 
 			if test.listObjectsDeadline != 0 {
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
+			}
+
+			if test.useCheckCache {
+				checkCache := ccache.New(
+					ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(100),
+				)
+				opts = append(opts,
+					commands.WithCheckCache(checkCache),
+					commands.WithCheckQueryCacheTTL(10*time.Second))
 			}
 
 			listObjectsQuery := commands.NewListObjectsQuery(datastore, opts...)

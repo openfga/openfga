@@ -9,12 +9,28 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v3"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/zap"
 )
 
 const (
 	defaultMaxCacheSize = 10000
 	defaultCacheTTL     = 10 * time.Second
+)
+
+var (
+	checkCacheTotalCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "check_cache_total_count",
+		Help: "The total number of calls to ResolveCheck.",
+	})
+
+	checkCacheHitCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "check_cache_hit_count",
+		Help: "The total number of cache hits for ResolveCheck.",
+	})
 )
 
 // CachedCheckResolver implements the CheckResolver interface in way that attempts to resolve
@@ -25,6 +41,7 @@ type CachedCheckResolver struct {
 	cache        *ccache.Cache[*ResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
+	logger       logger.Logger
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -55,6 +72,13 @@ func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckRe
 	}
 }
 
+// WithLogger sets the logger for the cached check resolver
+func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
+	return func(ccr *CachedCheckResolver) {
+		ccr.logger = logger
+	}
+}
+
 // NewCachedCheckResolver constructs a CheckResolver that delegates Check resolution to the provided delegate,
 // but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
@@ -64,13 +88,18 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 		delegate:     delegate,
 		maxCacheSize: defaultMaxCacheSize,
 		cacheTTL:     defaultCacheTTL,
+		logger:       logger.NewNoopLogger(),
 	}
-	checker.cache = ccache.New(
-		ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
-	)
 
 	for _, opt := range opts {
 		opt(checker)
+	}
+
+	if checker.cache == nil {
+		// this means there were no cache supplied
+		checker.cache = ccache.New(
+			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
+		)
 	}
 
 	return checker
@@ -81,16 +110,17 @@ func (c *CachedCheckResolver) ResolveCheck(
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
 
-	dispatchedCheckCounter.Inc()
+	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := checkRequestCacheKey(req)
 	if err != nil {
-		return nil, fmt.Errorf("cache key computation failed with error: %w", err)
+		c.logger.Error("cache key computation failed with error", zap.Error(err))
+		return c.delegate.ResolveCheck(ctx, req)
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
 	if cachedResp != nil && !cachedResp.Expired() {
-		dispatchedCheckCachedCounter.Inc()
+		checkCacheHitCounter.Inc()
 		return cachedResp.Value(), nil
 	}
 
@@ -116,12 +146,20 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		return "", err
 	}
 
-	contextualTuplesCacheKey := b.String()
+	tuplesCacheKey := b.String()
 
-	key := fmt.Sprintf("%s/%s/%s/%s",
+	var c bytes.Buffer
+	if err := gob.NewEncoder(&c).Encode(req.GetContextualTuples()); err != nil {
+		return "", err
+	}
+
+	contextualTuplesCacheKey := c.String()
+
+	key := fmt.Sprintf("%s/%s/%s/%s/%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
 		tuple.TupleKeyToString(req.GetTupleKey()),
+		tuplesCacheKey,
 		contextualTuplesCacheKey,
 	)
 

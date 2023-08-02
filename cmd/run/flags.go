@@ -158,13 +158,13 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("listObjectsMaxResults", flags.Lookup("listObjects-max-results"))
 		util.MustBindEnv("listObjectsMaxResults", "OPENFGA_LIST_OBJECTS_MAX_RESULTS", "OPENFGA_LISTOBJECTSMAXRESULTS")
 
-		util.MustBindPFlag("resolveCheckCacheConfig.enabled", flags.Lookup("resolve-check-cache-config-enabled"))
-		util.MustBindEnv("resolveCheckCacheConfig.enabled", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_ENABLED")
+		util.MustBindPFlag("resolveCheckCache.enabled", flags.Lookup("resolve-check-cache-enabled"))
+		util.MustBindEnv("resolveCheckCache.enabled", "OPENFGA_RESOLVE_CHECK_CACHE_ENABLED")
 
-		util.MustBindPFlag("resolveCheckCacheConfig.cacheLimit", flags.Lookup("resolve-check-cache-config-cache-limit"))
-		util.MustBindEnv("resolveCheckCacheConfig.cacheLimit", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_LIMIT")
+		util.MustBindPFlag("resolveCheckCache.limit", flags.Lookup("resolve-check-cache-limit"))
+		util.MustBindEnv("resolveCheckCache.limit", "OPENFGA_RESOLVE_CHECK_CACHE_LIMIT")
 
-		util.MustBindPFlag("resolveCheckCacheConfig.cacheTTL", flags.Lookup("resolve-check-cache-config-cache-ttl"))
-		util.MustBindEnv("resolveCheckCacheConfig.cacheTTL", "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_TTL")
+		util.MustBindPFlag("resolveCheckCache.TTL", flags.Lookup("resolve-check-cache-ttl"))
+		util.MustBindEnv("resolveCheckCache.TTL", "OPENFGA_RESOLVE_CHECK_CACHE_TTL")
 	}
 }

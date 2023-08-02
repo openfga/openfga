@@ -954,17 +954,17 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 
-	val = res.Get("properties.resolveCheckCacheConfig.properties.enabled.default")
+	val = res.Get("properties.resolveCheckCache.properties.enabled.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.Bool(), cfg.ResolveCheckCacheConfig.Enabled)
+	require.Equal(t, val.Bool(), cfg.ResolveCheckCache.Enabled)
 
-	val = res.Get("properties.resolveCheckCacheConfig.properties.cacheLimit.default")
+	val = res.Get("properties.resolveCheckCache.properties.limit.default")
 	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.ResolveCheckCacheConfig.CacheLimit)
+	require.EqualValues(t, val.Int(), cfg.ResolveCheckCache.Limit)
 
-	val = res.Get("properties.resolveCheckCacheConfig.properties.cacheTTL.default")
+	val = res.Get("properties.resolveCheckCache.properties.TTL.default")
 	require.True(t, val.Exists())
-	require.Equal(t, val.String(), cfg.ResolveCheckCacheConfig.CacheTTL.String())
+	require.Equal(t, val.String(), cfg.ResolveCheckCache.TTL.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {

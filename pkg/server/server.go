@@ -223,15 +223,18 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
 		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
+		checkCache:             nil,
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
-	s.checkCache = ccache.New(
-		ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
-	)
+	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) && s.checkQueryCacheEnabled {
+		s.checkCache = ccache.New(
+			ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
+		)
+	}
 
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
@@ -260,14 +263,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
-	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
-	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
-		if s.checkQueryCacheEnabled {
-			checkCache = s.checkCache
-			// otherwise when we pass nil to the list object query, the list query will not use cache
-		}
-	}
-
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -275,7 +270,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithCheckCache(checkCache),
+		commands.WithCheckCache(s.checkCache),
 		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
 	)
 
@@ -308,15 +303,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
-	var checkCache *ccache.Cache[*graph.ResolveCheckResponse]
-
-	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
-		if s.checkQueryCacheEnabled {
-			checkCache = s.checkCache
-			// otherwise when we pass nil to the list object query, the list query will not use cache
-		}
-	}
-
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
@@ -324,7 +310,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithCheckCache(checkCache),
+		commands.WithCheckCache(s.checkCache),
 		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
 	)
 
@@ -412,16 +398,14 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
 
-	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) {
-		if s.checkQueryCacheEnabled {
-			cachedCheckResolver := graph.NewCachedCheckResolver(
-				checkResolver,
-				graph.WithExistingCache(s.checkCache),
-				graph.WithCacheTTL(s.checkQueryCacheTTL),
-			)
+	if s.checkCache != nil {
+		cachedCheckResolver := graph.NewCachedCheckResolver(
+			checkResolver,
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		)
 
-			checkResolver.SetDelegate(cachedCheckResolver)
-		}
+		checkResolver.SetDelegate(cachedCheckResolver)
 	}
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
