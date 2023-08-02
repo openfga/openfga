@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -41,8 +42,8 @@ const (
 	defaultResolveNodeBreadthLimit          = 100
 	defaultListObjectsDeadline              = 3 * time.Second
 	defaultListObjectsMaxResults            = 1000
-	defaultMaxConcurrentReadsForCheck       = 100
-	defaultMaxConcurrentReadsForListObjects = 30
+	defaultMaxConcurrentReadsForCheck       = math.MaxUint32
+	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")

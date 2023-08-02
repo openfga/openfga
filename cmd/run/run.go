@@ -355,7 +355,7 @@ func DefaultConfig() *Config {
 		MaxTuplesPerWrite:                100,
 		MaxTypesPerAuthorizationModel:    100,
 		MaxConcurrentReadsForCheck:       math.MaxUint32,
-		MaxConcurrentReadsForListObjects: 30,
+		MaxConcurrentReadsForListObjects: math.MaxUint32,
 		ChangelogHorizonOffset:           0,
 		ResolveNodeLimit:                 25,
 		ResolveNodeBreadthLimit:          100,
