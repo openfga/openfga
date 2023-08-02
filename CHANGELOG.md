@@ -8,6 +8,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.1] - 2023-08-02
+
+### Changed
+* Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
+
+  In our last release [v1.3.0](https://github.com/openfga/openfga/releases/tag/v1.3.0) we modified the default behavior of Check and ListObjects such that it limits/restricts the degree of concurrency that is allowed for a single request. This change was unintended. This release reverts the default behavior back to unbounded concurrency limits (the prior default). The change mostly affects those using OpenFGA as a library.
+
 ## [1.3.0] - 2023-08-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.2.0...v1.3.0)
@@ -589,7 +596,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0
 [1.2.0]: https://github.com/openfga/openfga/releases/tag/v1.2.0
 [1.1.1]: https://github.com/openfga/openfga/releases/tag/v1.1.1
