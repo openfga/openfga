@@ -138,7 +138,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 					User:     "user:XYZ",
 				},
 				ContextualTuples: []*openfgav1.TupleKey{
-					&openfgav1.TupleKey{
+					{
 						Object:   "document:xxx",
 						Relation: "reader",
 						User:     "user:XYZ",
