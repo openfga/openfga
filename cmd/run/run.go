@@ -179,11 +179,11 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
-	flags.Bool("resolve-check-cache-enabled", defaultConfig.ResolveCheckCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
+	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
 
-	flags.Uint32("resolve-check-cache-limit", defaultConfig.ResolveCheckCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
+	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
-	flags.Duration("resolve-check-cache-ttl", defaultConfig.ResolveCheckCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
+	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -307,8 +307,8 @@ type MetricConfig struct {
 	EnableRPCHistograms bool
 }
 
-// ResolveCheckCache defines configuration for caching when resolving check
-type ResolveCheckCache struct {
+// CheckQueryCache defines configuration for caching when resolving check
+type CheckQueryCache struct {
 	Enabled bool
 	Limit   uint32
 	TTL     time.Duration
@@ -351,16 +351,16 @@ type Config struct {
 	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore         DatastoreConfig
-	GRPC              GRPCConfig
-	HTTP              HTTPConfig
-	Authn             AuthnConfig
-	Log               LogConfig
-	Trace             TraceConfig
-	Playground        PlaygroundConfig
-	Profiler          ProfilerConfig
-	Metrics           MetricConfig
-	ResolveCheckCache ResolveCheckCache
+	Datastore       DatastoreConfig
+	GRPC            GRPCConfig
+	HTTP            HTTPConfig
+	Authn           AuthnConfig
+	Log             LogConfig
+	Trace           TraceConfig
+	Playground      PlaygroundConfig
+	Profiler        ProfilerConfig
+	Metrics         MetricConfig
+	CheckQueryCache CheckQueryCache
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -424,7 +424,7 @@ func DefaultConfig() *Config {
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
 		},
-		ResolveCheckCache: ResolveCheckCache{
+		CheckQueryCache: CheckQueryCache{
 			Enabled: true,
 			Limit:   10000,
 			TTL:     10 * time.Second,
@@ -734,9 +734,9 @@ func RunServer(ctx context.Context, config *Config) error {
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
-		server.WithCheckQueryCacheEnabled(config.ResolveCheckCache.Enabled),
-		server.WithCheckQueryCacheLimit(config.ResolveCheckCache.Limit),
-		server.WithCheckQueryCacheTTL(config.ResolveCheckCache.TTL),
+		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
+		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
+		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithExperimentals(experimentals...),
 	)
 

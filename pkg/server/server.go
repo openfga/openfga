@@ -35,9 +35,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader    = "openfga-authorization-model-id"
-	authorizationModelIDKey       = "authorization_model_id"
-	ExperimentalCacheResolveCheck = "cache-resolve-check"
+	AuthorizationModelIDHeader  = "openfga-authorization-model-id"
+	authorizationModelIDKey     = "authorization_model_id"
+	ExperimentalCheckQueryCache = "check-query-cache"
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultChangelogHorizonOffset           = 0
@@ -230,7 +230,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		opt(s)
 	}
 
-	if slices.Contains(s.experimentals, ExperimentalCacheResolveCheck) && s.checkQueryCacheEnabled {
+	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
 		s.checkCache = ccache.New(
 			ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)

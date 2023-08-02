@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/mock/gomock"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,31 +17,23 @@ func TestResolveCheckFromCache(t *testing.T) {
 	req := &ResolveCheckRequest{
 		StoreID:              "12",
 		AuthorizationModelID: "33",
-		TupleKey: &openfgav1.TupleKey{
-			Object:   "document:abc",
-			Relation: "reader",
-			User:     "user:XYZ",
-		},
+		TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 	}
 	result := &ResolveCheckResponse{Allowed: true}
 
 	// if the tuple is different, it should result in fetching from cache
 	tests := []struct {
-		_name               string
+		name                string
 		req                 *ResolveCheckRequest
 		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
 	}{
 		{
 			// same signature means data will be taken from cache
-			_name: "same_request_returns_results_from_cache",
+			name: "same_request_returns_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "reader",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(0).Return(result, nil)
@@ -48,15 +41,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// different store means data is not from cache
-			_name: "request_for_different_store_does_not_return_results_from_cache",
+			name: "request_for_different_store_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "22",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "reader",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -64,15 +53,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// different model id means data is not from cache
-			_name: "request_for_different_model_id_does_not_return_results_from_cache",
+			name: "request_for_different_model_id_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "34",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "reader",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -80,15 +65,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// different tuple means data is not from cache
-			_name: "request_for_different_tuple_object_does_not_return_results_from_cache",
+			name: "request_for_different_tuple_object_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abcd",
-					Relation: "reader",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -96,15 +77,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// different tuple means data is not from cache
-			_name: "request_for_different_tuple_relation_does_not_return_results_from_cache",
+			name: "request_for_different_tuple_relation_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "owner",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -112,15 +89,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// different tuple means data is not from cache
-			_name: "request_for_different_tuple_user_does_not_return_results_from_cache",
+			name: "request_for_different_tuple_user_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "reader",
-					User:     "user:AAA",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -128,15 +101,11 @@ func TestResolveCheckFromCache(t *testing.T) {
 		},
 		{
 			// contextual tuples should result in a different request
-			_name: "request_with_different_contextual_tuple_does_not_return_results_from_cache",
+			name: "request_with_different_contextual_tuple_does_not_return_results_from_cache",
 			req: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "document:abc",
-					Relation: "reader",
-					User:     "user:XYZ",
-				},
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 				ContextualTuples: []*openfgav1.TupleKey{
 					{
 						Object:   "document:xxx",
@@ -153,7 +122,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 	for _, test := range tests {
 		test := test
-		t.Run(test._name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
