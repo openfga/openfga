@@ -2,11 +2,13 @@ package graph
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/golang/mock/gomock"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +27,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 	tests := []struct {
 		name                string
 		req                 *ResolveCheckRequest
+		setInitialResult    func(mock *MockCheckResolver, request *ResolveCheckRequest)
 		setTestExpectations func(mock *MockCheckResolver, request *ResolveCheckRequest)
 	}{
 		{
@@ -34,6 +37,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(0).Return(result, nil)
@@ -47,6 +53,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
 			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
@@ -58,6 +67,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "34",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -71,6 +83,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abcd", "reader", "user:XYZ"),
 			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
@@ -83,6 +98,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "owner", "user:XYZ"),
 			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
@@ -94,6 +112,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 				StoreID:              "12",
 				AuthorizationModelID: "33",
 				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:AAA"),
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
@@ -114,6 +135,24 @@ func TestResolveCheckFromCache(t *testing.T) {
 					},
 				},
 			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
+		},
+		{
+			// error result should not be cached
+			name: "response_with_error_not_cached",
+			req: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:XYZ"),
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(nil, fmt.Errorf("Mock error"))
+			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
@@ -128,13 +167,13 @@ func TestResolveCheckFromCache(t *testing.T) {
 			defer ctrl.Finish()
 
 			initialMockResolver := NewMockCheckResolver(ctrl)
-			initialMockResolver.EXPECT().ResolveCheck(ctx, req).Times(1).Return(result, nil)
+			test.setInitialResult(initialMockResolver, req)
 
 			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(initialMockResolver)
-			actualResult, err := dut.ResolveCheck(ctx, req)
-			require.Equal(t, result, actualResult)
-			require.Nil(t, err)
+			dut := NewCachedCheckResolver(initialMockResolver,
+				WithLogger(logger.NewNoopLogger()),
+				WithMaxCacheSize(10))
+			_, _ = dut.ResolveCheck(ctx, req)
 
 			newCtrl := gomock.NewController(t)
 			defer newCtrl.Finish()
@@ -142,7 +181,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			newResolver := NewMockCheckResolver(newCtrl)
 			test.setTestExpectations(newResolver, test.req)
 			dut2 := NewCachedCheckResolver(newResolver, WithExistingCache(dut.cache))
-			actualResult, err = dut2.ResolveCheck(ctx, test.req)
+			actualResult, err := dut2.ResolveCheck(ctx, test.req)
 			require.Equal(t, result, actualResult)
 			require.Nil(t, err)
 
