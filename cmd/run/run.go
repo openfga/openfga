@@ -179,11 +179,11 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
 
-	flags.Bool("resolve-check-cache-config-enabled", defaultConfig.ResolveCheckCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
+	flags.Bool("resolve-check-cache-enabled", defaultConfig.ResolveCheckCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
 
-	flags.Uint32("resolve-check-cache-config-cache-limit", defaultConfig.ResolveCheckCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
+	flags.Uint32("resolve-check-cache-limit", defaultConfig.ResolveCheckCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
-	flags.Duration("resolve-check-cache-config-cache-ttl", defaultConfig.ResolveCheckCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
+	flags.Duration("resolve-check-cache-ttl", defaultConfig.ResolveCheckCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
 	// NOTE: if you add a new flag here, update the function below, too
 

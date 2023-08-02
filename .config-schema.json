@@ -350,27 +350,27 @@
                 }
             }
         },
-        "resolveCheckCacheConfig": {
+        "resolveCheckCache": {
             "type": "object",
             "properties": {
                 "enabled": {
-                    "description": "enable/disable cache for resolve check result",
+                    "description": "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses",
                     "type": "bool",
                     "default": "true",
-                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_ENABLED"
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_ENABLED"
                 },
-                "cacheLimit": {
-                    "description": "size limit for resolve check cache",
+                "limit": {
+                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache",
                     "type": "integer",
                     "default": "10000",
-                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_LIMIT"
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_LIMIT"
                 },
-                "cacheTTL": {
-                    "description": "time to live (TTL) value of resolve check cache",
+                "TTL": {
+                    "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
                     "type": "string",
                     "format": "duration",
                     "default": "10s",
-                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_CONFIG_CACHE_TTL"
+                    "x-env-variable": "OPENFGA_RESOLVE_CHECK_CACHE_TTL"
                 }
             }
         }
