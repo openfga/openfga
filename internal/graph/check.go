@@ -239,9 +239,10 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 				err = result.err
 				continue
 			}
-			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
+			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
 
 			if result.resp.GetAllowed() {
+				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -252,7 +253,7 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatastoreCallCount: dbReads,
+			DatastoreQueryCount: dbReads,
 		},
 	}, err
 }
@@ -282,8 +283,9 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 				continue
 			}
 
-			dbReads += result.resp.GetResolutionMetadata().DatastoreCallCount
+			dbReads += result.resp.GetResolutionMetadata().DatastoreQueryCount
 			if !result.resp.GetAllowed() {
+				result.resp.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return result.resp, nil
 			}
 		case <-ctx.Done():
@@ -295,7 +297,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		return &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreCallCount: dbReads,
+				DatastoreQueryCount: dbReads,
 			},
 		}, err
 	}
@@ -303,7 +305,7 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatastoreCallCount: dbReads,
+			DatastoreQueryCount: dbReads,
 		},
 	}, nil
 }
@@ -356,7 +358,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	response := &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatastoreCallCount: 0,
+			DatastoreQueryCount: 0,
 		},
 	}
 	var dbReads uint32
@@ -367,10 +369,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				return response, baseResult.err
 			}
 
-			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreCallCount
+			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
 
 			if !baseResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreCallCount = baseResult.resp.GetResolutionMetadata().DatastoreCallCount
+				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return response, nil
 			}
 
@@ -379,10 +381,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 				return response, subResult.err
 			}
 
-			dbReads += subResult.resp.GetResolutionMetadata().DatastoreCallCount
+			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
 
 			if subResult.resp.GetAllowed() {
-				response.GetResolutionMetadata().DatastoreCallCount = subResult.resp.GetResolutionMetadata().DatastoreCallCount
+				response.GetResolutionMetadata().DatastoreQueryCount = dbReads
 				return response, nil
 			}
 		case <-ctx.Done():
@@ -393,7 +395,7 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	return &ResolveCheckResponse{
 		Allowed: true,
 		ResolutionMetadata: &ResolutionMetadata{
-			DatastoreCallCount: dbReads,
+			DatastoreQueryCount: dbReads,
 		},
 	}, nil
 }
@@ -470,7 +472,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
+					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
@@ -522,7 +524,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
-					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
+					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 				},
 			}
 
@@ -586,8 +588,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							AuthorizationModelID: req.GetAuthorizationModelID(),
 							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
 							ResolutionMetadata: &ResolutionMetadata{
-								Depth:              req.GetResolutionMetadata().Depth - 1,
-								DatastoreCallCount: response.GetResolutionMetadata().DatastoreCallCount,
+								Depth:               req.GetResolutionMetadata().Depth - 1,
+								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
 							},
 						}))
 				}
@@ -623,8 +625,8 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 					req.TupleKey.GetUser(),
 				),
 				ResolutionMetadata: &ResolutionMetadata{
-					Depth:              req.GetResolutionMetadata().Depth - 1,
-					DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount,
+					Depth:               req.GetResolutionMetadata().Depth - 1,
+					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
 			})(ctx)
 	}
@@ -657,7 +659,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		response := &ResolveCheckResponse{
 			Allowed: false,
 			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount + 1,
+				DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 			},
 		}
 		iter, err := c.ds.Read(
@@ -709,8 +711,8 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					AuthorizationModelID: req.GetAuthorizationModelID(),
 					TupleKey:             tupleKey,
 					ResolutionMetadata: &ResolutionMetadata{
-						Depth:              req.GetResolutionMetadata().Depth - 1,
-						DatastoreCallCount: req.GetResolutionMetadata().DatastoreCallCount, // add TTU read below
+						Depth:               req.GetResolutionMetadata().Depth - 1,
+						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
 					},
 				}))
 		}
@@ -725,7 +727,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			// if we had 3 dispatched requests, and the final result is "allowed = false",
 			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
 			// if final result is "allowed = true", we want final reads to be N1 + 1
-			unionResponse.GetResolutionMetadata().DatastoreCallCount++
+			unionResponse.GetResolutionMetadata().DatastoreQueryCount++
 		}
 
 		return unionResponse, err

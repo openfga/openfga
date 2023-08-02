@@ -359,13 +359,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth:              s.resolveNodeLimit,
-			DatastoreCallCount: 0,
+			Depth:               s.resolveNodeLimit,
+			DatastoreQueryCount: 0,
 		},
 	})
 
-	grpc_ctxtags.Extract(ctx).Set("datastore_call_count", int64(resp.ResolutionMetadata.DatastoreCallCount))
-	span.SetAttributes(attribute.Int64("datastore_call_count", int64(resp.ResolutionMetadata.DatastoreCallCount)))
+	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
+	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
