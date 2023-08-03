@@ -364,9 +364,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			DatastoreQueryCount: 0,
 		},
 	})
-
-	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
-	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
@@ -374,6 +371,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		return nil, serverErrors.HandleError("", err)
 	}
+	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
+	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
