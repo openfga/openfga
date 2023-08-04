@@ -15,9 +15,6 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   OpenFGA request logs will now include a field `datastore_query_count` that shows how many queries were involved in a single Check resolution.
 
-### Fixed
-* Avoid panic due to incorrect error handling in Check ([#923](https://github.com/openfga/openfga/pull/923))
-
 ### Changed
 * Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
 
