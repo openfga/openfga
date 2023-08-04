@@ -50,6 +50,12 @@ jobs:
           verbose: true
           fail_ci_if_error: false
 
+  govulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.2
       - name: Run govulncheck
         uses: golang/govulncheck-action@a46a9b37e1aeb4ccad626d440f1d51246f6b0ba6 # v0.2.0
 

@@ -360,7 +360,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		TupleKey:             req.GetTupleKey(),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
-			Depth: s.resolveNodeLimit,
+			Depth:               s.resolveNodeLimit,
+			DatastoreQueryCount: 0,
 		},
 	})
 	if err != nil {
@@ -370,6 +371,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		return nil, serverErrors.HandleError("", err)
 	}
+	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
+	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
