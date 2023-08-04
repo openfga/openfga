@@ -1155,6 +1155,41 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 		},
+		{
+			name: "sharing_same_relation",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "list_type",
+				Relation:   "list_relation",
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+					Type: "user",
+					Id:   "test_user",
+				}},
+			},
+			model: `
+			type user
+
+			type test_type
+			  relations
+				define relation1: [user] as self
+				define relation2: [user] as self
+
+			type list_type
+			  relations
+				define list_relation: [test_type#relation1,test_type#relation2] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("list_type:list_type1", "list_relation", "test_type:test_type1#relation1"),
+				tuple.NewTupleKey("test_type:test_type1", "relation1", "user:test_user"),
+				tuple.NewTupleKey("test_type:test_type1", "relation2", "user:test_user"),
+			},
+			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "list_type:list_type1",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

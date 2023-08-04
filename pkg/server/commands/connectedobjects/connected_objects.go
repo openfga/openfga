@@ -288,6 +288,7 @@ func (c *ConnectedObjectsQuery) Execute(
 		foundCount = new(uint32)
 	}
 
+	// foundObjects map allows us to not return the same object twice
 	var foundObjects sync.Map
 	return c.execute(ctx, req, resultChan, &foundObjects, foundCount)
 }
