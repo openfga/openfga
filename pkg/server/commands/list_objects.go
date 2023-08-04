@@ -61,7 +61,7 @@ type ListObjectsQuery struct {
 
 	// configurations for caching results
 	checkQueryCacheTTL time.Duration
-	checkCache         *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
+	checkCache         *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -113,7 +113,7 @@ func WithCheckQueryCacheTTL(ttl time.Duration) ListObjectsQueryOption {
 }
 
 // WithCheckCache sets the cache used for resolve check results
-func WithCheckCache(checkCache *ccache.Cache[*graph.ResolveCheckResponse]) ListObjectsQueryOption {
+func WithCheckCache(checkCache *ccache.Cache[*graph.CachedResolveCheckResponse]) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
 		d.checkCache = checkCache
 	}

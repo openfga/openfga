@@ -410,14 +410,7 @@ func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		resp, err := c.delegate.ResolveCheck(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-
-		return &ResolveCheckResponse{
-			Allowed: resp.Allowed,
-		}, nil
+		return c.delegate.ResolveCheck(ctx, req)
 	}
 }
 

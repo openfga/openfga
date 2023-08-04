@@ -182,7 +182,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			test.setTestExpectations(newResolver, test.req)
 			dut2 := NewCachedCheckResolver(newResolver, WithExistingCache(dut.cache))
 			actualResult, err := dut2.ResolveCheck(ctx, test.req)
-			require.Equal(t, result, actualResult)
+			require.Equal(t, result.Allowed, actualResult.Allowed)
 			require.Nil(t, err)
 
 		})
@@ -211,13 +211,13 @@ func TestResolveCheckExpired(t *testing.T) {
 	// expect first call to result in actual resolve call
 	dut := NewCachedCheckResolver(initialMockResolver, WithCacheTTL(1*time.Microsecond))
 	actualResult, err := dut.ResolveCheck(ctx, req)
-	require.Equal(t, result, actualResult)
+	require.Equal(t, result.Allowed, actualResult.Allowed)
 	require.Equal(t, nil, err)
 
 	// subsequent call would have cache timeout and result in new ResolveCheck
 	time.Sleep(5 * time.Microsecond)
 
 	actualResult, err = dut.ResolveCheck(ctx, req)
-	require.Equal(t, result, actualResult)
+	require.Equal(t, result.Allowed, actualResult.Allowed)
 	require.Nil(t, err)
 }

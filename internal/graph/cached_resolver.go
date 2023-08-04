@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	defaultMaxCacheSize = 10000
-	defaultCacheTTL     = 10 * time.Second
+	defaultMaxCacheSize     = 10000
+	defaultCacheTTL         = 10 * time.Second
+	defaultResolveNodeLimit = 25
 )
 
 var (
@@ -33,12 +34,34 @@ var (
 	})
 )
 
+// CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
+// do not store the ResolutionData
+type CachedResolveCheckResponse struct {
+	Allowed bool
+}
+
+func (c *CachedResolveCheckResponse) convertToResolveCheckResponse() *ResolveCheckResponse {
+	return &ResolveCheckResponse{
+		Allowed: c.Allowed,
+		ResolutionMetadata: &ResolutionMetadata{
+			Depth:               defaultResolveNodeLimit,
+			DatastoreQueryCount: 0,
+		},
+	}
+}
+
+func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckResponse {
+	return &CachedResolveCheckResponse{
+		Allowed: r.Allowed,
+	}
+}
+
 // CachedCheckResolver implements the CheckResolver interface in way that attempts to resolve
 // Check sub-problems via prior computations before delegating the request to some underlying
 // CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
-	cache        *ccache.Cache[*ResolveCheckResponse]
+	cache        *ccache.Cache[*CachedResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
@@ -66,7 +89,7 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 }
 
 // WithExistingCache sets the cache to the provided cache
-func WithExistingCache(cache *ccache.Cache[*ResolveCheckResponse]) CachedCheckResolverOpt {
+func WithExistingCache(cache *ccache.Cache[*CachedResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
 	}
@@ -83,6 +106,7 @@ func WithLogger(logger logger.Logger) CachedCheckResolverOpt {
 // but before delegating the query to the delegate a cache-key lookup is made to see if the Check sub-problem
 // has already recently been computed. If the Check sub-problem is in the cache, then the response is returned
 // immediately and no re-computation is necessary.
+// NOTE: the ResolveCheck's resolution data will be set as the default values as we actually did no database lookup
 func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverOpt) *CachedCheckResolver {
 	checker := &CachedCheckResolver{
 		delegate:     delegate,
@@ -98,7 +122,7 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 	if checker.cache == nil {
 		// this means there were no cache supplied
 		checker.cache = ccache.New(
-			ccache.Configure[*ResolveCheckResponse]().MaxSize(checker.maxCacheSize),
+			ccache.Configure[*CachedResolveCheckResponse]().MaxSize(checker.maxCacheSize),
 		)
 	}
 
@@ -121,7 +145,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	cachedResp := c.cache.Get(cacheKey)
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
-		return cachedResp.Value(), nil
+		return cachedResp.Value().convertToResolveCheckResponse(), nil
 	}
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
@@ -129,7 +153,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 		return nil, err
 	}
 
-	c.cache.Set(cacheKey, resp, c.cacheTTL)
+	c.cache.Set(cacheKey, newCachedResolveCheckResponse(resp), c.cacheTTL)
 	return resp, nil
 }
 

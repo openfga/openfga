@@ -77,7 +77,7 @@ type Server struct {
 	checkQueryCacheEnabled bool
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
-	checkCache             *ccache.Cache[*graph.ResolveCheckResponse] // checkCache has to be shared across requests
+	checkCache             *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -232,7 +232,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
 		s.checkCache = ccache.New(
-			ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
+			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)
 	}
 

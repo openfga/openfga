@@ -238,7 +238,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 
 			if test.useCheckCache {
 				checkCache := ccache.New(
-					ccache.Configure[*graph.ResolveCheckResponse]().MaxSize(100),
+					ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(100),
 				)
 				opts = append(opts,
 					commands.WithCheckCache(checkCache),
