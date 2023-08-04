@@ -23,6 +23,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -47,6 +49,19 @@ const (
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
+
+var (
+	datastoreQueryCountHistogramName = "datastore_query_count"
+
+	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            datastoreQueryCountHistogramName,
+		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+)
 
 // A Server implements the OpenFGA service backend as both
 // a GRPC and HTTP server.
@@ -371,8 +386,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		return nil, serverErrors.HandleError("", err)
 	}
-	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
-	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
+
+	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		"check",
+	).Observe(queryCount)
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
