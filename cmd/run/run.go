@@ -523,21 +523,26 @@ func run(_ *cobra.Command, _ []string) {
 		panic(err)
 	}
 
-	if err := RunServer(context.Background(), config); err != nil {
-		panic(err)
-	}
-}
-
-func RunServer(ctx context.Context, config *Config) error {
 	if err := VerifyConfig(config); err != nil {
-		return err
+		panic(err)
 	}
 
 	logger := logger.MustNewLogger(config.Log.Format, config.Log.Level)
 
+	serverCtx := &ServerContext{Logger: logger}
+	if err := serverCtx.Run(context.Background(), config); err != nil {
+		panic(err)
+	}
+}
+
+type ServerContext struct {
+	Logger logger.Logger
+}
+
+func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
 		tp = telemetry.MustNewTracerProvider(
 			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
 			telemetry.WithAttributes(
@@ -548,7 +553,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		)
 	}
 
-	logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
 
 	var experimentals []server.ExperimentalFeatureFlag
 	for _, feature := range config.Experimentals {
@@ -558,7 +563,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	dsCfg := sqlcommon.NewConfig(
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
-		sqlcommon.WithLogger(logger),
+		sqlcommon.WithLogger(s.Logger),
 		sqlcommon.WithMaxTuplesPerWrite(config.MaxTuplesPerWrite),
 		sqlcommon.WithMaxTypesPerAuthorizationModel(config.MaxTypesPerAuthorizationModel),
 		sqlcommon.WithMaxOpenConns(config.Datastore.MaxOpenConns),
@@ -591,18 +596,18 @@ func RunServer(ctx context.Context, config *Config) error {
 	}
 	datastore = storagewrappers.NewCachedOpenFGADatastore(storagewrappers.NewContextWrapper(datastore), config.Datastore.MaxCacheSize)
 
-	logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
+	s.Logger.Info(fmt.Sprintf("using '%v' storage engine", config.Datastore.Engine))
 
 	var authenticator authn.Authenticator
 	switch config.Authn.Method {
 	case "none":
-		logger.Warn("authentication is disabled")
+		s.Logger.Warn("authentication is disabled")
 		authenticator = authn.NoopAuthenticator{}
 	case "preshared":
-		logger.Info("using 'preshared' authentication")
+		s.Logger.Info("using 'preshared' authentication")
 		authenticator, err = presharedkey.NewPresharedKeyAuthenticator(config.Authn.Keys)
 	case "oidc":
-		logger.Info("using 'oidc' authentication")
+		s.Logger.Info("using 'oidc' authentication")
 		authenticator, err = oidc.NewRemoteOidcAuthenticator(config.Authn.Issuer, config.Authn.Audience)
 	default:
 		return fmt.Errorf("unsupported authentication method '%v'", config.Authn.Method)
@@ -639,7 +644,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
-		logging.NewLoggingInterceptor(logger),
+		logging.NewLoggingInterceptor(s.Logger),
 		grpc_auth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
 	)
 
@@ -648,7 +653,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),
-		logging.NewStreamingLoggingInterceptor(logger),
+		logging.NewStreamingLoggingInterceptor(s.Logger),
 	)
 
 	opts := []grpc.ServerOption{
@@ -667,9 +672,9 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		opts = append(opts, grpc.Creds(creds))
 
-		logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
+		s.Logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
 	} else {
-		logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
+		s.Logger.Warn("grpc TLS is disabled, serving connections using insecure plaintext")
 	}
 
 	if config.Profiler.Enabled {
@@ -681,24 +686,24 @@ func RunServer(ctx context.Context, config *Config) error {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 		go func() {
-			logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
+			s.Logger.Info(fmt.Sprintf("🔬 starting pprof profiler on '%s'", config.Profiler.Addr))
 
 			if err := http.ListenAndServe(config.Profiler.Addr, mux); err != nil {
 				if err != http.ErrServerClosed {
-					logger.Fatal("failed to start pprof profiler", zap.Error(err))
+					s.Logger.Fatal("failed to start pprof profiler", zap.Error(err))
 				}
 			}
 		}()
 	}
 
 	if config.Metrics.Enabled {
-		logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
+		s.Logger.Info(fmt.Sprintf("📈 starting metrics server on '%s'", config.Metrics.Addr))
 
 		go func() {
 			http.Handle("/metrics", promhttp.Handler())
 			if err := http.ListenAndServe(config.Metrics.Addr, nil); err != nil {
 				if err != http.ErrServerClosed {
-					logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
+					s.Logger.Fatal("failed to start prometheus metrics server", zap.Error(err))
 				}
 			}
 		}()
@@ -706,8 +711,8 @@ func RunServer(ctx context.Context, config *Config) error {
 
 	svr := server.MustNewServerWithOpts(
 		server.WithDatastore(datastore),
-		server.WithLogger(logger),
-		server.WithTransport(gateway.NewRPCTransport(logger)),
+		server.WithLogger(s.Logger),
+		server.WithTransport(gateway.NewRPCTransport(s.Logger)),
 		server.WithResolveNodeLimit(config.ResolveNodeLimit),
 		server.WithResolveNodeBreadthLimit(config.ResolveNodeBreadthLimit),
 		server.WithChangelogHorizonOffset(config.ChangelogHorizonOffset),
@@ -718,7 +723,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		server.WithExperimentals(experimentals...),
 	)
 
-	logger.Info(
+	s.Logger.Info(
 		"🚀 starting openfga service...",
 		zap.String("version", build.Version),
 		zap.String("date", build.Date),
@@ -741,13 +746,13 @@ func RunServer(ctx context.Context, config *Config) error {
 	go func() {
 		if err := grpcServer.Serve(lis); err != nil {
 			if !errors.Is(err, grpc.ErrServerStopped) {
-				logger.Fatal("failed to start grpc server", zap.Error(err))
+				s.Logger.Fatal("failed to start grpc server", zap.Error(err))
 			}
 
-			logger.Info("grpc server shut down..")
+			s.Logger.Info("grpc server shut down..")
 		}
 	}()
-	logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
+	s.Logger.Info(fmt.Sprintf("grpc server listening on '%s'...", config.GRPC.Addr))
 
 	var httpServer *http.Server
 	if config.HTTP.Enabled {
@@ -760,7 +765,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		if config.GRPC.TLS.Enabled {
 			creds, err := credentials.NewClientTLSFromFile(config.GRPC.TLS.CertPath, "")
 			if err != nil {
-				logger.Fatal("", zap.Error(err))
+				s.Logger.Fatal("", zap.Error(err))
 			}
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(creds))
 		} else {
@@ -772,7 +777,7 @@ func RunServer(ctx context.Context, config *Config) error {
 
 		conn, err := grpc.DialContext(timeoutCtx, config.GRPC.Addr, dialOpts...)
 		if err != nil {
-			logger.Fatal("", zap.Error(err))
+			s.Logger.Fatal("", zap.Error(err))
 		}
 		defer conn.Close()
 
@@ -810,17 +815,17 @@ func RunServer(ctx context.Context, config *Config) error {
 			var err error
 			if config.HTTP.TLS.Enabled {
 				if config.HTTP.TLS.CertPath == "" || config.HTTP.TLS.KeyPath == "" {
-					logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
+					s.Logger.Fatal("'http.tls.cert' and 'http.tls.key' configs must be set")
 				}
 				err = httpServer.ListenAndServeTLS(config.HTTP.TLS.CertPath, config.HTTP.TLS.KeyPath)
 			} else {
 				err = httpServer.ListenAndServe()
 			}
 			if err != http.ErrServerClosed {
-				logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
+				s.Logger.Fatal("HTTP server closed with unexpected error", zap.Error(err))
 			}
 		}()
-		logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
+		s.Logger.Info(fmt.Sprintf("HTTP server listening on '%s'...", httpServer.Addr))
 	}
 
 	var playground *http.Server
@@ -835,7 +840,7 @@ func RunServer(ctx context.Context, config *Config) error {
 		}
 
 		playgroundAddr := fmt.Sprintf(":%d", config.Playground.Port)
-		logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
+		s.Logger.Info(fmt.Sprintf("🛝 starting openfga playground on http://localhost%s/playground", playgroundAddr))
 
 		tmpl, err := template.ParseFS(assets.EmbedPlayground, "playground/index.html")
 		if err != nil {
@@ -878,7 +883,7 @@ func RunServer(ctx context.Context, config *Config) error {
 					})
 					if err != nil {
 						w.WriteHeader(http.StatusInternalServerError)
-						logger.Error("failed to execute/render the playground web template", zap.Error(err))
+						s.Logger.Error("failed to execute/render the playground web template", zap.Error(err))
 					}
 
 					return
@@ -896,9 +901,9 @@ func RunServer(ctx context.Context, config *Config) error {
 		go func() {
 			err = playground.ListenAndServe()
 			if err != http.ErrServerClosed {
-				logger.Fatal("failed to start the openfga playground server", zap.Error(err))
+				s.Logger.Fatal("failed to start the openfga playground server", zap.Error(err))
 			}
-			logger.Info("shutdown the openfga playground server")
+			s.Logger.Info("shutdown the openfga playground server")
 		}()
 	}
 
@@ -909,20 +914,20 @@ func RunServer(ctx context.Context, config *Config) error {
 	case <-done:
 	case <-ctx.Done():
 	}
-	logger.Info("attempting to shutdown gracefully")
+	s.Logger.Info("attempting to shutdown gracefully")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if playground != nil {
 		if err := playground.Shutdown(ctx); err != nil {
-			logger.Info("failed to gracefully shutdown playground server", zap.Error(err))
+			s.Logger.Info("failed to gracefully shutdown playground server", zap.Error(err))
 		}
 	}
 
 	if httpServer != nil {
 		if err := httpServer.Shutdown(ctx); err != nil {
-			logger.Info("failed to shutdown the http server", zap.Error(err))
+			s.Logger.Info("failed to shutdown the http server", zap.Error(err))
 		}
 	}
 
@@ -935,7 +940,7 @@ func RunServer(ctx context.Context, config *Config) error {
 	_ = tp.ForceFlush(ctx)
 	_ = tp.Shutdown(ctx)
 
-	logger.Info("server exited. goodbye 👋")
+	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
 }

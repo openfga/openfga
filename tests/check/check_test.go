@@ -2,16 +2,20 @@ package check
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -33,12 +37,133 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
+func TestCheckLogs(t *testing.T) {
+	cfg := run.MustDefaultConfigWithRandomPorts()
+	cfg.Log.Level = "none"
+	cfg.Datastore.Engine = "memory"
+
+	observerLogger, logs := observer.New(zap.DebugLevel)
+	serverCtx := &run.ServerContext{
+		Logger: &logger.ZapLogger{
+			Logger: zap.New(observerLogger),
+		},
+	}
+
+	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
+	defer cancel()
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr,
+		grpc.WithBlock(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	typedefs := parser.MustParse(`
+	type user
+
+	type document
+	  relations
+	    define viewer: [user] as self
+	`)
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
+	})
+	require.NoError(t, err)
+
+	authorizationModelID := writeModelResp.GetAuthorizationModelId()
+
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:  storeID,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
+
+	filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
+		if e.Message == "grpc_req_complete" {
+			for _, ctxField := range e.Context {
+				if ctxField.Equals(zap.String("grpc_method", "Check")) {
+					return true
+				}
+			}
+		}
+
+		return false
+	})
+
+	expectedLogs := filteredLogs.All()
+	require.Len(t, expectedLogs, 1)
+
+	fields := expectedLogs[0].Context
+
+	for _, field := range fields {
+		switch field.Key {
+		case "grpc_service":
+			require.Equal(t, field.String, "openfga.v1.OpenFGAService")
+		case "grpc_method":
+			require.Equal(t, field.String, "Check")
+		case "grpc_type":
+			require.Equal(t, field.String, "unary")
+		case "grpc_code":
+			require.Equal(t, field.Integer, int64(0))
+		case "raw_request":
+			raw, err := json.Marshal(&field.Interface)
+			require.NoError(t, err)
+			expected := fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"","trace":false}`, storeID)
+			require.JSONEq(t, string(raw), expected)
+		case "raw_response":
+			raw, err := json.Marshal(&field.Interface)
+			require.NoError(t, err)
+			expected := `{"allowed":true,"resolution":""}`
+			require.JSONEq(t, string(raw), expected)
+		case "authorization_model_id":
+			require.Equal(t, field.String, authorizationModelID)
+		case "store_id":
+			require.Equal(t, field.String, storeID)
+		case "datastore_query_count":
+			require.GreaterOrEqual(t, field.Integer, int64(1))
+			require.LessOrEqual(t, field.Integer, int64(2))
+		case "peer.address":
+		case "request_id":
+			require.NotEmpty(t, field.String)
+		default:
+			require.Fail(t, "unexpected field: %s", field.Key)
+		}
+	}
+}
+
 func testRunAll(t *testing.T, engine string) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
-	cancel := tests.StartServer(t, cfg)
+	logger := logger.NewNoopLogger()
+	serverCtx := &run.ServerContext{Logger: logger}
+
+	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,

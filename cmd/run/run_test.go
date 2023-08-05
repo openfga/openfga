@@ -29,6 +29,7 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -219,6 +220,12 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
+func runServer(ctx context.Context, cfg *Config) error {
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	serverCtx := &ServerContext{Logger: logger}
+	return serverCtx.Run(ctx, cfg)
+}
+
 func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
@@ -295,7 +302,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
-	err := RunServer(context.Background(), cfg)
+	err := runServer(context.Background(), cfg)
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
@@ -305,7 +312,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -334,7 +341,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -398,7 +405,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -523,7 +530,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -630,7 +637,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -690,7 +697,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -715,7 +722,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -750,7 +757,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -776,7 +783,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -797,7 +804,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -814,7 +821,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
