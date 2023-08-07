@@ -8,7 +8,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1
 	github.com/craigpastro/openfga-dsl-parser v1.0.1-0.20230801160350-9bde4712fb6c
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1
-	github.com/docker/docker v24.0.3+incompatible
+	github.com/docker/docker v24.0.5+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
