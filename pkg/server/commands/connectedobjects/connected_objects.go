@@ -241,21 +241,7 @@ func (c *ConnectedObjectsQuery) execute(
 			case graph.DirectIngress:
 				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
 			case graph.ComputedUsersetIngress:
-
-				// lookup the rewritten target relation on the computed_userset ingress
-				return c.execute(ctx, &ConnectedObjectsRequest{
-					StoreID:    storeID,
-					ObjectType: req.ObjectType,
-					Relation:   req.Relation,
-					User: &UserRefObjectRelation{
-						ObjectRelation: &openfgav1.ObjectRelation{
-							Object:   sourceUserObj,
-							Relation: innerLoopIngress.Ingress.GetRelation(),
-						},
-					},
-					ContextualTuples: req.ContextualTuples,
-				}, resultChan, foundObjectsMap, foundCount)
-
+				return c.reverseExpandComputedUserset(subgctx, r, resultChan, sourceUserObj, foundObjectsMap, foundCount)
 			case graph.TupleToUsersetIngress:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
 			default:
@@ -299,6 +285,41 @@ type reverseExpandRequest struct {
 	targetObjectRef  *openfgav1.RelationReference
 	sourceUserRef    IsUserRef
 	contextualTuples []*openfgav1.TupleKey
+}
+
+func (c *ConnectedObjectsQuery) reverseExpandComputedUserset(
+	ctx context.Context,
+	req *reverseExpandRequest,
+	resultChan chan<- *ConnectedObjectsResult,
+	sourceUserObject string,
+	foundObjectsMap *sync.Map,
+	foundCount *uint32,
+) error {
+
+	if req.targetObjectRef.GetType() == req.sourceUserRef.GetObjectType() && req.targetObjectRef.GetRelation() == req.ingress.Ingress.GetRelation() {
+
+		if _, ok := foundObjectsMap.LoadOrStore(sourceUserObject, struct{}{}); !ok {
+			resultChan <- &ConnectedObjectsResult{
+				Object:       sourceUserObject,
+				ResultStatus: NoFurtherEvalStatus,
+			}
+		}
+
+		return nil
+	}
+
+	return c.execute(ctx, &ConnectedObjectsRequest{
+		StoreID:    req.storeID,
+		ObjectType: req.targetObjectRef.GetType(),
+		Relation:   req.targetObjectRef.GetRelation(),
+		User: &UserRefObjectRelation{
+			ObjectRelation: &openfgav1.ObjectRelation{
+				Object:   sourceUserObject,
+				Relation: req.ingress.Ingress.GetRelation(),
+			},
+		},
+		ContextualTuples: req.contextualTuples,
+	}, resultChan, foundObjectsMap, foundCount)
 }
 
 func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
@@ -521,8 +542,9 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 
 		foundObject := tk.GetObject()
 		foundObjectType, _ := tuple.SplitObject(foundObject)
+		foundRelation := tk.GetRelation()
 
-		if _, ok := foundObjectsMap.LoadOrStore(foundObject, struct{}{}); ok {
+		if _, ok := foundObjectsMap.LoadOrStore(fmt.Sprintf("%s#%s", foundObject, foundRelation), struct{}{}); ok {
 			// todo(jon-whit): we could optimize this by avoiding reading this
 			// from the database in the first place
 
@@ -530,7 +552,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 			continue
 		}
 
-		if foundObjectType == targetObjectType {
+		if foundObjectType == targetObjectType && foundRelation == targetObjectRel {
 			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.maxResults {
 				break
 			}

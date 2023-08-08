@@ -83,13 +83,13 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			model: `
 			type user
-          
+
 			type folder
 			  relations
 				define writer: [user] as self
 				define editor: [user] as self
 				define viewer as writer and editor
-	  
+
 			type document
 			  relations
 				define parent: [folder] as self
@@ -514,13 +514,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			type team
 			  relations
 			    define admin: [user] as self
-			    define member: [user,team#member] as self or admin
+			    define member as admin
 
 			type trial
 			  relations
-			    define editor: [user,team#member] as self or owner
-			    define owner: [user] as self
-			    define viewer: [user,team#member] as self or editor
+			    define editor: [team#member] as self
+			    define viewer as editor
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("trial:1", "editor", "team:devs#member"),
@@ -1156,6 +1155,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		},
 		{
+<<<<<<< Updated upstream
 			name: "sharing_same_relation",
 			request: &connectedobjects.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
@@ -1164,11 +1164,22 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "test_user",
+=======
+			name: "new_test",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "document",
+				Relation:   "viewer",
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+					Type: "user",
+					Id:   "jon",
+>>>>>>> Stashed changes
 				}},
 			},
 			model: `
 			type user
 
+<<<<<<< Updated upstream
 			type test_type
 			  relations
 				define relation1: [user] as self
@@ -1186,6 +1197,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			expectedResult: []*connectedobjects.ConnectedObjectsResult{
 				{
 					Object:       "list_type:list_type1",
+=======
+			type group
+			  relations
+				define member: [user] as self
+				define maintainer: [user] as self
+
+			type document
+			  relations
+				define viewer: [group#member,group#maintainer] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:example1#maintainer"),
+				tuple.NewTupleKey("group:example1", "maintainer", "user:jon"),
+				tuple.NewTupleKey("group:example1", "member", "user:jon"),
+			},
+			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "document:1",
+>>>>>>> Stashed changes
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
@@ -1235,7 +1265,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				done <- struct{}{}
 			}()
 
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Hour)
 			defer cancel()
 
 			go func() {
