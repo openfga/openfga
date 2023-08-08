@@ -9,7 +9,6 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
@@ -83,10 +82,7 @@ func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
 func runTests(t *testing.T, params testParams) {
 	var b []byte
 	var err error
-	schemaVersion := params.schemaVersion
-	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
-	}
+	b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
 	require.NoError(t, err)
 
 	var testCases listObjectTests
@@ -97,6 +93,7 @@ func runTests(t *testing.T, params testParams) {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
+
 	}
 }
 
@@ -125,12 +122,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 		for _, stage := range test.Stages {
 			// arrange: write model
-			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
-			} else {
-				typedefs = v1parser.MustParse(stage.Model)
-			}
+			typedefs := parser.MustParse(stage.Model)
 
 			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,

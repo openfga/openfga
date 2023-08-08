@@ -965,24 +965,13 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 
 		computedUserset := r.TupleToUserset.GetComputedUserset().GetRelation()
 
-		if t.GetSchemaVersion() == SchemaVersion1_1 {
-			// for 1.1 models, relation `computedUserset` has to be defined in one of the types declared by the tupleset's list of allowed types
-			userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
-			for _, rr := range userTypes {
-				if _, err := t.GetRelation(rr.GetType(), computedUserset); err == nil {
-					return nil
-				}
+		userTypes := tuplesetRelation.GetTypeInfo().GetDirectlyRelatedUserTypes()
+		for _, rr := range userTypes {
+			if _, err := t.GetRelation(rr.GetType(), computedUserset); err == nil {
+				return nil
 			}
-			return fmt.Errorf("%w: %s does not appear as a relation in any of the directly related user types %s", ErrRelationUndefined, computedUserset, userTypes)
-		} else {
-			// for 1.0 models, relation `computedUserset` has to be defined _somewhere_ in the model
-			for typeName := range t.relations {
-				if _, err := t.GetRelation(typeName, computedUserset); err == nil {
-					return nil
-				}
-			}
-			return &RelationUndefinedError{ObjectType: "", Relation: computedUserset, Err: ErrRelationUndefined}
 		}
+		return fmt.Errorf("%w: %s does not appear as a relation in any of the directly related user types %s", ErrRelationUndefined, computedUserset, userTypes)
 	case *openfgav1.Userset_Union:
 		for _, child := range r.Union.GetChild() {
 			err := t.isUsersetRewriteValid(objectType, relation, child)

@@ -6,7 +6,6 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/cenkalti/backoff/v4 v4.2.1
-	github.com/craigpastro/openfga-dsl-parser v1.0.1-0.20230801160350-9bde4712fb6c
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1
 	github.com/docker/docker v24.0.6+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -93,7 +92,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.0.0
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.13.0 // indirect
-	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691 // indirect
+	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/net v0.15.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
