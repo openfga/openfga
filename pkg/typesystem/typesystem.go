@@ -262,6 +262,21 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 	return r.GetTypeInfo().GetDirectlyRelatedUserTypes(), nil
 }
 
+// DirectlyRelatedUserTypesHasUsersetTuples returns whether any of the directly user related types requires lookup
+// for userset tuples
+func (t *TypeSystem) DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation string) (bool, error) {
+	refs, err := t.GetDirectlyRelatedUserTypes(objectType, relation)
+	if err != nil {
+		return false, err
+	}
+	for _, ref := range refs {
+		if ref.GetRelation() != "" || ref.GetWildcard() != nil {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // IsDirectlyRelated determines whether the type of the target DirectRelationReference contains the source DirectRelationReference.
 func (t *TypeSystem) IsDirectlyRelated(target *openfgav1.RelationReference, source *openfgav1.RelationReference) (bool, error) {
 

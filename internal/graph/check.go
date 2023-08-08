@@ -218,7 +218,6 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -496,21 +495,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return response, nil
 		}
 
-		var checkFuncs []CheckHandlerFunc
-
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-			checkFuncs = append(checkFuncs, fn1)
-		} else {
-			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-				typesystem.DirectRelationReference(objectType, relation),                                         //target
-				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
-			)
-
-			if shouldCheckDirectTuple {
-				checkFuncs = append(checkFuncs, fn1)
-			}
-		}
-
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
@@ -602,7 +586,25 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		checkFuncs = append(checkFuncs, fn2)
+		var checkFuncs []CheckHandlerFunc
+
+		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
+			checkFuncs = []CheckHandlerFunc{fn1, fn2}
+		} else {
+			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+				typesystem.DirectRelationReference(objectType, relation),                                         //target
+				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+			)
+
+			if shouldCheckDirectTuple {
+				checkFuncs = []CheckHandlerFunc{fn1}
+			}
+
+			directlyRelatedUserTypesHasUsersetTuples, _ := typesys.DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation)
+			if directlyRelatedUserTypesHasUsersetTuples {
+				checkFuncs = append(checkFuncs, fn2)
+			}
+		}
 
 		return union(ctx, c.concurrencyLimit, checkFuncs...)
 	}
