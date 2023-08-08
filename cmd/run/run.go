@@ -310,7 +310,7 @@ type MetricConfig struct {
 // CheckQueryCache defines configuration for caching when resolving check
 type CheckQueryCache struct {
 	Enabled bool
-	Limit   uint32
+	Limit   uint32 // (in bytes)
 	TTL     time.Duration
 }
 
@@ -425,7 +425,7 @@ func DefaultConfig() *Config {
 			EnableRPCHistograms: false,
 		},
 		CheckQueryCache: CheckQueryCache{
-			Enabled: true,
+			Enabled: false,
 			Limit:   10000,
 			TTL:     10 * time.Second,
 		},

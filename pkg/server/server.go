@@ -35,9 +35,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader  = "openfga-authorization-model-id"
-	authorizationModelIDKey     = "authorization_model_id"
-	ExperimentalCheckQueryCache = "check-query-cache"
+	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultChangelogHorizonOffset           = 0
@@ -49,7 +49,7 @@ const (
 	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
 	defaultCheckQueryCacheLimit             = 10000
 	defaultCheckQueryCacheTTL               = 10 * time.Second
-	defaultCheckQueryCacheEnable            = true
+	defaultCheckQueryCacheEnable            = false
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -178,18 +178,21 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+// WithCheckQueryCacheEnabled enables/disables caching of check and list objects partial results.
 func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheEnabled = enabled
 	}
 }
 
+// WithCheckQueryCacheLimit sets the cache size limit (in bytes)
 func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheLimit = limit
 	}
 }
 
+// WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
 func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheTTL = ttl
