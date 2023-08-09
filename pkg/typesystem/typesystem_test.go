@@ -2103,3 +2103,83 @@ func TestGetRelationReferenceAsString(t *testing.T) {
 	require.Equal(t, "team#member", GetRelationReferenceAsString(DirectRelationReference("team", "member")))
 	require.Equal(t, "team:*", GetRelationReferenceAsString(WildcardRelationReference("team")))
 }
+
+func TestDirectlyRelatedUsersets(t *testing.T) {
+	tests := []struct {
+		name       string
+		model      string
+		objectType string
+		relation   string
+		expected   []*openfgav1.RelationReference
+	}{
+		{
+			name: "only_direct_relation",
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected:   nil,
+		},
+		{
+			name: "with_public_relation",
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed: [user, user:*] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected: []*openfgav1.RelationReference{
+				WildcardRelationReference("user"),
+			},
+		},
+		{
+			name: "with_ttu_relation",
+			model: `type user
+            type group
+              relations
+                define member: [user] as self
+
+			type folder
+			  relations
+			    define allowed: [group#member] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+		},
+		{
+			name: "mix_direct_and_public_relation",
+			model: `type user
+            type group
+              relations
+                define member: [user] as self
+
+			type folder
+			  relations
+			    define allowed: [group#member, user] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected: []*openfgav1.RelationReference{
+				DirectRelationReference("group", "member"),
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			typedefs := parser.MustParse(test.model)
+
+			typesys := New(&openfgav1.AuthorizationModel{
+				TypeDefinitions: typedefs,
+			})
+			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}

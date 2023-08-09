@@ -269,6 +269,7 @@ func (t *TypeSystem) DirectlyRelatedUsersets(objectType, relation string) ([]*op
 	if err != nil {
 		return usersetRelationReferences, err
 	}
+
 	for _, ref := range refs {
 		if ref.GetRelation() != "" || ref.GetWildcard() != nil {
 			usersetRelationReferences = append(usersetRelationReferences, ref)

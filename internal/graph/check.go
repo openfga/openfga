@@ -218,6 +218,7 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
+
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -594,8 +595,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = []CheckHandlerFunc{fn1}
 		}
 
-		directlyRelatedUserTypesHasUsersetTuples, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-		if len(directlyRelatedUserTypesHasUsersetTuples) > 0 {
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+		if len(directlyRelatedUsersetTypes) > 0 {
 			checkFuncs = append(checkFuncs, fn2)
 
 		}
