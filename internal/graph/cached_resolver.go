@@ -10,7 +10,6 @@ import (
 
 	"github.com/karlseguin/ccache/v3"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/zap"
@@ -192,10 +191,9 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 
 	contextualTuplesCacheKey := c.String()
 
-	key := fmt.Sprintf("%s/%s/%s/%s/%s",
+	key := fmt.Sprintf("%s/%s/%s/%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
-		tuple.TupleKeyToString(req.GetTupleKey()),
 		tuplesCacheKey,
 		contextualTuplesCacheKey,
 	)
