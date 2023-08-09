@@ -588,22 +588,19 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		var checkFuncs []CheckHandlerFunc
 
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-			checkFuncs = []CheckHandlerFunc{fn1, fn2}
-		} else {
-			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-				typesystem.DirectRelationReference(objectType, relation),                                         //target
-				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
-			)
+		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+			typesystem.DirectRelationReference(objectType, relation),                                         //target
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+		)
 
-			if shouldCheckDirectTuple {
-				checkFuncs = []CheckHandlerFunc{fn1}
-			}
+		if shouldCheckDirectTuple {
+			checkFuncs = []CheckHandlerFunc{fn1}
+		}
 
-			directlyRelatedUserTypesHasUsersetTuples, _ := typesys.DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation)
-			if directlyRelatedUserTypesHasUsersetTuples {
-				checkFuncs = append(checkFuncs, fn2)
-			}
+		directlyRelatedUserTypesHasUsersetTuples, _ := typesys.DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation)
+		if directlyRelatedUserTypesHasUsersetTuples {
+			checkFuncs = append(checkFuncs, fn2)
+
 		}
 
 		return union(ctx, c.concurrencyLimit, checkFuncs...)

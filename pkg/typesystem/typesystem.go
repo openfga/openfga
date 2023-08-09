@@ -262,8 +262,7 @@ func (t *TypeSystem) GetDirectlyRelatedUserTypes(objectType, relation string) ([
 	return r.GetTypeInfo().GetDirectlyRelatedUserTypes(), nil
 }
 
-// DirectlyRelatedUserTypesHasUsersetTuples returns whether any of the directly user related types requires lookup
-// for userset tuples
+// DirectlyRelatedUserTypesHasUsersetTuples returns whether any of the directly user related types is a userset
 func (t *TypeSystem) DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation string) (bool, error) {
 	refs, err := t.GetDirectlyRelatedUserTypes(objectType, relation)
 	if err != nil {
