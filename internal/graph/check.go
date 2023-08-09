@@ -499,11 +499,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
 
-			var allowedUserTypeRestrictions []*openfgav1.RelationReference
-			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
-				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
-			}
+			// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
+			allowedUserTypeRestrictions, _ := typesys.DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation)
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
@@ -598,7 +595,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		directlyRelatedUserTypesHasUsersetTuples, _ := typesys.DirectlyRelatedUserTypesHasUsersetTuples(objectType, relation)
-		if directlyRelatedUserTypesHasUsersetTuples {
+		if len(directlyRelatedUserTypesHasUsersetTuples) > 0 {
 			checkFuncs = append(checkFuncs, fn2)
 
 		}
