@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/textproto"
 	"strconv"
@@ -68,6 +69,9 @@ func handleForwardResponseTrailer(w http.ResponseWriter, md runtime.ServerMetada
 func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.Request, err *errors.EncodedError) {
 	// convert as error object
 	pb := err.ActualError
+
+	log.Println(err)
+	log.Println(pb)
 
 	w.Header().Del("Trailer")
 	w.Header().Del("Transfer-Encoding")

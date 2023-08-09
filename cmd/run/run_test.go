@@ -221,6 +221,10 @@ type authTest struct {
 }
 
 func runServer(ctx context.Context, cfg *Config) error {
+	if err := VerifyConfig(cfg); err != nil {
+		return err
+	}
+
 	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
 	serverCtx := &ServerContext{Logger: logger}
 	return serverCtx.Run(ctx, cfg)

@@ -95,64 +95,70 @@ func TestCheckLogs(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
-		StoreId:  storeID,
-		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:anne"),
-	})
-	require.NoError(t, err)
-	require.True(t, resp.Allowed)
-
-	filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
-		if e.Message == "grpc_req_complete" {
-			for _, ctxField := range e.Context {
-				if ctxField.Equals(zap.String("grpc_method", "Check")) {
-					return true
-				}
-			}
-		}
-
-		return false
-	})
-
-	expectedLogs := filteredLogs.All()
-	require.Len(t, expectedLogs, 1)
-
-	fields := expectedLogs[0].Context
-
-	for _, field := range fields {
-		switch field.Key {
-		case "grpc_service":
-			require.Equal(t, field.String, "openfga.v1.OpenFGAService")
-		case "grpc_method":
-			require.Equal(t, field.String, "Check")
-		case "grpc_type":
-			require.Equal(t, field.String, "unary")
-		case "grpc_code":
-			require.Equal(t, field.Integer, int64(0))
-		case "raw_request":
-			raw, err := json.Marshal(&field.Interface)
-			require.NoError(t, err)
-			expected := fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"","trace":false}`, storeID)
-			require.JSONEq(t, string(raw), expected)
-		case "raw_response":
-			raw, err := json.Marshal(&field.Interface)
-			require.NoError(t, err)
-			expected := `{"allowed":true,"resolution":""}`
-			require.JSONEq(t, string(raw), expected)
-		case "authorization_model_id":
-			require.Equal(t, field.String, authorizationModelID)
-		case "store_id":
-			require.Equal(t, field.String, storeID)
-		case "datastore_query_count":
-			require.GreaterOrEqual(t, field.Integer, int64(1))
-			require.LessOrEqual(t, field.Integer, int64(2))
-		case "peer.address":
-		case "request_id":
-			require.NotEmpty(t, field.String)
-		default:
-			require.Fail(t, "unexpected field: %s", field.Key)
-		}
+	type test struct {
+		_name           string
+		req             *openfgav1.CheckRequest
+		expectedContext map[string]interface{}
 	}
+
+	tests := []test{
+		{
+			_name: "check_success",
+			req: &openfgav1.CheckRequest{
+				AuthorizationModelId: authorizationModelID,
+				StoreId:              storeID,
+				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+			},
+			expectedContext: map[string]interface{}{
+				"grpc_service":           "openfga.v1.OpenFGAService",
+				"grpc_method":            "Check",
+				"grpc_type":              "unary",
+				"grpc_code":              int32(0),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_response":           `{"allowed":true,"resolution":""}`,
+				"authorization_model_id": authorizationModelID,
+				"store_id":               storeID,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+			_, _ = client.Check(context.Background(), test.req)
+
+			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
+				if e.Message == "grpc_req_complete" {
+					for _, ctxField := range e.Context {
+						if ctxField.Equals(zap.String("grpc_method", "Check")) {
+							return true
+						}
+					}
+				}
+
+				return false
+			})
+
+			expectedLogs := filteredLogs.All()
+			require.Len(t, expectedLogs, 1)
+
+			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
+
+			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
+			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
+			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
+			require.Equal(t, test.expectedContext["grpc_code"], fields["grpc_code"])
+			require.JSONEq(t, test.expectedContext["raw_request"].(string), string(fields["raw_request"].(json.RawMessage)))
+			require.JSONEq(t, test.expectedContext["raw_response"].(string), string(fields["raw_response"].(json.RawMessage)))
+			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
+			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
+			require.GreaterOrEqual(t, fields["datastore_query_count"], int64(1))
+			require.LessOrEqual(t, fields["datastore_query_count"], int64(2))
+			require.NotEmpty(t, fields["peer.address"])
+			require.NotEmpty(t, fields["request_id"])
+			require.Len(t, fields, 11)
+		})
+	}
+
 }
 
 func testRunAll(t *testing.T, engine string) {
@@ -160,10 +166,7 @@ func testRunAll(t *testing.T, engine string) {
 	cfg.Log.Level = "none"
 	cfg.Datastore.Engine = engine
 
-	logger := logger.NewNoopLogger()
-	serverCtx := &run.ServerContext{Logger: logger}
-
-	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
+	cancel := tests.StartServer(t, cfg)
 	defer cancel()
 
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
