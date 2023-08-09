@@ -8,9 +8,9 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 var (
@@ -92,8 +92,8 @@ func TestPrunedRelationshipIngresses(t *testing.T) {
 	tests := []struct {
 		name     string
 		model    string
-		target   *openfgapb.RelationReference
-		source   *openfgapb.RelationReference
+		target   *openfgav1.RelationReference
+		source   *openfgav1.RelationReference
 		expected []*RelationshipIngress
 	}{
 		{
@@ -230,7 +230,7 @@ func TestPrunedRelationshipIngresses(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			typedefs := parser.MustParse(test.model)
-			typesys := typesystem.New(&openfgapb.AuthorizationModel{
+			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: typedefs,
 			})
@@ -241,7 +241,7 @@ func TestPrunedRelationshipIngresses(t *testing.T) {
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
-				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
+				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipIngressTransformer,
 			}
 			if diff := cmp.Diff(test.expected, ingresses, cmpOpts...); diff != "" {
@@ -256,8 +256,8 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 	tests := []struct {
 		name     string
 		model    string
-		target   *openfgapb.RelationReference
-		source   *openfgapb.RelationReference
+		target   *openfgav1.RelationReference
+		source   *openfgav1.RelationReference
 		expected []*RelationshipIngress
 	}{
 		{
@@ -1359,7 +1359,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			typedefs := parser.MustParse(test.model)
-			typesys := typesystem.New(&openfgapb.AuthorizationModel{
+			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: typedefs,
 			})
@@ -1370,7 +1370,7 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 			require.NoError(t, err)
 
 			cmpOpts := []cmp.Option{
-				cmpopts.IgnoreUnexported(openfgapb.RelationReference{}),
+				cmpopts.IgnoreUnexported(openfgav1.RelationReference{}),
 				RelationshipIngressTransformer,
 			}
 			if diff := cmp.Diff(test.expected, ingresses, cmpOpts...); diff != "" {

@@ -8,32 +8,32 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID := ulid.Make().String()
 
-	items := make([]*openfgapb.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
-	items[0] = &openfgapb.TypeDefinition{
+	items := make([]*openfgav1.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
+	items[0] = &openfgav1.TypeDefinition{
 		Type: "user",
 	}
 	for i := 1; i < datastore.MaxTypesPerAuthorizationModel(); i++ {
-		items[i] = &openfgapb.TypeDefinition{
+		items[i] = &openfgav1.TypeDefinition{
 			Type: fmt.Sprintf("type%v", i),
-			Relations: map[string]*openfgapb.Userset{
-				"admin": {Userset: &openfgapb.Userset_This{}},
+			Relations: map[string]*openfgav1.Userset{
+				"admin": {Userset: &openfgav1.Userset_This{}},
 			},
-			Metadata: &openfgapb.Metadata{
-				Relations: map[string]*openfgapb.RelationMetadata{
+			Metadata: &openfgav1.Metadata{
+				Relations: map[string]*openfgav1.RelationMetadata{
 					"admin": {
-						DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+						DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 							typesystem.DirectRelationReference("user", ""),
 						},
 					},
@@ -44,13 +44,13 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	var tests = []struct {
 		name          string
-		request       *openfgapb.WriteAuthorizationModelRequest
+		request       *openfgav1.WriteAuthorizationModelRequest
 		allowSchema10 bool
 		err           error
 	}{
 		{
 			name: "fails_if_too_many_types",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				TypeDefinitions: items,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -60,12 +60,12 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "fails_if_a_relation_is_not_defined",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "repo",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"owner": {},
 						},
 					},
@@ -77,13 +77,13 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "Fails_if_type_info_metadata_is_omitted_in_1.1_model",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:       storeID,
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"reader": typesystem.This(),
 						},
 					},
@@ -96,12 +96,12 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "Fails_if_writing_1_0_model_because_it_will_be_interpreted_as_1_1",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"reader": typesystem.This(),
 						},
 					},
@@ -112,21 +112,21 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "Works_if_no_schema_version",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "user",
 					},
 					{
 						Type: "document",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"viewer": typesystem.This(),
 						},
-						Metadata: &openfgapb.Metadata{
-							Relations: map[string]*openfgapb.RelationMetadata{
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
-									DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 										typesystem.WildcardRelationReference("user"),
 									},
 								},
@@ -138,7 +138,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_with_entrypoint",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -153,7 +153,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_without_entrypoint_1",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -171,7 +171,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_without_entrypoint_2",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -190,7 +190,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_without_entrypoint_3",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -209,7 +209,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "rewritten_relation_in_intersection_unresolvable",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -231,7 +231,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "direct_relationship_with_entrypoint",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -244,7 +244,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "computed_relationship_with_entrypoint",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -259,7 +259,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 		{
 			name: "rewritten_relation_in_exclusion_unresolvable",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -280,7 +280,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "no_entrypoint_3a",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -300,7 +300,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 		{
 			name: "no_entrypoint_3b",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -319,7 +319,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "no_entrypoint_4",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -344,7 +344,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_with_entrypoint_1",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -361,7 +361,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "self_referencing_type_restriction_with_entrypoint_2",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -375,7 +375,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "relation_with_union_of_ttu_rewrites",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: parser.MustParse(`
 				type user
@@ -396,9 +396,9 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "type_name_is_empty_string",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "",
 					},
@@ -410,12 +410,12 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		},
 		{
 			name: "relation_name_is_empty_string",
-			request: &openfgapb.WriteAuthorizationModelRequest{
+			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "user",
-						Relations: map[string]*openfgapb.Userset{
+						Relations: map[string]*openfgav1.Userset{
 							"": typesystem.This(),
 						},
 					},

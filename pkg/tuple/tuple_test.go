@@ -3,8 +3,8 @@ package tuple
 import (
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestSplitObjectId(t *testing.T) {

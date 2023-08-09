@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/MicahParks/keyfunc"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -14,8 +14,8 @@ type ctxKey string
 var (
 	authClaimsContextKey = ctxKey("auth-claims")
 
-	ErrUnauthenticated    = status.Error(codes.Code(openfgapb.AuthErrorCode_unauthenticated), "unauthenticated")
-	ErrMissingBearerToken = status.Error(codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), "missing bearer token")
+	ErrUnauthenticated    = status.Error(codes.Code(openfgav1.AuthErrorCode_unauthenticated), "unauthenticated")
+	ErrMissingBearerToken = status.Error(codes.Code(openfgav1.AuthErrorCode_bearer_token_missing), "missing bearer token")
 )
 
 type Authenticator interface {

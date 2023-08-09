@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 const (
@@ -33,7 +33,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
-func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest) (*openfgapb.WriteResponse, error) {
+func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
@@ -43,10 +43,10 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgapb.WriteRequest)
 		return nil, handleError(err)
 	}
 
-	return &openfgapb.WriteResponse{}, nil
+	return &openfgav1.WriteResponse{}, nil
 }
 
-func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.WriteRequest) error {
+func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.WriteRequest) error {
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
@@ -122,7 +122,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgapb.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgapb.TupleKey, writes []*openfgapb.TupleKey) error {
+func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.TupleKey, writes []*openfgav1.TupleKey) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {

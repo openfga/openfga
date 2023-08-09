@@ -25,6 +25,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
@@ -33,7 +34,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
@@ -86,7 +86,7 @@ func ensureServiceUp(t *testing.T, grpcAddr, httpAddr string, transportCredentia
 
 	err = backoff.Retry(func() error {
 		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
-			Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		})
 		if err != nil {
 			return err
@@ -316,10 +316,10 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	// Just checking we can create a store with no authentication.
-	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{Name: "store"})
+	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{Name: "store"})
 	require.NoError(t, err)
 }
 
@@ -429,7 +429,7 @@ func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retry
 	defer res.Body.Close()
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err, "Failed to read create store response")
-	var createStoreResponse openfgapb.CreateStoreResponse
+	var createStoreResponse openfgav1.CreateStoreResponse
 	err = protojson.Unmarshal(body, &createStoreResponse)
 	require.NoError(t, err, "Failed to unmarshal create store response")
 
@@ -898,9 +898,21 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.MaxTypesPerAuthorizationModel)
 
+	val = res.Get("properties.maxConcurrentReadsForListObjects.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForListObjects)
+
+	val = res.Get("properties.maxConcurrentReadsForCheck.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.MaxConcurrentReadsForCheck)
+
 	val = res.Get("properties.changelogHorizonOffset.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ChangelogHorizonOffset)
+
+	val = res.Get("properties.resolveNodeBreadthLimit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ResolveNodeBreadthLimit)
 
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())

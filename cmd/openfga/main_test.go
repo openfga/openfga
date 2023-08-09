@@ -17,8 +17,8 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	grpcbackoff "google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
@@ -181,7 +181,7 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		defer cancel()
 
 		resp, err := client.Check(timeoutCtx, &healthv1pb.HealthCheckRequest{
-			Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+			Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		})
 		if err != nil {
 			return err
@@ -238,45 +238,45 @@ func TestGRPCWithPresharedKey(t *testing.T) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	openfgaClient := openfgapb.NewOpenFGAServiceClient(conn)
+	openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 	healthClient := healthv1pb.NewHealthClient(conn)
 
 	resp, err := healthClient.Check(context.Background(), &healthv1pb.HealthCheckRequest{
-		Service: openfgapb.OpenFGAService_ServiceDesc.ServiceName,
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 	})
 	require.NoError(t, err)
 	require.Equal(t, healthv1pb.HealthCheckResponse_SERVING, resp.Status)
 
-	_, err = openfgaClient.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	_, err = openfgaClient.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.Error(t, err)
 
 	s, ok := status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.Code(openfgapb.AuthErrorCode_bearer_token_missing), s.Code())
+	require.Equal(t, codes.Code(openfgav1.AuthErrorCode_bearer_token_missing), s.Code())
 
 	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key1")
-	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+	_, err = openfgaClient.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo1",
 	})
 	require.NoError(t, err)
 
 	ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key2")
-	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+	_, err = openfgaClient.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo2",
 	})
 	require.NoError(t, err)
 
 	ctx = metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer key3")
-	_, err = openfgaClient.CreateStore(ctx, &openfgapb.CreateStoreRequest{
+	_, err = openfgaClient.CreateStore(ctx, &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo3",
 	})
 	require.Error(t, err)
 
 	s, ok = status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.Code(openfgapb.AuthErrorCode_unauthenticated), s.Code())
+	require.Equal(t, codes.Code(openfgav1.AuthErrorCode_unauthenticated), s.Code())
 }
 
 // connect connects to the underlying grpc server of the OpenFGATester and
@@ -315,19 +315,19 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 
 	tests := []struct {
 		name   string
-		input  *openfgapb.CreateStoreRequest
+		input  *openfgav1.CreateStoreRequest
 		output output
 	}{
 		{
 			name:  "empty_request",
-			input: &openfgapb.CreateStoreRequest{},
+			input: &openfgav1.CreateStoreRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
 			name: "invalid_name_length",
-			input: &openfgapb.CreateStoreRequest{
+			input: &openfgav1.CreateStoreRequest{
 				Name: "a",
 			},
 			output: output{
@@ -336,7 +336,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_name_characters",
-			input: &openfgapb.CreateStoreRequest{
+			input: &openfgav1.CreateStoreRequest{
 				Name: "$openfga",
 			},
 			output: output{
@@ -345,13 +345,13 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "success",
-			input: &openfgapb.CreateStoreRequest{
+			input: &openfgav1.CreateStoreRequest{
 				Name: "openfga",
 			},
 		},
 		{
 			name: "duplicate_store_name_is_allowed",
-			input: &openfgapb.CreateStoreRequest{
+			input: &openfgav1.CreateStoreRequest{
 				Name: "openfga",
 			},
 		},
@@ -360,7 +360,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -383,14 +383,14 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
-	resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	resp1, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.NoError(t, err)
 
-	resp2, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+	resp2, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
 		StoreId: resp1.Id,
 	})
 	require.NoError(t, err)
@@ -398,7 +398,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 	require.Equal(t, resp1.Name, resp2.Name)
 	require.Equal(t, resp1.Id, resp2.Id)
 
-	resp3, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+	resp3, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
 		StoreId: ulid.Make().String(),
 	})
 	require.Error(t, err)
@@ -413,29 +413,29 @@ func TestGRPCListStores(t *testing.T) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
-	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.NoError(t, err)
 
-	_, err = client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-test",
 	})
 	require.NoError(t, err)
 
-	response1, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
+	response1, err := client.ListStores(context.Background(), &openfgav1.ListStoresRequest{
 		PageSize: wrapperspb.Int32(1),
 	})
 	require.NoError(t, err)
 
 	require.NotEmpty(t, response1.ContinuationToken)
 
-	var received []*openfgapb.Store
+	var received []*openfgav1.Store
 	received = append(received, response1.Stores...)
 
-	response2, err := client.ListStores(context.Background(), &openfgapb.ListStoresRequest{
+	response2, err := client.ListStores(context.Background(), &openfgav1.ListStoresRequest{
 		PageSize:          wrapperspb.Int32(2),
 		ContinuationToken: response1.ContinuationToken,
 	})
@@ -453,36 +453,36 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
-	response1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+	response1, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.NoError(t, err)
 
-	response2, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+	response2, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
 		StoreId: response1.Id,
 	})
 	require.NoError(t, err)
 
 	require.Equal(t, response1.Id, response2.Id)
 
-	_, err = client.DeleteStore(context.Background(), &openfgapb.DeleteStoreRequest{
+	_, err = client.DeleteStore(context.Background(), &openfgav1.DeleteStoreRequest{
 		StoreId: response1.Id,
 	})
 	require.NoError(t, err)
 
-	response3, err := client.GetStore(context.Background(), &openfgapb.GetStoreRequest{
+	response3, err := client.GetStore(context.Background(), &openfgav1.GetStoreRequest{
 		StoreId: response1.Id,
 	})
 	require.Nil(t, response3)
 
 	s, ok := status.FromError(err)
 	require.True(t, ok)
-	require.Equal(t, codes.Code(openfgapb.NotFoundErrorCode_store_id_not_found), s.Code())
+	require.Equal(t, codes.Code(openfgav1.NotFoundErrorCode_store_id_not_found), s.Code())
 
 	// delete is idempotent, so if the store does not exist it's a noop
-	_, err = client.DeleteStore(context.Background(), &openfgapb.DeleteStoreRequest{
+	_, err = client.DeleteStore(context.Background(), &openfgav1.DeleteStoreRequest{
 		StoreId: ulid.Make().String(),
 	})
 	require.NoError(t, err)
@@ -491,31 +491,31 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	type testData struct {
-		tuples []*openfgapb.TupleKey
-		model  *openfgapb.AuthorizationModel
+		tuples []*openfgav1.TupleKey
+		model  *openfgav1.AuthorizationModel
 	}
 
 	type output struct {
-		resp      *openfgapb.CheckResponse
+		resp      *openfgav1.CheckResponse
 		errorCode codes.Code
 	}
 
 	tests := []struct {
 		name     string
-		input    *openfgapb.CheckRequest
+		input    *openfgav1.CheckRequest
 		output   output
 		testData *testData
 	}{
 		{
 			name:  "empty_request",
-			input: &openfgapb.CheckRequest{},
+			input: &openfgav1.CheckRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
 			name: "invalid_storeID_because_too_short",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              "1",
 				AuthorizationModelId: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
@@ -526,7 +526,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_storeID_because_extra_chars",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String() + "A",
 				AuthorizationModelId: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
@@ -537,7 +537,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_storeID_because_invalid_chars",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				AuthorizationModelId: ulid.Make().String(),
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
@@ -548,7 +548,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_authorization_model_ID_because_extra_chars",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String() + "A",
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
@@ -559,7 +559,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_authorization_model_ID_because_invalid_chars",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
@@ -570,7 +570,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "missing_tuplekey_field",
-			input: &openfgapb.CheckRequest{
+			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String(),
 			},
@@ -583,13 +583,13 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			storeID := test.input.StoreId
 			if test.testData != nil {
-				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
 					SchemaVersion:   test.testData.model.SchemaVersion,
 					TypeDefinitions: test.testData.model.TypeDefinitions,
@@ -598,10 +598,10 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 				modelID := resp.GetAuthorizationModelId()
 
-				_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
+					Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
 				})
 				require.NoError(t, err)
 			}
@@ -622,24 +622,24 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgapb.TupleKey
+		tuples []*openfgav1.TupleKey
 		model  string
 	}
 
 	type output struct {
-		resp      *openfgapb.ListObjectsResponse
+		resp      *openfgav1.ListObjectsResponse
 		errorCode codes.Code
 	}
 
 	tests := []struct {
 		name     string
-		input    *openfgapb.ListObjectsRequest
+		input    *openfgav1.ListObjectsRequest
 		output   output
 		testData *testData
 	}{
 		{
 			name: "undefined_model_id_returns_error",
-			input: &openfgapb.ListObjectsRequest{
+			input: &openfgav1.ListObjectsRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String(), // generate random ulid so it doesn't match
 				Type:                 "document",
@@ -647,7 +647,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				User:                 "user:jon",
 			},
 			output: output{
-				errorCode: codes.Code(openfgapb.ErrorCode_authorization_model_not_found),
+				errorCode: codes.Code(openfgav1.ErrorCode_authorization_model_not_found),
 			},
 			testData: &testData{
 				model: `
@@ -661,19 +661,19 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "direct_relationships_with_intersecton_returns_expected_objects",
-			input: &openfgapb.ListObjectsRequest{
+			input: &openfgav1.ListObjectsRequest{
 				StoreId:  ulid.Make().String(),
 				Type:     "document",
 				Relation: "viewer",
 				User:     "user:jon",
 			},
 			output: output{
-				resp: &openfgapb.ListObjectsResponse{
+				resp: &openfgav1.ListObjectsResponse{
 					Objects: []string{"document:1"},
 				},
 			},
 			testData: &testData{
-				tuples: []*openfgapb.TupleKey{
+				tuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 					tuple.NewTupleKey("document:1", "allowed", "user:jon"),
 				},
@@ -692,7 +692,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -702,7 +702,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 			storeID := test.input.StoreId
 
 			if test.testData != nil {
-				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+				resp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 					StoreId:         storeID,
 					SchemaVersion:   typesystem.SchemaVersion1_1,
 					TypeDefinitions: typedefs,
@@ -712,10 +712,10 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				modelID := resp.GetAuthorizationModelId()
 
 				if len(test.testData.tuples) > 0 {
-					_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes:               &openfgapb.TupleKeys{TupleKeys: test.testData.tuples},
+						Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
 					})
 					require.NoError(t, err)
 				}
@@ -745,7 +745,7 @@ func TestCheckWorkflows(t *testing.T) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	/*
 	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
@@ -767,29 +767,29 @@ func TestCheckWorkflows(t *testing.T) {
 	 * check(document:1#viewer@user:jon) --> {allowed: false}
 	 */
 	t.Run("TypedWildcardsFromOtherModelsIgnored", func(t *testing.T) {
-		resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		resp1, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 			Name: "openfga-demo",
 		})
 		require.NoError(t, err)
 
 		storeID := resp1.GetId()
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.WildcardRelationReference("user"),
 								},
 							},
@@ -800,32 +800,32 @@ func TestCheckWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgapb.TupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{
+			Writes: &openfgav1.TupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				},
 			},
 		})
 		require.NoError(t, err)
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{Type: "user"},
 								},
 							},
@@ -836,7 +836,7 @@ func TestCheckWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		resp, err := client.Check(context.Background(), &openfgapb.CheckRequest{
+		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 		})
@@ -856,7 +856,7 @@ func TestExpandWorkflows(t *testing.T) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	/*
 	 * TypedWildcardsFromOtherModelsIgnored ensures that a typed wildcard introduced
@@ -892,29 +892,29 @@ func TestExpandWorkflows(t *testing.T) {
 	 * Expand(document:1#viewer) --> {tree: {root: {name: document:1#viewer, leaf: {users: []}}}}
 	 */
 	t.Run("TypedWildcardsFromOtherModelsIgnored", func(t *testing.T) {
-		resp1, err := client.CreateStore(context.Background(), &openfgapb.CreateStoreRequest{
+		resp1, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 			Name: "openfga-demo",
 		})
 		require.NoError(t, err)
 
 		storeID := resp1.GetId()
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("user", ""),
 									typesystem.WildcardRelationReference("user"),
 								},
@@ -926,10 +926,10 @@ func TestExpandWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = client.Write(context.Background(), &openfgapb.WriteRequest{
+		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgapb.TupleKeys{
-				TupleKeys: []*openfgapb.TupleKey{
+			Writes: &openfgav1.TupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "user:*"),
 					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 				},
@@ -937,19 +937,19 @@ func TestExpandWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		expandResp, err := client.Expand(context.Background(), &openfgapb.ExpandRequest{
+		expandResp, err := client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
 		})
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(&openfgapb.UsersetTree{
-			Root: &openfgapb.UsersetTree_Node{
+		if diff := cmp.Diff(&openfgav1.UsersetTree{
+			Root: &openfgav1.UsersetTree_Node{
 				Name: "document:1#viewer",
-				Value: &openfgapb.UsersetTree_Node_Leaf{
-					Leaf: &openfgapb.UsersetTree_Leaf{
-						Value: &openfgapb.UsersetTree_Leaf_Users{
-							Users: &openfgapb.UsersetTree_Users{
+				Value: &openfgav1.UsersetTree_Node_Leaf{
+					Leaf: &openfgav1.UsersetTree_Leaf{
+						Value: &openfgav1.UsersetTree_Leaf_Users{
+							Users: &openfgav1.UsersetTree_Users{
 								Users: []string{"user:*", "user:jon"},
 							},
 						},
@@ -962,22 +962,22 @@ func TestExpandWorkflows(t *testing.T) {
 			require.Fail(t, diff)
 		}
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									typesystem.DirectRelationReference("user", ""),
 								},
 							},
@@ -988,19 +988,19 @@ func TestExpandWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
 		})
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(&openfgapb.UsersetTree{
-			Root: &openfgapb.UsersetTree_Node{
+		if diff := cmp.Diff(&openfgav1.UsersetTree{
+			Root: &openfgav1.UsersetTree_Node{
 				Name: "document:1#viewer",
-				Value: &openfgapb.UsersetTree_Node_Leaf{
-					Leaf: &openfgapb.UsersetTree_Leaf{
-						Value: &openfgapb.UsersetTree_Leaf_Users{
-							Users: &openfgapb.UsersetTree_Users{
+				Value: &openfgav1.UsersetTree_Node_Leaf{
+					Leaf: &openfgav1.UsersetTree_Leaf{
+						Value: &openfgav1.UsersetTree_Leaf_Users{
+							Users: &openfgav1.UsersetTree_Users{
 								Users: []string{"user:jon"},
 							},
 						},
@@ -1011,22 +1011,22 @@ func TestExpandWorkflows(t *testing.T) {
 			require.Fail(t, diff)
 		}
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "employee",
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{Type: "employee"},
 								},
 							},
@@ -1037,19 +1037,19 @@ func TestExpandWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
 		})
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(&openfgapb.UsersetTree{
-			Root: &openfgapb.UsersetTree_Node{
+		if diff := cmp.Diff(&openfgav1.UsersetTree{
+			Root: &openfgav1.UsersetTree_Node{
 				Name: "document:1#viewer",
-				Value: &openfgapb.UsersetTree_Node_Leaf{
-					Leaf: &openfgapb.UsersetTree_Leaf{
-						Value: &openfgapb.UsersetTree_Leaf_Users{
-							Users: &openfgapb.UsersetTree_Users{
+				Value: &openfgav1.UsersetTree_Node_Leaf{
+					Leaf: &openfgav1.UsersetTree_Leaf{
+						Value: &openfgav1.UsersetTree_Leaf_Users{
+							Users: &openfgav1.UsersetTree_Users{
 								Users: []string{},
 							},
 						},
@@ -1060,10 +1060,10 @@ func TestExpandWorkflows(t *testing.T) {
 			require.Fail(t, diff)
 		}
 
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "user",
 				},
@@ -1072,13 +1072,13 @@ func TestExpandWorkflows(t *testing.T) {
 				},
 				{
 					Type: "document",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": typesystem.This(),
 					},
-					Metadata: &openfgapb.Metadata{
-						Relations: map[string]*openfgapb.RelationMetadata{
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
 							"viewer": {
-								DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 									{Type: "employee"},
 								},
 							},
@@ -1089,19 +1089,19 @@ func TestExpandWorkflows(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		expandResp, err = client.Expand(context.Background(), &openfgapb.ExpandRequest{
+		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
 			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
 		})
 		require.NoError(t, err)
 
-		if diff := cmp.Diff(&openfgapb.UsersetTree{
-			Root: &openfgapb.UsersetTree_Node{
+		if diff := cmp.Diff(&openfgav1.UsersetTree{
+			Root: &openfgav1.UsersetTree_Node{
 				Name: "document:1#viewer",
-				Value: &openfgapb.UsersetTree_Node_Leaf{
-					Leaf: &openfgapb.UsersetTree_Leaf{
-						Value: &openfgapb.UsersetTree_Leaf_Users{
-							Users: &openfgapb.UsersetTree_Users{
+				Value: &openfgav1.UsersetTree_Node_Leaf{
+					Leaf: &openfgav1.UsersetTree_Leaf{
+						Value: &openfgav1.UsersetTree_Leaf_Users{
+							Users: &openfgav1.UsersetTree_Users{
 								Users: []string{},
 							},
 						},
@@ -1122,19 +1122,19 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 	tests := []struct {
 		name   string
-		input  *openfgapb.ReadAuthorizationModelRequest
+		input  *openfgav1.ReadAuthorizationModelRequest
 		output output
 	}{
 		{
 			name:  "empty_request",
-			input: &openfgapb.ReadAuthorizationModelRequest{},
+			input: &openfgav1.ReadAuthorizationModelRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
 			name: "invalid_storeID_because_too_short",
-			input: &openfgapb.ReadAuthorizationModelRequest{
+			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: "1",
 				Id:      ulid.Make().String(),
 			},
@@ -1144,7 +1144,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_storeID_because_extra_chars",
-			input: &openfgapb.ReadAuthorizationModelRequest{
+			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String() + "A",
 				Id:      ulid.Make().String(), // ulids aren't required at this time
 			},
@@ -1154,7 +1154,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_authorization_model_ID_because_extra_chars",
-			input: &openfgapb.ReadAuthorizationModelRequest{
+			input: &openfgav1.ReadAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 				Id:      ulid.Make().String() + "A",
 			},
@@ -1167,7 +1167,7 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1191,25 +1191,25 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	storeID := ulid.Make().String()
 
-	_, err := client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+	_, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "user",
 			},
 			{
 				Type: "document",
-				Relations: map[string]*openfgapb.Userset{
-					"viewer": {Userset: &openfgapb.Userset_This{}},
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": {Userset: &openfgav1.Userset_This{}},
 				},
-				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationMetadata{
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
 						"viewer": {
-							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 								typesystem.DirectRelationReference("user", ""),
 							},
 						},
@@ -1222,21 +1222,21 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 	})
 	require.NoError(t, err)
 
-	_, err = client.WriteAuthorizationModel(context.Background(), &openfgapb.WriteAuthorizationModelRequest{
+	_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "user",
 			},
 			{
 				Type: "document",
-				Relations: map[string]*openfgapb.Userset{
-					"editor": {Userset: &openfgapb.Userset_This{}},
+				Relations: map[string]*openfgav1.Userset{
+					"editor": {Userset: &openfgav1.Userset_This{}},
 				},
-				Metadata: &openfgapb.Metadata{
-					Relations: map[string]*openfgapb.RelationMetadata{
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
 						"editor": {
-							DirectlyRelatedUserTypes: []*openfgapb.RelationReference{
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
 								typesystem.DirectRelationReference("user", ""),
 							},
 						},
@@ -1248,7 +1248,7 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 	})
 	require.NoError(t, err)
 
-	resp1, err := client.ReadAuthorizationModels(context.Background(), &openfgapb.ReadAuthorizationModelsRequest{
+	resp1, err := client.ReadAuthorizationModels(context.Background(), &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:  storeID,
 		PageSize: wrapperspb.Int32(1),
 	})
@@ -1257,7 +1257,7 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 	require.Len(t, resp1.AuthorizationModels, 1)
 	require.NotEmpty(t, resp1.ContinuationToken)
 
-	resp2, err := client.ReadAuthorizationModels(context.Background(), &openfgapb.ReadAuthorizationModelsRequest{
+	resp2, err := client.ReadAuthorizationModels(context.Background(), &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:           storeID,
 		ContinuationToken: resp1.ContinuationToken,
 	})
@@ -1275,19 +1275,19 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 	tests := []struct {
 		name   string
-		input  *openfgapb.WriteAuthorizationModelRequest
+		input  *openfgav1.WriteAuthorizationModelRequest
 		output output
 	}{
 		{
 			name:  "empty_request",
-			input: &openfgapb.WriteAuthorizationModelRequest{},
+			input: &openfgav1.WriteAuthorizationModelRequest{},
 			output: output{
 				errorCode: codes.InvalidArgument,
 			},
 		},
 		{
 			name: "invalid_storeID_because_too_short",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: "1",
 			},
 			output: output{
@@ -1296,7 +1296,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_storeID_because_extra_chars",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String() + "A",
 			},
 			output: output{
@@ -1305,7 +1305,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "missing_type_definitions",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
 			},
 			output: output{
@@ -1314,13 +1314,13 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_type_definition_because_empty_type_name",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": {Userset: &openfgapb.Userset_This{}},
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": {Userset: &openfgav1.Userset_This{}},
 						},
 					},
 				},
@@ -1331,13 +1331,13 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_type_definition_because_too_many_chars_in_name",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: testutils.CreateRandomString(255),
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": {Userset: &openfgapb.Userset_This{}},
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": {Userset: &openfgav1.Userset_This{}},
 						},
 					},
 				},
@@ -1348,13 +1348,13 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 		},
 		{
 			name: "invalid_type_definition_because_invalid_chars_in_name",
-			input: &openfgapb.WriteAuthorizationModelRequest{
+			input: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: ulid.Make().String(),
-				TypeDefinitions: []*openfgapb.TypeDefinition{
+				TypeDefinitions: []*openfgav1.TypeDefinition{
 					{
 						Type: "some type",
-						Relations: map[string]*openfgapb.Userset{
-							"viewer": {Userset: &openfgapb.Userset_This{}},
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": {Userset: &openfgav1.Userset_This{}},
 						},
 					},
 				},
@@ -1368,7 +1368,7 @@ func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 	conn := connect(t, tester)
 	defer conn.Close()
 
-	client := openfgapb.NewOpenFGAServiceClient(conn)
+	client := openfgav1.NewOpenFGAServiceClient(conn)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

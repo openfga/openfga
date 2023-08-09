@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/karlseguin/ccache/v3"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -19,19 +19,19 @@ var _ storage.OpenFGADatastore = (*cachedOpenFGADatastore)(nil)
 type cachedOpenFGADatastore struct {
 	storage.OpenFGADatastore
 	lookupGroup singleflight.Group
-	cache       *ccache.Cache[*openfgapb.AuthorizationModel]
+	cache       *ccache.Cache[*openfgav1.AuthorizationModel]
 }
 
-// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize *openfgapb.AuthorizationModel
+// NewCachedOpenFGADatastore returns a wrapper over a datastore that caches up to maxSize *openfgav1.AuthorizationModel
 // on every call to storage.ReadAuthorizationModel.
 func NewCachedOpenFGADatastore(inner storage.OpenFGADatastore, maxSize int) *cachedOpenFGADatastore {
 	return &cachedOpenFGADatastore{
 		OpenFGADatastore: inner,
-		cache:            ccache.New(ccache.Configure[*openfgapb.AuthorizationModel]().MaxSize(int64(maxSize))),
+		cache:            ccache.New(ccache.Configure[*openfgav1.AuthorizationModel]().MaxSize(int64(maxSize))),
 	}
 }
 
-func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgapb.AuthorizationModel, error) {
+func (c *cachedOpenFGADatastore) ReadAuthorizationModel(ctx context.Context, storeID, modelID string) (*openfgav1.AuthorizationModel, error) {
 	cacheKey := fmt.Sprintf("%s:%s", storeID, modelID)
 	cachedEntry := c.cache.Get(cacheKey)
 
@@ -61,4 +61,5 @@ func (c *cachedOpenFGADatastore) FindLatestAuthorizationModelID(ctx context.Cont
 
 func (c *cachedOpenFGADatastore) Close() {
 	c.cache.Stop()
+	c.OpenFGADatastore.Close()
 }

@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type WriteAssertionsCommand struct {
@@ -27,7 +27,7 @@ func NewWriteAssertionsCommand(
 	}
 }
 
-func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.WriteAssertionsRequest) (*openfgapb.WriteAssertionsResponse, error) {
+func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
@@ -58,5 +58,5 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgapb.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.WriteAssertionsResponse{}, nil
+	return &openfgav1.WriteAssertionsResponse{}, nil
 }

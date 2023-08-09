@@ -39,7 +39,7 @@ func NewMigrateCommand() *cobra.Command {
 	flags.String(datastoreEngineFlag, "", "(required) the datastore engine that will be used for persistence")
 	flags.String(datastoreURIFlag, "", "(required) the connection uri of the database to run the migrations against (e.g. 'postgres://postgres:password@localhost:5432/postgres')")
 	flags.Uint(versionFlag, 0, "the version to migrate to (if omitted the latest schema will be used)")
-	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout after which the migration process will terminate")
+	flags.Duration(timeoutFlag, 1*time.Minute, "a timeout for the time it takes the migrate process to connect to the database")
 	flags.Bool(verboseMigrationFlag, false, "enable verbose migration logs (default false)")
 
 	// NOTE: if you add a new flag here, update the function below, too

@@ -3,13 +3,13 @@ package tuple
 import (
 	"fmt"
 
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
 	Cause    error
-	TupleKey *openfgapb.TupleKey
+	TupleKey *openfgav1.TupleKey
 }
 
 func (i *InvalidTupleError) Error() string {
@@ -23,7 +23,7 @@ func (i *InvalidTupleError) Is(target error) bool {
 
 // InvalidObjectFormatError is returned if the object is invalid
 type InvalidObjectFormatError struct {
-	TupleKey *openfgapb.TupleKey
+	TupleKey *openfgav1.TupleKey
 }
 
 func (i *InvalidObjectFormatError) Error() string {
@@ -51,7 +51,7 @@ func (i *TypeNotFoundError) Is(target error) bool {
 
 // RelationNotFoundError is returned if the relation is not found
 type RelationNotFoundError struct {
-	TupleKey *openfgapb.TupleKey
+	TupleKey *openfgav1.TupleKey
 	Relation string
 	TypeName string
 }
@@ -73,7 +73,7 @@ func (i *RelationNotFoundError) Is(target error) bool {
 // IndirectWriteError is used to categorize errors specific to write check logic
 type IndirectWriteError struct {
 	Reason   string
-	TupleKey *openfgapb.TupleKey
+	TupleKey *openfgav1.TupleKey
 }
 
 func (i *IndirectWriteError) Error() string {

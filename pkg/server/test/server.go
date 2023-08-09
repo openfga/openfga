@@ -6,10 +6,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-const (
-	DefaultResolveNodeLimit = 25
-)
-
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
 	RunCommandTests(t, ds)
@@ -51,6 +47,7 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	)
 
 	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
+	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -59,7 +56,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAssertions", func(t *testing.T) { TestWriteAssertions(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
-	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

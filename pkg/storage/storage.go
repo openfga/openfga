@@ -7,8 +7,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/openfga/openfga/pkg/tuple"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (
@@ -35,8 +34,8 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 }
 
 // Writes and Deletes are typesafe aliases for Write arguments.
-type Writes = []*openfgapb.TupleKey
-type Deletes = []*openfgapb.TupleKey
+type Writes = []*openfgav1.TupleKey
+type Deletes = []*openfgav1.TupleKey
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
@@ -52,7 +51,7 @@ type RelationshipTupleReader interface {
 	//
 	// The caller must be careful to close the TupleIterator, either by consuming the entire iterator or by closing it.
 	// There is NO guarantee on the order returned on the iterator.
-	Read(context.Context, string, *openfgapb.TupleKey) (TupleIterator, error)
+	Read(context.Context, string, *openfgav1.TupleKey) (TupleIterator, error)
 
 	// ReadPage is similar to Read, but with PaginationOptions. Instead of returning a TupleIterator, ReadPage
 	// returns a page of tuples and a possibly non-empty continuation token.
@@ -60,16 +59,16 @@ type RelationshipTupleReader interface {
 	ReadPage(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
+		tk *openfgav1.TupleKey,
 		opts PaginationOptions,
-	) ([]*openfgapb.Tuple, []byte, error)
+	) ([]*openfgav1.Tuple, []byte, error)
 
 	// ReadUserTuple tries to return one tuple that matches the provided key exactly.
 	ReadUserTuple(
 		ctx context.Context,
 		store string,
-		tk *openfgapb.TupleKey,
-	) (*openfgapb.Tuple, error)
+		tk *openfgav1.TupleKey,
+	) (*openfgav1.Tuple, error)
 
 	// ReadUsersetTuples returns all userset tuples for a specified object and relation.
 	// For example, given the following relationship tuples:
@@ -122,22 +121,22 @@ type RelationshipTupleWriter interface {
 type ReadStartingWithUserFilter struct {
 	ObjectType string
 	Relation   string
-	UserFilter []*openfgapb.ObjectRelation
+	UserFilter []*openfgav1.ObjectRelation
 }
 
 type ReadUsersetTuplesFilter struct {
 	Object                      string                         // required
 	Relation                    string                         // required
-	AllowedUserTypeRestrictions []*openfgapb.RelationReference // optional
+	AllowedUserTypeRestrictions []*openfgav1.RelationReference // optional
 }
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel Read the store type definition corresponding to `id`.
-	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgapb.AuthorizationModel, error)
+	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
 	// ReadAuthorizationModels Read all type definitions ids for the supplied store.
-	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error)
+	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
 
 	FindLatestAuthorizationModelID(ctx context.Context, store string) (string, error)
 }
@@ -148,7 +147,7 @@ type TypeDefinitionWriteBackend interface {
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
-	WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error
+	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
 // AuthorizationModelBackend provides an R/W interface for managing type definition.
@@ -158,15 +157,15 @@ type AuthorizationModelBackend interface {
 }
 
 type StoresBackend interface {
-	CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error)
+	CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error)
 	DeleteStore(ctx context.Context, id string) error
-	GetStore(ctx context.Context, id string) (*openfgapb.Store, error)
-	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgapb.Store, []byte, error)
+	GetStore(ctx context.Context, id string) (*openfgav1.Store, error)
+	ListStores(ctx context.Context, paginationOptions PaginationOptions) ([]*openfgav1.Store, []byte, error)
 }
 
 type AssertionsBackend interface {
-	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error
-	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error)
+	WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error
+	ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error)
 }
 
 type ChangelogBackend interface {
@@ -174,7 +173,7 @@ type ChangelogBackend interface {
 	// ReadChanges returns the writes and deletes that have occurred for tuples of a given object type within a store.
 	// The horizonOffset should be specified using a unit no more granular than a millisecond and should be interpreted
 	// as a millisecond duration.
-	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfgapb.TupleChange, []byte, error)
+	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
 }
 
 type OpenFGADatastore interface {
@@ -189,141 +188,4 @@ type OpenFGADatastore interface {
 
 	// Close closes the datastore and cleans up any residual resources.
 	Close()
-}
-
-// NewCombinedTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
-// tuples specified in the request
-func NewCombinedTupleReader(ds RelationshipTupleReader, contextualTuples []*openfgapb.TupleKey) RelationshipTupleReader {
-	return &combinedTupleReader{wrapped: ds, contextualTuples: contextualTuples}
-}
-
-type combinedTupleReader struct {
-	wrapped          RelationshipTupleReader
-	contextualTuples []*openfgapb.TupleKey
-}
-
-var _ RelationshipTupleReader = (*combinedTupleReader)(nil)
-
-// filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
-// that don't match the object and relation provided in the filterKey.
-func filterTuples(tuples []*openfgapb.TupleKey, targetObject, targetRelation string) []*openfgapb.Tuple {
-	var filtered []*openfgapb.Tuple
-	for _, tk := range tuples {
-		if tk.GetObject() == targetObject && tk.GetRelation() == targetRelation {
-			filtered = append(filtered, &openfgapb.Tuple{
-				Key: tk,
-			})
-		}
-	}
-
-	return filtered
-}
-
-func (c *combinedTupleReader) Read(
-	ctx context.Context,
-	storeID string,
-	tk *openfgapb.TupleKey,
-) (TupleIterator, error) {
-
-	iter1 := NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
-
-	iter2, err := c.wrapped.Read(ctx, storeID, tk)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ReadPage(
-	ctx context.Context,
-	store string,
-	tk *openfgapb.TupleKey,
-	opts PaginationOptions,
-) ([]*openfgapb.Tuple, []byte, error) {
-
-	// no reading from contextual tuples
-
-	return c.wrapped.ReadPage(ctx, store, tk, opts)
-}
-
-func (c *combinedTupleReader) ReadUserTuple(
-	ctx context.Context,
-	store string,
-	tk *openfgapb.TupleKey,
-) (*openfgapb.Tuple, error) {
-
-	filteredContextualTuples := filterTuples(c.contextualTuples, tk.Object, tk.Relation)
-
-	for _, t := range filteredContextualTuples {
-		if t.GetKey().GetUser() == tk.GetUser() {
-			return t, nil
-		}
-	}
-
-	return c.wrapped.ReadUserTuple(ctx, store, tk)
-}
-
-func (c *combinedTupleReader) ReadUsersetTuples(
-	ctx context.Context,
-	store string,
-	filter ReadUsersetTuplesFilter,
-) (TupleIterator, error) {
-
-	var usersetTuples []*openfgapb.Tuple
-
-	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation) {
-		if tuple.GetUserTypeFromUser(t.GetKey().GetUser()) == tuple.UserSet {
-			usersetTuples = append(usersetTuples, t)
-		}
-	}
-
-	iter1 := NewStaticTupleIterator(usersetTuples)
-
-	iter2, err := c.wrapped.ReadUsersetTuples(ctx, store, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
-}
-
-func (c *combinedTupleReader) ReadStartingWithUser(
-	ctx context.Context,
-	store string,
-	filter ReadStartingWithUserFilter,
-) (TupleIterator, error) {
-
-	var filteredTuples []*openfgapb.Tuple
-	for _, t := range c.contextualTuples {
-		if tuple.GetType(t.GetObject()) != filter.ObjectType {
-			continue
-		}
-
-		if t.GetRelation() != filter.Relation {
-			continue
-		}
-
-		for _, u := range filter.UserFilter {
-			targetUser := u.GetObject()
-			if u.GetRelation() != "" {
-				targetUser = tuple.ToObjectRelationString(targetUser, u.GetRelation())
-			}
-
-			if t.GetUser() == targetUser {
-				filteredTuples = append(filteredTuples, &openfgapb.Tuple{
-					Key: t,
-				})
-			}
-		}
-	}
-
-	iter1 := NewStaticTupleIterator(filteredTuples)
-
-	iter2, err := c.wrapped.ReadStartingWithUser(ctx, store, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewCombinedIterator(iter1, iter2), nil
 }

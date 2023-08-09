@@ -10,16 +10,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/cenkalti/backoff/v4"
+	"github.com/go-sql-driver/mysql"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -107,14 +106,14 @@ func (m *MySQL) Close() {
 	m.db.Close()
 }
 
-func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (storage.TupleIterator, error) {
+func (m *MySQL) Read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (storage.TupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.Read")
 	defer span.End()
 
 	return m.read(ctx, store, tupleKey, nil)
 }
 
-func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
+func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadPage")
 	defer span.End()
 
@@ -127,7 +126,7 @@ func (m *MySQL) ReadPage(ctx context.Context, store string, tupleKey *openfgapb.
 	return iter.ToArray(opts)
 }
 
-func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgapb.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
+func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.TupleKey, opts *storage.PaginationOptions) (*sqlcommon.SQLTupleIterator, error) {
 	ctx, span := tracer.Start(ctx, "mysql.read")
 	defer span.End()
 
@@ -183,7 +182,7 @@ func (m *MySQL) Write(ctx context.Context, store string, deletes storage.Deletes
 	return sqlcommon.Write(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, sq.Expr("NOW()")), store, deletes, writes, now)
 }
 
-func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgapb.TupleKey) (*openfgapb.Tuple, error) {
+func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openfgav1.TupleKey) (*openfgav1.Tuple, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadUserTuple")
 	defer span.End()
 
@@ -233,10 +232,10 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	if len(filter.AllowedUserTypeRestrictions) > 0 {
 		orConditions := sq.Or{}
 		for _, userset := range filter.AllowedUserTypeRestrictions {
-			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Relation); ok {
+			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
 				orConditions = append(orConditions, sq.Like{"_user": userset.Type + ":%#" + userset.GetRelation()})
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgapb.RelationReference_Wildcard); ok {
+			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
 				orConditions = append(orConditions, sq.Eq{"_user": userset.Type + ":*"})
 			}
 		}
@@ -283,7 +282,7 @@ func (m *MySQL) MaxTuplesPerWrite() int {
 	return m.maxTuplesPerWriteField
 }
 
-func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgapb.AuthorizationModel, error) {
+func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
@@ -300,7 +299,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	defer rows.Close()
 
 	var schemaVersion string
-	var typeDefs []*openfgapb.TypeDefinition
+	var typeDefs []*openfgav1.TypeDefinition
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
@@ -309,7 +308,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 			return nil, sqlcommon.HandleSQLError(err)
 		}
 
-		var typeDef openfgapb.TypeDefinition
+		var typeDef openfgav1.TypeDefinition
 		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
 			return nil, err
 		}
@@ -339,14 +338,14 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 		}
 	}
 
-	return &openfgapb.AuthorizationModel{
+	return &openfgav1.AuthorizationModel{
 		SchemaVersion:   schemaVersion,
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
 }
 
-func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgapb.AuthorizationModel, []byte, error) {
+func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModels")
 	defer span.End()
 
@@ -401,7 +400,7 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 
 	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
 	// https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-	models := make([]*openfgapb.AuthorizationModel, 0, numModelIDs)
+	models := make([]*openfgav1.AuthorizationModel, 0, numModelIDs)
 	// We use numModelIDs here to avoid retrieving possibly one extra model.
 	for i := 0; i < numModelIDs; i++ {
 		model, err := m.ReadAuthorizationModel(ctx, store, modelIDs[i])
@@ -438,7 +437,7 @@ func (m *MySQL) MaxTypesPerAuthorizationModel() int {
 	return m.maxTypesPerModelField
 }
 
-func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgapb.AuthorizationModel) error {
+func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error {
 	ctx, span := tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
@@ -475,7 +474,7 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 }
 
 // CreateStore is slightly different between Postgres and MySQL
-func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openfgapb.Store, error) {
+func (m *MySQL) CreateStore(ctx context.Context, store *openfgav1.Store) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "mysql.CreateStore")
 	defer span.End()
 
@@ -515,7 +514,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return &openfgapb.Store{
+	return &openfgav1.Store{
 		Id:        id,
 		Name:      name,
 		CreatedAt: timestamppb.New(createdAt),
@@ -523,7 +522,7 @@ func (m *MySQL) CreateStore(ctx context.Context, store *openfgapb.Store) (*openf
 	}, nil
 }
 
-func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgapb.Store, error) {
+func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgav1.Store, error) {
 	ctx, span := tracer.Start(ctx, "mysql.GetStore")
 	defer span.End()
 
@@ -546,7 +545,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgapb.Store, erro
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	return &openfgapb.Store{
+	return &openfgav1.Store{
 		Id:        storeID,
 		Name:      name,
 		CreatedAt: timestamppb.New(createdAt),
@@ -554,7 +553,7 @@ func (m *MySQL) GetStore(ctx context.Context, id string) (*openfgapb.Store, erro
 	}, nil
 }
 
-func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgapb.Store, []byte, error) {
+func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) ([]*openfgav1.Store, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ListStores")
 	defer span.End()
 
@@ -580,7 +579,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 	}
 	defer rows.Close()
 
-	var stores []*openfgapb.Store
+	var stores []*openfgav1.Store
 	var id string
 	for rows.Next() {
 		var name string
@@ -590,7 +589,7 @@ func (m *MySQL) ListStores(ctx context.Context, opts storage.PaginationOptions) 
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
-		stores = append(stores, &openfgapb.Store{
+		stores = append(stores, &openfgav1.Store{
 			Id:        id,
 			Name:      name,
 			CreatedAt: timestamppb.New(createdAt),
@@ -630,11 +629,11 @@ func (m *MySQL) DeleteStore(ctx context.Context, id string) error {
 }
 
 // WriteAssertions is slightly different between Postgres and MySQL
-func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgapb.Assertion) error {
+func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, assertions []*openfgav1.Assertion) error {
 	ctx, span := tracer.Start(ctx, "mysql.WriteAssertions")
 	defer span.End()
 
-	marshalledAssertions, err := proto.Marshal(&openfgapb.Assertions{Assertions: assertions})
+	marshalledAssertions, err := proto.Marshal(&openfgav1.Assertions{Assertions: assertions})
 	if err != nil {
 		return err
 	}
@@ -652,7 +651,7 @@ func (m *MySQL) WriteAssertions(ctx context.Context, store, modelID string, asse
 	return nil
 }
 
-func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgapb.Assertion, error) {
+func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*openfgav1.Assertion, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAssertions")
 	defer span.End()
 
@@ -668,12 +667,12 @@ func (m *MySQL) ReadAssertions(ctx context.Context, store, modelID string) ([]*o
 		Scan(&marshalledAssertions)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return []*openfgapb.Assertion{}, nil
+			return []*openfgav1.Assertion{}, nil
 		}
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	var assertions openfgapb.Assertions
+	var assertions openfgav1.Assertions
 	err = proto.Unmarshal(marshalledAssertions, &assertions)
 	if err != nil {
 		return nil, err
@@ -687,7 +686,7 @@ func (m *MySQL) ReadChanges(
 	store, objectTypeFilter string,
 	opts storage.PaginationOptions,
 	horizonOffset time.Duration,
-) ([]*openfgapb.TupleChange, []byte, error) {
+) ([]*openfgav1.TupleChange, []byte, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadChanges")
 	defer span.End()
 
@@ -721,7 +720,7 @@ func (m *MySQL) ReadChanges(
 	}
 	defer rows.Close()
 
-	var changes []*openfgapb.TupleChange
+	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
 		var objectType, objectID, relation, user string
@@ -733,13 +732,13 @@ func (m *MySQL) ReadChanges(
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
-		changes = append(changes, &openfgapb.TupleChange{
-			TupleKey: &openfgapb.TupleKey{
+		changes = append(changes, &openfgav1.TupleChange{
+			TupleKey: &openfgav1.TupleKey{
 				Object:   tupleUtils.BuildObject(objectType, objectID),
 				Relation: relation,
 				User:     user,
 			},
-			Operation: openfgapb.TupleOperation(operation),
+			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
 	}

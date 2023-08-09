@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"reflect"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 // ValidateUserObjectRelation checks whether a tuple is well formed
-func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
@@ -30,7 +30,7 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgapb.Tu
 }
 
 // ValidateTuple checks whether a tuple is well formed and valid according to the provided model.
-func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
@@ -70,7 +70,7 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error
 // 1. `document:1#parent@folder:1#parent` (cannot evaluate/assign a userset value to a tupleset relation)
 // 2. `document:1#parent@*` (cannot evaluate/assign untyped wildcard to a tupleset relation (1.0 models))
 // 3. `document:1#parent@folder:*` (cannot evaluate/assign typed wildcard to a tupleset relation (1.1. models))
-func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 
 	objectType := tuple.GetType(tk.GetObject())
 	relation := tk.GetRelation()
@@ -92,7 +92,7 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 	rewrite := rel.GetRewrite().GetUserset()
 
 	// tupleset relation involving a rewrite
-	if rewrite != nil && reflect.TypeOf(rewrite) != reflect.TypeOf(&openfgapb.Userset_This{}) {
+	if rewrite != nil && reflect.TypeOf(rewrite) != reflect.TypeOf(&openfgav1.Userset_This{}) {
 		return fmt.Errorf("unexpected rewrite encountered with tupleset relation '%s#%s'", objectType, relation)
 	}
 
@@ -121,7 +121,7 @@ func validateTuplesetRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.
 // 1. If the tuple is of the form doc:budget#reader@person:bob, then 'doc#reader' must allow type 'person'.
 // 2. If the tuple is of the form doc:budget#reader@group:abc#member, then 'doc#reader' must allow 'group#member'.
 // 3. If the tuple is of the form doc:budget#reader@person:*, we allow it only if 'doc#reader' allows the typed wildcard 'person:*'.
-func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.GetObject())           // e.g. "doc"
 	userType, _ := tuple.SplitObject(tk.GetUser())        // e.g. (person, bob) or (group, abc#member) or ("", person:*)
 	_, userRel := tuple.SplitObjectRelation(tk.GetUser()) // e.g. (person:bob, "") or (group:abc, member) or (person:*, "")
@@ -176,7 +176,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgapb.Tupl
 // tuples that were introduced due to another authorization model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 
-	return func(tupleKey *openfgapb.TupleKey) bool {
+	return func(tupleKey *openfgav1.TupleKey) bool {
 		err := ValidateTuple(typesys, tupleKey)
 		return err == nil
 	}
@@ -185,7 +185,7 @@ func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterF
 // ValidateObject validates the provided object string 'type:id' against the provided
 // model. An object is considered valid if it validates against one of the type
 // definitions included in the provided model.
-func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 
 	object := tk.GetObject()
 
@@ -209,7 +209,7 @@ func ValidateObject(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) erro
 // ValidateRelation validates the relation on the provided objectType against the given model.
 // A relation is valid if it is defined as a relation for the type definition of the given
 // objectType.
-func ValidateRelation(typesys *typesystem.TypeSystem, tk *openfgapb.TupleKey) error {
+func ValidateRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 
 	object := tk.GetObject()
 	relation := tk.GetRelation()

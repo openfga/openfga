@@ -8,13 +8,13 @@ import (
 
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
@@ -39,13 +39,13 @@ type testParams struct {
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
 	Model           string
-	Tuples          []*openfgapb.TupleKey
+	Tuples          []*openfgav1.TupleKey
 	CheckAssertions []*assertion `yaml:"checkAssertions"`
 }
 
 type assertion struct {
-	Tuple            *openfgapb.TupleKey
-	ContextualTuples []*openfgapb.TupleKey `yaml:"contextualTuples"`
+	Tuple            *openfgav1.TupleKey
+	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
 	Trace            string
@@ -54,7 +54,7 @@ type assertion struct {
 // ClientInterface defines client interface for running check tests
 type ClientInterface interface {
 	tests.TestClientBootstrapper
-	Check(ctx context.Context, in *openfgapb.CheckRequest, opts ...grpc.CallOption) (*openfgapb.CheckResponse, error)
+	Check(ctx context.Context, in *openfgav1.CheckRequest, opts ...grpc.CallOption) (*openfgav1.CheckResponse, error)
 }
 
 // RunAllTests will run all check tests
@@ -81,7 +81,7 @@ func testCheck(t *testing.T, client ClientInterface) {
 func testBadAuthModelID(t *testing.T, client ClientInterface) {
 
 	ctx := context.Background()
-	resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: "bad auth id"})
+	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "bad auth id"})
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
@@ -93,14 +93,14 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 	    define viewer: [user] as self
 	    define can_view as viewer
 	`
-	_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
 		TypeDefinitions: parser.MustParse(model),
 	})
 	require.NoError(t, err)
 	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
-	_, err = client.Check(ctx, &openfgapb.CheckRequest{
+	_, err = client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
 		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
 		AuthorizationModelId: badModelID,
@@ -153,21 +153,21 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		t.Parallel()
 		ctx := context.Background()
 
-		resp, err := client.CreateStore(ctx, &openfgapb.CreateStoreRequest{Name: name})
+		resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 		require.NoError(t, err)
 
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
 
-			var typedefs []*openfgapb.TypeDefinition
+			var typedefs []*openfgav1.TypeDefinition
 			if schemaVersion == typesystem.SchemaVersion1_1 {
 				typedefs = parser.MustParse(stage.Model)
 			} else {
 				typedefs = v1parser.MustParse(stage.Model)
 			}
 
-			_, err = client.WriteAuthorizationModel(ctx, &openfgapb.WriteAuthorizationModelRequest{
+			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
@@ -181,9 +181,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 					writeChunk := (tuples)[i:end]
-					_, err = client.Write(ctx, &openfgapb.WriteRequest{
+					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId: storeID,
-						Writes:  &openfgapb.TupleKeys{TupleKeys: writeChunk},
+						Writes:  &openfgav1.TupleKeys{TupleKeys: writeChunk},
 					})
 					require.NoError(t, err)
 				}
@@ -195,10 +195,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ctxTuples = append(ctxTuples, stage.Tuples...)
 				}
 
-				resp, err := client.Check(ctx, &openfgapb.CheckRequest{
+				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
 					StoreId:  storeID,
 					TupleKey: assertion.Tuple,
-					ContextualTuples: &openfgapb.ContextualTupleKeys{
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
 					Trace: true,

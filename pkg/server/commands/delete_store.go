@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type DeleteStoreCommand struct {
@@ -25,11 +25,11 @@ func NewDeleteStoreCommand(
 	}
 }
 
-func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteStoreRequest) (*openfgapb.DeleteStoreResponse, error) {
+func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {
 	store, err := s.storesBackend.GetStore(ctx, req.StoreId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return &openfgapb.DeleteStoreResponse{}, nil
+			return &openfgav1.DeleteStoreResponse{}, nil
 		}
 
 		return nil, serverErrors.HandleError("", err)
@@ -38,5 +38,5 @@ func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgapb.DeleteS
 	if err := s.storesBackend.DeleteStore(ctx, store.Id); err != nil {
 		return nil, serverErrors.HandleError("Error deleting store", err)
 	}
-	return &openfgapb.DeleteStoreResponse{}, nil
+	return &openfgav1.DeleteStoreResponse{}, nil
 }
