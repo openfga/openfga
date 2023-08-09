@@ -465,6 +465,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(tk.GetObject())
 		relation := tk.GetRelation()
 
+		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
 			defer span.End()
@@ -500,9 +503,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
 
-			// allowedUsersetsTypeRestrictions could be "user:*" or "group#member"
-			allowedUsersetsTypeRestrictions, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
-
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
@@ -513,7 +513,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      tk.Object,
 				Relation:                    tk.Relation,
-				AllowedUserTypeRestrictions: allowedUsersetsTypeRestrictions,
+				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
 				return response, err
@@ -595,7 +595,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = []CheckHandlerFunc{fn1}
 		}
 
-		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 		if len(directlyRelatedUsersetTypes) > 0 {
 			checkFuncs = append(checkFuncs, fn2)
 
