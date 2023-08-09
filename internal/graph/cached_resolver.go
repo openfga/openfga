@@ -35,7 +35,8 @@ var (
 )
 
 // CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
-// do not store the ResolutionData
+// do not store the ResolutionData. This is due to the fact that the resolution metadata
+// will be incorrect as data is served from cache instead of actual database read.
 type CachedResolveCheckResponse struct {
 	Allowed bool
 }
@@ -56,15 +57,17 @@ func newCachedResolveCheckResponse(r *ResolveCheckResponse) *CachedResolveCheckR
 	}
 }
 
-// CachedCheckResolver implements the CheckResolver interface in way that attempts to resolve
-// Check sub-problems via prior computations before delegating the request to some underlying
-// CheckResolver.
+// CachedCheckResolver attempts to resolve check sub-problems via prior computations before
+// delegating the request to some underlying CheckResolver.
 type CachedCheckResolver struct {
 	delegate     CheckResolver
 	cache        *ccache.Cache[*CachedResolveCheckResponse]
 	maxCacheSize int64
 	cacheTTL     time.Duration
 	logger       logger.Logger
+	// allocatedCache is used to denote whether the cache is allocated by this struct.
+	// If so, CachedCheckResolver is responsible for cleaning up.
+	allocatedCache bool
 }
 
 var _ CheckResolver = (*CachedCheckResolver)(nil)
@@ -88,7 +91,9 @@ func WithCacheTTL(ttl time.Duration) CachedCheckResolverOpt {
 	}
 }
 
-// WithExistingCache sets the cache to the provided cache
+// WithExistingCache sets the cache to the specified cache.
+// Note that the original cache will not be stopped as it may still be used by others. It is up to the caller
+// to check whether the original cache should be stopped.
 func WithExistingCache(cache *ccache.Cache[*CachedResolveCheckResponse]) CachedCheckResolverOpt {
 	return func(ccr *CachedCheckResolver) {
 		ccr.cache = cache
@@ -120,13 +125,22 @@ func NewCachedCheckResolver(delegate CheckResolver, opts ...CachedCheckResolverO
 	}
 
 	if checker.cache == nil {
-		// this means there were no cache supplied
+		checker.allocatedCache = true
 		checker.cache = ccache.New(
 			ccache.Configure[*CachedResolveCheckResponse]().MaxSize(checker.maxCacheSize),
 		)
 	}
 
 	return checker
+}
+
+// Close will deallocate resource allocated by the CachedCheckResolver
+// It will not deallocate cache if it has been passed in from WithExistingCache
+func (c *CachedCheckResolver) Close() {
+	if c.allocatedCache {
+		c.cache.Stop()
+		c.cache = nil
+	}
 }
 
 func (c *CachedCheckResolver) ResolveCheck(
@@ -139,7 +153,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 	cacheKey, err := checkRequestCacheKey(req)
 	if err != nil {
 		c.logger.Error("cache key computation failed with error", zap.Error(err))
-		return c.delegate.ResolveCheck(ctx, req)
+		return nil, err
 	}
 
 	cachedResp := c.cache.Get(cacheKey)
@@ -159,10 +173,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 
 // checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
 // used for Check resolution cache key lookups.
-//
-// We use the 'gob' package to produce a deterministic byte ordering for the contextual tuples provided
-// in the request body. The same tuple provided with the same contextual tuples should produce the same
-// cache key.
+// The same tuple provided with the same contextual tuples should produce the same
+// cache key. If the contextual tuples are different order, it is possible that a different
+// cache key will be produced. This will result in duplicate entries.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 
 	var b bytes.Buffer

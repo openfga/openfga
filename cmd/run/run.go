@@ -310,7 +310,7 @@ type MetricConfig struct {
 // CheckQueryCache defines configuration for caching when resolving check
 type CheckQueryCache struct {
 	Enabled bool
-	Limit   uint32 // (in bytes)
+	Limit   uint32 // (in items)
 	TTL     time.Duration
 }
 

@@ -409,6 +409,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		)
 
 		checkResolver.SetDelegate(cachedCheckResolver)
+		defer cachedCheckResolver.Close()
 	}
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{

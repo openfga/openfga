@@ -261,6 +261,7 @@ func (q *ListObjectsQuery) evaluate(
 				graph.WithCacheTTL(q.checkQueryCacheTTL),
 			)
 			checkResolver.SetDelegate(cachedCheckResolver)
+			defer cachedCheckResolver.Close()
 		}
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)

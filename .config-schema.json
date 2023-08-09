@@ -360,7 +360,7 @@
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
                 },
                 "limit": {
-                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit (in bytes) of the cache",
+                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit (in items) of the cache",
                     "type": "integer",
                     "default": "10000",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
