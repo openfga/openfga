@@ -1,6 +1,6 @@
 # ListObjects API implementation
 
-At a high level, answering ListObjects queries involves a reverse expansion algorithm. Thinking of an authorization model as a directed graph and the tuples as the way of "moving" through that graph, we start the search from a specific object and explore (reverse expand)  all the paths that can lead to the target object type and relation. During this expansion, we add to the final response all the concrete objects that we find that are of the target type. And if we discover usersets that are don't match the target type and relation, we process those further.
+At a high level, answering ListObjects queries involves a reverse expansion algorithm. Thinking of an authorization model as a directed graph and the tuples as the way of "moving" through that graph, we start the search from a specific object and explore (reverse expand)  all the paths that can lead to the target object type and relation. During this expansion, we add to the final response all the concrete objects that we find that are of the target type. And if we discover usersets that don't match the target type and relation, we process those further.
 
 ## Example
 Consider the following model:
@@ -256,7 +256,7 @@ There are no tuples that satisfy (1). But for (2), the following tuples exist: `
 ConnectedObjects(group:fga#member, document#viewer) → [group:eng#member]
 ```
 
-We will have to recurse through userset `group:eng#member` in a next step because its type and relation don't match the target `document#viewer`.
+We will have to recurse through userset `group:eng#member` in a next iteration because its type and relation don't match the target `document#viewer`.
 
 #### 2b. ConnectedObjects(document:1#viewer, document#viewer)
 
