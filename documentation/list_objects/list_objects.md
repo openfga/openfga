@@ -2,6 +2,9 @@
 
 At a high level, answering ListObjects queries involves a reverse expansion algorithm. Thinking of an authorization model as a directed graph and the tuples as the way of "moving" through that graph, we start the search from a specific object and explore (reverse expand)  all the paths that can lead to the target object type and relation. During this expansion, we add to the final response all the concrete objects that we find that are of the target type. And if we discover usersets that don't match the target type and relation, we process those further.
 
+> NOTE: this document needs to be updated to explain what happens when using a model with `and` or `but not`.
+
+
 ## Example
 Consider the following model:
 
@@ -197,6 +200,8 @@ So we have to examine this too, which is simple because it's a direct relation:
 // find all tuples of form `document:...#viewer@user:*`
 e. ConnectedObjects(user:*, document#viewer) → [document:5#viewer]
 ```
+
+> NOTE: in the code, to avoid an extra database query, we compute 1e together with 1b. 
 
 Next, we apply recursion on each result we got.
 
@@ -438,7 +443,7 @@ For (1), we lookup tuples of the form `document:...#viewer@group:eng#member`. We
 ConnectedObjects(group:eng#member, document#viewer) → [document:2]
 ```
 
-## Conclusion
+### Result
 
 Since there were no leftover usersets that were pending further recursion, we can return a final response:
 
