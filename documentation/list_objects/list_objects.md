@@ -133,7 +133,7 @@ Thinking of it as a breadth-first search, there are 4 edges leaving `user` and a
 - `folder#viewer`
 - `document#viewer`
 
-So, we have to iterate over tuples and find all of the objects connected from source object `user:andres` to each of those four usersets. We do this using the ConnectedObjects internal API: `ConnectedObjects(source Object or Userset, target Userset) -> [Objects or Usersets]`
+So, we have to iterate over tuples and find all of the objects connected from source object `user:andres` to each of those four usersets. We do this using the ConnectedObjects internal API: `ConnectedObjects(source Object or Userset, target Userset) -> [Usersets]`
 
 Since the four edges mentioned are solid lines (i.e. direct relations), they are straightforward to compute:
 
@@ -267,10 +267,6 @@ We will have to recurse through userset `group:eng#member` in a next iteration b
 
 Here, both the source and target parameters are usersets of the same type and relation. So, we can say we found an object `document:1`. We can immediately add it to the list of results and terminate the recursion in this branch.
 
-```go
-ConnectedObjects(document:1#viewer, document#viewer) → [document:1]
-```
-
 #### 2c. ConnectedObjects(document:3#editor, document#viewer)
 
 <!--
@@ -322,10 +318,6 @@ This path is special. It means that all editors are also viewers. So we need to 
 
 Since we have a tuple `document:3#editor@user:andres` we can add `document:3` to the response and recursion in this branch stops here.
 
-```go
-ConnectedObjects(document:3#editor, document#viewer) → [document:3]
-```
-
 #### 2d. ConnectedObjects(folder:1#viewer, document#viewer)
 
 <!--
@@ -375,17 +367,9 @@ In other words: for any `folder:...#viewer@user:andres` tuple we find, if that `
 
 So, we search for tuples and find `folder:1#viewer@user:andres`. Then we search for tuples of the form `document:...#parent@folder:1`. We find tuple `document:4#parent@folder:1`. So we can add `document:4` to the response and recursion in this branch stops here.
 
-```go
- ConnectedObjects(folder:1#viewer, document#viewer) → [document:4]
-```
-
 #### 2e. ConnectedObjects(document:5#viewer, document#viewer)
 
 Here, similar to step 2b, both the source and target parameters are usersets of the same type and relation. So, we can say we found an object `document:5`. We can immediately add it to the list of results and terminate the recursion in this branch.
-
-```go
-ConnectedObjects(document:5#viewer, document#viewer) → [document:5]
-```
 
 ### Iteration 3
 
@@ -438,10 +422,6 @@ Similar to step 2a, the paths from specific object `group:eng#member` to userset
 For (2), we lookup tuples of the form `group:...#member@group:eng#member`. There aren't any.
 
 For (1), we lookup tuples of the form `document:...#viewer@group:eng#member`. We find one: `document:2#viewer@group:eng#member`. Therefore, we add `document:2` to the response and stop recursion of this branch.
-
-```go
-ConnectedObjects(group:eng#member, document#viewer) → [document:2]
-```
 
 ### Result
 
