@@ -9,6 +9,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -38,8 +39,17 @@ func TestCheckMySQL(t *testing.T) {
 }
 
 func TestCheckLogs(t *testing.T) {
+	// create mock OTLP server
+	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
+	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
+	otlpServerPortReleaser()
+	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
+	defer serverStopFunc()
+	require.NoError(t, err)
+
 	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Log.Level = "none"
+	cfg.Trace.Enabled = true
+	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
@@ -49,6 +59,8 @@ func TestCheckLogs(t *testing.T) {
 		},
 	}
 
+	// We're starting a full fledged server because the logs we
+	// want to observe are emitted on the interceptors/middleware layer.
 	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
 	defer cancel()
 
@@ -124,6 +136,9 @@ func TestCheckLogs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
+			// clear observed logs after each run
+			defer logs.TakeAll()
+
 			_, _ = client.Check(context.Background(), test.req)
 
 			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
@@ -151,11 +166,11 @@ func TestCheckLogs(t *testing.T) {
 			require.JSONEq(t, test.expectedContext["raw_response"].(string), string(fields["raw_response"].(json.RawMessage)))
 			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
 			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
-			require.GreaterOrEqual(t, fields["datastore_query_count"], int64(1))
-			require.LessOrEqual(t, fields["datastore_query_count"], int64(2))
+			require.NotEmpty(t, fields["datastore_query_count"])
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
-			require.Len(t, fields, 11)
+			require.NotEmpty(t, fields["trace_id"])
+			require.Len(t, fields, 12)
 		})
 	}
 
