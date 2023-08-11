@@ -84,26 +84,26 @@
 <!-- group#member&#45;&gt;document#viewer -->
 <g id="edge4" class="edge">
 <title>group#member-&gt;document#viewer</title>
-<path fill="none" stroke="#ff0000" d="M125.9179,-105.0936C153.6276,-115.9957 191.2871,-130.8126 221.2319,-142.5942"/>
-<polygon fill="#ff0000" stroke="#ff0000" points="220.0737,-145.8996 230.6608,-146.3039 222.6366,-139.3856 220.0737,-145.8996"/>
+<path fill="none" stroke="#000000" d="M125.9179,-105.0936C153.6276,-115.9957 191.2871,-130.8126 221.2319,-142.5942"/>
+<polygon fill="#000000" stroke="#000000" points="220.0737,-145.8996 230.6608,-146.3039 222.6366,-139.3856 220.0737,-145.8996"/>
 </g>
 <!-- group#member&#45;&gt;group#member -->
 <g id="edge3" class="edge">
 <title>group#member-&gt;group#member</title>
-<path fill="none" stroke="#ff0000" d="M135.1008,-76.7381C156.7611,-75.3841 175.5897,-79.8047 175.5897,-90 175.5897,-98.5226 162.4324,-103.01 145.4624,-103.462"/>
-<polygon fill="#ff0000" stroke="#ff0000" points="145.1666,-99.9557 135.1008,-103.2619 145.0313,-106.9544 145.1666,-99.9557"/>
+<path fill="none" stroke="#000000" d="M135.1008,-76.7381C156.7611,-75.3841 175.5897,-79.8047 175.5897,-90 175.5897,-98.5226 162.4324,-103.01 145.4624,-103.462"/>
+<polygon fill="#000000" stroke="#000000" points="145.1666,-99.9557 135.1008,-103.2619 145.0313,-106.9544 145.1666,-99.9557"/>
 </g>
 <!-- document#editor&#45;&gt;document#viewer -->
 <g id="edge7" class="edge">
 <title>document#editor-&gt;document#viewer</title>
-<path fill="none" stroke="#ff0000" stroke-dasharray="1,5" d="M270.5551,-108.1686C270.5551,-115.869 270.5551,-125.0257 270.5551,-133.5834"/>
-<polygon fill="#ff0000" stroke="#ff0000" points="267.0552,-133.5867 270.5551,-143.5867 274.0552,-133.5868 267.0552,-133.5867"/>
+<path fill="none" stroke="#000000" stroke-dasharray="1,5" d="M270.5551,-108.1686C270.5551,-115.869 270.5551,-125.0257 270.5551,-133.5834"/>
+<polygon fill="#000000" stroke="#000000" points="267.0552,-133.5867 270.5551,-143.5867 274.0552,-133.5868 267.0552,-133.5867"/>
 </g>
 <!-- folder#viewer&#45;&gt;document#viewer -->
 <g id="edge9" class="edge">
 <title>folder#viewer-&gt;document#viewer</title>
-<path fill="none" stroke="#ff0000" stroke-dasharray="5,2" d="M472.5387,-103.1222C432.3067,-114.8497 373.1011,-132.108 329.1812,-144.9106"/>
-<polygon fill="#ff0000" stroke="#ff0000" points="328.1142,-141.5759 319.4933,-147.7346 330.0732,-148.2962 328.1142,-141.5759"/>
+<path fill="none" stroke="#000000" stroke-dasharray="5,2" d="M472.5387,-103.1222C432.3067,-114.8497 373.1011,-132.108 329.1812,-144.9106"/>
+<polygon fill="#000000" stroke="#000000" points="328.1142,-141.5759 319.4933,-147.7346 330.0732,-148.2962 328.1142,-141.5759"/>
 </g>
 <!-- document#parent -->
 <g id="node10" class="node">
