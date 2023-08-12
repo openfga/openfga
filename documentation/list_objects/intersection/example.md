@@ -47,24 +47,24 @@ The query is `ListObjects(user= user:jon, relation=document, type=c)` and the ex
 
 
 ```go
-RecursiveReverseExpand(user:jon, document#c) ->
+RecursiveReverseExpand(user:jon, document#c) →
 	
-    edges(user:jon, document#c) -> [edge 1, edge 2]
+    edges(user:jon, document#c) → [edge 1, edge 2]
 
     // edge 1 (direct) starts at user and ends at document#a
-    // find all tuples of form document:...#a@user:jon -> document:budget#a@user:jon
-    RecursiveReverseExpand(document:budget#a, document#c) -> 
+    // find all tuples of form document:...#a@user:jon → document:budget#a@user:jon
+    RecursiveReverseExpand(document:budget#a, document#c) → 
 	
-        edges(document:budget#a, document#c) -> [edge 3]
+        edges(document:budget#a, document#c) → [edge 3]
         
         // edge 3 (and) starts at document#a and ends at document#c
         send document:budget to candidateObjectsChan
 	
     // edge 2 (direct) starts at user and ends at document#b
-    // find all tuples of form document:...#b@user:jon -> document:budget#b@user:jon
-    RecursiveReverseExpand(document:budget#b, document#c) ->
+    // find all tuples of form document:...#b@user:jon → document:budget#b@user:jon
+    RecursiveReverseExpand(document:budget#b, document#c) →
         
-        edges(document:budget#b, document#c) -> [edge 4]
+        edges(document:budget#b, document#c) → [edge 4]
         
         // edge 4 (and) starts at document#b and ends at document#c
         send document:budget to candidateObjectsChan
@@ -72,7 +72,7 @@ RecursiveReverseExpand(user:jon, document#c) ->
 
 receive document:budget in candidateObjectsChan
 
-call Check(user:jon, c, document:budget) -> allowed
+call Check(user:jon, c, document:budget) → allowed
 
 add document:budget to response
 

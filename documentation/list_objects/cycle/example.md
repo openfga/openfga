@@ -53,28 +53,42 @@ RecursiveReverseExpand(user:jon, document#viewer) ->
     edges(user:jon, document#viewer) → [edge 1, edge 3]
 
     // edge 1
-    RecursiveReverseExpand(user:jon, group#member) ->
-
-        edges(user:jon, group#member) → [edge 1]
-
-        // edge 1 starts at user and ends in group#member
-        // find all tuples of form group:...#member@user:jon -> group:fga#member@user:jon
-        RecursiveReverseExpand(group:fga#member, group#member) ->
-
-            edges(group:fga#member, group#member) → [edge 4]
-
-            // edge 4 starts at group#member and ends in document#viewer
-            // find all tuples of form document:...#viewer@group:fga#member -> document:engineering#viewer@group:fga#member
-            RecursiveReverseExpand(document:engineering#viewer, group#member) ->
-	
+        // edge 1 (direct) starts at user and ends in group#member
+        // find all tuples of form group:...#member@user:jon → group:fga#member@user:jon
+        RecursiveReverseExpand(group:fga#member, document#viewer) →
+        
+            edges(group:fga#member, document#viewer) → [edge 4]
+            
+            // edge 4 (direct) starts at group#member and ends in document#viewer
+            // find all tuples of form document:...#viewer@group:fga#member → document:engineering#viewer@group:fga#member
+            RecursiveReverseExpand(document:engineering#viewer, document#viewer) →
+            
                 // document:engineering#viewer matches the target document#viewer
                 add document:engineering to response
+    
+    // edge 3
+        // edge 3 (direct) starts at user and  ends in document#viewer
+        // find all tuples of form document:...#viewer@user:jon → []
+        end
+```
+
+The query is `ListObjects(user= user:bob, relation=viewer, type=document)` and the expected answer is `[document:budget]`.
+
+```go
+RecursiveReverseExpand(user:bob, document#viewer) ->
+	
+    edges(user:bob, document#viewer) → [edge 1, edge 3]
+
+    // edge 1
+        // edge 1 (direct) starts at user and ends in group#member
+        // find all tuples of form group:...#member@user:bob → []
+        end
 
     // edge 3
-    RecursiveReverseExpand(user:jon, document#viewer) ->
+        // edge 3 (direct) starts at user and  ends in document#viewer
+        // find all tuples of form document:...#viewer@user:bob → [document:budget#viewer]
+        RecursiveReverseExpand(document:budget#viewer, document#viewer) →
 
-        edges(user:jon, document#viewer) → [edge 3]
-        
-        // find all tuples of form document:...#viewer@user:jon -> []
-        end
+            // document:budget#viewer matches the target document#viewer
+            add document:budget to response
 ```

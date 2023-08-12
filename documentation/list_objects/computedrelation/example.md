@@ -43,23 +43,23 @@ document:budget#a@user:jon
 The query is `ListObjects(user= user:jon, relation=document, type=c)` and the expected answer is `[document:budget]`.
 
 ```go
-RecursiveReverseExpand(user:jon, document#c) ->
+RecursiveReverseExpand(user:jon, document#c) →
 	
-    edges(user:jon, document#c) -> [edge 1]
+    edges(user:jon, document#c) → [edge 1]
 
     // edge 1 (direct) starts at user and ends at document#a
     // find all tuples of form document:...#a@user:jon -> document:budget#a@user:jon
-    RecursiveReverseExpand(document:budget#a, document#c) ->
+    RecursiveReverseExpand(document:budget#a, document#c) →
 	    
-        edges(document:budget#a, document#c) -> [edge 2]
+        edges(document:budget#a, document#c) → [edge 2]
 
         // edge 2 (computed) starts at document#a and ends in document#b
-        RecursiveReverseExpand(document:budget#b, document#c) ->
+        RecursiveReverseExpand(document:budget#b, document#c) →
 
-            edges(document:budget#b, document#c) -> [edge 3]
+            edges(document:budget#b, document#c) → [edge 3]
 
             // edge 3 (computed) starts at document#b and ends in document#c
-            RecursiveReverseExpand(document:budget#c, document#c) ->
+            RecursiveReverseExpand(document:budget#c, document#c) →
 	
                 // document:budget#c matches the target document#c
                 add document:budget to the response

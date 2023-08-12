@@ -59,26 +59,26 @@ document:budget#parent@folder:iam
 The query is `ListObjects(user= user:jon, relation=viewer, type=document)` and the expected answer is `[document:budget]`.
 
 ```go
-RecursiveReverseExpand(user:jon, document#viewer) -> 
+RecursiveReverseExpand(user:jon, document#viewer) → 
 	
-    edges(user:jon, document#viewer) -> [edge 1]
+    edges(user:jon, document#viewer) → [edge 1]
 
     // edge 1 (direct) starts at user and ends at group#member
-    // find all tuples of form group:...#member@user:jon -> group:fga#member@user:jon
-    RecursiveReverseExpand(group:fga#member, document#viewer) ->
+    // find all tuples of form group:...#member@user:jon → group:fga#member@user:jon
+    RecursiveReverseExpand(group:fga#member, document#viewer) →
 	    
-        edges(group:fga#member, document#viewer) -> [edge 2]
+        edges(group:fga#member, document#viewer) → [edge 2]
 
         // edge 2 (direct) starts at group#member and ends at folder#viewer
-        // find all tuples of form folder:...#viewer@group:fga#member -> folder:iam#viewer@group:fga#member
-        RecursiveReverseExpand(folder:iam#viewer, document#viewer) ->
+        // find all tuples of form folder:...#viewer@group:fga#member → folder:iam#viewer@group:fga#member
+        RecursiveReverseExpand(folder:iam#viewer, document#viewer) →
 	
-            edges(folder:iam#viewer, document#viewer) -> [edge 4]
+            edges(folder:iam#viewer, document#viewer) → [edge 4]
 
             // edge 4 (ttu) starts at folder#viewer and ends at document#viewer
             // and is associated to node document#parent
-            // find all tuples of form document:...#parent@folder:iam -> document:budget#parent@folder:iam
-            RecursiveReverseExpand(document:budget#viewer, document#viewer) ->
+            // find all tuples of form document:...#parent@folder:iam → document:budget#parent@folder:iam
+            RecursiveReverseExpand(document:budget#viewer, document#viewer) →
 
                 // document:budget#viewer matches the target document#viewer
                 add document:budget to response
