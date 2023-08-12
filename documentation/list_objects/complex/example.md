@@ -250,8 +250,6 @@ digraph G {
 
 ![step2_a](2_a.svg)
 
-
-
 ```go
 // compute all paths, grab edges at distance 0 or 1, and grab their tails
 NodesDistance0Or1(group#member, document#viewer) → [group#member, document#viewer]
@@ -263,8 +261,7 @@ We examine each neighbor node separately:
 // find all tuples of form `document:...#viewer@group:fga#member`
 ReverseExpand(group:fga#member, document#viewer) → []
 
-// find all tuples of form `group:X#member@group:fga#member` and then tuples of form`document:...#viewer@group:X#member`
-// the following tuples exist: `group:eng#member@group:fga#member` and `document:2#viewer@group:eng#member`
+// find all tuples of form `group:X#member@group:fga#member`
 ReverseExpand(group:fga#member, group#member) → [group:eng#member]
 ```
 
@@ -459,7 +456,7 @@ We examine each neighbor node separately:
 // find all tuples of form `document:...#viewer@group:eng#member`
 ReverseExpand(group:eng#member, document#viewer) → [document:2#viewer]
 
-// find all tuples of form `group:X#member@group:eng#member` and then tuples of form`document:...#viewer@group:X#member`
+// find all tuples of form `group:X#member@group:eng#member`
 ReverseExpand(group:eng#member, group#member) → []
 ```
 
