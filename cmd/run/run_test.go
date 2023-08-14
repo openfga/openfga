@@ -973,7 +973,7 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.CheckQueryCache.Limit)
 
-	val = res.Get("properties.checkQueryCache.properties.TTL.default")
+	val = res.Get("properties.checkQueryCache.properties.ttl.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
 }
