@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
@@ -31,6 +32,8 @@ import (
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -798,6 +801,98 @@ func TestGRPCServingTLS(t *testing.T) {
 
 		ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, creds, false)
 	})
+}
+
+func TestServerMetricsReporting(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Metrics.Enabled = true
+	cfg.Metrics.EnableRPCHistograms = true
+	cfg.MaxConcurrentReadsForCheck = 30
+	cfg.MaxConcurrentReadsForListObjects = 30
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+		Name: "test-store",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type document
+		  relations
+		    define allowed: [user] as self
+			define editor: [user] as self
+		    define viewer: [user] as self or (editor and allowed)
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Write(ctx, &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "editor", "user:jon"),
+				tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:  storeID,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	})
+	require.NoError(t, err)
+	require.True(t, checkResp.GetAllowed())
+
+	listObjectsResp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "document",
+		Relation: "viewer",
+		User:     "user:jon",
+	})
+	require.NoError(t, err)
+	require.Len(t, listObjectsResp.GetObjects(), 2)
+	require.Contains(t, listObjectsResp.GetObjects(), "document:1")
+	require.Contains(t, listObjectsResp.GetObjects(), "document:2")
+
+	resp, err := http.Get("http://localhost:2112/metrics")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	defer resp.Body.Close()
+
+	resBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	stringBody := string(resBody)
+	require.Contains(t, stringBody, "datastore_query_count")
+	require.Contains(t, stringBody, "grpc_server_handling_seconds")
+	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
+	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
+	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
