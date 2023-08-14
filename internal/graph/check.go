@@ -465,6 +465,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(tk.GetObject())
 		relation := tk.GetRelation()
 
+		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
 			defer span.End()
@@ -496,30 +499,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return response, nil
 		}
 
-		var checkFuncs []CheckHandlerFunc
-
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-			checkFuncs = append(checkFuncs, fn1)
-		} else {
-			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-				typesystem.DirectRelationReference(objectType, relation),                                         //target
-				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
-			)
-
-			if shouldCheckDirectTuple {
-				checkFuncs = append(checkFuncs, fn1)
-			}
-		}
-
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
-
-			var allowedUserTypeRestrictions []*openfgav1.RelationReference
-			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
-				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
-			}
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
@@ -531,7 +513,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      tk.Object,
 				Relation:                    tk.Relation,
-				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
 				return response, err
@@ -602,7 +584,21 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		checkFuncs = append(checkFuncs, fn2)
+		var checkFuncs []CheckHandlerFunc
+
+		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+			typesystem.DirectRelationReference(objectType, relation),                                         //target
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+		)
+
+		if shouldCheckDirectTuple {
+			checkFuncs = []CheckHandlerFunc{fn1}
+		}
+
+		if len(directlyRelatedUsersetTypes) > 0 {
+			checkFuncs = append(checkFuncs, fn2)
+
+		}
 
 		return union(ctx, c.concurrencyLimit, checkFuncs...)
 	}
