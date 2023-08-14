@@ -182,7 +182,7 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 		return "", err
 	}
 
-	tuplesCacheKey := b.String()
+	tupleCacheKey := b.String()
 
 	var c bytes.Buffer
 	if err := gob.NewEncoder(&c).Encode(req.GetContextualTuples()); err != nil {
@@ -194,7 +194,7 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	key := fmt.Sprintf("%s/%s/%s/%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
-		tuplesCacheKey,
+		tupleCacheKey,
 		contextualTuplesCacheKey,
 	)
 
