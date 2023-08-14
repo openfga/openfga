@@ -814,7 +814,7 @@ func TestServerMetricsReporting(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
