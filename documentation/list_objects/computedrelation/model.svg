@@ -37,7 +37,7 @@
 <!-- document#a&#45;&gt;document#b -->
 <g id="edge2" class="edge">
 <title>document#a-&gt;document#b</title>
-<path fill="none" stroke="#000000" d="M58.7766,-125.1994C58.7766,-137.3051 58.7766,-153.3924 58.7766,-167.1326"/>
+<path fill="none" stroke="#000000" stroke-dasharray="5,2" d="M58.7766,-125.1994C58.7766,-137.3051 58.7766,-153.3924 58.7766,-167.1326"/>
 <polygon fill="#000000" stroke="#000000" points="55.2767,-167.5279 58.7766,-177.528 62.2767,-167.528 55.2767,-167.5279"/>
 <text text-anchor="middle" x="62.2766" y="-147" font-family="Times,serif" font-size="14.00" fill="#000000">2</text>
 </g>
@@ -50,7 +50,7 @@
 <!-- document#b&#45;&gt;document#c -->
 <g id="edge3" class="edge">
 <title>document#b-&gt;document#c</title>
-<path fill="none" stroke="#000000" d="M58.7766,-213.9994C58.7766,-226.1051 58.7766,-242.1924 58.7766,-255.9326"/>
+<path fill="none" stroke="#000000" stroke-dasharray="5,2" d="M58.7766,-213.9994C58.7766,-226.1051 58.7766,-242.1924 58.7766,-255.9326"/>
 <polygon fill="#000000" stroke="#000000" points="55.2767,-256.3279 58.7766,-266.328 62.2767,-256.328 55.2767,-256.3279"/>
 <text text-anchor="middle" x="62.2766" y="-235.8" font-family="Times,serif" font-size="14.00" fill="#000000">3</text>
 </g>

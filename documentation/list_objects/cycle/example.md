@@ -85,7 +85,7 @@ RecursiveReverseExpand(user:bob, document#viewer) ->
         end
 
     // edge 3
-        // edge 3 (direct) starts at user and  ends in document#viewer
+        // edge 3 (direct) starts at user and ends in document#viewer
         // find all tuples of form document:...#viewer@user:bob → [document:budget#viewer]
         RecursiveReverseExpand(document:budget#viewer, document#viewer) →
 

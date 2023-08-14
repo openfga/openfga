@@ -26,9 +26,9 @@ digraph G {
   
   user -> "document#a" [label="1"]
   
-  "document#a" -> "document#b" [label="2"]
+  "document#a" -> "document#b" [label="2", style=dashed]
   
-  "document#b" -> "document#c" [label="3"]
+  "document#b" -> "document#c" [label="3", style=dashed]
 }
 -->
 
