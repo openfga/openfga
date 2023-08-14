@@ -185,7 +185,7 @@ func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
 	}
 }
 
-// WithCheckQueryCacheLimit sets the cache size limit (in bytes)
+// WithCheckQueryCacheLimit sets the cache size limit (in items)
 func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		s.checkQueryCacheLimit = limit
@@ -395,11 +395,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	checkResolver := graph.NewLocalChecker(
+	var checkResolver graph.CheckResolver
+	localCheckResolver := graph.NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	)
+	checkResolver = localCheckResolver
 
 	if s.checkCache != nil {
 		cachedCheckResolver := graph.NewCachedCheckResolver(
@@ -408,8 +410,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 			graph.WithCacheTTL(s.checkQueryCacheTTL),
 		)
 
-		checkResolver.SetDelegate(cachedCheckResolver)
+		localCheckResolver.SetDelegate(cachedCheckResolver)
 		defer cachedCheckResolver.Close()
+
+		checkResolver = cachedCheckResolver
 	}
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{

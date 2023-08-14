@@ -365,7 +365,7 @@
                     "default": "10000",
                     "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
                 },
-                "TTL": {
+                "ttl": {
                     "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
                     "type": "string",
                     "format": "duration",
