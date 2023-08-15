@@ -10,6 +10,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/useragent"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
@@ -30,6 +31,7 @@ const (
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
+	userAgentKey       = "user_agent"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -107,6 +109,10 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		if requestID, ok := requestid.FromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
+		}
+
+		if userAgent, ok := useragent.FromContext(ctx); ok {
+			fields = append(fields, zap.String(userAgentKey, userAgent))
 		}
 
 		zapLogger := l.(*logger.ZapLogger)
