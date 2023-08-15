@@ -33,7 +33,8 @@ const (
 	grpcReqCompleteKey = "grpc_req_complete"
 	userAgentKey       = "user_agent"
 
-	userAgentHeader string = "grpcgateway-user-agent"
+	gatewayUserAgentHeader string = "grpcgateway-user-agent"
+	userAgentHeader        string = "user-agent"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -100,6 +101,9 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 // If context does not have user agent field, function will return empty string and false.
 func userAgentFromContext(ctx context.Context) (string, bool) {
 	if headers, ok := metadata.FromIncomingContext(ctx); ok {
+		if header := headers.Get(gatewayUserAgentHeader); len(header) > 0 {
+			return header[0], true
+		}
 		if header := headers.Get(userAgentHeader); len(header) > 0 {
 			return header[0], true
 		}
