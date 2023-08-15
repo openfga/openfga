@@ -10,11 +10,11 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
-	"github.com/openfga/openfga/pkg/middleware/useragent"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -32,6 +32,8 @@ const (
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
 	userAgentKey       = "user_agent"
+
+	userAgentHeader string = "grpcgateway-user-agent"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -94,6 +96,17 @@ func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
 	}
 }
 
+// userAgentFromContext returns the user agent field stored in context.
+// If context does not have user agent field, function will return empty string and false.
+func userAgentFromContext(ctx context.Context) (string, bool) {
+	if headers, ok := metadata.FromIncomingContext(ctx); ok {
+		if header := headers.Get(userAgentHeader); len(header) > 0 {
+			return header[0], true
+		}
+	}
+	return "", false
+}
+
 func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
 		fields := []zap.Field{
@@ -111,7 +124,7 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			fields = append(fields, zap.String(requestIDKey, requestID))
 		}
 
-		if userAgent, ok := useragent.FromContext(ctx); ok {
+		if userAgent, ok := userAgentFromContext(ctx); ok {
 			fields = append(fields, zap.String(userAgentKey, userAgent))
 		}
 
