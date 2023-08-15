@@ -164,7 +164,7 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("checkQueryCache.limit", flags.Lookup("check-query-cache-limit"))
 		util.MustBindEnv("checkQueryCache.limit", "OPENFGA_CHECK_QUERY_CACHE_LIMIT")
 
-		util.MustBindPFlag("checkQueryCache.TTL", flags.Lookup("check-query-cache-ttl"))
-		util.MustBindEnv("checkQueryCache.TTL", "OPENFGA_CHECK_QUERY_CACHE_TTL")
+		util.MustBindPFlag("checkQueryCache.ttl", flags.Lookup("check-query-cache-ttl"))
+		util.MustBindEnv("checkQueryCache.ttl", "OPENFGA_CHECK_QUERY_CACHE_TTL")
 	}
 }

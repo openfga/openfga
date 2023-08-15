@@ -248,20 +248,23 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		checkResolver := graph.NewLocalChecker(
+		var checkResolver graph.CheckResolver
+		localCheckResolver := graph.NewLocalChecker(
 			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
 			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
 		)
+		checkResolver = localCheckResolver
 
 		if q.checkCache != nil {
 			cachedCheckResolver := graph.NewCachedCheckResolver(
-				checkResolver,
+				localCheckResolver,
 				graph.WithExistingCache(q.checkCache),
 				graph.WithCacheTTL(q.checkQueryCacheTTL),
 			)
-			checkResolver.SetDelegate(cachedCheckResolver)
+			localCheckResolver.SetDelegate(cachedCheckResolver)
 			defer cachedCheckResolver.Close()
+			checkResolver = cachedCheckResolver
 		}
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)

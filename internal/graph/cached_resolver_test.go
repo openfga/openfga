@@ -334,15 +334,15 @@ func TestResolveCheckFromCache(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			initialMockResolver := NewMockCheckResolver(ctrl)
+			mockResolver := NewMockCheckResolver(ctrl)
 			initialReq := req
 			if test.initialReq != nil {
 				initialReq = test.initialReq
 			}
-			test.setInitialResult(initialMockResolver, initialReq)
+			test.setInitialResult(mockResolver, initialReq)
 
 			// expect first call to result in actual resolve call
-			dut := NewCachedCheckResolver(initialMockResolver,
+			dut := NewCachedCheckResolver(mockResolver,
 				WithLogger(logger.NewNoopLogger()),
 				WithMaxCacheSize(10))
 			defer dut.Close()
@@ -352,10 +352,9 @@ func TestResolveCheckFromCache(t *testing.T) {
 			newCtrl := gomock.NewController(t)
 			defer newCtrl.Finish()
 
-			newResolver := NewMockCheckResolver(newCtrl)
-			test.setTestExpectations(newResolver, test.subsequentReq)
+			test.setTestExpectations(mockResolver, test.subsequentReq)
 
-			dut2 := NewCachedCheckResolver(newResolver, WithExistingCache(dut.cache))
+			dut2 := NewCachedCheckResolver(dut, WithExistingCache(dut.cache))
 			defer dut2.Close()
 
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)

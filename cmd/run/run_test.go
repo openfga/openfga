@@ -1079,6 +1079,9 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
@@ -1092,6 +1095,9 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	config := `datastore:
     engine: postgres
     uri: postgres://postgres:password@127.0.0.1:5432/postgres
+check-query-cache-enabled: true
+check-query-cache-limit: 100
+check-query-cache-TTL: 5s
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1099,6 +1105,10 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
+
+		require.True(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(100), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
@@ -1116,12 +1126,18 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
+		require.True(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
