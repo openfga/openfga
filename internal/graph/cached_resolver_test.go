@@ -349,9 +349,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			_, _ = dut.ResolveCheck(ctx, initialReq)
 
-			newCtrl := gomock.NewController(t)
-			defer newCtrl.Finish()
-
 			test.setTestExpectations(mockResolver, test.subsequentReq)
 
 			dut2 := NewCachedCheckResolver(dut, WithExistingCache(dut.cache))
