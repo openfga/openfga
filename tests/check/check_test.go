@@ -274,7 +274,7 @@ func TestCheckLogsWithHTTP(t *testing.T) {
 	require.NoError(t, err)
 
 	type WriteAuthorizationModelResponse struct {
-		AuthorizationModelId *string `json:"authorization_model_id,omitempty"`
+		AuthorizationModelID *string `json:"authorization_model_id,omitempty"`
 	}
 
 	var writeAuthorizationModelResponse WriteAuthorizationModelResponse
@@ -284,7 +284,7 @@ func TestCheckLogsWithHTTP(t *testing.T) {
 	err = json.Unmarshal(b, &writeAuthorizationModelResponse)
 	require.NoError(t, err)
 
-	authorizationModelID := *(writeAuthorizationModelResponse.AuthorizationModelId)
+	authorizationModelID := *(writeAuthorizationModelResponse.AuthorizationModelID)
 
 	writeTupleRequest := []byte(`{
   "writes": {
