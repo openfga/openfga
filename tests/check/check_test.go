@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -114,14 +113,15 @@ func TestCheckLogs(t *testing.T) {
 
 	type test struct {
 		_name           string
-		req             *openfgav1.CheckRequest
+		grpcReq         *openfgav1.CheckRequest
+		httpReqBody     io.Reader
 		expectedContext map[string]interface{}
 	}
 
 	tests := []test{
 		{
-			_name: "check_success",
-			req: &openfgav1.CheckRequest{
+			_name: "grpc_check_success",
+			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
@@ -138,179 +138,9 @@ func TestCheckLogs(t *testing.T) {
 				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
 			},
 		},
-	}
-
-	for _, test := range tests {
-		t.Run(test._name, func(t *testing.T) {
-			// clear observed logs after each run
-			defer logs.TakeAll()
-
-			_, _ = client.Check(context.Background(), test.req)
-
-			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
-				if e.Message == "grpc_req_complete" {
-					for _, ctxField := range e.Context {
-						if ctxField.Equals(zap.String("grpc_method", "Check")) {
-							return true
-						}
-					}
-				}
-
-				return false
-			})
-
-			expectedLogs := filteredLogs.All()
-			require.Len(t, expectedLogs, 1)
-
-			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
-
-			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
-			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
-			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
-			require.Equal(t, test.expectedContext["grpc_code"], fields["grpc_code"])
-			require.JSONEq(t, test.expectedContext["raw_request"].(string), string(fields["raw_request"].(json.RawMessage)))
-			require.JSONEq(t, test.expectedContext["raw_response"].(string), string(fields["raw_response"].(json.RawMessage)))
-			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
-			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
-			require.Equal(t, test.expectedContext["user_agent"], fields["user_agent"])
-			require.NotEmpty(t, fields["datastore_query_count"])
-			require.NotEmpty(t, fields["peer.address"])
-			require.NotEmpty(t, fields["request_id"])
-			require.NotEmpty(t, fields["trace_id"])
-			require.Len(t, fields, 13)
-		})
-	}
-
-}
-
-func TestCheckLogsWithHTTP(t *testing.T) {
-	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
-	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
-	otlpServerPortReleaser()
-	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
-
-	cfg := run.MustDefaultConfigWithRandomPorts()
-	cfg.Trace.Enabled = true
-	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
-	cfg.Datastore.Engine = "memory"
-
-	observerLogger, logs := observer.New(zap.DebugLevel)
-	serverCtx := &run.ServerContext{
-		Logger: &logger.ZapLogger{
-			Logger: zap.New(observerLogger),
-		},
-	}
-
-	// We're starting a full fledged server because the logs we
-	// want to observe are emitted on the interceptors/middleware layer.
-	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
-	defer cancel()
-
-	conn, err := grpc.Dial(cfg.GRPC.Addr,
-		grpc.WithBlock(),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUserAgent("test-user-agent"),
-	)
-
-	require.NoError(t, err)
-	defer conn.Close()
-
-	createStoreRequest := []byte(`{"name":"openfga-demo"}`)
-	createStoreHTTPResp, err := http.Post("http://"+cfg.HTTP.Addr+"/stores", "application/json", bytes.NewBuffer(createStoreRequest))
-	require.NoError(t, err)
-
-	defer createStoreHTTPResp.Body.Close()
-
-	type CreateStoreResponse struct {
-		ID        *string    `json:"id,omitempty"`
-		Name      *string    `json:"name,omitempty"`
-		CreatedAt *time.Time `json:"created_at,omitempty"`
-		UpdatedAt *time.Time `json:"updated_at,omitempty"`
-	}
-
-	var createStoreResponse CreateStoreResponse
-
-	b, err := io.ReadAll(createStoreHTTPResp.Body)
-	require.NoError(t, err)
-
-	err = json.Unmarshal(b, &createStoreResponse)
-	require.NoError(t, err)
-
-	storeID := *(createStoreResponse.ID)
-
-	writeModelRequest := []byte(`{
-  "type_definitions": [
-    {
-      "type": "user",
-      "relations": {}
-    },
-    {
-      "type": "document",
-      "relations": {
-        "viewer": {
-          "this": {}
-        }
-      },
-      "metadata": {
-        "relations": {
-          "viewer": {
-            "directly_related_user_types": [
-              {
-                "type": "user"
-              }
-            ]
-          }
-        }
-      }
-    }
-  ],
-  "schema_version": "1.1"
-}`)
-
-	writeAuthModelResp, err := http.Post("http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/authorization-models", "application/json", bytes.NewBuffer(writeModelRequest))
-	require.NoError(t, err)
-
-	type WriteAuthorizationModelResponse struct {
-		AuthorizationModelID *string `json:"authorization_model_id,omitempty"`
-	}
-
-	var writeAuthorizationModelResponse WriteAuthorizationModelResponse
-	b, err = io.ReadAll(writeAuthModelResp.Body)
-	require.NoError(t, err)
-
-	err = json.Unmarshal(b, &writeAuthorizationModelResponse)
-	require.NoError(t, err)
-
-	authorizationModelID := *(writeAuthorizationModelResponse.AuthorizationModelID)
-
-	writeTupleRequest := []byte(`{
-  "writes": {
-    "tuple_keys": [
-      {
-        "user": "user:anne",
-        "relation": "viewer",
-        "object": "document:1"
-      }
-    ]
-  }
-}`)
-
-	_, err = http.Post("http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/write", "application/json", bytes.NewBuffer(writeTupleRequest))
-	require.NoError(t, err)
-
-	type test struct {
-		_name           string
-		req             io.Reader
-		expectedContext map[string]interface{}
-	}
-
-	tests := []test{
 		{
-			_name: "check_success",
-			req: bytes.NewBuffer([]byte(`{
+			_name: "check_http_success",
+			httpReqBody: bytes.NewBuffer([]byte(`{
   "tuple_key": {
     "user": "user:anne",
     "relation": "viewer",
@@ -337,13 +167,18 @@ func TestCheckLogsWithHTTP(t *testing.T) {
 			// clear observed logs after each run
 			defer logs.TakeAll()
 
-			req, err := http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/check", test.req)
-			require.NoError(t, err)
+			if test.grpcReq != nil {
+				_, err = client.Check(context.Background(), test.grpcReq)
+			} else if test.httpReqBody != nil {
+				var httpReq *http.Request
+				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/check", test.httpReqBody)
+				require.NoError(t, err)
 
-			req.Header.Set("User-Agent", "test-user-agent")
-			client := &http.Client{}
+				httpReq.Header.Set("User-Agent", "test-user-agent")
+				client := &http.Client{}
 
-			_, err = client.Do(req)
+				_, err = client.Do(httpReq)
+			}
 			require.NoError(t, err)
 
 			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
