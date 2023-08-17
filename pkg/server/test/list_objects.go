@@ -8,8 +8,10 @@ import (
 	"time"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -43,6 +45,7 @@ type listObjectsTestCase struct {
 	minimumResultsExpected uint32
 	listObjectsDeadline    time.Duration // 1 minute if not set
 	readTuplesDelay        time.Duration // if set, purposely use a slow storage to slow down read and simulate timeout
+	useCheckCache          bool
 }
 
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
@@ -69,6 +72,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"repo:1", "repo:2", "repo:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_ttu_in_model_and_reverse_expansion_implementation",
@@ -95,6 +99,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"document:1", "document:2", "document:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
@@ -119,6 +124,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"org:1", "org:2", "org:3"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
@@ -139,6 +145,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 1,
 			allResults:             []string{"team:1"},
+			useCheckCache:          false,
 		},
 		{
 			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
@@ -162,6 +169,32 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			allResults:          []string{},
 			listObjectsDeadline: 1 * time.Second,
 			readTuplesDelay:     2 * time.Second, // We are mocking the ds to slow down the read call and simulate timeout
+			useCheckCache:       false,
+		},
+		{
+			name:   "list_object_use_check_cache",
+			schema: typesystem.SchemaVersion1_1,
+			model: `
+			type user
+			type repo
+			  relations
+				define admin: [user] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
+				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
+			},
+			user:       "user:alice",
+			objectType: "repo",
+			relation:   "admin",
+			contextualTuples: &openfgav1.ContextualTupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("repo:3", "admin", "user:alice")},
+			},
+			maxResults:             2,
+			minimumResultsExpected: 2,
+			allResults:             []string{"repo:1", "repo:2", "repo:3"},
+			// when we use cache, the regular_endpoint should pick up the cached value from the streaming_endpoint run
+			useCheckCache: true,
 		},
 	}
 
@@ -203,6 +236,25 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
+			checkOptions := []graph.LocalCheckerOption{
+				graph.WithResolveNodeBreadthLimit(100),
+				graph.WithMaxConcurrentReads(30),
+			}
+
+			if test.useCheckCache {
+				checkCache := ccache.New(
+					ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(100),
+				)
+				defer checkCache.Stop()
+
+				checkOptions = append(checkOptions, graph.WithCachedResolver(
+					graph.WithExistingCache(checkCache),
+					graph.WithCacheTTL(10*time.Second),
+				))
+
+			}
+
+			opts = append(opts, commands.WithCheckOptions(checkOptions))
 			listObjectsQuery := commands.NewListObjectsQuery(datastore, opts...)
 
 			// assertions
