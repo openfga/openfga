@@ -22,7 +22,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -443,7 +442,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	checkResolver := graph.NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		s.datastore,
 		s.checkOptions...,
 	)
 	defer checkResolver.Close()

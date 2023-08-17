@@ -9,7 +9,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -167,6 +166,10 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		},
 	))
 
+	checker := NewLocalChecker(
+		ds,
+		WithMaxConcurrentReads(1))
+
 	tests := []struct {
 		name             string
 		check            *openfgav1.TupleKey
@@ -300,11 +303,6 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 				test := test
 				t.Run(test.name, func(t *testing.T) {
 					t.Parallel()
-
-					checker := NewLocalChecker(
-						// TODO build this wrapper inside ResolveCheck so that we don't need to construct a new Checker per test
-						storagewrappers.NewCombinedTupleReader(ds, test.contextualTuples),
-						WithMaxConcurrentReads(1))
 
 					res, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
 						StoreID:            storeID,

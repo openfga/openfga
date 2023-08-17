@@ -13,7 +13,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/memory"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -451,7 +450,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	// Running the first check
 	firstLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+		ds,
 		WithMaxConcurrentReads(1),
 		WithCachedResolver(
 			WithExistingCache(checkCache),
@@ -462,7 +461,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	res, err := firstLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		ContextualTuples:   nil,
+		ContextualTuples:   []*openfgav1.TupleKey{},
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 
@@ -474,7 +473,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	// Second time running the check will result in datastore query count being 0
 
 	secondLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+		ds,
 		WithMaxConcurrentReads(1),
 		WithCachedResolver(
 			WithExistingCache(checkCache),
@@ -485,7 +484,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	res, err = secondLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
-		ContextualTuples:   nil,
+		ContextualTuples:   []*openfgav1.TupleKey{},
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 
@@ -497,7 +496,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	// The ttuLocalChecker will use partial result from the cache and partial result from the local checker
 
 	ttuLocalChecker := NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
+		ds,
 		WithMaxConcurrentReads(1),
 		WithCachedResolver(
 			WithExistingCache(checkCache),
@@ -507,7 +506,7 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	res, err = ttuLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
-		ContextualTuples:   nil,
+		ContextualTuples:   []*openfgav1.TupleKey{},
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 

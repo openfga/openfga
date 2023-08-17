@@ -109,6 +109,7 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
+	// NOTE it doesn't have the request's contextual tuples.
 	ds                 storage.RelationshipTupleReader
 	delegate           CheckResolver
 	concurrencyLimit   uint32
@@ -459,7 +460,9 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
+	reqDatastore := storagewrappers.NewRequestTupleReader(c.ds, req.GetContextualTuples())
+
+	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, reqDatastore, rel.GetRewrite()))
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +474,7 @@ func (c *LocalChecker) ResolveCheck(
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
-func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.RequestTupleReader) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -501,7 +504,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			t, err := reqDatastore.ReadUserTuple(ctx, storeID, tk)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -532,7 +535,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			iter, err := reqDatastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      tk.Object,
 				Relation:                    tk.Relation,
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
@@ -591,6 +594,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 							StoreID:              storeID,
 							AuthorizationModelID: req.GetAuthorizationModelID(),
 							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
+							ContextualTuples:     req.GetContextualTuples(),
 							ResolutionMetadata: &ResolutionMetadata{
 								Depth:               req.GetResolutionMetadata().Depth - 1,
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
@@ -642,6 +646,7 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 					rewrite.ComputedUserset.GetRelation(),
 					req.TupleKey.GetUser(),
 				),
+				ContextualTuples: req.GetContextualTuples(),
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
@@ -652,7 +657,7 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.RequestTupleReader, rewrite *openfgav1.Userset) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -680,7 +685,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount + 1,
 			},
 		}
-		iter, err := c.ds.Read(
+		iter, err := reqDatastore.Read(
 			ctx,
 			req.GetStoreID(),
 			tuple.NewTupleKey(object, tuplesetRelation, ""),
@@ -728,6 +733,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 					StoreID:              req.GetStoreID(),
 					AuthorizationModelID: req.GetAuthorizationModelID(),
 					TupleKey:             tupleKey,
+					ContextualTuples:     req.GetContextualTuples(),
 					ResolutionMetadata: &ResolutionMetadata{
 						Depth:               req.GetResolutionMetadata().Depth - 1,
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
@@ -756,6 +762,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 func (c *LocalChecker) checkSetOperation(
 	ctx context.Context,
 	req *ResolveCheckRequest,
+	reqDatastore *storagewrappers.RequestTupleReader,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
 	children ...*openfgav1.Userset,
@@ -779,7 +786,7 @@ func (c *LocalChecker) checkSetOperation(
 		}
 
 		for _, child := range children {
-			handlers = append(handlers, c.checkRewrite(ctx, req, child))
+			handlers = append(handlers, c.checkRewrite(ctx, req, reqDatastore, child))
 		}
 	default:
 		panic("unexpected set operator type encountered")
@@ -796,22 +803,23 @@ func (c *LocalChecker) checkSetOperation(
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
+	reqDatastore *storagewrappers.RequestTupleReader,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
 
 	switch rw := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
-		return c.checkDirect(ctx, req)
+		return c.checkDirect(ctx, req, reqDatastore)
 	case *openfgav1.Userset_ComputedUserset:
 		return c.checkComputedUserset(ctx, req, rw)
 	case *openfgav1.Userset_TupleToUserset:
-		return c.checkTTU(ctx, req, rewrite)
+		return c.checkTTU(ctx, req, reqDatastore, rewrite)
 	case *openfgav1.Userset_Union:
-		return c.checkSetOperation(ctx, req, unionSetOperator, union, rw.Union.GetChild()...)
+		return c.checkSetOperation(ctx, req, reqDatastore, unionSetOperator, union, rw.Union.GetChild()...)
 	case *openfgav1.Userset_Intersection:
-		return c.checkSetOperation(ctx, req, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
+		return c.checkSetOperation(ctx, req, reqDatastore, intersectionSetOperator, intersection, rw.Intersection.GetChild()...)
 	case *openfgav1.Userset_Difference:
-		return c.checkSetOperation(ctx, req, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+		return c.checkSetOperation(ctx, req, reqDatastore, exclusionSetOperator, exclusion, rw.Difference.GetBase(), rw.Difference.GetSubtract())
 	default:
 		panic("unexpected userset rewrite encountered")
 	}

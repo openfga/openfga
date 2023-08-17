@@ -16,7 +16,6 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands/connectedobjects"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
@@ -225,7 +224,7 @@ func (q *ListObjectsQuery) evaluate(
 		}()
 
 		checkResolver := graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
+			q.datastore,
 			q.checkOptions...,
 		)
 		defer checkResolver.Close()
