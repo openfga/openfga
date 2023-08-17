@@ -32,7 +32,6 @@ const (
 	defaultResolveNodeBreadthLimit = 100
 	defaultListObjectsDeadline     = 3 * time.Second
 	defaultListObjectsMaxResults   = 1000
-	defaultMaxConcurrentReads      = 30
 )
 
 var (
@@ -54,17 +53,11 @@ type ListObjectsQuery struct {
 	listObjectsMaxResults   uint32
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
-	maxConcurrentReads      uint32
+
+	checkOptions []graph.LocalCheckerOption
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
-
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
-func WithMaxConcurrentReads(max uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.maxConcurrentReads = max
-	}
-}
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
@@ -98,6 +91,12 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
+func WithCheckOptions(checkOptions []graph.LocalCheckerOption) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.checkOptions = checkOptions
+	}
+}
+
 func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
@@ -106,7 +105,7 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		listObjectsMaxResults:   defaultListObjectsMaxResults,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxConcurrentReads:      defaultMaxConcurrentReads,
+		checkOptions:            []graph.LocalCheckerOption{},
 	}
 
 	for _, opt := range opts {
@@ -227,9 +226,9 @@ func (q *ListObjectsQuery) evaluate(
 
 		checkResolver := graph.NewLocalChecker(
 			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
+			q.checkOptions...,
 		)
+		defer checkResolver.Close()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 

@@ -1059,6 +1059,18 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
+
+	val = res.Get("properties.checkQueryCache.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
+
+	val = res.Get("properties.checkQueryCache.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckQueryCache.Limit)
+
+	val = res.Get("properties.checkQueryCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1067,6 +1079,9 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
@@ -1096,6 +1111,30 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	require.Nil(t, rootCmd.Execute())
 }
 
+func TestParseConfig(t *testing.T) {
+	config := `checkQueryCache:
+    enabled: true
+    limit: 100
+    TTL: 5s
+`
+	util.PrepareTempConfigFile(t, config)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.CheckQueryCache.Enabled)
+	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
+	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
+}
+
 func TestRunCommandConfigIsMerged(t *testing.T) {
 	config := `datastore:
     engine: postgres
@@ -1104,12 +1143,18 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
+		require.True(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
