@@ -452,18 +452,21 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	// Running the first check
 	firstLocalChecker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-		WithMaxConcurrentReads(1))
-	firstCachedResolver := NewCachedCheckResolver(firstLocalChecker, WithExistingCache(checkCache), WithCacheTTL(10*time.Hour))
-	firstLocalChecker.SetDelegate(firstCachedResolver)
+		WithMaxConcurrentReads(1),
+		WithCachedResolver(
+			WithExistingCache(checkCache),
+			WithCacheTTL(10*time.Hour),
+		),
+	)
 
-	res, err := firstCachedResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+	res, err := firstLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 
-	firstCachedResolver.Close()
+	firstLocalChecker.Close()
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
@@ -472,18 +475,21 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	secondLocalChecker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-		WithMaxConcurrentReads(1))
-	secondCachedResolver := NewCachedCheckResolver(secondLocalChecker, WithExistingCache(checkCache), WithCacheTTL(10*time.Hour))
-	secondLocalChecker.SetDelegate(secondCachedResolver)
+		WithMaxConcurrentReads(1),
+		WithCachedResolver(
+			WithExistingCache(checkCache),
+			WithCacheTTL(10*time.Hour),
+		),
+	)
 
-	res, err = secondCachedResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+	res, err = secondLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("org:fga", "member", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 
-	secondCachedResolver.Close()
+	secondLocalChecker.Close()
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(0), res.GetResolutionMetadata().DatastoreQueryCount)
@@ -492,18 +498,20 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	ttuLocalChecker := NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(ds, []*openfgav1.TupleKey{}),
-		WithMaxConcurrentReads(1))
-	ttuCachedResolver := NewCachedCheckResolver(ttuLocalChecker, WithExistingCache(checkCache), WithCacheTTL(10*time.Hour))
-	ttuLocalChecker.SetDelegate(ttuCachedResolver)
-
-	res, err = ttuCachedResolver.ResolveCheck(ctx, &ResolveCheckRequest{
+		WithMaxConcurrentReads(1),
+		WithCachedResolver(
+			WithExistingCache(checkCache),
+			WithCacheTTL(10*time.Hour),
+		),
+	)
+	res, err = ttuLocalChecker.ResolveCheck(ctx, &ResolveCheckRequest{
 		StoreID:            storeID,
 		TupleKey:           tuple.NewTupleKey("document:x", "ttu", "user:maria"),
 		ContextualTuples:   nil,
 		ResolutionMetadata: &ResolutionMetadata{Depth: 25},
 	})
 
-	secondCachedResolver.Close()
+	ttuLocalChecker.Close()
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)

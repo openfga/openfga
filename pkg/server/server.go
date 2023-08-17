@@ -415,25 +415,24 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	var checkResolver graph.CheckResolver
-	localCheckResolver := graph.NewLocalChecker(
-		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-	)
-	checkResolver = localCheckResolver
-
-	if s.checkCache != nil {
-		cachedCheckResolver := graph.NewCachedCheckResolver(
-			localCheckResolver,
-			graph.WithExistingCache(s.checkCache),
-			graph.WithCacheTTL(s.checkQueryCacheTTL),
+	if s.checkCache == nil {
+		checkResolver = graph.NewLocalChecker(
+			storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 		)
-
-		localCheckResolver.SetDelegate(cachedCheckResolver)
-		defer cachedCheckResolver.Close()
-
-		checkResolver = cachedCheckResolver
+	} else {
+		checkResolver = graph.NewLocalChecker(
+			storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+			graph.WithCachedResolver(
+				graph.WithExistingCache(s.checkCache),
+				graph.WithCacheTTL(s.checkQueryCacheTTL),
+			),
+		)
 	}
+	defer checkResolver.Close()
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),

@@ -249,23 +249,24 @@ func (q *ListObjectsQuery) evaluate(
 		}()
 
 		var checkResolver graph.CheckResolver
-		localCheckResolver := graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
-		)
-		checkResolver = localCheckResolver
-
-		if q.checkCache != nil {
-			cachedCheckResolver := graph.NewCachedCheckResolver(
-				localCheckResolver,
-				graph.WithExistingCache(q.checkCache),
-				graph.WithCacheTTL(q.checkQueryCacheTTL),
+		if q.checkCache == nil {
+			checkResolver = graph.NewLocalChecker(
+				storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
+				graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+				graph.WithMaxConcurrentReads(q.maxConcurrentReads),
 			)
-			localCheckResolver.SetDelegate(cachedCheckResolver)
-			defer cachedCheckResolver.Close()
-			checkResolver = cachedCheckResolver
+		} else {
+			checkResolver = graph.NewLocalChecker(
+				storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
+				graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+				graph.WithMaxConcurrentReads(q.maxConcurrentReads),
+				graph.WithCachedResolver(
+					graph.WithExistingCache(q.checkCache),
+					graph.WithCacheTTL(q.checkQueryCacheTTL),
+				),
+			)
 		}
+		defer checkResolver.Close()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 

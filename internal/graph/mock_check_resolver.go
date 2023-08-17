@@ -34,6 +34,18 @@ func (m *MockCheckResolver) EXPECT() *MockCheckResolverMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockCheckResolver) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockCheckResolverMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockCheckResolver)(nil).Close))
+}
+
 // ResolveCheck mocks base method.
 func (m *MockCheckResolver) ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error) {
 	m.ctrl.T.Helper()

@@ -137,9 +137,19 @@ func WithDelegate(delegate CheckResolver) LocalCheckerOption {
 	}
 }
 
+func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		cachedCheckResolver := NewCachedCheckResolver(
+			d,
+			opts...,
+		)
+		d.SetDelegate(cachedCheckResolver)
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
+func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
 	checker := &LocalChecker{
 		ds:                 ds,
 		concurrencyLimit:   defaultResolveNodeBreadthLimit,
@@ -153,7 +163,9 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 
 	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
 
-	return checker
+	// Depending on whether cached check resolver is used,
+	// we either return the newly created checker or the delegate (i.e., cached check resolver).
+	return checker.delegate
 }
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
@@ -400,6 +412,10 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 			DatastoreQueryCount: dbReads,
 		},
 	}, nil
+}
+
+// Close is a noop
+func (c *LocalChecker) Close() {
 }
 
 func (c *LocalChecker) SetDelegate(delegate CheckResolver) {

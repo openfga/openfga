@@ -8,4 +8,5 @@ import "context"
 // of a Check.
 type CheckResolver interface {
 	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
+	Close()
 }
