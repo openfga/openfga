@@ -1,9 +1,12 @@
 package check
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -67,6 +70,7 @@ func TestCheckLogs(t *testing.T) {
 	conn, err := grpc.Dial(cfg.GRPC.Addr,
 		grpc.WithBlock(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUserAgent("test-user-agent"),
 	)
 	require.NoError(t, err)
 	defer conn.Close()
@@ -109,14 +113,15 @@ func TestCheckLogs(t *testing.T) {
 
 	type test struct {
 		_name           string
-		req             *openfgav1.CheckRequest
+		grpcReq         *openfgav1.CheckRequest
+		httpReqBody     io.Reader
 		expectedContext map[string]interface{}
 	}
 
 	tests := []test{
 		{
-			_name: "check_success",
-			req: &openfgav1.CheckRequest{
+			_name: "grpc_check_success",
+			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
 				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
@@ -130,6 +135,29 @@ func TestCheckLogs(t *testing.T) {
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
+				"user_agent":             "test-user-agent" + " grpc-go/" + grpc.Version,
+			},
+		},
+		{
+			_name: "check_http_success",
+			httpReqBody: bytes.NewBuffer([]byte(`{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "viewer",
+    "object": "document:1"
+  },
+  "authorization_model_id": "` + authorizationModelID + `"
+}`)),
+			expectedContext: map[string]interface{}{
+				"grpc_service":           "openfga.v1.OpenFGAService",
+				"grpc_method":            "Check",
+				"grpc_type":              "unary",
+				"grpc_code":              int32(0),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_response":           `{"allowed":true,"resolution":""}`,
+				"authorization_model_id": authorizationModelID,
+				"store_id":               storeID,
+				"user_agent":             "test-user-agent",
 			},
 		},
 	}
@@ -139,7 +167,19 @@ func TestCheckLogs(t *testing.T) {
 			// clear observed logs after each run
 			defer logs.TakeAll()
 
-			_, _ = client.Check(context.Background(), test.req)
+			if test.grpcReq != nil {
+				_, err = client.Check(context.Background(), test.grpcReq)
+			} else if test.httpReqBody != nil {
+				var httpReq *http.Request
+				httpReq, err = http.NewRequest("POST", "http://"+cfg.HTTP.Addr+"/stores/"+storeID+"/check", test.httpReqBody)
+				require.NoError(t, err)
+
+				httpReq.Header.Set("User-Agent", "test-user-agent")
+				client := &http.Client{}
+
+				_, err = client.Do(httpReq)
+			}
+			require.NoError(t, err)
 
 			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
 				if e.Message == "grpc_req_complete" {
@@ -166,11 +206,12 @@ func TestCheckLogs(t *testing.T) {
 			require.JSONEq(t, test.expectedContext["raw_response"].(string), string(fields["raw_response"].(json.RawMessage)))
 			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
 			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
+			require.Equal(t, test.expectedContext["user_agent"], fields["user_agent"])
 			require.NotEmpty(t, fields["datastore_query_count"])
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
-			require.Len(t, fields, 12)
+			require.Len(t, fields, 13)
 		})
 	}
 
