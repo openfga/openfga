@@ -236,17 +236,25 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				opts = append(opts, commands.WithListObjectsDeadline(test.listObjectsDeadline))
 			}
 
+			checkOptions := []graph.LocalCheckerOption{
+				graph.WithResolveNodeBreadthLimit(100),
+				graph.WithMaxConcurrentReads(30),
+			}
+
 			if test.useCheckCache {
 				checkCache := ccache.New(
 					ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(100),
 				)
 				defer checkCache.Stop()
 
-				opts = append(opts,
-					commands.WithCheckCache(checkCache),
-					commands.WithCheckQueryCacheTTL(10*time.Second))
+				checkOptions = append(checkOptions, graph.WithCachedResolver(
+					graph.WithExistingCache(checkCache),
+					graph.WithCacheTTL(10*time.Second),
+				))
+
 			}
 
+			opts = append(opts, commands.WithCheckOptions(checkOptions))
 			listObjectsQuery := commands.NewListObjectsQuery(datastore, opts...)
 
 			// assertions

@@ -90,6 +90,7 @@ type Server struct {
 
 	typesystemResolver typesystem.TypesystemResolverFunc
 
+	checkOptions           []graph.LocalCheckerOption
 	checkQueryCacheEnabled bool
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
@@ -249,6 +250,11 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		opt(s)
 	}
 
+	s.checkOptions = []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+	}
+
 	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
@@ -256,6 +262,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		s.checkCache = ccache.New(
 			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
 		)
+		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
 	}
 
 	if s.datastore == nil {
@@ -285,15 +295,24 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	checkOptions := []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	}
+	if s.checkCache != nil {
+		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithCheckCache(s.checkCache),
-		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
+		commands.WithCheckOptions(checkOptions),
 	)
 
 	return q.Execute(
@@ -325,15 +344,24 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
+	checkOptions := []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	}
+	if s.checkCache != nil {
+		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
-		commands.WithCheckCache(s.checkCache),
-		commands.WithCheckQueryCacheTTL(s.checkQueryCacheTTL),
+		commands.WithCheckOptions(checkOptions),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
@@ -414,24 +442,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
-	var checkResolver graph.CheckResolver
-	if s.checkCache == nil {
-		checkResolver = graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-		)
-	} else {
-		checkResolver = graph.NewLocalChecker(
-			storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-			graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
-			graph.WithCachedResolver(
-				graph.WithExistingCache(s.checkCache),
-				graph.WithCacheTTL(s.checkQueryCacheTTL),
-			),
-		)
-	}
+	checkResolver := graph.NewLocalChecker(
+		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
+		s.checkOptions...,
+	)
 	defer checkResolver.Close()
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{

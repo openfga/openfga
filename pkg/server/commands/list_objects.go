@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
@@ -33,9 +32,6 @@ const (
 	defaultResolveNodeBreadthLimit = 100
 	defaultListObjectsDeadline     = 3 * time.Second
 	defaultListObjectsMaxResults   = 1000
-	defaultMaxConcurrentReads      = 30
-
-	defaultCheckQueryCacheTTL = 10 * time.Second
 )
 
 var (
@@ -57,21 +53,11 @@ type ListObjectsQuery struct {
 	listObjectsMaxResults   uint32
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
-	maxConcurrentReads      uint32
 
-	// configurations for caching results
-	checkQueryCacheTTL time.Duration
-	checkCache         *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
+	checkOptions []graph.LocalCheckerOption
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
-
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
-func WithMaxConcurrentReads(max uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.maxConcurrentReads = max
-	}
-}
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
@@ -105,17 +91,9 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
-// WithCheckQueryCacheTTL sets the check cache query TTL
-func WithCheckQueryCacheTTL(ttl time.Duration) ListObjectsQueryOption {
+func WithCheckOptions(checkOptions []graph.LocalCheckerOption) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
-		d.checkQueryCacheTTL = ttl
-	}
-}
-
-// WithCheckCache sets the cache used for resolve check results
-func WithCheckCache(checkCache *ccache.Cache[*graph.CachedResolveCheckResponse]) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.checkCache = checkCache
+		d.checkOptions = checkOptions
 	}
 }
 
@@ -127,9 +105,7 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		listObjectsMaxResults:   defaultListObjectsMaxResults,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxConcurrentReads:      defaultMaxConcurrentReads,
-		checkCache:              nil,
-		checkQueryCacheTTL:      defaultCheckQueryCacheTTL,
+		checkOptions:            []graph.LocalCheckerOption{},
 	}
 
 	for _, opt := range opts {
@@ -248,24 +224,10 @@ func (q *ListObjectsQuery) evaluate(
 			close(connectedObjectsResChan)
 		}()
 
-		var checkResolver graph.CheckResolver
-		if q.checkCache == nil {
-			checkResolver = graph.NewLocalChecker(
-				storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-				graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-				graph.WithMaxConcurrentReads(q.maxConcurrentReads),
-			)
-		} else {
-			checkResolver = graph.NewLocalChecker(
-				storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-				graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-				graph.WithMaxConcurrentReads(q.maxConcurrentReads),
-				graph.WithCachedResolver(
-					graph.WithExistingCache(q.checkCache),
-					graph.WithCacheTTL(q.checkQueryCacheTTL),
-				),
-			)
-		}
+		checkResolver := graph.NewLocalChecker(
+			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
+			q.checkOptions...,
+		)
 		defer checkResolver.Close()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
