@@ -225,6 +225,32 @@ func TestPrunedRelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ttu_with_indirect",
+			model: `
+			  type user
+	
+			  type repo
+				relations
+				  define admin: [user] as self or repo_admin from owner
+				  define owner: [organization] as self
+	
+			  type organization
+				relations
+				  define member: [user] as self or owner
+				  define owner: [user] as self
+				  define repo_admin: [user, organization#member] as self
+			`,
+			target: typesystem.DirectRelationReference("repo", "admin"),
+			source: typesystem.DirectRelationReference("organization", "member"),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("organization", "repo_admin"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
