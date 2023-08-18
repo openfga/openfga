@@ -302,6 +302,30 @@ func TestVerifyConfig(t *testing.T) {
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
 	})
+
+	t.Run("empty_latency_db_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.LatencyDBQueryCountBuckets = []string{}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("non_int_latency_db_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.LatencyDBQueryCountBuckets = []string{"12", "45a", "66"}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("negative_latency_db_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.LatencyDBQueryCountBuckets = []string{"12", "-45", "66"}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
