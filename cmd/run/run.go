@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -184,6 +185,9 @@ func NewRunCommand() *cobra.Command {
 	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
+
+	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
+	flags.StringSlice("latency-db-query-count-buckets", defaultConfig.LatencyDBQueryCountBuckets, "db query count buckets used in labelling latency histogram")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -361,6 +365,8 @@ type Config struct {
 	Profiler        ProfilerConfig
 	Metrics         MetricConfig
 	CheckQueryCache CheckQueryCache
+
+	LatencyDBQueryCountBuckets []string
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
@@ -376,6 +382,7 @@ func DefaultConfig() *Config {
 		Experimentals:                    []string{},
 		ListObjectsDeadline:              3 * time.Second, // there is a 3-second timeout elsewhere
 		ListObjectsMaxResults:            1000,
+		LatencyDBQueryCountBuckets:       []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -470,6 +477,7 @@ func MustDefaultConfigWithRandomPorts() *Config {
 func ReadConfig() (*Config, error) {
 	config := DefaultConfig()
 
+	viper.SetTypeByDefaultValue(true)
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -533,6 +541,16 @@ func VerifyConfig(cfg *Config) error {
 		}
 	}
 
+	if len(cfg.LatencyDBQueryCountBuckets) == 0 {
+		return errors.New("latency db query count buckets must not be empty")
+	}
+	for _, val := range cfg.LatencyDBQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New("latency db query count bucket items must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 
@@ -556,6 +574,18 @@ func run(_ *cobra.Command, _ []string) {
 
 type ServerContext struct {
 	Logger logger.Logger
+}
+
+func convertStringArrayToUintArray(stringArray []string) []uint {
+	uintArray := []uint{}
+	for _, val := range stringArray {
+		// note that we have already validated whether the array item is non-negative integer
+		valInt, err := strconv.Atoi(val)
+		if err == nil {
+			uintArray = append(uintArray, uint(valInt))
+		}
+	}
+	return uintArray
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *Config) error {
@@ -742,6 +772,7 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
+		server.WithLatencyDBQueryCountBuckets(convertStringArrayToUintArray(config.LatencyDBQueryCountBuckets)),
 		server.WithExperimentals(experimentals...),
 	)
 

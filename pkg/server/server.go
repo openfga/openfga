@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
@@ -68,6 +70,17 @@ var (
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
+
+	latencyHistogramName = "latency"
+
+	latencyHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            latencyHistogramName,
+		Help:                            "Observed latency (in milliseconds)",
+		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"method", "datastore_query_count"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -95,6 +108,8 @@ type Server struct {
 	checkQueryCacheLimit   uint32
 	checkQueryCacheTTL     time.Duration
 	checkCache             *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
+
+	latencyDBCountBuckets []uint
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -216,6 +231,14 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
+// WithLatencyDBQueryCountBuckets sets the buckets used in labelling the latencyHistogram
+func WithLatencyDBQueryCountBuckets(buckets []uint) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
+		s.latencyDBCountBuckets = buckets
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -244,6 +267,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
 		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
 		checkCache:             nil,
+
+		latencyDBCountBuckets: []uint{50, 200},
 	}
 
 	for _, opt := range opts {
@@ -270,6 +295,10 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 
 	if s.datastore == nil {
 		return nil, fmt.Errorf("a datastore option must be provided")
+	}
+
+	if len(s.latencyDBCountBuckets) == 0 {
+		return nil, fmt.Errorf("latency database count buckets must not be empty")
 	}
 
 	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -418,6 +447,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
+	start := time.Now()
 
 	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput
@@ -480,6 +510,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
+	latencyHistogram.WithLabelValues(
+		"Check",
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.latencyDBCountBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
+
 	return res, nil
 }
 

@@ -56,6 +56,16 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
+        "latencyDBQueryCountBuckets": {
+            "description": "Database query count buckets used in labelling latency histogram statistics",
+            "type": "array",
+            "items": {
+                "minimum": 0,
+                "type": "integer"
+            },
+            "default": [50, 200],
+            "x-env-variable": "OPENFGA_LATENCY_DB_QUERY_COUNT_BUCKETS"
+        },
         "experimentals": {
             "description": "a list of experimental features to enable",
             "type": "array",

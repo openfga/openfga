@@ -166,5 +166,8 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 
 		util.MustBindPFlag("checkQueryCache.ttl", flags.Lookup("check-query-cache-ttl"))
 		util.MustBindEnv("checkQueryCache.ttl", "OPENFGA_CHECK_QUERY_CACHE_TTL")
+
+		util.MustBindPFlag("latencyDBQueryCountBuckets", flags.Lookup("latency-db-query-count-buckets"))
+		util.MustBindEnv("latencyDBQueryCountBuckets", "OPENFGA_LATENCY_DB_QUERY_COUNT_BUCKETS")
 	}
 }
