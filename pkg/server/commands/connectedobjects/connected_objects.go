@@ -170,7 +170,7 @@ func (c *ConnectedObjectsQuery) execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
-	ingress *graph.RelationshipIngress,
+	previousIngress *graph.RelationshipIngress,
 ) error {
 	ctx, span := tracer.Start(ctx, "connectedObjects.execute", trace.WithAttributes(
 		attribute.String("object_type", req.ObjectType),
@@ -178,6 +178,10 @@ func (c *ConnectedObjectsQuery) execute(
 		attribute.String("user", req.User.String()),
 	))
 	defer span.End()
+
+	if previousIngress != nil {
+		span.SetAttributes(attribute.String("ingress", previousIngress.String()))
+	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
 	if !ok {
@@ -234,12 +238,14 @@ func (c *ConnectedObjectsQuery) execute(
 
 	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceUserRel := val.ObjectRelation.GetRelation()
-		c.trySendObjectThroughChannel(ctx, ingress, sourceUserType, req.ObjectType, sourceUserRel, req.Relation, sourceUserObj, resultChan)
+		c.trySendObjectThroughChannel(ctx, previousIngress, sourceUserType, req.ObjectType, sourceUserRel, req.Relation, sourceUserObj, resultChan)
 	}
 
-	for i, ingress := range ingresses {
-		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
+	for _, ingress := range ingresses {
 		innerLoopIngress := ingress
+		if previousIngress != nil && previousIngress.Condition == graph.RequiresFurtherEvalCondition {
+			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
+		}
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
@@ -298,6 +304,13 @@ func (c *ConnectedObjectsQuery) reverseExpandComputedUserset(
 	resultChan chan<- *ConnectedObjectsResult,
 	sourceUserObject string,
 ) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandComputedUserset", trace.WithAttributes(
+		attribute.String("target.object_type", req.targetObjectRef.GetType()),
+		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
+		attribute.String("ingress", req.ingress.String()),
+		attribute.String("source.user", req.sourceUserRef.String()),
+	))
+	defer span.End()
 	return c.execute(ctx, &ConnectedObjectsRequest{
 		StoreID:    req.storeID,
 		ObjectType: req.targetObjectRef.GetType(),
@@ -320,9 +333,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("target.object_type", req.targetObjectRef.GetType()),
 		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
-		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
-		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
-		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
 	defer span.End()
@@ -423,9 +434,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("target.object_type", req.targetObjectRef.GetType()),
 		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
-		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
-		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
-		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
 	defer span.End()
@@ -501,8 +510,6 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		//foundObjectType, _ := tuple.SplitObject(foundObject)
-		//foundRelation := tk.GetRelation()
 
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
