@@ -313,6 +313,8 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	targetObjectType := req.targetObjectRef.GetType()
 	targetObjectRel := req.targetObjectRef.GetRelation()
 
+	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
+
 	var userFilter []*openfgav1.ObjectRelation
 
 	// e.g. 'user:bob'
@@ -332,8 +334,8 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
-		ObjectType: req.ingress.TuplesetRelation.GetType(),
-		Relation:   req.ingress.TuplesetRelation.GetRelation(),
+		ObjectType: req.ingress.Ingress.GetType(),
+		Relation:   tuplesetRelation,
 		UserFilter: userFilter,
 	})
 	if err != nil {
