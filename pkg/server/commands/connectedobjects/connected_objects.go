@@ -109,6 +109,7 @@ type ConnectedObjectsQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
+	visitedObjectsMap *sync.Map
 	// candidateObjectsMap map allows us to not return the same object twice
 	candidateObjectsMap *sync.Map
 	maxCandidates       uint32
@@ -147,6 +148,7 @@ func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
 		maxCandidates:           defaultMaxResults,
 		candidateObjectsMap:     new(sync.Map),
+		visitedObjectsMap:       new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -222,7 +224,14 @@ func (c *ConnectedObjectsQuery) Execute(
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 		sourceUserRel := val.ObjectRelation.GetRelation()
 
-		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+		if req.Ingress != nil {
+			key := fmt.Sprintf("%s#%s", sourceUserObj, req.Ingress.String())
+			if _, loaded := c.visitedObjectsMap.LoadOrStore(key, struct{}{}); loaded {
+				return nil
+			}
+		}
+
+		if req.Ingress != nil && sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
 			c.sendCandidate(ctx, req.Ingress, sourceUserObj, resultChan)
 		}
 	}
@@ -511,16 +520,14 @@ func (c *ConnectedObjectsQuery) sendCandidate(ctx context.Context, ingress *grap
 			attribute.String("object", candidateObject),
 		))
 		defer span.End()
+		
+		resultStatus := NoFurtherEvalStatus
 		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
-			candidateChan <- &ConnectedObjectsResult{
-				Object:       candidateObject,
-				ResultStatus: RequiresFurtherEvalStatus,
-			}
-		} else {
-			candidateChan <- &ConnectedObjectsResult{
-				Object:       candidateObject,
-				ResultStatus: NoFurtherEvalStatus,
-			}
+			resultStatus = RequiresFurtherEvalStatus
+		}
+		candidateChan <- &ConnectedObjectsResult{
+			Object:       candidateObject,
+			ResultStatus: resultStatus,
 		}
 	}
 }

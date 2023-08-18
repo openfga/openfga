@@ -428,6 +428,30 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					Object:       "group:eng",
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
+			},
+		},
+		{
+			name: "objects_connected_to_a_userset_self_referencing",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "group",
+				Relation:   "member",
+				User: &connectedobjects.UserRefObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
+						Object:   "group:iam",
+						Relation: "member",
+					},
+				},
+			},
+			model: `
+			type group
+			  relations
+			    define member: [group#member] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
+			},
+			expectedResult: []*connectedobjects.ConnectedObjectsResult{
 				{
 					Object:       "group:iam",
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
@@ -1163,7 +1187,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		},
 		{
-			name: "new_test",
+			name: "does_not_send_duplicate_even_though_there_are_two_paths_to_same_solution",
 			request: &connectedobjects.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
