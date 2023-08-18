@@ -24,12 +24,16 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
@@ -219,6 +223,16 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
+func runServer(ctx context.Context, cfg *Config) error {
+	if err := VerifyConfig(cfg); err != nil {
+		return err
+	}
+
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	serverCtx := &ServerContext{Logger: logger}
+	return serverCtx.Run(ctx, cfg)
+}
+
 func TestVerifyConfig(t *testing.T) {
 	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
 		cfg := DefaultConfig()
@@ -295,7 +309,7 @@ func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T)
 	cfg.Authn.Method = "preshared"
 	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
 
-	err := RunServer(context.Background(), cfg)
+	err := runServer(context.Background(), cfg)
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
 }
 
@@ -305,7 +319,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -334,7 +348,7 @@ func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -398,7 +412,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -523,7 +537,7 @@ func TestHTTPServerWithCORS(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -630,7 +644,7 @@ func TestBuildServerWithOIDCAuthentication(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -690,7 +704,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -715,7 +729,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -750,7 +764,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -776,7 +790,7 @@ func TestGRPCServingTLS(t *testing.T) {
 		defer cancel()
 
 		go func() {
-			if err := RunServer(ctx, cfg); err != nil {
+			if err := runServer(ctx, cfg); err != nil {
 				log.Fatal(err)
 			}
 		}()
@@ -789,6 +803,98 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 }
 
+func TestServerMetricsReporting(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Metrics.Enabled = true
+	cfg.Metrics.EnableRPCHistograms = true
+	cfg.MaxConcurrentReadsForCheck = 30
+	cfg.MaxConcurrentReadsForListObjects = 30
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, false)
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{
+		Name: "test-store",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type document
+		  relations
+		    define allowed: [user] as self
+			define editor: [user] as self
+		    define viewer: [user] as self or (editor and allowed)
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Write(ctx, &openfgav1.WriteRequest{
+		StoreId: storeID,
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				tuple.NewTupleKey("document:2", "editor", "user:jon"),
+				tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:  storeID,
+		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	})
+	require.NoError(t, err)
+	require.True(t, checkResp.GetAllowed())
+
+	listObjectsResp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+		StoreId:  storeID,
+		Type:     "document",
+		Relation: "viewer",
+		User:     "user:jon",
+	})
+	require.NoError(t, err)
+	require.Len(t, listObjectsResp.GetObjects(), 2)
+	require.Contains(t, listObjectsResp.GetObjects(), "document:1")
+	require.Contains(t, listObjectsResp.GetObjects(), "document:2")
+
+	resp, err := http.Get("http://localhost:2112/metrics")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	defer resp.Body.Close()
+
+	resBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	stringBody := string(resBody)
+	require.Contains(t, stringBody, "datastore_query_count")
+	require.Contains(t, stringBody, "grpc_server_handling_seconds")
+	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
+	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
+	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
+}
+
 func TestHTTPServerDisabled(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.HTTP.Enabled = false
@@ -797,7 +903,7 @@ func TestHTTPServerDisabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -814,7 +920,7 @@ func TestHTTPServerEnabled(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		if err := RunServer(ctx, cfg); err != nil {
+		if err := runServer(ctx, cfg); err != nil {
 			log.Fatal(err)
 		}
 	}()
@@ -953,6 +1059,18 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
+
+	val = res.Get("properties.checkQueryCache.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
+
+	val = res.Get("properties.checkQueryCache.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckQueryCache.Limit)
+
+	val = res.Get("properties.checkQueryCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -961,6 +1079,9 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 
@@ -990,6 +1111,30 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	require.Nil(t, rootCmd.Execute())
 }
 
+func TestParseConfig(t *testing.T) {
+	config := `checkQueryCache:
+    enabled: true
+    limit: 100
+    TTL: 5s
+`
+	util.PrepareTempConfigFile(t, config)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.CheckQueryCache.Enabled)
+	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
+	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
+}
+
 func TestRunCommandConfigIsMerged(t *testing.T) {
 	config := `datastore:
     engine: postgres
@@ -998,12 +1143,18 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
+		require.True(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 		return nil
 	}
 

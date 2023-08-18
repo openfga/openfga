@@ -6,6 +6,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -21,13 +22,19 @@ type TestClientBootstrapper interface {
 }
 
 func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	serverCtx := &run.ServerContext{Logger: logger}
+	return StartServerWithContext(t, cfg, serverCtx)
+}
+
+func StartServerWithContext(t testing.TB, cfg *run.Config, serverCtx *run.ServerContext) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		err := run.RunServer(ctx, cfg)
+		err := serverCtx.Run(ctx, cfg)
 		require.NoError(t, err)
 	}()
 
