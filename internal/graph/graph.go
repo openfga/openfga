@@ -295,9 +295,8 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 				return nil, err
 			}
 
-			condition := typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation()
-			if condition {
-				ingressCondition := NoFurtherEvalCondition
+			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
+				condition := NoFurtherEvalCondition
 
 				involvesIntersection, err := g.typesystem.RelationInvolvesIntersection(typeRestriction.GetType(), r.GetName())
 				if err != nil {
@@ -310,14 +309,14 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 				}
 
 				if involvesIntersection || involvesExclusion {
-					ingressCondition = RequiresFurtherEvalCondition
+					condition = RequiresFurtherEvalCondition
 				}
 
 				res = append(res, &RelationshipIngress{
 					Type:             TupleToUsersetIngress,
 					Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
-					Condition:        ingressCondition,
+					Condition:        condition,
 				})
 			}
 

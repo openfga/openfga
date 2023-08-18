@@ -128,6 +128,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
 	}
 }
 
+// WithMaxResults sets a limit on the number of results given. If 0 is given, there is no limit.
 func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
 	return func(d *ConnectedObjectsQuery) {
 		d.maxCandidates = maxResults
@@ -272,9 +273,7 @@ func (c *ConnectedObjectsQuery) execute(
 }
 
 // Execute yields all the objects of the provided objectType that
-// the given user has a specific relation with. The results will be limited by the request
-// maxCandidates. If a 0 maxCandidates is provided then all objects of the provided objectType will be
-// returned.
+// the given user has, possibly, a specific relation with.
 func (c *ConnectedObjectsQuery) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
