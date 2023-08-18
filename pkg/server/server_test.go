@@ -47,6 +47,18 @@ func TestServerPanicIfNoDatastore(t *testing.T) {
 	})
 }
 
+func TestServerPanicIfEmptyLatencyDBCountBuckets(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: latency database count buckets must not be empty", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithLatencyDBQueryCountBuckets([]uint{}),
+		)
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	ds := MustBootstrapDatastore(t, "postgres")
 	defer ds.Close()
