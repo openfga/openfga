@@ -520,7 +520,7 @@ func (c *ConnectedObjectsQuery) sendCandidate(ctx context.Context, ingress *grap
 			attribute.String("object", candidateObject),
 		))
 		defer span.End()
-		
+
 		resultStatus := NoFurtherEvalStatus
 		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
 			resultStatus = RequiresFurtherEvalStatus
