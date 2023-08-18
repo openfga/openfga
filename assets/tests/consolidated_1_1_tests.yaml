@@ -4939,7 +4939,7 @@ tests:
               relation: a1
               user: user:maria
             errorCode: 2002
-  - name: list_objects_with_multiple_reachable_ttu
+  - name: issue_920
     stages:
       - model: | #concurrent checks
           type user
