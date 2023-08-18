@@ -21,8 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -225,6 +223,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				Ingress:          nil,
 			}, connectedObjectsResChan)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
@@ -247,7 +246,7 @@ func (q *ListObjectsQuery) evaluate(
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 
-				tryAddObject(ctx, res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
+				sendObject(res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
 
 				continue
 			}
@@ -278,7 +277,7 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				if resp.Allowed {
-					tryAddObject(ctx, res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
+					sendObject(res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -293,15 +292,9 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func tryAddObject(ctx context.Context, object string, foundObjectsMap *sync.Map, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	_, span := tracer.Start(ctx, "listObjects.TryAddObject", trace.WithAttributes(
-		attribute.String("object", object),
-	))
-	defer span.End()
-
+func sendObject(object string, foundObjectsMap *sync.Map, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
 	if _, loaded := foundObjectsMap.LoadOrStore(object, struct{}{}); !loaded {
 		if foundCount != nil && atomic.AddUint32(foundCount, 1) <= maxResults {
-			span.SetAttributes(attribute.Bool("found", true))
 			resultsChan <- ListObjectsResult{ObjectID: object}
 		}
 	}

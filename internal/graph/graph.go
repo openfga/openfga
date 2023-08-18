@@ -115,6 +115,7 @@ type RelationshipIngress struct {
 }
 
 func (r RelationshipIngress) String() string {
+	// TODO log the condition
 	val := ""
 	if r.TuplesetRelation != nil {
 		val = fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())

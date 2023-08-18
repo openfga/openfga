@@ -36,6 +36,7 @@ type ConnectedObjectsRequest struct {
 	Relation         string
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
+	Ingress          *graph.RelationshipIngress
 }
 
 type IsUserRef interface {
@@ -128,7 +129,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
 	}
 }
 
-// WithMaxResults sets a limit on the number of results given. If 0 is given, there is no limit.
+// WithMaxResults sets a limit on the number of candidate objects given. If 0, there is no limit.
 func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
 	return func(d *ConnectedObjectsQuery) {
 		d.maxCandidates = maxResults
@@ -167,21 +168,22 @@ type ConnectedObjectsResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
-func (c *ConnectedObjectsQuery) execute(
+// Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
+// and sends those objects to resultChan. It guarantees no duplicate objects sent.
+func (c *ConnectedObjectsQuery) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
-	previousIngress *graph.RelationshipIngress,
 ) error {
-	ctx, span := tracer.Start(ctx, "connectedObjects.execute", trace.WithAttributes(
-		attribute.String("object_type", req.ObjectType),
-		attribute.String("relation", req.Relation),
-		attribute.String("user", req.User.String()),
+	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
+		attribute.String("target_type", req.ObjectType),
+		attribute.String("target_relation", req.Relation),
+		attribute.String("source", req.User.String()),
 	))
 	defer span.End()
 
-	if previousIngress != nil {
-		span.SetAttributes(attribute.String("ingress", previousIngress.String()))
+	if req.Ingress != nil {
+		span.SetAttributes(attribute.String("ingress", req.Ingress.String()))
 	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
@@ -218,6 +220,11 @@ func (c *ConnectedObjectsQuery) execute(
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		sourceUserObj = val.ObjectRelation.Object
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
+		sourceUserRel := val.ObjectRelation.GetRelation()
+
+		if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+			c.sendCandidate(ctx, req.Ingress, sourceUserObj, resultChan)
+		}
 	}
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
@@ -225,10 +232,9 @@ func (c *ConnectedObjectsQuery) execute(
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
 	g := graph.BuildConnectedObjectGraph(c.typesystem)
 
-	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
-	span.SetAttributes(
-		attribute.String("_sourceUserRef", sourceUserRef.String()),
-		attribute.String("_targetObjRef", targetObjRef.String()))
+	// find all paths from target to source and then returns all the edges at distance 0 or 1 in those paths
+	// if the target relation is an intersection or a difference, e.g. viewer: can_view but not blocked
+	// it returns only one of those edges (the first one - e.g. can_view)
 	ingresses, err := g.PrunedRelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
@@ -237,14 +243,10 @@ func (c *ConnectedObjectsQuery) execute(
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
 
-	if val, ok := req.User.(*UserRefObjectRelation); ok {
-		sourceUserRel := val.ObjectRelation.GetRelation()
-		c.trySendObjectThroughChannel(ctx, previousIngress, sourceUserType, req.ObjectType, sourceUserRel, req.Relation, sourceUserObj, resultChan)
-	}
-
 	for _, ingress := range ingresses {
 		innerLoopIngress := ingress
-		if previousIngress != nil && previousIngress.Condition == graph.RequiresFurtherEvalCondition {
+		if req.Ingress != nil && req.Ingress.Condition == graph.RequiresFurtherEvalCondition {
+			// propagate the condition to upcoming reverse expansions
 			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
 		}
 		subg.Go(func() error {
@@ -260,7 +262,20 @@ func (c *ConnectedObjectsQuery) execute(
 			case graph.DirectIngress:
 				return c.reverseExpandDirect(subgctx, r, resultChan)
 			case graph.ComputedUsersetIngress:
-				return c.reverseExpandComputedUserset(subgctx, r, resultChan, sourceUserObj)
+				// lookup the rewritten target relation on the computed_userset ingress
+				return c.Execute(subgctx, &ConnectedObjectsRequest{
+					Ingress:    innerLoopIngress,
+					StoreID:    storeID,
+					ObjectType: req.ObjectType,
+					Relation:   req.Relation,
+					User: &UserRefObjectRelation{
+						ObjectRelation: &openfgav1.ObjectRelation{
+							Object:   sourceUserObj,
+							Relation: innerLoopIngress.Ingress.GetRelation(),
+						},
+					},
+					ContextualTuples: r.contextualTuples,
+				}, resultChan)
 			case graph.TupleToUsersetIngress:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan)
 			default:
@@ -272,23 +287,6 @@ func (c *ConnectedObjectsQuery) execute(
 	return subg.Wait()
 }
 
-// Execute yields all the objects of the provided objectType that
-// the given user has, possibly, a specific relation with.
-func (c *ConnectedObjectsQuery) Execute(
-	ctx context.Context,
-	req *ConnectedObjectsRequest,
-	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
-) error {
-	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
-		attribute.String("object_type", req.ObjectType),
-		attribute.String("relation", req.Relation),
-		attribute.String("user", req.User.String()),
-	))
-	defer span.End()
-
-	return c.execute(ctx, req, resultChan, nil)
-}
-
 type reverseExpandRequest struct {
 	storeID          string
 	ingress          *graph.RelationshipIngress
@@ -297,41 +295,12 @@ type reverseExpandRequest struct {
 	contextualTuples []*openfgav1.TupleKey
 }
 
-func (c *ConnectedObjectsQuery) reverseExpandComputedUserset(
-	ctx context.Context,
-	req *reverseExpandRequest,
-	resultChan chan<- *ConnectedObjectsResult,
-	sourceUserObject string,
-) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandComputedUserset", trace.WithAttributes(
-		attribute.String("target.object_type", req.targetObjectRef.GetType()),
-		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
-		attribute.String("ingress", req.ingress.String()),
-		attribute.String("source.user", req.sourceUserRef.String()),
-	))
-	defer span.End()
-	return c.execute(ctx, &ConnectedObjectsRequest{
-		StoreID:    req.storeID,
-		ObjectType: req.targetObjectRef.GetType(),
-		Relation:   req.targetObjectRef.GetRelation(),
-		User: &UserRefObjectRelation{
-			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   sourceUserObject,
-				Relation: req.ingress.Ingress.GetRelation(),
-			},
-		},
-		ContextualTuples: req.contextualTuples,
-	}, resultChan, req.ingress)
-}
-
 func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
-		attribute.String("target.object_type", req.targetObjectRef.GetType()),
-		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
 		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
@@ -412,13 +381,14 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		}
 
 		subg.Go(func() error {
-			return c.execute(subgctx, &ConnectedObjectsRequest{
+			return c.Execute(subgctx, &ConnectedObjectsRequest{
+				Ingress:          req.ingress,
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.ingress)
+			}, resultChan)
 		})
 	}
 
@@ -431,8 +401,6 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	resultChan chan<- *ConnectedObjectsResult,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		attribute.String("target.object_type", req.targetObjectRef.GetType()),
-		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
 		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
@@ -518,43 +486,38 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		}
 
 		subg.Go(func() error {
-			return c.execute(subgctx, &ConnectedObjectsRequest{
+			return c.Execute(subgctx, &ConnectedObjectsRequest{
+				Ingress:          req.ingress,
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.ingress)
+			}, resultChan)
 		})
 	}
 
 	return subg.Wait()
 }
 
-func (c *ConnectedObjectsQuery) trySendObjectThroughChannel(ctx context.Context, ingress *graph.RelationshipIngress, foundObjectType string, targetObjectType string, foundRelation string, targetObjectRel string, foundObject string, candidateChan chan<- *ConnectedObjectsResult) {
-	_, span := tracer.Start(ctx, "connectedobjects.TryAddObject", trace.WithAttributes(
-		attribute.String("object", foundObject),
-		attribute.String("foundObjectType", foundObjectType),
-		attribute.String("targetObjectType", targetObjectType),
-		attribute.String("foundRelation", foundRelation),
-		attribute.String("targetObjectRel", targetObjectRel),
-	))
-	defer span.End()
-	if foundObjectType == targetObjectType && foundRelation == targetObjectRel {
-		if _, ok := c.candidateObjectsMap.LoadOrStore(foundObject, struct{}{}); !ok {
-			if c.candidatesFound != nil && atomic.AddUint32(c.candidatesFound, 1) > c.maxCandidates {
-				return
+func (c *ConnectedObjectsQuery) sendCandidate(ctx context.Context, ingress *graph.RelationshipIngress, candidateObject string, candidateChan chan<- *ConnectedObjectsResult) {
+	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
+		if c.candidatesFound != nil && atomic.AddUint32(c.candidatesFound, 1) > c.maxCandidates {
+			return
+		}
+		_, span := tracer.Start(ctx, "sendCandidate", trace.WithAttributes(
+			attribute.String("object", candidateObject),
+		))
+		defer span.End()
+		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
+			candidateChan <- &ConnectedObjectsResult{
+				Object:       candidateObject,
+				ResultStatus: RequiresFurtherEvalStatus,
 			}
-			if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
-				candidateChan <- &ConnectedObjectsResult{
-					Object:       foundObject,
-					ResultStatus: RequiresFurtherEvalStatus,
-				}
-			} else {
-				candidateChan <- &ConnectedObjectsResult{
-					Object:       foundObject,
-					ResultStatus: NoFurtherEvalStatus,
-				}
+		} else {
+			candidateChan <- &ConnectedObjectsResult{
+				Object:       candidateObject,
+				ResultStatus: NoFurtherEvalStatus,
 			}
 		}
 	}
