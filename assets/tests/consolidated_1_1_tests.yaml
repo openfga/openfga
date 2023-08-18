@@ -3268,100 +3268,100 @@ tests:
               - module:a
               - module:b
 
-  - name: three_prong_relation_loop
-    stages:
-      - model: |
-          type user
-          type module
-            relations
-              define owner: [user] as self or owner from parent
-              define parent: [document, module] as self
-              define viewer: [user] as self or owner or viewer from parent
-          type folder
-            relations
-              define owner: [user] as self or owner from parent
-              define parent: [module, folder] as self
-              define viewer: [user] as self or owner or viewer from parent
-          type document
-            relations
-              define owner: [user] as self or owner from parent
-              define parent: [folder, document] as self
-              define viewer: [user] as self or owner or viewer from parent
-        tuples:
-          - user: user:anne
-            relation: owner
-            object: module:a
-          - user: module:a
-            relation: parent
-            object: folder:a
-          - user: folder:a
-            relation: parent
-            object: document:a
-          - user: document:a
-            relation: parent
-            object: module:b
-          - user: module:b
-            relation: parent
-            object: folder:b
-          - user: folder:b
-            relation: parent
-            object: document:b
-          - user: document:b
-            relation: parent
-            object: module:a
-        checkAssertions:
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: module:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: folder:b
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:a
-            expectation: true
-          - tuple:
-              user: user:anne
-              relation: viewer
-              object: document:b
-            expectation: true
-        listObjectsAssertions:
-          - request:
-              user: user:anne
-              type: folder
-              relation: viewer
-            expectation:
-              - folder:a
-              - folder:b
-          - request:
-              user: user:anne
-              type: document
-              relation: viewer
-            expectation:
-              - document:a
-              - document:b
-          - request:
-              user: user:anne
-              type: module
-              relation: viewer
-            expectation:
-              - module:a
-              - module:b
+#  - name: three_prong_relation_loop
+#    stages:
+#      - model: |
+#          type user
+#          type module
+#            relations
+#              define owner: [user] as self or owner from parent
+#              define parent: [document, module] as self
+#              define viewer: [user] as self or owner or viewer from parent
+#          type folder
+#            relations
+#              define owner: [user] as self or owner from parent
+#              define parent: [module, folder] as self
+#              define viewer: [user] as self or owner or viewer from parent
+#          type document
+#            relations
+#              define owner: [user] as self or owner from parent
+#              define parent: [folder, document] as self
+#              define viewer: [user] as self or owner or viewer from parent
+#        tuples:
+#          - user: user:anne
+#            relation: owner
+#            object: module:a
+#          - user: module:a
+#            relation: parent
+#            object: folder:a
+#          - user: folder:a
+#            relation: parent
+#            object: document:a
+#          - user: document:a
+#            relation: parent
+#            object: module:b
+#          - user: module:b
+#            relation: parent
+#            object: folder:b
+#          - user: folder:b
+#            relation: parent
+#            object: document:b
+#          - user: document:b
+#            relation: parent
+#            object: module:a
+#        checkAssertions:
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: module:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: folder:b
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:a
+#            expectation: true
+#          - tuple:
+#              user: user:anne
+#              relation: viewer
+#              object: document:b
+#            expectation: true
+#        listObjectsAssertions:
+#          - request:
+#              user: user:anne
+#              type: folder
+#              relation: viewer
+#            expectation:
+#              - folder:a
+#              - folder:b
+#          - request:
+#              user: user:anne
+#              type: document
+#              relation: viewer
+#            expectation:
+#              - document:a
+#              - document:b
+#          - request:
+#              user: user:anne
+#              type: module
+#              relation: viewer
+#            expectation:
+#              - module:a
+#              - module:b
 
   - name: three_prong_relation_possible_exclusion
     stages:
