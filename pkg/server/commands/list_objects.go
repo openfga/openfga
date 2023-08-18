@@ -21,6 +21,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -202,13 +204,19 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		connectedObjectsResChan := make(chan *connectedobjects.ConnectedObjectsResult, 1)
-		var objectsFound = new(uint32)
 
 		connectedObjectsQuery := connectedobjects.NewConnectedObjectsQuery(q.datastore, typesys,
 			connectedobjects.WithResolveNodeLimit(q.resolveNodeLimit),
 			connectedobjects.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 			connectedobjects.WithMaxResults(maxResults),
 		)
+
+		// foundObjects map allows us to not return the same object twice
+		var foundObjectsMap sync.Map
+		var foundCount *uint32
+		if maxResults > 0 {
+			foundCount = new(uint32)
+		}
 
 		go func() {
 			err = connectedObjectsQuery.Execute(ctx, &connectedobjects.ConnectedObjectsRequest{
@@ -236,13 +244,10 @@ func (q *ListObjectsQuery) evaluate(
 		wg := sync.WaitGroup{}
 
 		for res := range connectedObjectsResChan {
-
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 
-				if atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
-				}
+				tryAddObject(ctx, res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
 
 				continue
 			}
@@ -272,8 +277,8 @@ func (q *ListObjectsQuery) evaluate(
 					return
 				}
 
-				if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
+				if resp.Allowed {
+					tryAddObject(ctx, res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -286,6 +291,20 @@ func (q *ListObjectsQuery) evaluate(
 	go handler()
 
 	return nil
+}
+
+func tryAddObject(ctx context.Context, object string, foundObjectsMap *sync.Map, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	_, span := tracer.Start(ctx, "listObjects.TryAddObject", trace.WithAttributes(
+		attribute.String("object", object),
+	))
+	defer span.End()
+
+	if _, loaded := foundObjectsMap.LoadOrStore(object, struct{}{}); !loaded {
+		if foundCount != nil && atomic.AddUint32(foundCount, 1) <= maxResults {
+			span.SetAttributes(attribute.Bool("found", true))
+			resultsChan <- ListObjectsResult{ObjectID: object}
+		}
+	}
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults

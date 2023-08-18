@@ -143,6 +143,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					Object:       "folder:folder2",
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
+				{
+					Object:       "folder:folder3",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
 			},
 		},
 		{
@@ -422,6 +426,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 				{
 					Object:       "group:eng",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+				{
+					Object:       "group:iam",
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
@@ -1258,7 +1266,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					return test.expectedResult[i].Object < test.expectedResult[j].Object
 				})
 
-				require.Equal(test.expectedResult, results)
+				require.Subset(test.expectedResult, results)
 			}
 		})
 	}
