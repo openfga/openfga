@@ -342,7 +342,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		})
 	}
 
-	combinedTupleReader := storagewrappers.NewRequestTupleReader(c.datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewContextualTupleReader(c.datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
@@ -491,7 +491,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	combinedTupleReader := storagewrappers.NewRequestTupleReader(c.datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewContextualTupleReader(c.datastore, req.contextualTuples)
 
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),

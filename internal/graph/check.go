@@ -460,7 +460,7 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
-	reqDatastore := storagewrappers.NewRequestTupleReader(c.ds, req.GetContextualTuples())
+	reqDatastore := storagewrappers.NewContextualTupleReader(c.ds, req.GetContextualTuples())
 
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, reqDatastore, rel.GetRewrite()))
 	if err != nil {
@@ -474,7 +474,7 @@ func (c *LocalChecker) ResolveCheck(
 // 'object#relation'. The first handler looks up direct matches on the provided 'object#relation@user',
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
-func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.RequestTupleReader) CheckHandlerFunc {
+func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.ContextualTupleReader) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -657,7 +657,7 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
-func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.RequestTupleReader, rewrite *openfgav1.Userset) CheckHandlerFunc {
+func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, reqDatastore *storagewrappers.ContextualTupleReader, rewrite *openfgav1.Userset) CheckHandlerFunc {
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
@@ -762,7 +762,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 func (c *LocalChecker) checkSetOperation(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-	reqDatastore *storagewrappers.RequestTupleReader,
+	reqDatastore *storagewrappers.ContextualTupleReader,
 	setOpType setOperatorType,
 	reducer CheckFuncReducer,
 	children ...*openfgav1.Userset,
@@ -803,7 +803,7 @@ func (c *LocalChecker) checkSetOperation(
 func (c *LocalChecker) checkRewrite(
 	ctx context.Context,
 	req *ResolveCheckRequest,
-	reqDatastore *storagewrappers.RequestTupleReader,
+	reqDatastore *storagewrappers.ContextualTupleReader,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
 

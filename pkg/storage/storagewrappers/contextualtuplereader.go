@@ -8,18 +8,18 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// NewRequestTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
+// NewContextualTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
 // tuples specified in the request
-func NewRequestTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) *RequestTupleReader {
-	return &RequestTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
+func NewContextualTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) *ContextualTupleReader {
+	return &ContextualTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
 }
 
-type RequestTupleReader struct {
+type ContextualTupleReader struct {
 	storage.RelationshipTupleReader
 	contextualTuples []*openfgav1.TupleKey
 }
 
-var _ storage.RelationshipTupleReader = (*RequestTupleReader)(nil)
+var _ storage.RelationshipTupleReader = (*ContextualTupleReader)(nil)
 
 // filterTuples filters out the tuples in the provided slice by removing any tuples in the slice
 // that don't match the object and relation provided in the filterKey.
@@ -36,7 +36,7 @@ func filterTuples(tuples []*openfgav1.TupleKey, targetObject, targetRelation str
 	return filtered
 }
 
-func (c *RequestTupleReader) Read(
+func (c *ContextualTupleReader) Read(
 	ctx context.Context,
 	storeID string,
 	tk *openfgav1.TupleKey,
@@ -52,7 +52,7 @@ func (c *RequestTupleReader) Read(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (c *RequestTupleReader) ReadPage(
+func (c *ContextualTupleReader) ReadPage(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
@@ -64,7 +64,7 @@ func (c *RequestTupleReader) ReadPage(
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
 }
 
-func (c *RequestTupleReader) ReadUserTuple(
+func (c *ContextualTupleReader) ReadUserTuple(
 	ctx context.Context,
 	store string,
 	tk *openfgav1.TupleKey,
@@ -81,7 +81,7 @@ func (c *RequestTupleReader) ReadUserTuple(
 	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk)
 }
 
-func (c *RequestTupleReader) ReadUsersetTuples(
+func (c *ContextualTupleReader) ReadUsersetTuples(
 	ctx context.Context,
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
@@ -105,7 +105,7 @@ func (c *RequestTupleReader) ReadUsersetTuples(
 	return storage.NewCombinedIterator(iter1, iter2), nil
 }
 
-func (c *RequestTupleReader) ReadStartingWithUser(
+func (c *ContextualTupleReader) ReadStartingWithUser(
 	ctx context.Context,
 	store string,
 	filter storage.ReadStartingWithUserFilter,
