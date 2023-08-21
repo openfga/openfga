@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"sort"
 	"testing"
 	"time"
 
@@ -25,7 +24,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		tuples           []*openfgav1.TupleKey
 		request          *connectedobjects.ConnectedObjectsRequest
 		resolveNodeLimit uint32
-		limit            uint32
 		expectedResult   []*connectedobjects.ConnectedObjectsResult
 		expectedError    error
 	}{
@@ -107,48 +105,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 		},
-		{
-			name: "restrict_results_based_on_limit",
-			request: &connectedobjects.ConnectedObjectsRequest{
-				StoreID:    ulid.Make().String(),
-				ObjectType: "folder",
-				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
-					Object: &openfgav1.Object{
-						Type: "user",
-						Id:   "jon",
-					},
-				},
-				ContextualTuples: []*openfgav1.TupleKey{},
-			},
-			limit: 2,
-			model: `
-			type user
 
-			type folder
-			  relations
-			    define viewer: [user] as self
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
-			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
-				{
-					Object:       "folder:folder1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
-				},
-				{
-					Object:       "folder:folder2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
-				},
-				{
-					Object:       "folder:folder3",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
-				},
-			},
-		},
 		{
 			name: "resolve_direct_relationships_with_tuples_and_contextual_tuples",
 			request: &connectedobjects.ConnectedObjectsRequest{
@@ -1248,10 +1205,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				opts = append(opts, connectedobjects.WithResolveNodeLimit(test.resolveNodeLimit))
 			}
 
-			if test.limit != 0 {
-				opts = append(opts, connectedobjects.WithMaxResults(test.limit))
-			}
-
 			connectedObjectsCmd := connectedobjects.NewConnectedObjectsQuery(ds, typesystem.New(model), opts...)
 
 			resultChan := make(chan *connectedobjects.ConnectedObjectsResult, 100)
@@ -1266,7 +1219,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				done <- struct{}{}
 			}()
 
-			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Hour)
+			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
 			go func() {
@@ -1282,15 +1235,165 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			}
 
 			if test.expectedError == nil {
-				sort.Slice(results, func(i, j int) bool {
-					return results[i].Object < results[j].Object
-				})
+				require.ElementsMatch(test.expectedResult, results)
+			}
+		})
+	}
+}
 
-				sort.Slice(test.expectedResult, func(i, j int) bool {
-					return test.expectedResult[i].Object < test.expectedResult[j].Object
-				})
+func TestConnectedObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
+	tests := []struct {
+		name               string
+		model              string
+		tuples             []*openfgav1.TupleKey
+		request            *connectedobjects.ConnectedObjectsRequest
+		minResultsExpected uint32
+		maxResults         uint32
+		allResults         []*connectedobjects.ConnectedObjectsResult
+	}{
+		{
+			name: "no_max_results",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "folder",
+				Relation:   "viewer",
+				User: &connectedobjects.UserRefObject{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "jon",
+					},
+				},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
+				},
+			},
+			minResultsExpected: 3,
+			maxResults:         0,
+			model: `
+			type user
 
-				require.Subset(test.expectedResult, results)
+			type folder
+			  relations
+			    define viewer: [user] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
+				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
+			},
+			allResults: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "folder:folder1",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+				{
+					Object:       "folder:folder2",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+				{
+					Object:       "folder:folder3",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+			},
+		},
+		{
+			name: "respects_max_results",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "folder",
+				Relation:   "viewer",
+				User: &connectedobjects.UserRefObject{
+					Object: &openfgav1.Object{
+						Type: "user",
+						Id:   "jon",
+					},
+				},
+				ContextualTuples: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
+				},
+			},
+			minResultsExpected: 2,
+			maxResults:         2,
+			model: `
+			type user
+
+			type folder
+			  relations
+			    define viewer: [user] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
+				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
+			},
+			allResults: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "folder:folder1",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+				{
+					Object:       "folder:folder2",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+				{
+					Object:       "folder:folder3",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			store := ulid.Make().String()
+			test.request.StoreID = store
+
+			model := &openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
+			}
+			err := ds.WriteAuthorizationModel(ctx, store, model)
+			require.NoError(t, err)
+
+			err = ds.Write(ctx, store, nil, test.tuples)
+			require.NoError(t, err)
+
+			connectedObjectsCmd := connectedobjects.NewConnectedObjectsQuery(ds, typesystem.New(model),
+				connectedobjects.WithMaxResults(test.maxResults))
+
+			resultChan := make(chan *connectedobjects.ConnectedObjectsResult, 100)
+			done := make(chan struct{})
+
+			var results []*connectedobjects.ConnectedObjectsResult
+			go func() {
+				for result := range resultChan {
+					results = append(results, result)
+				}
+
+				done <- struct{}{}
+			}()
+
+			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			go func() {
+				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan)
+				require.NoError(t, err)
+				close(resultChan)
+			}()
+
+			select {
+			case <-timeoutCtx.Done():
+				require.FailNow(t, "timed out waiting for response")
+			case <-done:
+			}
+
+			require.GreaterOrEqual(t, len(results), int(test.minResultsExpected))
+			if test.maxResults > 0 {
+				require.LessOrEqual(t, len(results), int(test.maxResults))
+				require.Subset(t, test.allResults, results)
+			} else {
+				require.ElementsMatch(t, test.allResults, results)
 			}
 		})
 	}
