@@ -36,7 +36,6 @@ type ConnectedObjectsRequest struct {
 	Relation         string
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
-	Ingress          *graph.RelationshipIngress
 }
 
 type IsUserRef interface {
@@ -178,6 +177,15 @@ func (c *ConnectedObjectsQuery) Execute(
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
 ) error {
+	return c.execute(ctx, req, resultChan, nil)
+}
+
+func (c *ConnectedObjectsQuery) execute(
+	ctx context.Context,
+	req *ConnectedObjectsRequest,
+	resultChan chan<- *ConnectedObjectsResult,
+	currentIngress *graph.RelationshipIngress,
+) error {
 	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
 		attribute.String("target_relation", req.Relation),
@@ -185,8 +193,8 @@ func (c *ConnectedObjectsQuery) Execute(
 	))
 	defer span.End()
 
-	if req.Ingress != nil {
-		span.SetAttributes(attribute.String("ingress", req.Ingress.String()))
+	if currentIngress != nil {
+		span.SetAttributes(attribute.String("ingress", currentIngress.String()))
 	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
@@ -225,15 +233,15 @@ func (c *ConnectedObjectsQuery) Execute(
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 		sourceUserRel := val.ObjectRelation.GetRelation()
 
-		if req.Ingress != nil {
-			key := fmt.Sprintf("%s#%s", sourceUserObj, req.Ingress.String())
+		if currentIngress != nil {
+			key := fmt.Sprintf("%s#%s", sourceUserObj, currentIngress.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this ingress, exit to avoid an infinite cycle
 				return nil
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.sendCandidate(ctx, req.Ingress, sourceUserObj, resultChan)
+				c.sendCandidate(ctx, currentIngress, sourceUserObj, resultChan)
 			}
 		}
 	}
@@ -256,7 +264,7 @@ func (c *ConnectedObjectsQuery) Execute(
 
 	for _, ingress := range ingresses {
 		innerLoopIngress := ingress
-		if req.Ingress != nil && req.Ingress.Condition == graph.RequiresFurtherEvalCondition {
+		if currentIngress != nil && currentIngress.Condition == graph.RequiresFurtherEvalCondition {
 			// propagate the condition to upcoming reverse expansions
 			// TODO don't mutate the ingress, keep track of the previous ingress's condition and use it in sendCandidate
 			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
@@ -275,8 +283,7 @@ func (c *ConnectedObjectsQuery) Execute(
 				return c.reverseExpandDirect(subgctx, r, resultChan)
 			case graph.ComputedUsersetIngress:
 				// lookup the rewritten target relation on the computed_userset ingress
-				return c.Execute(subgctx, &ConnectedObjectsRequest{
-					Ingress:    innerLoopIngress,
+				return c.execute(subgctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
@@ -287,7 +294,7 @@ func (c *ConnectedObjectsQuery) Execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
-				}, resultChan)
+				}, resultChan, innerLoopIngress)
 			case graph.TupleToUsersetIngress:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan)
 			default:
@@ -395,14 +402,13 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		}
 
 		subg.Go(func() error {
-			return c.Execute(subgctx, &ConnectedObjectsRequest{
-				Ingress:          req.ingress,
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan)
+			}, resultChan, req.ingress)
 		})
 	}
 
@@ -500,14 +506,13 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		}
 
 		subg.Go(func() error {
-			return c.Execute(subgctx, &ConnectedObjectsRequest{
-				Ingress:          req.ingress,
+			return c.execute(subgctx, &ConnectedObjectsRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan)
+			}, resultChan, req.ingress)
 		})
 	}
 

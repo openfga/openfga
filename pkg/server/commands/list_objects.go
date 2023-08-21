@@ -222,7 +222,6 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-				Ingress:          nil,
 			}, connectedObjectsResChan)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
