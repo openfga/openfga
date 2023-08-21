@@ -332,17 +332,9 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	targetObjectType := req.targetObjectRef.GetType()
 	targetObjectRel := req.targetObjectRef.GetRelation()
 
-	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
-
 	var userFilter []*openfgav1.ObjectRelation
 
-	// e.g. 'user:bob'
-	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
-		})
-	}
-
+	// a TTU ingress can only have a userset as a source node
 	// e.g. 'group:eng#member'
 	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
@@ -352,9 +344,10 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	// find all tuples of the form req.ingress.Type:...#req.ingress.TuplesetRelation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
-		Relation:   tuplesetRelation,
+		Relation:   req.ingress.TuplesetRelation.GetRelation(),
 		UserFilter: userFilter,
 	})
 	if err != nil {
@@ -378,27 +371,12 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
-		var sourceUserRef IsUserRef
-		sourceUserRef = &UserRefObject{
-			Object: &openfgav1.Object{
-				Type: foundObjectType,
-				Id:   foundObjectID,
+		sourceUserRef := &UserRefObjectRelation{
+			ObjectRelation: &openfgav1.ObjectRelation{
+				Object:   foundObject,
+				Relation: ingress.GetRelation(),
 			},
-		}
-
-		if _, ok := req.sourceUserRef.(*UserRefTypedWildcard); ok {
-			sourceUserRef = &UserRefTypedWildcard{Type: foundObjectType}
-		}
-
-		if _, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-			sourceUserRef = &UserRefObjectRelation{
-				ObjectRelation: &openfgav1.ObjectRelation{
-					Object:   foundObject,
-					Relation: ingress.GetRelation(),
-				},
-			}
 		}
 
 		subg.Go(func() error {
@@ -471,6 +449,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	// find all tuples of the form req.ingress.Type:...#req.ingress.Relation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
