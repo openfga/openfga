@@ -109,8 +109,9 @@ type ConnectedObjectsQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 
-	visitedObjectsMap *sync.Map
-	// candidateObjectsMap map allows us to not return the same object twice
+	// visitedUsersetsMap map prevents visiting the same userset through the same ingress twice
+	visitedUsersetsMap *sync.Map
+	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
 	maxCandidates       uint32
 	candidatesFound     *uint32
@@ -148,7 +149,7 @@ func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
 		maxCandidates:           defaultMaxResults,
 		candidateObjectsMap:     new(sync.Map),
-		visitedObjectsMap:       new(sync.Map),
+		visitedUsersetsMap:      new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -226,7 +227,8 @@ func (c *ConnectedObjectsQuery) Execute(
 
 		if req.Ingress != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, req.Ingress.String())
-			if _, loaded := c.visitedObjectsMap.LoadOrStore(key, struct{}{}); loaded {
+			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+				// we've already visited this userset through this ingress, exit to avoid an infinite cycle
 				return nil
 			}
 		}
@@ -256,6 +258,7 @@ func (c *ConnectedObjectsQuery) Execute(
 		innerLoopIngress := ingress
 		if req.Ingress != nil && req.Ingress.Condition == graph.RequiresFurtherEvalCondition {
 			// propagate the condition to upcoming reverse expansions
+			// TODO don't mutate the ingress, keep track of the previous ingress's condition and use it in sendCandidate
 			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
 		}
 		subg.Go(func() error {

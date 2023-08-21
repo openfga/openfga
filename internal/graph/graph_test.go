@@ -1380,6 +1380,51 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ttu_through_direct_rewrite_1",
+			model: `
+			type folder
+				relations
+				define viewer: [folder] as self
+		
+			type document
+				relations
+				define parent: [folder] as self
+				define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("folder", "viewer"),
+			expected: []*RelationshipIngress{
+				{
+					Type:             TupleToUsersetIngress,
+					Ingress:          typesystem.DirectRelationReference("document", "viewer"),
+					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
+					Condition:        NoFurtherEvalCondition,
+				},
+			},
+		},
+		{
+			name: "ttu_through_direct_rewrite_2",
+			model: `
+			type folder
+				relations
+				define viewer: [folder] as self
+		
+			type document
+				relations
+				define parent: [folder] as self
+				define viewer as viewer from parent
+			`,
+			target: typesystem.DirectRelationReference("document", "viewer"),
+			source: typesystem.DirectRelationReference("folder", ""),
+			expected: []*RelationshipIngress{
+				{
+					Type:      DirectIngress,
+					Ingress:   typesystem.DirectRelationReference("folder", "viewer"),
+					Condition: NoFurtherEvalCondition,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

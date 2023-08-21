@@ -4939,9 +4939,9 @@ tests:
               relation: a1
               user: user:maria
             errorCode: 2002
-  - name: issue_920
+  - name: race_condition_same_user_same_object_diff_relation
     stages:
-      - model: | #concurrent checks
+      - model: |
           type user
           type test_type
             relations
