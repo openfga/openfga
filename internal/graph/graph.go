@@ -109,13 +109,14 @@ type RelationshipIngress struct {
 	// TuplesetRelation defines the tupleset relation reference that relates a source
 	// object reference with a target if the type of the relationship ingress is that
 	// of a TupleToUserset
+	// TODO this can be just a string for the relation (since the type will be the same as Ingress.Type)
 	TuplesetRelation *openfgav1.RelationReference
 
 	Condition IngressCondition
 }
 
 func (r RelationshipIngress) String() string {
-	// TODO log the condition
+	// TODO also print the condition
 	val := ""
 	if r.TuplesetRelation != nil {
 		val = fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())

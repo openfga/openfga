@@ -231,10 +231,10 @@ func (c *ConnectedObjectsQuery) Execute(
 				// we've already visited this userset through this ingress, exit to avoid an infinite cycle
 				return nil
 			}
-		}
 
-		if req.Ingress != nil && sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-			c.sendCandidate(ctx, req.Ingress, sourceUserObj, resultChan)
+			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+				c.sendCandidate(ctx, req.Ingress, sourceUserObj, resultChan)
+			}
 		}
 	}
 
