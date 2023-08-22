@@ -4967,10 +4967,10 @@ tests:
               object: list_type:list_type1
             expectation: true
           - tuple:
-             user: user:test_user
-             relation: list_relation
-             object: list_type:list_type2
-             expectation: false
+              user: user:test_user
+              relation: list_relation
+              object: list_type:list_type2
+            expectation: false
         listObjectsAssertions:
           - request:
               user: user:test_user
