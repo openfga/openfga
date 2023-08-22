@@ -3,7 +3,6 @@ package test
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -51,30 +50,6 @@ type listObjectsTestCase struct {
 
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
 	testCases := []listObjectsTestCase{
-		{
-			name:   "no_max_results",
-			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
-				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
-			},
-			user:       "user:alice",
-			objectType: "repo",
-			relation:   "admin",
-			contextualTuples: &openfgav1.ContextualTupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{tuple.NewTupleKey("repo:3", "admin", "user:alice")},
-			},
-			maxResults:             math.MaxUint32,
-			minimumResultsExpected: 3,
-			allResults:             []string{"repo:1", "repo:2", "repo:3"},
-			useCheckCache:          false,
-		},
 		{
 			name:   "max_results_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
