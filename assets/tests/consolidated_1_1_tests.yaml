@@ -4969,7 +4969,7 @@ tests:
           - tuple:
              user: user:test_user
              relation: list_relation
-             object: list_type:list_typ2
+             object: list_type:list_type2
              expectation: false
         listObjectsAssertions:
           - request:
