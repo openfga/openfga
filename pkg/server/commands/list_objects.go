@@ -234,6 +234,9 @@ func (q *ListObjectsQuery) evaluate(
 		wg := sync.WaitGroup{}
 
 		for res := range connectedObjectsResChan {
+			if atomic.LoadUint32(objectsFound) >= maxResults {
+				break
+			}
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
