@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -27,7 +26,6 @@ const (
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultResolveNodeLimit        = 25
 	defaultResolveNodeBreadthLimit = 100
-	defaultMaxResults              = 1000
 )
 
 type ConnectedObjectsRequest struct {
@@ -112,8 +110,6 @@ type ConnectedObjectsQuery struct {
 	visitedUsersetsMap *sync.Map
 	// candidateObjectsMap map prevents returning the same object twice
 	candidateObjectsMap *sync.Map
-	maxCandidates       uint32
-	candidatesFound     *uint32
 }
 
 type ConnectedObjectsQueryOption func(d *ConnectedObjectsQuery)
@@ -130,24 +126,12 @@ func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
 	}
 }
 
-// WithMaxResults sets a limit on the number of candidate objects given. If 0, there is no limit.
-func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
-	return func(d *ConnectedObjectsQuery) {
-		d.maxCandidates = maxResults
-		d.candidatesFound = nil
-		if d.maxCandidates > 0 {
-			d.candidatesFound = new(uint32)
-		}
-	}
-}
-
 func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ConnectedObjectsQueryOption) *ConnectedObjectsQuery {
 	query := &ConnectedObjectsQuery{
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxCandidates:           defaultMaxResults,
 		candidateObjectsMap:     new(sync.Map),
 		visitedUsersetsMap:      new(sync.Map),
 	}
@@ -506,12 +490,9 @@ func (c *ConnectedObjectsQuery) trySendCandidate(ctx context.Context, ingress *g
 	))
 	defer span.End()
 	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
-		if c.candidatesFound != nil && atomic.AddUint32(c.candidatesFound, 1) > c.maxCandidates {
-			return
-		}
-
 		resultStatus := NoFurtherEvalStatus
 		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
+			span.SetAttributes(attribute.Bool("requires_further_eval", true))
 			resultStatus = RequiresFurtherEvalStatus
 		}
 		candidateChan <- &ConnectedObjectsResult{

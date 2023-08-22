@@ -201,17 +201,12 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		connectedObjectsResChan := make(chan *connectedobjects.ConnectedObjectsResult, 1)
+		var objectsFound = new(uint32)
 
 		connectedObjectsQuery := connectedobjects.NewConnectedObjectsQuery(q.datastore, typesys,
 			connectedobjects.WithResolveNodeLimit(q.resolveNodeLimit),
 			connectedobjects.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			connectedobjects.WithMaxResults(maxResults),
 		)
-
-		var foundCount *uint32 = nil
-		if maxResults > 0 {
-			foundCount = new(uint32)
-		}
 
 		go func() {
 			err = connectedObjectsQuery.Execute(ctx, &connectedobjects.ConnectedObjectsRequest{
@@ -225,6 +220,7 @@ func (q *ListObjectsQuery) evaluate(
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
+			// this is necessary to terminate the range loop below
 			close(connectedObjectsResChan)
 		}()
 
@@ -241,9 +237,7 @@ func (q *ListObjectsQuery) evaluate(
 		for res := range connectedObjectsResChan {
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
-
-				sendObject(res.Object, foundCount, maxResults, resultsChan)
-
+				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				continue
 			}
 
@@ -273,7 +267,7 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				if resp.Allowed {
-					sendObject(res.Object, foundCount, maxResults, resultsChan)
+					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -288,8 +282,8 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func sendObject(object string, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if foundCount != nil && atomic.AddUint32(foundCount, 1) > maxResults {
+func trySendObject(object string, objectsFound *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	if objectsFound != nil && atomic.AddUint32(objectsFound, 1) > maxResults {
 		return
 	}
 	resultsChan <- ListObjectsResult{ObjectID: object}
