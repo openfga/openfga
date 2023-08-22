@@ -242,7 +242,7 @@ func (c *ConnectedObjectsQuery) execute(
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.sendCandidate(ctx, currentIngress, sourceUserObj, resultChan)
+				c.trySendCandidate(ctx, currentIngress, sourceUserObj, resultChan)
 			}
 		}
 	}
@@ -267,7 +267,7 @@ func (c *ConnectedObjectsQuery) execute(
 		innerLoopIngress := ingress
 		if currentIngress != nil && currentIngress.Condition == graph.RequiresFurtherEvalCondition {
 			// propagate the condition to upcoming reverse expansions
-			// TODO don't mutate the ingress, keep track of the previous ingress's condition and use it in sendCandidate
+			// TODO don't mutate the ingress, keep track of the previous ingress's condition and use it in trySendCandidate
 			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
 		}
 		subg.Go(func() error {
@@ -499,15 +499,16 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	return subg.Wait()
 }
 
-func (c *ConnectedObjectsQuery) sendCandidate(ctx context.Context, ingress *graph.RelationshipIngress, candidateObject string, candidateChan chan<- *ConnectedObjectsResult) {
+func (c *ConnectedObjectsQuery) trySendCandidate(ctx context.Context, ingress *graph.RelationshipIngress, candidateObject string, candidateChan chan<- *ConnectedObjectsResult) {
+	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
+		attribute.String("object", candidateObject),
+		attribute.Bool("sent", false),
+	))
+	defer span.End()
 	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
 		if c.candidatesFound != nil && atomic.AddUint32(c.candidatesFound, 1) > c.maxCandidates {
 			return
 		}
-		_, span := tracer.Start(ctx, "sendCandidate", trace.WithAttributes(
-			attribute.String("object", candidateObject),
-		))
-		defer span.End()
 
 		resultStatus := NoFurtherEvalStatus
 		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
@@ -517,5 +518,6 @@ func (c *ConnectedObjectsQuery) sendCandidate(ctx context.Context, ingress *grap
 			Object:       candidateObject,
 			ResultStatus: resultStatus,
 		}
+		span.SetAttributes(attribute.Bool("sent", true))
 	}
 }
