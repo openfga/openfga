@@ -43,6 +43,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
+		Conditions:      req.GetConditions(),
 	}
 
 	_, err := typesystem.NewAndValidate(ctx, model)

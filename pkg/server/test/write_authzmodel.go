@@ -17,6 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func conditionedRelation(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
+	rel.Condition = condition
+	return rel
+}
+
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID := ulid.Make().String()
 
@@ -427,6 +432,46 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			err: serverErrors.InvalidAuthorizationModelInput(
 				fmt.Errorf("type 'user' defines a relation with an empty string for a name"),
 			),
+		},
+
+		// conditions
+		{
+			name: "condition_fails_undefined",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: "string",
+							},
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(typesystem.ErrConditionUndefined),
 		},
 	}
 

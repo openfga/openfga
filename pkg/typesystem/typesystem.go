@@ -37,6 +37,7 @@ var (
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
 	ErrNoEntryPointsLoop     = errors.New("potential loop")
+	ErrConditionUndefined    = errors.New("undefined condition")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -149,6 +150,7 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
 	relations     map[string]map[string]*openfgav1.Relation
+	conditions    map[string]*openfgav1.Condition
 	modelID       string
 	schemaVersion string
 }
@@ -186,6 +188,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 		relations:       relations,
+		conditions:      model.GetConditions(),
 	}
 }
 
@@ -846,7 +849,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		sort.Strings(relationNames)
 
 		for _, relationName := range relationNames {
-
 			err := t.validateRelation(typeName, relationName, relationMap)
 			if err != nil {
 				return nil, err
@@ -861,6 +863,13 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
 		return nil, err
 	}
+
+	// Validate the conditions provided in the model
+	// Each condition should define a well-formed expression and its parameters
+	// should be well-defined (e.g. the expression and parameters should be compilable)
+
+	// Validate the conditions referenced by the relation(s) (defined by the type restrictions) -
+	// the referenced conditions should be defined in the list of conditions included in the model.
 
 	return t, nil
 }
@@ -1029,7 +1038,6 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 //     must be defined in the model.
 //  4. If the provided relation is a tupleset relation, then the type restriction must be on a direct object.
 func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName string) error {
-
 	relation, err := t.GetRelation(objectType, relationName)
 	if err != nil {
 		return err
@@ -1064,6 +1072,12 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 				if _, err := t.GetRelation(relatedObjectType, relatedRelation); err != nil {
 					return InvalidRelationTypeError(objectType, relationName, relatedObjectType, relatedRelation)
 				}
+			}
+		}
+
+		if related.Condition != "" {
+			if _, ok := t.conditions[related.Condition]; !ok {
+				return ErrConditionUndefined
 			}
 		}
 	}
