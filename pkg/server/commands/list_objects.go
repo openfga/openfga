@@ -21,7 +21,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/zap"
 )
 
 const (
@@ -321,8 +320,7 @@ func (q *ListObjectsQuery) Execute(
 
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
-				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.listObjectsDeadline.String()),
+				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
 			return &openfgav1.ListObjectsResponse{
 				Objects: objects,
@@ -376,8 +374,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
-				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.listObjectsDeadline.String()),
+				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
 			return nil
 
