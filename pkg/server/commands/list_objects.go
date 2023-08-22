@@ -208,9 +208,7 @@ func (q *ListObjectsQuery) evaluate(
 			connectedobjects.WithMaxResults(maxResults),
 		)
 
-		// foundObjects map allows us to not return the same object twice
-		var foundObjectsMap sync.Map
-		var foundCount *uint32
+		var foundCount *uint32 = nil
 		if maxResults > 0 {
 			foundCount = new(uint32)
 		}
@@ -244,7 +242,7 @@ func (q *ListObjectsQuery) evaluate(
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 
-				sendObject(res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
+				sendObject(res.Object, foundCount, maxResults, resultsChan)
 
 				continue
 			}
@@ -275,7 +273,7 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				if resp.Allowed {
-					sendObject(res.Object, &foundObjectsMap, foundCount, maxResults, resultsChan)
+					sendObject(res.Object, foundCount, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -290,12 +288,11 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func sendObject(object string, foundObjectsMap *sync.Map, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if _, loaded := foundObjectsMap.LoadOrStore(object, struct{}{}); !loaded {
-		if foundCount != nil && atomic.AddUint32(foundCount, 1) <= maxResults {
-			resultsChan <- ListObjectsResult{ObjectID: object}
-		}
+func sendObject(object string, foundCount *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	if foundCount != nil && atomic.AddUint32(foundCount, 1) > maxResults {
+		return
 	}
+	resultsChan <- ListObjectsResult{ObjectID: object}
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults

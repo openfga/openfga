@@ -134,6 +134,7 @@ func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
 func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
 	return func(d *ConnectedObjectsQuery) {
 		d.maxCandidates = maxResults
+		d.candidatesFound = nil
 		if d.maxCandidates > 0 {
 			d.candidatesFound = new(uint32)
 		}
@@ -171,7 +172,7 @@ type ConnectedObjectsResult struct {
 }
 
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
-// and sends those objects to resultChan. It guarantees no duplicate objects sent.
+// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
 func (c *ConnectedObjectsQuery) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
