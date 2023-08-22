@@ -325,6 +325,8 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: val.ObjectRelation.Object,
 		})
+	} else {
+		panic("unexpected source for reverse expansion of tuple to userset")
 	}
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
