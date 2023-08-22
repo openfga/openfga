@@ -56,15 +56,15 @@
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
         },
-        "latencyDBQueryCountBuckets": {
-            "description": "Database query count buckets used in labelling latency histogram statistics",
+        "requestDurationDatastoreQueryCountBuckets": {
+            "description": "Datastore query count buckets used in labelling request duration by request histogram statistics",
             "type": "array",
             "items": {
                 "minimum": 0,
                 "type": "integer"
             },
             "default": [50, 200],
-            "x-env-variable": "OPENFGA_LATENCY_DB_QUERY_COUNT_BUCKETS"
+            "x-env-variable": "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS"
         },
         "experimentals": {
             "description": "a list of experimental features to enable",

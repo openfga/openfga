@@ -71,11 +71,11 @@ var (
 		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"grpc_service", "grpc_method"})
 
-	latencyHistogramName = "latency"
+	requestDurationByQueryHistogramName = "request_duration_by_query_count_ms"
 
-	latencyHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:                            latencyHistogramName,
-		Help:                            "Observed latency (in milliseconds)",
+	requestDurationByQueryHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            requestDurationByQueryHistogramName,
+		Help:                            "The request duration (in ms) labeled by method and buckets of datastore query counts. This allows for reporting percentiles based on the number of datastore queries required to resolve the request.",
 		Buckets:                         []float64{1, 5, 10, 25, 50, 80, 100, 150, 200, 300, 1000, 2000, 5000},
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
@@ -109,7 +109,7 @@ type Server struct {
 	checkQueryCacheTTL     time.Duration
 	checkCache             *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
 
-	latencyDBCountBuckets []uint
+	requestDurationByQueryHistogramBuckets []uint
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -231,11 +231,11 @@ func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
 	}
 }
 
-// WithLatencyDBQueryCountBuckets sets the buckets used in labelling the latencyHistogram
-func WithLatencyDBQueryCountBuckets(buckets []uint) OpenFGAServiceV1Option {
+// WithRequestDurationByQueryHistogramBuckets sets the buckets used in labelling the requestDurationByQueryHistogram
+func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1Option {
 	return func(s *Server) {
 		sort.Slice(buckets, func(i, j int) bool { return buckets[i] < buckets[j] })
-		s.latencyDBCountBuckets = buckets
+		s.requestDurationByQueryHistogramBuckets = buckets
 	}
 }
 
@@ -268,7 +268,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
 		checkCache:             nil,
 
-		latencyDBCountBuckets: []uint{50, 200},
+		requestDurationByQueryHistogramBuckets: []uint{50, 200},
 	}
 
 	for _, opt := range opts {
@@ -297,8 +297,8 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("a datastore option must be provided")
 	}
 
-	if len(s.latencyDBCountBuckets) == 0 {
-		return nil, fmt.Errorf("latency database count buckets must not be empty")
+	if len(s.requestDurationByQueryHistogramBuckets) == 0 {
+		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
 
 	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
@@ -440,6 +440,8 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 }
 
 func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openfgav1.CheckResponse, error) {
+	start := time.Now()
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Check", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -447,7 +449,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
-	start := time.Now()
 
 	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput
@@ -510,9 +511,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
-	latencyHistogram.WithLabelValues(
+	requestDurationByQueryHistogram.WithLabelValues(
 		"Check",
-		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.latencyDBCountBuckets),
+		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return res, nil

@@ -303,25 +303,25 @@ func TestVerifyConfig(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("empty_latency_db_query_count_buckets", func(t *testing.T) {
+	t.Run("empty_request_duration_datastore_query_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.LatencyDBQueryCountBuckets = []string{}
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{}
 
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
 	})
 
-	t.Run("non_int_latency_db_query_count_buckets", func(t *testing.T) {
+	t.Run("non_int_request_duration_datastore_query_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.LatencyDBQueryCountBuckets = []string{"12", "45a", "66"}
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{"12", "45a", "66"}
 
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
 	})
 
-	t.Run("negative_latency_db_query_count_buckets", func(t *testing.T) {
+	t.Run("negative_request_duration_datastore_query_count_buckets", func(t *testing.T) {
 		cfg := DefaultConfig()
-		cfg.LatencyDBQueryCountBuckets = []string{"12", "-45", "66"}
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{"12", "-45", "66"}
 
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
@@ -1096,11 +1096,11 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
 
-	val = res.Get("properties.latencyDBQueryCountBuckets.default")
+	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
 	require.True(t, val.Exists())
-	require.Equal(t, len(val.Array()), len(cfg.LatencyDBQueryCountBuckets))
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
 	for index, arrayVal := range val.Array() {
-		require.Equal(t, arrayVal.String(), cfg.LatencyDBQueryCountBuckets[index])
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
 	}
 }
 
@@ -1113,7 +1113,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
-		require.Equal(t, []int{}, viper.GetIntSlice("latency-db-query-count-buckets"))
+		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 
@@ -1148,7 +1148,7 @@ func TestParseConfig(t *testing.T) {
     enabled: true
     limit: 100
     TTL: 5s
-latencyDBQueryCountBuckets: [33,44]
+requestDurationDatastoreQueryCountBuckets: [33,44]
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1166,7 +1166,7 @@ latencyDBQueryCountBuckets: [33,44]
 	require.True(t, cfg.CheckQueryCache.Enabled)
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
-	require.Equal(t, []string{"33", "44"}, cfg.LatencyDBQueryCountBuckets)
+	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {
@@ -1180,7 +1180,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
-	t.Setenv("OPENFGA_LATENCY_DB_QUERY_COUNT_BUCKETS", "33 44")
+	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1192,7 +1192,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
 
-		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("latency-db-query-count-buckets"))
+		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 
