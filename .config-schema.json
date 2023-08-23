@@ -61,7 +61,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": []
+                "enum": ["check-query-cache"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
@@ -347,6 +347,30 @@
                     "type": "bool",
                     "default": "false",
                     "x-env-variable": "OPENFGA_METRICS_ENABLE_RPC_HISTOGRAMS"
+                }
+            }
+        },
+        "checkQueryCache": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses",
+                    "type": "bool",
+                    "default": "false",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_ENABLED"
+                },
+                "limit": {
+                    "description": "if caching of Check and ListObjects calls is enabled, this is the size limit (in items) of the cache",
+                    "type": "integer",
+                    "default": "10000",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_LIMIT"
+                },
+                "ttl": {
+                    "description": "if caching of Check and ListObjects is enabled, this is the TTL of each value",
+                    "type": "string",
+                    "format": "duration",
+                    "default": "10s",
+                    "x-env-variable": "OPENFGA_CHECK_QUERY_CACHE_TTL"
                 }
             }
         }

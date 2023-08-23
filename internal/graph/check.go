@@ -26,12 +26,6 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
-// CheckResolver represents an interface that can be implemented to provide recursive resolution
-// of a Check.
-type CheckResolver interface {
-	ResolveCheck(ctx context.Context, req *ResolveCheckRequest) (*ResolveCheckResponse, error)
-}
-
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
@@ -116,6 +110,7 @@ type checkOutcome struct {
 
 type LocalChecker struct {
 	ds                 storage.RelationshipTupleReader
+	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
 }
@@ -136,14 +131,31 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
+func WithDelegate(delegate CheckResolver) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		d.delegate = delegate
+	}
+}
+
+func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
+	return func(d *LocalChecker) {
+		cachedCheckResolver := NewCachedCheckResolver(
+			d,
+			opts...,
+		)
+		d.SetDelegate(cachedCheckResolver)
+	}
+}
+
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) *LocalChecker {
+func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
 	checker := &LocalChecker{
 		ds:                 ds,
 		concurrencyLimit:   defaultResolveNodeBreadthLimit,
 		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
 	}
+	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 
 	for _, opt := range opts {
 		opt(checker)
@@ -151,7 +163,9 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 
 	checker.ds = storagewrappers.NewBoundedConcurrencyTupleReader(checker.ds, checker.maxConcurrentReads)
 
-	return checker
+	// Depending on whether cached check resolver is used,
+	// we either return the newly created checker or the delegate (i.e., cached check resolver).
+	return checker.delegate
 }
 
 // CheckHandlerFunc defines a function that evaluates a CheckResponse or returns an error
@@ -400,11 +414,19 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 	}, nil
 }
 
+// Close is a noop
+func (c *LocalChecker) Close() {
+}
+
+func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
+	c.delegate = delegate
+}
+
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
-		return c.ResolveCheck(ctx, req)
+		return c.delegate.ResolveCheck(ctx, req)
 	}
 }
 
@@ -465,6 +487,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		objectType := tuple.GetType(tk.GetObject())
 		relation := tk.GetRelation()
 
+		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
+		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
+
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
 			defer span.End()
@@ -496,30 +521,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return response, nil
 		}
 
-		var checkFuncs []CheckHandlerFunc
-
-		if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-			checkFuncs = append(checkFuncs, fn1)
-		} else {
-			shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-				typesystem.DirectRelationReference(objectType, relation),                                         //target
-				typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
-			)
-
-			if shouldCheckDirectTuple {
-				checkFuncs = append(checkFuncs, fn1)
-			}
-		}
-
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
 			defer span.End()
-
-			var allowedUserTypeRestrictions []*openfgav1.RelationReference
-			if typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-				// allowedUserTypeRestrictions could be "user" or "user:*" or "group#member"
-				allowedUserTypeRestrictions, _ = typesys.GetDirectlyRelatedUserTypes(objectType, relation)
-			}
 
 			response := &ResolveCheckResponse{
 				Allowed: false,
@@ -531,7 +535,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 				Object:                      tk.Object,
 				Relation:                    tk.Relation,
-				AllowedUserTypeRestrictions: allowedUserTypeRestrictions,
+				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
 				return response, err
@@ -602,7 +606,21 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			return union(ctx, c.concurrencyLimit, handlers...)
 		}
 
-		checkFuncs = append(checkFuncs, fn2)
+		var checkFuncs []CheckHandlerFunc
+
+		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
+			typesystem.DirectRelationReference(objectType, relation),                                         //target
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+		)
+
+		if shouldCheckDirectTuple {
+			checkFuncs = []CheckHandlerFunc{fn1}
+		}
+
+		if len(directlyRelatedUsersetTypes) > 0 {
+			checkFuncs = append(checkFuncs, fn2)
+
+		}
 
 		return union(ctx, c.concurrencyLimit, checkFuncs...)
 	}

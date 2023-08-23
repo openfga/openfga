@@ -179,15 +179,15 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "no_direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:unknown"),
 			allowed:    false,
-			minDBReads: 2, // both checkDirectUserTuple and checkDirectUsersetTuples need to run
-			maxDBReads: 2,
+			minDBReads: 1, // both checkDirectUserTuple
+			maxDBReads: 1,
 		},
 		{
 			name:       "direct_access",
 			check:      tuple.NewTupleKey("document:x", "a", "user:maria"),
 			allowed:    true,
 			minDBReads: 1, // checkDirectUserTuple needs to run
-			maxDBReads: 2, // maybe checkDirectUsersetTuples also runs
+			maxDBReads: 1,
 		},
 		{
 			name:             "direct_access_thanks_to_contextual_tuple", // NOTE: this is counting the read from memory as a database read!
@@ -195,49 +195,49 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			contextualTuples: []*openfgav1.TupleKey{tuple.NewTupleKey("document:x", "a", "user:unknown")},
 			allowed:          true,
 			minDBReads:       1, // checkDirectUserTuple needs to run
-			maxDBReads:       2, // maybe checkDirectUsersetTuples also runs
+			maxDBReads:       1,
 		},
 		{
 			name:       "union",
 			check:      tuple.NewTupleKey("document:x", "union", "user:maria"),
 			allowed:    true,
 			minDBReads: 1, // checkDirectUserTuple needs to run
-			maxDBReads: 2, // maybe checkDirectUsersetTuples also runs
+			maxDBReads: 1,
 		},
 		{
 			name:       "union_no_access",
 			check:      tuple.NewTupleKey("document:x", "union", "user:unknown"),
 			allowed:    false,
-			minDBReads: 4, // need to check all the conditions in the union, so two direct tuple lookups + two userset lookups
-			maxDBReads: 4,
+			minDBReads: 2, // need to check all the conditions in the union
+			maxDBReads: 2,
 		},
 		{
 			name:       "intersection",
 			check:      tuple.NewTupleKey("document:x", "intersection", "user:maria"),
 			allowed:    true,
 			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			maxDBReads: 2, // at most two tuple checks
 		},
 		{
 			name:       "intersection_no_access",
 			check:      tuple.NewTupleKey("document:x", "intersection", "user:unknown"),
 			allowed:    false,
-			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			minDBReads: 1, // need at minimum one direct tuple checks (short circuit the ohter path)
+			maxDBReads: 1,
 		},
 		{
 			name:       "difference",
 			check:      tuple.NewTupleKey("document:x", "difference", "user:jon"),
 			allowed:    true,
 			minDBReads: 2, // need at minimum two direct tuple checks
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			maxDBReads: 2,
 		},
 		{
 			name:       "difference_no_access",
 			check:      tuple.NewTupleKey("document:x", "difference", "user:maria"),
 			allowed:    false,
 			minDBReads: 1, // if the "but not" condition returns quickly with "false", no need to evaluate the first branch
-			maxDBReads: 4, // at most two tuple checks + two userset checks
+			maxDBReads: 2, // at most two tuple checks
 		},
 		{
 			name:       "ttu",
@@ -250,8 +250,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "ttu", "user:jon"),
 			allowed:    false,
-			minDBReads: 3, // one read to find org:fga + (one direct check + userset check) to see if user:jon is a member of org:fga
-			maxDBReads: 3,
+			minDBReads: 2, // one read to find org:fga + (one direct check) to see if user:jon is a member of org:fga
+			maxDBReads: 2,
 		},
 		// more complex scenarios
 		{
@@ -265,8 +265,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "union_and_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_and_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 3, // min(union (4 reads), ttu (3 reads))
-			maxDBReads: 4, // max(union (4 reads), ttu (3 reads))
+			minDBReads: 2, // min(union (2 reads), ttu (4 reads))
+			maxDBReads: 4, // max(union (2 reads), ttu (4 reads))
 		},
 		{
 			name:       "union_or_ttu",
@@ -279,8 +279,8 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			name:       "union_or_ttu_no_access",
 			check:      tuple.NewTupleKey("document:x", "union_or_ttu", "user:unknown"),
 			allowed:    false,
-			minDBReads: 11, // union (4 reads) + ttu (3 reads) + union rewrite (4 reads)
-			maxDBReads: 11,
+			minDBReads: 6, // union (2 reads) + ttu (2 reads) + union rewrite (2 reads)
+			maxDBReads: 6,
 		},
 		{
 			name:       "intersection_of_ttus", //union_or_ttu and union_and_ttu
@@ -293,6 +293,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
+
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
 			t.Parallel()
 			for _, test := range tests {

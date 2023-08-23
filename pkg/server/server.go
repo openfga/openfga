@@ -11,6 +11,7 @@ import (
 	"time"
 
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
@@ -23,9 +24,13 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -33,8 +38,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
+	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultChangelogHorizonOffset           = 0
@@ -44,9 +50,25 @@ const (
 	defaultListObjectsMaxResults            = 1000
 	defaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
+	defaultCheckQueryCacheLimit             = 10000
+	defaultCheckQueryCacheTTL               = 10 * time.Second
+	defaultCheckQueryCacheEnable            = false
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
+
+var (
+	datastoreQueryCountHistogramName = "datastore_query_count"
+
+	datastoreQueryCountHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:                            datastoreQueryCountHistogramName,
+		Help:                            "The number of database queries required to resolve a query (e.g. Check or ListObjects).",
+		Buckets:                         []float64{1, 5, 20, 50, 100, 150, 225, 400, 500, 750, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
+	}, []string{"grpc_service", "grpc_method"})
+)
 
 // A Server implements the OpenFGA service backend as both
 // a GRPC and HTTP server.
@@ -67,6 +89,12 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
+
+	checkOptions           []graph.LocalCheckerOption
+	checkQueryCacheEnabled bool
+	checkQueryCacheLimit   uint32
+	checkQueryCacheTTL     time.Duration
+	checkCache             *ccache.Cache[*graph.CachedResolveCheckResponse] // checkCache has to be shared across requests
 }
 
 type OpenFGAServiceV1Option func(s *Server)
@@ -167,6 +195,27 @@ func WithExperimentals(experimentals ...ExperimentalFeatureFlag) OpenFGAServiceV
 	}
 }
 
+// WithCheckQueryCacheEnabled enables/disables caching of check and list objects partial results.
+func WithCheckQueryCacheEnabled(enabled bool) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheEnabled = enabled
+	}
+}
+
+// WithCheckQueryCacheLimit sets the cache size limit (in items)
+func WithCheckQueryCacheLimit(limit uint32) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheLimit = limit
+	}
+}
+
+// WithCheckQueryCacheTTL sets the TTL of cached checks and list objects partial results
+func WithCheckQueryCacheTTL(ttl time.Duration) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.checkQueryCacheTTL = ttl
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -190,10 +239,33 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
+
+		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
+		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
+		checkCache:             nil,
 	}
 
 	for _, opt := range opts {
 		opt(s)
+	}
+
+	s.checkOptions = []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+	}
+
+	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
+		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
+			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
+			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
+		s.checkCache = ccache.New(
+			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
+		)
+		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
 	}
 
 	if s.datastore == nil {
@@ -223,13 +295,24 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, err
 	}
 
+	checkOptions := []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	}
+	if s.checkCache != nil {
+		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithCheckOptions(checkOptions),
 	)
 
 	return q.Execute(
@@ -261,13 +344,24 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return err
 	}
 
+	checkOptions := []graph.LocalCheckerOption{
+		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
+		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+	}
+	if s.checkCache != nil {
+		checkOptions = append(checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
+	}
+
 	q := commands.NewListObjectsQuery(s.datastore,
 		commands.WithLogger(s.logger),
 		commands.WithListObjectsDeadline(s.listObjectsDeadline),
 		commands.WithListObjectsMaxResults(s.listObjectsMaxResults),
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
+		commands.WithCheckOptions(checkOptions),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
@@ -350,9 +444,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	checkResolver := graph.NewLocalChecker(
 		storagewrappers.NewCombinedTupleReader(s.datastore, req.ContextualTuples.GetTupleKeys()),
-		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
-		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+		s.checkOptions...,
 	)
+	defer checkResolver.Close()
 
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
@@ -371,8 +465,15 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 		return nil, serverErrors.HandleError("", err)
 	}
-	grpc_ctxtags.Extract(ctx).Set("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount))
-	span.SetAttributes(attribute.Int64("datastore_query_count", int64(resp.GetResolutionMetadata().DatastoreQueryCount)))
+
+	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		"check",
+	).Observe(queryCount)
 
 	res := &openfgav1.CheckResponse{
 		Allowed: resp.Allowed,
