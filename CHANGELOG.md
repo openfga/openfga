@@ -8,12 +8,26 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [1.3.1] - 2023-08-02
+## [1.3.1] - 2023-08-23
 
 ### Added
 * Count datastore queries involved in Check resolution ([#880](https://github.com/openfga/openfga/pull/880))
 
   OpenFGA request logs will now include a field `datastore_query_count` that shows how many queries were involved in a single Check resolution.
+
+* Histogram metric to report the `datastore_query_count` per Check ([#924](https://github.com/openfga/openfga/pull/932))
+
+  This new metric can be used to report percentiles of the number of database queries required to resolve Check requests.
+
+* Prune user lookup optimization in Check ([#932](https://github.com/openfga/openfga/pull/932)
+
+* CachedCheckResolver for caching Check subproblems ([#891](https://github.com/openfga/openfga/pull/891))
+
+  This experimental feature adds new caching capabilities to the OpenFGA server. It is an "opt-in" feature and thus must be enabled. To enable this feature you must specify the experimental flag `check-query-cache` and set the  `--check-query-cache-enabled=true` flag.
+
+  ```shell
+  openfga run --experimentals check-query-cache --check-query-cache-enabled=true
+  ```
 
 ### Changed
 * Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
