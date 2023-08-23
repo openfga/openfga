@@ -73,7 +73,9 @@ func TestRelationshipIngress_String(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			require.Equal(t, tc.expected, tc.ingress.String())
 		})
 	}
@@ -228,7 +230,9 @@ func TestPrunedRelationshipIngresses(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
@@ -1357,7 +1361,9 @@ func TestConnectedObjectGraph_RelationshipIngresses(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,

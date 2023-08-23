@@ -1158,7 +1158,9 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			require := require.New(t)
 
 			ctx := context.Background()

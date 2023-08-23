@@ -135,7 +135,9 @@ func TestNewAndValidate(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewAndValidate(context.Background(), &openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.model),
@@ -216,7 +218,9 @@ func TestSuccessfulRewriteValidations(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 		})
@@ -653,7 +657,9 @@ func TestInvalidRewriteValidations(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewAndValidate(context.Background(), test.model)
 			require.ErrorIs(t, err, test.err)
 		})
@@ -754,7 +760,9 @@ func TestSuccessfulRelationTypeRestrictionsValidations(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 		})
@@ -1228,7 +1236,9 @@ func TestInvalidRelationTypeRestrictionsValidations(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := NewAndValidate(context.Background(), test.model)
 			require.EqualError(t, err, test.err.Error())
 		})
@@ -1450,8 +1460,9 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -1609,8 +1620,9 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -1815,7 +1827,9 @@ func TestIsTuplesetRelation(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			typesys := New(test.model)
 
 			actual, err := typesys.IsTuplesetRelation(test.objectType, test.relation)
@@ -1918,8 +1932,9 @@ func TestIsDirectlyRelated(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 			typesys := New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
@@ -2001,8 +2016,9 @@ func TestIsPubliclyAssignable(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 			typesys := New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
@@ -2040,8 +2056,9 @@ func TestRewriteContainsExclusion(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -2081,8 +2098,9 @@ func TestRewriteContainsIntersection(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -2170,8 +2188,9 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
+		test := test
 		t.Run(test.name, func(t *testing.T) {
-
+			t.Parallel()
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{

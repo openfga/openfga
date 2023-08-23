@@ -48,6 +48,7 @@ func TestSplitObjectId(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			td, oid := SplitObject(tc.objectID)
 
 			require.Equal(t, tc.expectedType, td)
@@ -97,7 +98,9 @@ func TestSplitObjectRelation(t *testing.T) {
 			expectedRelation: "reader",
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			obj, rel := SplitObjectRelation(tc.objectRelation)
 
 			require.Equal(t, tc.expectedObject, obj)
@@ -132,7 +135,9 @@ func TestIsObjectRelation(t *testing.T) {
 			expected:       true,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := IsObjectRelation(tc.objectRelation)
 			require.Equal(t, tc.expected, got)
 		})
@@ -169,7 +174,9 @@ func TestIsValidObject(t *testing.T) {
 			valid: false,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := IsValidObject(tc.name)
 			require.Equal(t, tc.valid, got)
 		})
@@ -198,7 +205,9 @@ func TestIsValidRelation(t *testing.T) {
 			valid: true,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := IsValidRelation(tc.name)
 			require.Equal(t, tc.valid, got)
 		})
@@ -288,7 +297,9 @@ func TestIsValidUser(t *testing.T) {
 			valid: false,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := IsValidUser(tc.name)
 			require.Equal(t, tc.valid, got)
 		})
@@ -325,7 +336,9 @@ func TestGetUsertypeFromUser(t *testing.T) {
 			want: User,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := GetUserTypeFromUser(tc.name)
 			require.Equal(t, tc.want, got)
 		})
@@ -354,7 +367,9 @@ func TestGetObjectRelationAsString(t *testing.T) {
 			want: "team:fga",
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			got := GetObjectRelationAsString(tc.input)
 			require.Equal(t, tc.want, got)
 		})
