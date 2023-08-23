@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"sort"
 	"testing"
 	"time"
 
@@ -25,7 +24,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		tuples           []*openfgav1.TupleKey
 		request          *connectedobjects.ConnectedObjectsRequest
 		resolveNodeLimit uint32
-		limit            uint32
 		expectedResult   []*connectedobjects.ConnectedObjectsResult
 		expectedError    error
 	}{
@@ -83,13 +81,13 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 			model: `
 			type user
-          
+
 			type folder
 			  relations
 				define writer: [user] as self
 				define editor: [user] as self
 				define viewer as writer and editor
-	  
+
 			type document
 			  relations
 				define parent: [folder] as self
@@ -107,44 +105,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 		},
-		{
-			name: "restrict_results_based_on_limit",
-			request: &connectedobjects.ConnectedObjectsRequest{
-				StoreID:    ulid.Make().String(),
-				ObjectType: "folder",
-				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
-					Object: &openfgav1.Object{
-						Type: "user",
-						Id:   "jon",
-					},
-				},
-				ContextualTuples: []*openfgav1.TupleKey{},
-			},
-			limit: 2,
-			model: `
-			type user
 
-			type folder
-			  relations
-			    define viewer: [user] as self
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:folder2", "viewer", "user:jon"),
-				tuple.NewTupleKey("folder:folder3", "viewer", "user:jon"),
-			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
-				{
-					Object:       "folder:folder1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
-				},
-				{
-					Object:       "folder:folder2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
-				},
-			},
-		},
 		{
 			name: "resolve_direct_relationships_with_tuples_and_contextual_tuples",
 			request: &connectedobjects.ConnectedObjectsRequest{
@@ -427,6 +388,34 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			},
 		},
 		{
+			name: "objects_connected_to_a_userset_self_referencing",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "group",
+				Relation:   "member",
+				User: &connectedobjects.UserRefObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
+						Object:   "group:iam",
+						Relation: "member",
+					},
+				},
+			},
+			model: `
+			type group
+			  relations
+			    define member: [group#member] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
+			},
+			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "group:iam",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+			},
+		},
+		{
 			name: "objects_connected_through_a_computed_userset_1",
 			request: &connectedobjects.ConnectedObjectsRequest{
 				StoreID:    ulid.Make().String(),
@@ -514,13 +503,12 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			type team
 			  relations
 			    define admin: [user] as self
-			    define member: [user,team#member] as self or admin
+			    define member as admin
 
 			type trial
 			  relations
-			    define editor: [user,team#member] as self or owner
-			    define owner: [user] as self
-			    define viewer: [user,team#member] as self or editor
+			    define editor: [team#member] as self
+			    define viewer as editor
 			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("trial:1", "editor", "team:devs#member"),
@@ -1155,6 +1143,41 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				},
 			},
 		},
+		{
+			name: "does_not_send_duplicate_even_though_there_are_two_paths_to_same_solution",
+			request: &connectedobjects.ConnectedObjectsRequest{
+				StoreID:    ulid.Make().String(),
+				ObjectType: "document",
+				Relation:   "viewer",
+				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+					Type: "user",
+					Id:   "jon",
+				}},
+			},
+			model: `
+			type user
+
+			type group
+			  relations
+				define member: [user] as self
+				define maintainer: [user] as self
+
+			type document
+			  relations
+				define viewer: [group#member,group#maintainer] as self
+			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:example1#maintainer"),
+				tuple.NewTupleKey("group:example1", "maintainer", "user:jon"),
+				tuple.NewTupleKey("group:example1", "member", "user:jon"),
+			},
+			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+				{
+					Object:       "document:1",
+					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -1180,10 +1203,6 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 			if test.resolveNodeLimit != 0 {
 				opts = append(opts, connectedobjects.WithResolveNodeLimit(test.resolveNodeLimit))
-			}
-
-			if test.limit != 0 {
-				opts = append(opts, connectedobjects.WithMaxResults(test.limit))
 			}
 
 			connectedObjectsCmd := connectedobjects.NewConnectedObjectsQuery(ds, typesystem.New(model), opts...)
@@ -1216,15 +1235,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			}
 
 			if test.expectedError == nil {
-				sort.Slice(results, func(i, j int) bool {
-					return results[i].Object < results[j].Object
-				})
-
-				sort.Slice(test.expectedResult, func(i, j int) bool {
-					return test.expectedResult[i].Object < test.expectedResult[j].Object
-				})
-
-				require.Equal(test.expectedResult, results)
+				require.ElementsMatch(test.expectedResult, results)
 			}
 		})
 	}

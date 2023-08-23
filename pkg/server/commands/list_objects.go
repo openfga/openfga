@@ -205,7 +205,6 @@ func (q *ListObjectsQuery) evaluate(
 		connectedObjectsQuery := connectedobjects.NewConnectedObjectsQuery(q.datastore, typesys,
 			connectedobjects.WithResolveNodeLimit(q.resolveNodeLimit),
 			connectedobjects.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			connectedobjects.WithMaxResults(maxResults),
 		)
 
 		go func() {
@@ -220,6 +219,7 @@ func (q *ListObjectsQuery) evaluate(
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
+			// this is necessary to terminate the range loop below
 			close(connectedObjectsResChan)
 		}()
 
@@ -234,14 +234,12 @@ func (q *ListObjectsQuery) evaluate(
 		wg := sync.WaitGroup{}
 
 		for res := range connectedObjectsResChan {
-
+			if atomic.LoadUint32(objectsFound) >= maxResults {
+				break
+			}
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
-
-				if atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
-				}
-
+				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				continue
 			}
 
@@ -270,8 +268,8 @@ func (q *ListObjectsQuery) evaluate(
 					return
 				}
 
-				if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
+				if resp.Allowed {
+					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -284,6 +282,13 @@ func (q *ListObjectsQuery) evaluate(
 	go handler()
 
 	return nil
+}
+
+func trySendObject(object string, objectsFound *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	if objectsFound != nil && atomic.AddUint32(objectsFound, 1) > maxResults {
+		return
+	}
+	resultsChan <- ListObjectsResult{ObjectID: object}
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
