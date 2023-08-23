@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"strings"
@@ -154,13 +155,16 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	goose.SetLogger(goose.NopLogger())
 
-	db, err := goose.OpenDBWithDriver("mysql", uri)
-	require.NoError(t, err)
+	var db *sql.DB
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = time.Minute
+	backoffPolicy.MaxElapsedTime = 2 * time.Minute
 	err = backoff.Retry(
 		func() error {
+			db, err = goose.OpenDBWithDriver("mysql", uri)
+			if err != nil {
+				return err
+			}
 			return db.Ping()
 		},
 		backoffPolicy,
