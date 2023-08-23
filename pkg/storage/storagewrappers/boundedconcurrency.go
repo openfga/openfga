@@ -2,6 +2,7 @@ package storagewrappers
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -10,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
 )
 
 const timeWaitingSpanAttribute = "time_waiting"
@@ -17,14 +19,14 @@ const timeWaitingSpanAttribute = "time_waiting"
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
 var (
-	boundedReadDelayMsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+	boundedReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:                            "datastore_bounded_read_delay_ms",
 		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
 		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	})
+	}, []string{"grpc_service", "grpc_method"})
 )
 
 type boundedConcurrencyTupleReader struct {
@@ -79,7 +81,20 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
-	boundedReadDelayMsHistogram.Observe(float64(timeWaiting))
+
+	method, found := grpc.Method(ctx)
+	if !found {
+		method = "undefined"
+	}
+
+	// grpc Method returns in the format "/service/method".
+	methods := strings.Split(method, "/")
+
+	boundedReadDelayMsHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methods[len(methods)-1],
+	).Observe(float64(timeWaiting))
+
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
 }
