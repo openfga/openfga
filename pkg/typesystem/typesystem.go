@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 )
@@ -864,12 +865,9 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		return nil, err
 	}
 
-	// Validate the conditions provided in the model
-	// Each condition should define a well-formed expression and its parameters
-	// should be well-defined (e.g. the expression and parameters should be compilable)
-
-	// Validate the conditions referenced by the relation(s) (defined by the type restrictions) -
-	// the referenced conditions should be defined in the list of conditions included in the model.
+	if err := t.validateConditions(); err != nil {
+		return nil, err
+	}
 
 	return t, nil
 }
@@ -1038,6 +1036,7 @@ func (t *TypeSystem) isUsersetRewriteValid(objectType, relation string, rewrite 
 //     must be defined in the model.
 //  4. If the provided relation is a tupleset relation, then the type restriction must be on a direct object.
 func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName string) error {
+
 	relation, err := t.GetRelation(objectType, relationName)
 	if err != nil {
 		return err
@@ -1076,12 +1075,28 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 		}
 
 		if related.Condition != "" {
+			// Validate the conditions referenced by the relations are included in the model.
 			if _, ok := t.conditions[related.Condition]; !ok {
 				return ErrConditionUndefined
 			}
 		}
 	}
 
+	return nil
+}
+
+// validateConditions validates the conditions provided in the model.
+//  1. Each condition should define a well-formed expression,
+//  2. Its parameters should be well-defined
+//  3. The expression and parameters should be compilable.
+func (t *TypeSystem) validateConditions() error {
+	for _, c := range t.conditions {
+		// TODO(jpadilla): cache the compiled condition in the typesystem?
+		_, err := condition.Compile(c)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
