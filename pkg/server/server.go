@@ -80,7 +80,7 @@ var (
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	}, []string{"method", "datastore_query_count"})
+	}, []string{"grpc_service", "grpc_method", "datastore_query_count"})
 )
 
 // A Server implements the OpenFGA service backend as both
@@ -498,12 +498,13 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	}
 
 	queryCount := float64(resp.GetResolutionMetadata().DatastoreQueryCount)
+	const methodName = "check"
 
 	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 	datastoreQueryCountHistogram.WithLabelValues(
 		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		"check",
+		methodName,
 	).Observe(queryCount)
 
 	res := &openfgav1.CheckResponse{
@@ -512,7 +513,8 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 
 	span.SetAttributes(attribute.KeyValue{Key: "allowed", Value: attribute.BoolValue(res.GetAllowed())})
 	requestDurationByQueryHistogram.WithLabelValues(
-		"Check",
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
 		utils.Bucketize(uint(resp.GetResolutionMetadata().DatastoreQueryCount), s.requestDurationByQueryHistogramBuckets),
 	).Observe(float64(time.Since(start).Milliseconds()))
 

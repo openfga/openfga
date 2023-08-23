@@ -913,6 +913,7 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	stringBody := string(resBody)
 	require.Contains(t, stringBody, "datastore_query_count")
+	require.Contains(t, stringBody, "request_duration_by_query_count_ms")
 	require.Contains(t, stringBody, "grpc_server_handling_seconds")
 	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
