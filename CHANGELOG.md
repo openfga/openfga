@@ -19,6 +19,10 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   This new metric can be used to report percentiles of the number of database queries required to resolve Check requests.
 
+* Check request duration histogram labeled by method and datastore query count ([#950](https://github.com/openfga/openfga/pull/950))
+
+  The `request_duration_by_query_count_ms` metric reports the total request duration (in ms) labelled by the RPC method and ranges of observations for the `datastore_query_count`. This metrics allows operators of an OpenFGA server to report request duration percentiles for Check requests based on the number of database queries that were required to resolve the query.
+
 * Prune user lookup optimization in Check ([#932](https://github.com/openfga/openfga/pull/932)
 
 * CachedCheckResolver for caching Check subproblems ([#891](https://github.com/openfga/openfga/pull/891))
