@@ -151,7 +151,8 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
 	relations     map[string]map[string]*openfgav1.Relation
-	conditions    map[string]*openfgav1.Condition
+        // conditionName => condition
+	conditions    map[string]*CompiledCondition
 	modelID       string
 	schemaVersion string
 }
