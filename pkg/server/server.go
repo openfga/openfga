@@ -344,7 +344,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithCheckOptions(checkOptions),
 	)
 
-	return q.Execute(
+	result, err := q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		&openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
@@ -355,6 +355,21 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			User:                 req.User,
 		},
 	)
+	if err == nil {
+		queryCount := float64(result.ResolutionMetadata.QueryCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+		datastoreQueryCountHistogram.WithLabelValues(
+			openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+			"listObjects",
+		).Observe(queryCount)
+
+		return &openfgav1.ListObjectsResponse{
+			Objects: result.Objects,
+		}, err
+	}
+	return nil, err
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {

@@ -56,6 +56,15 @@ type ListObjectsQuery struct {
 	checkOptions []graph.LocalCheckerOption
 }
 
+type ResolutionMetadata struct {
+	QueryCount uint32
+}
+
+type ListObjectsResponse struct {
+	Objects            []string
+	ResolutionMetadata ResolutionMetadata
+}
+
 type ListObjectsQueryOption func(d *ListObjectsQuery)
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
@@ -136,6 +145,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
+	dsQueryCount *uint32,
 ) error {
 
 	targetObjectType := req.GetType()
@@ -214,7 +224,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, connectedObjectsResChan)
+			}, connectedObjectsResChan, dsQueryCount)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
@@ -267,6 +277,7 @@ func (q *ListObjectsQuery) evaluate(
 					resultsChan <- ListObjectsResult{Err: err}
 					return
 				}
+				atomic.AddUint32(dsQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 
 				if resp.Allowed {
 					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
@@ -296,7 +307,7 @@ func trySendObject(object string, objectsFound *uint32, maxResults uint32, resul
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
-) (*openfgav1.ListObjectsResponse, error) {
+) (*ListObjectsResponse, error) {
 
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
@@ -311,7 +322,9 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	var dsQueryCount uint32
+
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &dsQueryCount)
 	if err != nil {
 		return nil, err
 	}
@@ -325,8 +338,9 @@ func (q *ListObjectsQuery) Execute(
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return &openfgav1.ListObjectsResponse{
-				Objects: objects,
+			return &ListObjectsResponse{
+				Objects:            objects,
+				ResolutionMetadata: ResolutionMetadata{QueryCount: dsQueryCount},
 			}, nil
 
 		case result, channelOpen := <-resultsChan:
@@ -338,8 +352,11 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if !channelOpen {
-				return &openfgav1.ListObjectsResponse{
+				return &ListObjectsResponse{
 					Objects: objects,
+					ResolutionMetadata: ResolutionMetadata{
+						QueryCount: dsQueryCount,
+					},
 				}, nil
 			}
 			objects = append(objects, result.ObjectID)
@@ -367,7 +384,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	var dsQueryCount uint32
+
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &dsQueryCount)
 	if err != nil {
 		return err
 	}

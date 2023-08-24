@@ -1222,8 +1222,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
+			var dsQueryCounter uint32
+
 			go func() {
-				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan)
+				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan, &dsQueryCounter)
 				require.ErrorIs(err, test.expectedError)
 				close(resultChan)
 			}()

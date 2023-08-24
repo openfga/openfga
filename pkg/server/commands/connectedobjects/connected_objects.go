@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -161,8 +162,9 @@ func (c *ConnectedObjectsQuery) Execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
+	dsQueryCount *uint32,
 ) error {
-	return c.execute(ctx, req, resultChan, nil)
+	return c.execute(ctx, req, resultChan, nil, dsQueryCount)
 }
 
 func (c *ConnectedObjectsQuery) execute(
@@ -170,6 +172,7 @@ func (c *ConnectedObjectsQuery) execute(
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
 	currentIngress *graph.RelationshipIngress,
+	dsQueryCount *uint32,
 ) error {
 	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
@@ -265,7 +268,7 @@ func (c *ConnectedObjectsQuery) execute(
 
 			switch innerLoopIngress.Type {
 			case graph.DirectIngress:
-				return c.reverseExpandDirect(subgctx, r, resultChan)
+				return c.reverseExpandDirect(subgctx, r, resultChan, dsQueryCount)
 			case graph.ComputedUsersetIngress:
 				// lookup the rewritten target relation on the computed_userset ingress
 				return c.execute(subgctx, &ConnectedObjectsRequest{
@@ -279,9 +282,9 @@ func (c *ConnectedObjectsQuery) execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
-				}, resultChan, innerLoopIngress)
+				}, resultChan, innerLoopIngress, dsQueryCount)
 			case graph.TupleToUsersetIngress:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan)
+				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, dsQueryCount)
 			default:
 				return fmt.Errorf("unsupported ingress type")
 			}
@@ -303,6 +306,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
+	dsQueryCount *uint32,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("ingress", req.ingress.String()),
@@ -341,6 +345,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		return err
 	}
 	defer iter.Stop()
+	atomic.AddUint32(dsQueryCount, 1)
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
@@ -373,7 +378,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.ingress)
+			}, resultChan, req.ingress, dsQueryCount)
 		})
 	}
 
@@ -384,6 +389,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
+	dsQueryCount *uint32,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("ingress", req.ingress.String()),
@@ -446,6 +452,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		return err
 	}
 	defer iter.Stop()
+	atomic.AddUint32(dsQueryCount, 1)
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
@@ -478,7 +485,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.ingress)
+			}, resultChan, req.ingress, dsQueryCount)
 		})
 	}
 
