@@ -42,7 +42,7 @@ func ParseIPAddress(ip string) (IPAddress, error) {
 }
 
 // ipaddrCelType defines a CEL type for the IPAddress and registers it as a receiver type.
-var ipaddrCelType = types.NewTypeValue("IPAddress", traits.ReceiverType)
+var ipaddrCelType = cel.ObjectType("IPAddress", traits.ReceiverType)
 
 // ConvertToNative implements the CEL ref.Val.ConvertToNative.
 //
