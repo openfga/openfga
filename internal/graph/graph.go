@@ -109,12 +109,14 @@ type RelationshipIngress struct {
 	// TuplesetRelation defines the tupleset relation reference that relates a source
 	// object reference with a target if the type of the relationship ingress is that
 	// of a TupleToUserset
+	// TODO this can be just a string for the relation (since the type will be the same as Ingress.Type)
 	TuplesetRelation *openfgav1.RelationReference
 
 	Condition IngressCondition
 }
 
 func (r RelationshipIngress) String() string {
+	// TODO also print the condition
 	val := ""
 	if r.TuplesetRelation != nil {
 		val = fmt.Sprintf("ingress %s, type %s, tupleset %s", r.Ingress.String(), r.Type.String(), r.TuplesetRelation.String())
@@ -295,21 +297,7 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 				return nil, err
 			}
 
-			// if the computed relation on the tupleset is directly related to the source and computed relation,
-			// then it must be an ingress
-			//
-			// e.g. target=document#viewer, source=folder#viewer
-			//
-			// type folder
-			//   relations
-			//     define viewer: [user]
-			//
-			// type document
-			//   relations
-			//     define parent: [folder]
-			//     define viewer: viewer from parent
 			if typeRestriction.GetType() == source.GetType() && computedUserset == source.GetRelation() {
-
 				condition := NoFurtherEvalCondition
 
 				involvesIntersection, err := g.typesystem.RelationInvolvesIntersection(typeRestriction.GetType(), r.GetName())
@@ -332,37 +320,6 @@ func (g *ConnectedObjectGraph) findIngressesWithTargetRewrite(
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 					Condition:        condition,
 				})
-			} else {
-				matchesSourceType := typeRestriction.GetType() == source.GetType()
-				directlyAssignable := g.typesystem.IsDirectlyAssignable(r)
-
-				// if any of the inner type restrictions of the computed relation are related to the source, then there
-				// must be an ingress
-				//
-				// e.g. target=document#viewer, source=folder#viewer
-				//
-				// type folder
-				//   relations
-				//     define viewer: [folder]
-				//
-				// type document
-				//   relations
-				//     define parent: [folder]
-				//     define viewer: viewer from parent
-				if directlyAssignable && matchesSourceType {
-					innerRelatedTypes, _ := g.typesystem.GetDirectlyRelatedUserTypes(typeRestriction.GetType(), computedUserset)
-					for _, innerRelatedTypeRestriction := range innerRelatedTypes {
-
-						if innerRelatedTypeRestriction.GetType() == source.GetType() {
-							res = append(res, &RelationshipIngress{
-								Type:             TupleToUsersetIngress,
-								Ingress:          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-								TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
-								Condition:        NoFurtherEvalCondition,
-							})
-						}
-					}
-				}
 			}
 
 			subResults, err := g.findIngresses(

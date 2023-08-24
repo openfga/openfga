@@ -47,6 +47,18 @@ func TestServerPanicIfNoDatastore(t *testing.T) {
 	})
 }
 
+func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
+	require.PanicsWithError(t, "failed to construct the OpenFGA server: request duration datastore count buckets must not be empty", func() {
+		mockController := gomock.NewController(t)
+		defer mockController.Finish()
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+		_ = MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+			WithRequestDurationByQueryHistogramBuckets([]uint{}),
+		)
+	})
+}
+
 func TestServerWithPostgresDatastore(t *testing.T) {
 	ds := MustBootstrapDatastore(t, "postgres")
 	defer ds.Close()
@@ -341,6 +353,69 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
 	require.Equal(t, true, checkResponse.Allowed)
+}
+
+func TestCheckWithCachedResolution(t *testing.T) {
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := parser.MustParse(`
+	type user
+
+	type repo
+	  relations
+	    define reader: [user] as self
+	`)
+
+	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:mike")
+	tuple := &openfgav1.Tuple{Key: tk}
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	mockDatastore.EXPECT().
+		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
+		Times(1).
+		Return(tuple, nil)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithCheckQueryCacheEnabled(true),
+		WithCheckQueryCacheLimit(10),
+		WithCheckQueryCacheTTL(1*time.Minute),
+		WithExperimentals(ExperimentalCheckQueryCache),
+	)
+
+	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tk,
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.Allowed)
+
+	// If we check for the same request, data should come from cache and number of ReadUserTuple should still be 1
+	checkResponse, err = s.Check(ctx, &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		TupleKey:             tk,
+		AuthorizationModelId: modelID,
+	})
+
+	require.NoError(t, err)
+	require.True(t, checkResponse.Allowed)
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
