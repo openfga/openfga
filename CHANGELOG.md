@@ -33,10 +33,14 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   openfga run --experimentals check-query-cache --check-query-cache-enabled=true
   ```
 
+* Server request logs now include the `user-agent` ([#943](https://github.com/openfga/openfga/pull/943))
+
 ### Changed
 * Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
 
   In our last release [v1.3.0](https://github.com/openfga/openfga/releases/tag/v1.3.0) we modified the default behavior of Check and ListObjects such that it limits/restricts the degree of concurrency that is allowed for a single request. This change was unintended. This release reverts the default behavior back to unbounded concurrency limits (the prior default). The change mostly affects those using OpenFGA as a library.
+
+* Bumped up to Go 1.21 ([#952](https://github.com/openfga/openfga/pull/952))
 
 ## [1.3.0] - 2023-08-01
 
