@@ -2,16 +2,15 @@ package storagewrappers
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc"
 )
 
 const timeWaitingSpanAttribute = "time_waiting"
@@ -82,17 +81,9 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
 
-	method, found := grpc.Method(ctx)
-	if !found {
-		method = "undefined"
-	}
-
-	// grpc Method returns in the format "/service/method".
-	methods := strings.Split(method, "/")
-
 	boundedReadDelayMsHistogram.WithLabelValues(
-		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		methods[len(methods)-1],
+		telemetry.Service(ctx),
+		telemetry.Method(ctx),
 	).Observe(float64(timeWaiting))
 
 	span := trace.SpanFromContext(ctx)
