@@ -342,6 +342,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
 	return q.Execute(
@@ -391,6 +392,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id

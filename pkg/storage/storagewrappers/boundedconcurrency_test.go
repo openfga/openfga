@@ -27,9 +27,9 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	// create a limited tuple reader that allows 1 concurrent read a time
 	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
 
-	// do reads from 3 goroutines - each should be run serially
+	// do reads from 4 goroutines - each should be run serially
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 
 	start := time.Now()
 
@@ -50,6 +50,21 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 	go func() {
 		_, err := limitedTupleReader.Read(context.Background(), store, nil)
+		require.NoError(t, err)
+		wg.Done()
+	}()
+
+	go func() {
+		_, err := limitedTupleReader.ReadStartingWithUser(
+			context.Background(),
+			store,
+			storage.ReadStartingWithUserFilter{
+				UserFilter: []*openfgav1.ObjectRelation{
+					{
+						Object:   "obj",
+						Relation: "viewer",
+					},
+				}})
 		require.NoError(t, err)
 		wg.Done()
 	}()
