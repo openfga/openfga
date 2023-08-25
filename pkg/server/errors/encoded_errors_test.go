@@ -211,6 +211,11 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgav1.InternalErrorCode_unavailable),
 		},
 		{
+			_name:             "unauthenticated",
+			status:            status.New(codes.Unauthenticated, "other error"),
+			expectedErrorCode: int32(openfgav1.AuthErrorCode_unauthenticated),
+		},
+		{
 			_name:             "data_loss",
 			status:            status.New(codes.DataLoss, "other error"),
 			expectedErrorCode: int32(openfgav1.InternalErrorCode_data_loss),
