@@ -42,6 +42,9 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Bumped up to Go 1.21 ([#952](https://github.com/openfga/openfga/pull/952))
 
+### Security
+* Patches [CVE-2023-40579](https://github.com/openfga/openfga/security/advisories/GHSA-jcf2-mxr2-gmqp) - see the CVE for more details
+
 ## [1.3.0] - 2023-08-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.2.0...v1.3.0)
