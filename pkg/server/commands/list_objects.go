@@ -56,13 +56,9 @@ type ListObjectsQuery struct {
 	checkOptions []graph.LocalCheckerOption
 }
 
-type ResolutionMetadata struct {
-	QueryCount uint32
-}
-
 type ListObjectsResponse struct {
 	Objects            []string
-	ResolutionMetadata ResolutionMetadata
+	ResolutionMetadata connectedobjects.ResolutionMetadata
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -145,7 +141,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
-	dsQueryCount *uint32,
+	resolutionMetadata *connectedobjects.ResolutionMetadata,
 ) error {
 
 	targetObjectType := req.GetType()
@@ -224,7 +220,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, connectedObjectsResChan, dsQueryCount)
+			}, connectedObjectsResChan, resolutionMetadata)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
@@ -277,7 +273,7 @@ func (q *ListObjectsQuery) evaluate(
 					resultsChan <- ListObjectsResult{Err: err}
 					return
 				}
-				atomic.AddUint32(dsQueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
+				atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 
 				if resp.Allowed {
 					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
@@ -322,9 +318,9 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	var dsQueryCount uint32
+	resolutionMetadata := connectedobjects.NewResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &dsQueryCount)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -340,7 +336,7 @@ func (q *ListObjectsQuery) Execute(
 			)
 			return &ListObjectsResponse{
 				Objects:            objects,
-				ResolutionMetadata: ResolutionMetadata{QueryCount: dsQueryCount},
+				ResolutionMetadata: *resolutionMetadata,
 			}, nil
 
 		case result, channelOpen := <-resultsChan:
@@ -353,10 +349,8 @@ func (q *ListObjectsQuery) Execute(
 
 			if !channelOpen {
 				return &ListObjectsResponse{
-					Objects: objects,
-					ResolutionMetadata: ResolutionMetadata{
-						QueryCount: dsQueryCount,
-					},
+					Objects:            objects,
+					ResolutionMetadata: *resolutionMetadata,
 				}, nil
 			}
 			objects = append(objects, result.ObjectID)
@@ -384,9 +378,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	var dsQueryCount uint32
+	resolutionMetadata := connectedobjects.NewResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, &dsQueryCount)
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return err
 	}

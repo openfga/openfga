@@ -356,7 +356,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		},
 	)
 	if err == nil {
-		queryCount := float64(result.ResolutionMetadata.QueryCount)
+		queryCount := float64(*result.ResolutionMetadata.QueryCount)
 
 		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
 		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))

@@ -1255,10 +1255,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			var dsQueryCounter uint32
+			resolutionMetadata := connectedobjects.NewResolutionMetadata()
 
 			go func() {
-				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan, &dsQueryCounter)
+				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				require.ErrorIs(err, test.expectedError)
 				close(resultChan)
 			}()
@@ -1271,7 +1271,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 			if test.expectedError == nil {
 				require.ElementsMatch(test.expectedResult, results)
-				require.Equal(test.expectedDSQueryCount, dsQueryCounter)
+				require.Equal(test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
 			}
 		})
 	}
