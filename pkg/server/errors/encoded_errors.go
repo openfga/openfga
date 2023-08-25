@@ -211,6 +211,8 @@ func ConvertToEncodedErrorCode(statusError *status.Status) int32 {
 	switch statusError.Code() {
 	case codes.OK:
 		return int32(codes.OK)
+	case codes.Unauthenticated:
+		return int32(openfgav1.AuthErrorCode_unauthenticated)
 	case codes.Canceled:
 		return int32(openfgav1.InternalErrorCode_cancelled)
 	case codes.Unknown:
