@@ -8,6 +8,43 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.1] - 2023-08-23
+
+### Added
+* Count datastore queries involved in Check resolution metadata ([#880](https://github.com/openfga/openfga/pull/880))
+
+  OpenFGA request logs and traces will now include a field `datastore_query_count` that shows how many queries were involved in a single Check resolution.
+
+* Histogram metric to report the `datastore_query_count` per Check ([#924](https://github.com/openfga/openfga/pull/932))
+
+  This new metric can be used to report percentiles of the number of database queries required to resolve Check requests.
+
+* Check request duration histogram labeled by method and datastore query count ([#950](https://github.com/openfga/openfga/pull/950))
+
+  The `request_duration_by_query_count_ms` metric reports the total request duration (in ms) labelled by the RPC method and ranges of observations for the `datastore_query_count`. This metrics allows operators of an OpenFGA server to report request duration percentiles for Check requests based on the number of database queries that were required to resolve the query.
+
+* Optimize Check to avoid database lookups in some scenarios ([#932](https://github.com/openfga/openfga/pull/932))
+
+* CachedCheckResolver for caching Check subproblems ([#891](https://github.com/openfga/openfga/pull/891))
+
+  This experimental feature adds new caching capabilities to the OpenFGA server. It is an "opt-in" feature and thus must be enabled. To enable this feature you must specify the experimental flag `check-query-cache` and set the  `--check-query-cache-enabled=true` flag.
+
+  ```shell
+  openfga run --experimentals check-query-cache --check-query-cache-enabled=true
+  ```
+
+* Server request logs now include the `user-agent` ([#943](https://github.com/openfga/openfga/pull/943))
+
+### Changed
+* Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
+
+  In our last release [v1.3.0](https://github.com/openfga/openfga/releases/tag/v1.3.0) we modified the default behavior of Check and ListObjects such that it limits/restricts the degree of concurrency that is allowed for a single request. This change was unintended. This release reverts the default behavior back to unbounded concurrency limits (the prior default). The change mostly affects those using OpenFGA as a library.
+
+* Bumped up to Go 1.21 ([#952](https://github.com/openfga/openfga/pull/952))
+
+### Security
+* Patches [CVE-2023-40579](https://github.com/openfga/openfga/security/advisories/GHSA-jcf2-mxr2-gmqp) - see the CVE for more details
+
 ## [1.3.0] - 2023-08-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.2.0...v1.3.0)
@@ -589,7 +626,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0
 [1.2.0]: https://github.com/openfga/openfga/releases/tag/v1.2.0
 [1.1.1]: https://github.com/openfga/openfga/releases/tag/v1.1.1
