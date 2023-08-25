@@ -11,7 +11,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ## [1.3.1] - 2023-08-23
 
 ### Added
-* Count datastore queries involved in Check resolution ([#880](https://github.com/openfga/openfga/pull/880))
+* Count datastore queries involved in Check resolution metadata ([#880](https://github.com/openfga/openfga/pull/880))
 
   OpenFGA request logs will now include a field `datastore_query_count` that shows how many queries were involved in a single Check resolution.
 
