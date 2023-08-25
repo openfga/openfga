@@ -1086,11 +1086,11 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 
-	val = res.Get("properties.trace.properties.OTLP.properties.endpoint.default")
+	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.OTLP.Endpoint)
 
-	val = res.Get("properties.trace.properties.OTLP.properties.tls.properties.enabled.default")
+	val = res.Get("properties.trace.properties.otlp.properties.tls.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.Trace.OTLP.TLS.Enabled)
 
