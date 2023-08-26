@@ -381,7 +381,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	resultChan chan<- *ReverseExpandResult,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		attribute.String("edgeUserset", req.edge.String()),
+		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
 	defer span.End()
