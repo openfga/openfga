@@ -207,20 +207,20 @@ func (c *ReverseExpandQuery) execute(
 	var sourceUserRef *openfgav1.RelationReference
 	var sourceUserType, sourceUserObj string
 
-	// e.graph. 'user:bob'
+	// e.g. 'user:bob'
 	if val, ok := req.User.(*UserRefObject); ok {
 		sourceUserType = val.Object.GetType()
 		sourceUserObj = tuple.BuildObject(sourceUserType, val.Object.GetId())
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, "")
 	}
 
-	// e.graph. 'user:*'
+	// e.g. 'user:*'
 	if val, ok := req.User.(*UserRefTypedWildcard); ok {
 		sourceUserType = val.Type
 		sourceUserRef = typesystem.WildcardRelationReference(sourceUserType)
 	}
 
-	// e.graph. 'group:eng#member'
+	// e.g. 'group:eng#member'
 	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		sourceUserObj = val.ObjectRelation.Object
