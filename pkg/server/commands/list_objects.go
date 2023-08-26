@@ -13,7 +13,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/server/commands/connectedobjects"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -177,8 +177,8 @@ func (q *ListObjectsQuery) evaluate(
 		userObj, userRel := tuple.SplitObjectRelation(req.GetUser())
 		userObjType, userObjID := tuple.SplitObject(userObj)
 
-		var sourceUserRef connectedobjects.IsUserRef
-		sourceUserRef = &connectedobjects.UserRefObject{
+		var sourceUserRef reverseexpand.IsUserRef
+		sourceUserRef = &reverseexpand.UserRefObject{
 			Object: &openfgav1.Object{
 				Type: userObjType,
 				Id:   userObjID,
@@ -186,12 +186,12 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		if tuple.IsTypedWildcard(userObj) {
-			sourceUserRef = &connectedobjects.UserRefTypedWildcard{Type: tuple.GetType(userObj)}
+			sourceUserRef = &reverseexpand.UserRefTypedWildcard{Type: tuple.GetType(userObj)}
 
 		}
 
 		if userRel != "" {
-			sourceUserRef = &connectedobjects.UserRefObjectRelation{
+			sourceUserRef = &reverseexpand.UserRefObjectRelation{
 				ObjectRelation: &openfgav1.ObjectRelation{
 					Object:   userObj,
 					Relation: userRel,
@@ -199,28 +199,28 @@ func (q *ListObjectsQuery) evaluate(
 			}
 		}
 
-		connectedObjectsResChan := make(chan *connectedobjects.ConnectedObjectsResult, 1)
+		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		var objectsFound = new(uint32)
 
-		connectedObjectsQuery := connectedobjects.NewConnectedObjectsQuery(q.datastore, typesys,
-			connectedobjects.WithResolveNodeLimit(q.resolveNodeLimit),
-			connectedobjects.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
+		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
+			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
+			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 		)
 
 		go func() {
-			err = connectedObjectsQuery.Execute(ctx, &connectedobjects.ConnectedObjectsRequest{
+			err = reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, connectedObjectsResChan)
+			}, reverseExpandResultsChan)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
 			// this is necessary to terminate the range loop below
-			close(connectedObjectsResChan)
+			close(reverseExpandResultsChan)
 		}()
 
 		checkResolver := graph.NewLocalChecker(
@@ -233,11 +233,11 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg := sync.WaitGroup{}
 
-		for res := range connectedObjectsResChan {
+		for res := range reverseExpandResultsChan {
 			if atomic.LoadUint32(objectsFound) >= maxResults {
 				break
 			}
-			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
+			if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				continue
@@ -246,7 +246,7 @@ func (q *ListObjectsQuery) evaluate(
 			furtherEvalRequiredCounter.Inc()
 
 			wg.Add(1)
-			go func(res *connectedobjects.ConnectedObjectsResult) {
+			go func(res *reverseexpand.ReverseExpandResult) {
 				defer func() {
 					<-concurrencyLimiterCh
 					wg.Done()
