@@ -33,7 +33,7 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval = 48 * time.Hour
 
 	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
 	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")
