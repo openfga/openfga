@@ -5,13 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
-	"golang.org/x/exp/maps"
 )
 
 var tracer = otel.Tracer("openfga/pkg/typesystem")
