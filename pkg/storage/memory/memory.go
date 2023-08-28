@@ -123,6 +123,19 @@ func New(opts ...StorageOption) storage.OpenFGADatastore {
 	return ds
 }
 
+// WithTuples defines an option that intializes the datastore with the provided tuples for the given storeID.
+//
+// This option will append/write the tuples, and as such the tuples will also have changelog entries. It was
+// added primarily for internal testing and for usage within the OpenFGA CLI. It is not generaly intended to be
+// used outside of these purposes.
+func WithTuples(storeID string, tuples []*openfgav1.TupleKey) StorageOption {
+	return func(ds *MemoryBackend) {
+		if err := ds.Write(context.Background(), storeID, nil, tuples); err != nil {
+			panic(fmt.Sprintf("failed to initialize the datastore with the provided tuples: %v", err))
+		}
+	}
+}
+
 func WithMaxTuplesPerWrite(n int) StorageOption {
 	return func(ds *MemoryBackend) { ds.maxTuplesPerWrite = n }
 }
