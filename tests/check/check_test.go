@@ -131,7 +131,7 @@ func TestCheckLogs(t *testing.T) {
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -153,7 +153,7 @@ func TestCheckLogs(t *testing.T) {
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -197,7 +197,6 @@ func TestCheckLogs(t *testing.T) {
 			require.Len(t, expectedLogs, 1)
 
 			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
-
 			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
 			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
 			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
