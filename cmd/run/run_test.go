@@ -431,6 +431,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1084,6 +1085,14 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
+
+	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.OTLP.Endpoint)
+
+	val = res.Get("properties.trace.properties.otlp.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Trace.OTLP.TLS.Enabled)
 
 	val = res.Get("properties.checkQueryCache.properties.enabled.default")
 	require.True(t, val.Exists())
