@@ -27,9 +27,11 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	// create a limited tuple reader that allows 1 concurrent read a time
 	limitedTupleReader := NewBoundedConcurrencyTupleReader(slowBackend, 1)
 
-	// do reads from 4 goroutines - each should be run serially
+	// do reads from 4 goroutines - each should be run serially. Should be >4 seconds
+	const numRoutine = 4
+
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(numRoutine)
 
 	start := time.Now()
 
@@ -73,5 +75,5 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 
 	end := time.Now()
 
-	require.True(t, end.Sub(start) >= 3*time.Second, "Expected all reads to take at least 3 seconds")
+	require.GreaterOrEqual(t, end.Sub(start), numRoutine*time.Second)
 }
