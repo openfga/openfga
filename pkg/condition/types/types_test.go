@@ -81,6 +81,14 @@ func TestPrimitives(t *testing.T) {
 			output:    time.Time(time.Date(1972, time.January, 1, 10, 0, 20, 21000000, time.UTC)),
 			repr:      "timestamp",
 		},
+		{
+			name:      "valid_ipaddress",
+			paramType: IPAddressType,
+			celType:   cel.ObjectType("IPAddress"),
+			input:     "127.0.0.1",
+			output:    mustParseIPAddress("127.0.0.1"),
+			repr:      "unknown",
+		},
 		// {
 		// 	name:      "valid_map_string",
 		// 	paramType: mustMapParamType(StringParamType),
@@ -101,8 +109,8 @@ func TestPrimitives(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := test.paramType.ConvertValue(test.input)
-			// require.Equal(t, test.output, converted)
+			converted, err := test.paramType.ConvertValue(test.input)
+			require.Equal(t, test.output, converted)
 			require.Equal(t, test.celType, test.paramType.CelType())
 			require.Equal(t, test.repr, test.paramType.String())
 			require.NoError(t, err)
@@ -124,4 +132,13 @@ func mustListParamType(genericTypes ...ParameterType) ParameterType {
 		panic(err)
 	}
 	return paramType
+}
+
+func mustParseIPAddress(ip string) IPAddress {
+	addr, err := ParseIPAddress(ip)
+	if err != nil {
+		panic(err)
+	}
+
+	return addr
 }
