@@ -465,7 +465,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						Expression: "param1 == 'ok'",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
-								TypeName: "string",
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 							},
 						},
 					},
@@ -503,7 +503,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						Expression: "invalid",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
-								TypeName: "string",
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 							},
 						},
 					},
@@ -543,14 +543,14 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						Expression: "param1 == 'ok'",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
-								TypeName: "invalid",
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
 							},
 						},
 					},
 				},
 			},
 			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `invalid`"),
+				fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
 			),
 		},
 		{
@@ -583,7 +583,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 						Expression: "param1",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
-								TypeName: "string",
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 							},
 						},
 					},

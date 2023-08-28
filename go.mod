@@ -24,7 +24,7 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/karlseguin/ccache/v3 v3.0.3
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20230822022334-6ae83d204a87
+	github.com/openfga/api/proto v0.0.0-20230825201754-dba192f48a60
 	github.com/pressly/goose/v3 v3.11.2
 	github.com/rs/cors v1.9.0
 	github.com/spf13/cobra v1.7.0

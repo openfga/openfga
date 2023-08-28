@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/google/cel-go/cel"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
-var CustomParamTypes = map[string][]cel.EnvOption{}
+var CustomParamTypes = map[openfgav1.ConditionParamTypeRef_TypeName][]cel.EnvOption{}
 
-var paramTypeDefinitions = map[string]paramTypeDefinition{}
+var paramTypeDefinitions = map[openfgav1.ConditionParamTypeRef_TypeName]paramTypeDefinition{}
 
 // typedParamValueConverter defines a signature that implementations can provide to enforce type enforcements
 // over any values provided.
@@ -25,17 +26,29 @@ type typedParamValueConverter func(value any) (any, error)
 //	  user.favoriteColor == color
 //	}
 type paramTypeDefinition struct {
-
 	// name is the name/keyword for the type (e.g. 'string', 'timestamp', 'duration', 'map', 'list', 'ipaddress')
-	name string
+	name openfgav1.ConditionParamTypeRef_TypeName
 
 	genericTypeCount uint
 
 	toParameterType func(genericType []ParameterType) (*ParameterType, error)
 }
 
+var paramTypeString = map[openfgav1.ConditionParamTypeRef_TypeName]string{
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_ANY:       "any",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_BOOL:      "bool",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING:    "string",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_INT:       "int",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT:      "uint",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_DOUBLE:    "double",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_DURATION:  "duration",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_TIMESTAMP: "timestamp",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP:       "map",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST:      "list",
+}
+
 func registerParamTypeWithGenerics(
-	paramTypeKeyword string,
+	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
 	genericTypeCount uint,
 	toParameterType func(genericType []ParameterType) ParameterType,
 ) func(genericTypes ...ParameterType) (ParameterType, error) {
@@ -63,7 +76,7 @@ func registerParamTypeWithGenerics(
 }
 
 func registerParamType(
-	paramTypeKeyword string,
+	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
 	celType *cel.Type,
 	typedParamConverter typedParamValueConverter,
 ) ParameterType {
@@ -86,7 +99,7 @@ func registerParamType(
 }
 
 func registerCustomParamType(
-	paramTypeKeyword string,
+	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
 	celType *cel.Type,
 	typeConverter typedParamValueConverter,
 	celOpts ...cel.EnvOption,
@@ -97,14 +110,14 @@ func registerCustomParamType(
 
 // ParameterType defines the canonical representation of parameter types supported in conditions.
 type ParameterType struct {
-	name                string
+	name                openfgav1.ConditionParamTypeRef_TypeName
 	celType             *cel.Type
 	genericTypes        []ParameterType
 	typedParamConverter typedParamValueConverter
 }
 
 func NewParameterType(
-	name string,
+	name openfgav1.ConditionParamTypeRef_TypeName,
 	celType *cel.Type,
 	generics []ParameterType,
 	typedParamConverter typedParamValueConverter,
@@ -123,7 +136,6 @@ func (pt ParameterType) CelType() *cel.Type {
 }
 
 func (pt ParameterType) String() string {
-
 	if len(pt.genericTypes) > 0 {
 		genericTypeStrings := make([]string, 0, len(pt.genericTypes))
 
@@ -135,7 +147,12 @@ func (pt ParameterType) String() string {
 		return fmt.Sprintf("%s<%s>", pt.name, strings.Join(genericTypeStrings, ", "))
 	}
 
-	return pt.name
+	str, ok := paramTypeString[pt.name]
+	if !ok {
+		return "unknown"
+	}
+
+	return str
 }
 
 func (pt ParameterType) ConvertValue(value any) (any, error) {

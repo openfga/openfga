@@ -9,11 +9,12 @@ import (
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/common/types/traits"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 // IPAddressType defines a ParameterType that is used to represent IP addresses in CEL expressions.
 var IPAddressType = registerCustomParamType(
-	"ipaddress",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_IPADDRESS,
 	cel.ObjectType("IPAddress"),
 	ipaddressTypeConverterFunc,
 	cel.Function("in_cidr",

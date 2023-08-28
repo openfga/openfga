@@ -151,7 +151,7 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
 	relations     map[string]map[string]*openfgav1.Relation
-	conditions    map[string]*openfgav1.Condition
+	conditions    map[string]*condition.EvaluableCondition
 	modelID       string
 	schemaVersion string
 }
@@ -184,12 +184,17 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		relations[typeName] = tdRelations
 	}
 
+	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
+	for name, cond := range model.GetConditions() {
+		uncompiledConditions[name] = condition.NewUncompiled(cond)
+	}
+
 	return &TypeSystem{
 		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 		relations:       relations,
-		conditions:      model.GetConditions(),
+		conditions:      uncompiledConditions,
 	}
 }
 
@@ -1090,10 +1095,12 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 //  2. Its parameters should be well-defined
 //  3. The expression and parameters should be compilable.
 func (t *TypeSystem) validateConditions() error {
-	for _, c := range t.conditions {
-		// TODO(jpadilla): cache the compiled condition in the typesystem?
-		_, err := condition.Compile(c)
-		if err != nil {
+	for key, c := range t.conditions {
+		if key != c.Name {
+			return fmt.Errorf("condition key '%s' does not match condition name '%s'", key, c.Name)
+		}
+
+		if err := c.Compile(); err != nil {
 			return err
 		}
 	}

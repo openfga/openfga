@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCompile(t *testing.T) {
+func TestNewCompiled(t *testing.T) {
 	var tests = []struct {
 		name      string
 		condition *openfgav1.Condition
@@ -22,7 +22,7 @@ func TestCompile(t *testing.T) {
 				Expression: "param1 == 'ok'",
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 					"param1": {
-						TypeName: "string",
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 					},
 				},
 			},
@@ -35,11 +35,11 @@ func TestCompile(t *testing.T) {
 				Expression: "param1 == 'ok'",
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 					"param1": {
-						TypeName: "invalid",
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
 					},
 				},
 			},
-			err: fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `invalid`"),
+			err: fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
 		},
 		{
 			name: "invalid_expression",
@@ -48,7 +48,7 @@ func TestCompile(t *testing.T) {
 				Expression: "invalid",
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 					"param1": {
-						TypeName: "string",
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 					},
 				},
 			},
@@ -61,7 +61,7 @@ func TestCompile(t *testing.T) {
 				Expression: "param1",
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 					"param1": {
-						TypeName: "string",
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 					},
 				},
 			},
@@ -71,7 +71,7 @@ func TestCompile(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := condition.Compile(test.condition)
+			_, err := condition.NewCompiled(test.condition)
 
 			if test.err != nil {
 				require.Equal(t, err, test.err)
@@ -81,4 +81,97 @@ func TestCompile(t *testing.T) {
 		})
 	}
 
+}
+
+func TestEvaluate(t *testing.T) {
+	var tests = []struct {
+		name      string
+		condition *openfgav1.Condition
+		context   map[string]interface{}
+		result    condition.EvaluationResult
+		err       error
+	}{
+		{
+			name: "success_condition_met",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param1": "ok",
+			},
+			result: condition.EvaluationResult{ConditionMet: true},
+			err:    nil,
+		},
+		{
+			name: "success_condition_unmet",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{"param1": "notok"},
+			result:  condition.EvaluationResult{ConditionMet: false},
+			err:     nil,
+		},
+		{
+			name: "fail_no_such_attribute",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param2": "ok",
+			},
+			result: condition.EvaluationResult{ConditionMet: false},
+			err:    fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+		},
+		{
+			name: "fail_unexpected_type",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param1": true,
+			},
+			result: condition.EvaluationResult{ConditionMet: false},
+			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected generic type value '*reflect.rtype', expected 'string'"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compiledCondition, err := condition.NewCompiled(test.condition)
+			require.NoError(t, err)
+
+			result, err := compiledCondition.Evaluate(test.context)
+
+			require.Equal(t, test.result, result)
+			if test.err != nil {
+				require.Equal(t, test.err, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
