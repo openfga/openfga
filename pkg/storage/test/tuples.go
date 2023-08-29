@@ -688,7 +688,25 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	err := datastore.Write(ctx, storeID, nil, tuples)
 	require.NoError(t, err)
 
-	t.Run("user_and_relation_and_objectID", func(t *testing.T) {
+	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+			tuple.NewTupleKey("document:1", "writer", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_user_and_relation_and_objectID", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
@@ -704,7 +722,7 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("user_and_relation_and_objectType", func(t *testing.T) {
+	t.Run("filter_by_user_and_relation_and_objectType", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
@@ -720,7 +738,7 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("relation_and_objectID", func(t *testing.T) {
+	t.Run("filter_by_relation_and_objectID", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
@@ -737,7 +755,7 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("objectID", func(t *testing.T) {
+	t.Run("filter_by_objectID", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
@@ -755,7 +773,7 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
 	})
 
-	t.Run("objectID_and_user", func(t *testing.T) {
+	t.Run("filter_by_objectID_and_user", func(t *testing.T) {
 		tupleIterator, err := datastore.Read(
 			ctx,
 			storeID,
