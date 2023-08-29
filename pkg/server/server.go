@@ -318,7 +318,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	storeID := req.GetStoreId()
 
@@ -370,7 +370,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	storeID := req.GetStoreId()
 
@@ -417,7 +417,7 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
@@ -432,7 +432,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	storeID := req.GetStoreId()
 
@@ -461,7 +461,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput
@@ -543,7 +543,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	storeID := req.GetStoreId()
 
@@ -566,7 +566,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
@@ -576,7 +576,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -593,7 +593,7 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
@@ -603,7 +603,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	storeID := req.GetStoreId()
 
@@ -631,7 +631,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
@@ -648,7 +648,7 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	))
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
 	return q.Execute(ctx, req)
@@ -658,7 +658,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 	ctx, span := tracer.Start(ctx, "CreateStore")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -675,7 +675,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 	ctx, span := tracer.Start(ctx, "DeleteStore")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
 	res, err := cmd.Execute(ctx, req)
@@ -692,7 +692,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 	ctx, span := tracer.Start(ctx, "GetStore")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
@@ -702,7 +702,7 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	ctx, span := tracer.Start(ctx, "ListStores")
 	defer span.End()
 
-	ctx = telemetry.SaveRPCInfoInContext(ctx)
+	ctx = telemetry.ContextWithRPCInfo(ctx)
 
 	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)

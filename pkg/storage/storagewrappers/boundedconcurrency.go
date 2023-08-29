@@ -96,9 +96,10 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
 
+	rpcInfo := telemetry.RPCInfoFromContext(ctx)
 	boundedReadDelayMsHistogram.WithLabelValues(
-		telemetry.Service(ctx),
-		telemetry.Method(ctx),
+		rpcInfo.Service,
+		rpcInfo.Method,
 	).Observe(float64(timeWaiting))
 
 	span := trace.SpanFromContext(ctx)

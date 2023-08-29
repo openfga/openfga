@@ -22,8 +22,8 @@ func saveMethodServiceInContext(ctx context.Context, method string, service stri
 	return context.WithValue(ctx, serviceContextName, service)
 }
 
-// SaveRPCInfoInContext will save the rpc method and service information in context
-func SaveRPCInfoInContext(ctx context.Context) context.Context {
+// ContextWithRPCInfo will save the rpc method and service information in context
+func ContextWithRPCInfo(ctx context.Context) context.Context {
 	method, found := grpc.Method(ctx)
 	if !found {
 		method = "unknown"
@@ -39,12 +39,15 @@ func getContextInfo(ctx context.Context, key rpcContextName) string {
 	return stringVal
 }
 
-// Method returns the rpc method stored in the context
-func Method(ctx context.Context) string {
-	return getContextInfo(ctx, methodContextName)
+type RPCInfo struct {
+	Method  string
+	Service string
 }
 
-// Service returns the rpc service stored in the context
-func Service(ctx context.Context) string {
-	return getContextInfo(ctx, serviceContextName)
+// RPCInfoFromContext returns method and service stored in context
+func RPCInfoFromContext(ctx context.Context) RPCInfo {
+	return RPCInfo{
+		Method:  getContextInfo(ctx, methodContextName),
+		Service: getContextInfo(ctx, serviceContextName),
+	}
 }

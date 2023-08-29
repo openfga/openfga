@@ -9,29 +9,30 @@ import (
 )
 
 func TestDefaultInfo(t *testing.T) {
-	ctx := SaveRPCInfoInContext(context.Background())
+	ctx := ContextWithRPCInfo(context.Background())
 
-	method := Method(ctx)
-	require.Equal(t, "unknown", method)
+	rpcInfo := RPCInfoFromContext(ctx)
+	require.Equal(t, RPCInfo{
+		Method:  "unknown",
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+	}, rpcInfo)
 
-	service := Service(ctx)
-	require.Equal(t, openfgav1.OpenFGAService_ServiceDesc.ServiceName, service)
 }
 
 func TestUnsetInfo(t *testing.T) {
-	method := Method(context.Background())
-	require.Equal(t, "unknown", method)
-
-	service := Service(context.Background())
-	require.Equal(t, "unknown", service)
+	rpcInfo := RPCInfoFromContext(context.Background())
+	require.Equal(t, RPCInfo{
+		Method:  "unknown",
+		Service: "unknown",
+	}, rpcInfo)
 }
 
 func TestKnownInfo(t *testing.T) {
 	ctx := saveMethodServiceInContext(context.Background(), "/grpc/check", "openfga")
 
-	method := Method(ctx)
-	require.Equal(t, "check", method)
-
-	service := Service(ctx)
-	require.Equal(t, "openfga", service)
+	rpcInfo := RPCInfoFromContext(ctx)
+	require.Equal(t, RPCInfo{
+		Method:  "check",
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+	}, rpcInfo)
 }
