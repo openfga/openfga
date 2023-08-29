@@ -27,10 +27,11 @@ const (
 	streamedBufferSize = 100
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeLimit        = 25
-	defaultResolveNodeBreadthLimit = 100
-	defaultListObjectsDeadline     = 3 * time.Second
-	defaultListObjectsMaxResults   = 1000
+	defaultResolveNodeLimit                 = 25
+	defaultResolveNodeBreadthLimit          = 100
+	defaultListObjectsDeadline              = 3 * time.Second
+	defaultListObjectsMaxResults            = 1000
+	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
 )
 
 var (
@@ -52,6 +53,7 @@ type ListObjectsQuery struct {
 	listObjectsMaxResults   uint32
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
+	maxConcurrentReads      uint32
 
 	checkOptions []graph.LocalCheckerOption
 }
@@ -101,6 +103,13 @@ func WithCheckOptions(checkOptions []graph.LocalCheckerOption) ListObjectsQueryO
 	}
 }
 
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
+func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.maxConcurrentReads = limit
+	}
+}
+
 func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
@@ -109,12 +118,15 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		listObjectsMaxResults:   defaultListObjectsMaxResults,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
+		maxConcurrentReads:      defaultMaxConcurrentReadsForListObjects,
 		checkOptions:            []graph.LocalCheckerOption{},
 	}
 
 	for _, opt := range opts {
 		opt(query)
 	}
+
+	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
 
 	return query
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -32,7 +33,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -342,6 +342,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
 	result, err := q.Execute(
@@ -406,6 +407,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id

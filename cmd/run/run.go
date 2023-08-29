@@ -152,6 +152,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
 
+	flags.Bool("trace-otlp-tls-enabled", defaultConfig.Trace.OTLP.TLS.Enabled, "use TLS connection for trace collector")
+
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
@@ -290,6 +292,11 @@ type TraceConfig struct {
 
 type OTLPTraceConfig struct {
 	Endpoint string
+	TLS      OTLPTraceTLSConfig
+}
+
+type OTLPTraceTLSConfig struct {
+	Enabled bool
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -414,6 +421,9 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			OTLP: OTLPTraceConfig{
 				Endpoint: "0.0.0.0:4317",
+				TLS: OTLPTraceTLSConfig{
+					Enabled: false,
+				},
 			},
 			SampleRatio: 0.2,
 			ServiceName: "openfga",
@@ -591,15 +601,24 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(
-			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+
+		options := []telemetry.TracerOption{
+			telemetry.WithOTLPEndpoint(
+				config.Trace.OTLP.Endpoint,
+			),
 			telemetry.WithAttributes(
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),
 			),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
-		)
+		}
+
+		if !config.Trace.OTLP.TLS.Enabled {
+			options = append(options, telemetry.WithOTLPInsecure())
+		}
+
+		tp = telemetry.MustNewTracerProvider(options...)
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
