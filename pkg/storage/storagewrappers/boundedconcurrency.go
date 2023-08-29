@@ -73,6 +73,21 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, s
 	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
 }
 
+func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+) (storage.TupleIterator, error) {
+	b.waitForLimiter(ctx)
+
+	defer func() {
+		<-b.limiter
+	}()
+
+	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
+
+}
+
 func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 	start := time.Now()
 
