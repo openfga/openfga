@@ -8,31 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDefaultInfo(t *testing.T) {
-	ctx := ContextWithRPCInfo(context.Background())
+func TestKnownRPCInfo(t *testing.T) {
 
-	rpcInfo := RPCInfoFromContext(ctx)
-	require.Equal(t, RPCInfo{
-		Method:  "unknown",
+	rpcInfo := RPCInfo{
+		Method:  "check",
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-	}, rpcInfo)
+	}
+	ctx := ContextWithRPCInfo(context.Background(), rpcInfo)
 
+	output := RPCInfoFromContext(ctx)
+	require.Equal(t, rpcInfo, output)
 }
 
-func TestUnsetInfo(t *testing.T) {
-	rpcInfo := RPCInfoFromContext(context.Background())
+func TestUnknownRPCInfo(t *testing.T) {
+
+	output := RPCInfoFromContext(context.Background())
 	require.Equal(t, RPCInfo{
 		Method:  "unknown",
 		Service: "unknown",
-	}, rpcInfo)
-}
-
-func TestKnownInfo(t *testing.T) {
-	ctx := saveMethodServiceInContext(context.Background(), "/grpc/check", "openfga")
-
-	rpcInfo := RPCInfoFromContext(ctx)
-	require.Equal(t, RPCInfo{
-		Method:  "check",
-		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-	}, rpcInfo)
+	}, output)
 }
