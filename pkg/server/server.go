@@ -26,6 +26,7 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -323,6 +324,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ListObjects",
+	})
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -377,6 +383,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "StreamedListObjects",
+	})
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -427,6 +438,11 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Read",
+	})
+
 	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
@@ -443,6 +459,11 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Write",
+	})
 
 	storeID := req.GetStoreId()
 
@@ -474,6 +495,11 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Check",
+	})
 
 	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput
@@ -559,6 +585,11 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Expand",
+	})
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -584,6 +615,11 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -595,6 +631,11 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "WriteAuthorizationModel",
+	})
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -615,6 +656,11 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
@@ -626,6 +672,11 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "WriteAssertions",
+	})
 
 	storeID := req.GetStoreId()
 
@@ -657,6 +708,11 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAssertions",
+	})
+
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -676,6 +732,11 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadChanges",
+	})
+
 	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
@@ -687,6 +748,11 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "CreateStore",
+	})
 
 	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -707,6 +773,11 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "DeleteStore",
+	})
+
 	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
@@ -726,6 +797,11 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "GetStore",
+	})
+
 	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -737,6 +813,11 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 	if err := req.Validate(); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ListStores",
+	})
 
 	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)
