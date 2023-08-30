@@ -271,7 +271,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					done <- struct{}{}
 				}()
 
-				err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:          storeID,
 					Type:             test.objectType,
 					Relation:         test.relation,

@@ -318,9 +318,11 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	))
 	defer span.End()
 
+	const methodName = "listObjects"
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		Method:  "ListObjects",
+		Method:  methodName,
 	})
 
 	storeID := req.GetStoreId()
@@ -369,7 +371,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
 		datastoreQueryCountHistogram.WithLabelValues(
 			openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-			"listObjects",
+			methodName,
 		).Observe(queryCount)
 
 		return &openfgav1.ListObjectsResponse{
@@ -388,9 +390,11 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	))
 	defer span.End()
 
+	const methodName = "streamedListObjects"
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-		Method:  "StreamedListObjects",
+		Method:  methodName,
 	})
 
 	storeID := req.GetStoreId()
@@ -422,11 +426,24 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
-	return q.ExecuteStreamed(
+
+	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		req,
 		srv,
 	)
+	if err == nil {
+		queryCount := float64(*resolutionMetadata.QueryCount)
+
+		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+		datastoreQueryCountHistogram.WithLabelValues(
+			openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+			methodName,
+		).Observe(queryCount)
+	}
+
+	return err
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {

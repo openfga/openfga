@@ -373,11 +373,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(
-	ctx context.Context,
-	req *openfgav1.StreamedListObjectsRequest,
-	srv openfgav1.OpenFGAService_StreamedListObjectsServer,
-) error {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*connectedobjects.ResolutionMetadata, error) {
 
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
@@ -394,7 +390,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
-		return err
+		return resolutionMetadata, err
 	}
 
 	for {
@@ -404,26 +400,26 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return nil
+			return resolutionMetadata, nil
 
 		case result, channelOpen := <-resultsChan:
 			if !channelOpen {
 				// Channel closed! No more results.
-				return nil
+				return resolutionMetadata, nil
 			}
 
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return result.Err
+					return resolutionMetadata, result.Err
 				}
 
-				return serverErrors.HandleError("", result.Err)
+				return resolutionMetadata, serverErrors.HandleError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 				Object: result.ObjectID,
 			}); err != nil {
-				return serverErrors.NewInternalError("", err)
+				return resolutionMetadata, serverErrors.NewInternalError("", err)
 			}
 		}
 	}
