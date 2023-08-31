@@ -324,7 +324,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	const methodName = "listObjects"
+	const methodName = "listobjects"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
@@ -370,21 +370,22 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			User:                 req.User,
 		},
 	)
-	if err == nil {
-		queryCount := float64(*result.ResolutionMetadata.QueryCount)
-
-		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-		datastoreQueryCountHistogram.WithLabelValues(
-			openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-			methodName,
-		).Observe(queryCount)
-
-		return &openfgav1.ListObjectsResponse{
-			Objects: result.Objects,
-		}, err
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	queryCount := float64(*result.ResolutionMetadata.QueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
+	).Observe(queryCount)
+
+	return &openfgav1.ListObjectsResponse{
+		Objects: result.Objects,
+	}, nil
+
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
@@ -400,7 +401,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	const methodName = "streamedListObjects"
+	const methodName = "streamedlistobjects"
 
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
@@ -442,18 +443,19 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		req,
 		srv,
 	)
-	if err == nil {
-		queryCount := float64(*resolutionMetadata.QueryCount)
-
-		grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
-		span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
-		datastoreQueryCountHistogram.WithLabelValues(
-			openfgav1.OpenFGAService_ServiceDesc.ServiceName,
-			methodName,
-		).Observe(queryCount)
+	if err != nil {
+		return err
 	}
+	queryCount := float64(*resolutionMetadata.QueryCount)
 
-	return err
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
+	).Observe(queryCount)
+
+	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {

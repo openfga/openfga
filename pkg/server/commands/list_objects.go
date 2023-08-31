@@ -390,7 +390,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
-		return resolutionMetadata, err
+		return nil, err
 	}
 
 	for {
@@ -410,16 +410,16 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return resolutionMetadata, result.Err
+					return nil, result.Err
 				}
 
-				return resolutionMetadata, serverErrors.HandleError("", result.Err)
+				return nil, serverErrors.HandleError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 				Object: result.ObjectID,
 			}); err != nil {
-				return resolutionMetadata, serverErrors.NewInternalError("", err)
+				return nil, serverErrors.NewInternalError("", err)
 			}
 		}
 	}
