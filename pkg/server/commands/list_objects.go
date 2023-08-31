@@ -21,18 +21,17 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"go.uber.org/zap"
 )
 
 const (
 	streamedBufferSize = 100
 
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeLimit        = 25
-	defaultResolveNodeBreadthLimit = 100
-	defaultListObjectsDeadline     = 3 * time.Second
-	defaultListObjectsMaxResults   = 1000
-	defaultMaxConcurrentReads      = 30
+	defaultResolveNodeLimit                 = 25
+	defaultResolveNodeBreadthLimit          = 100
+	defaultListObjectsDeadline              = 3 * time.Second
+	defaultListObjectsMaxResults            = 1000
+	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
 )
 
 var (
@@ -55,16 +54,11 @@ type ListObjectsQuery struct {
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
 	maxConcurrentReads      uint32
+
+	checkOptions []graph.LocalCheckerOption
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
-
-// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
-func WithMaxConcurrentReads(max uint32) ListObjectsQueryOption {
-	return func(d *ListObjectsQuery) {
-		d.maxConcurrentReads = max
-	}
-}
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
 	return func(d *ListObjectsQuery) {
@@ -98,6 +92,19 @@ func WithLogger(l logger.Logger) ListObjectsQueryOption {
 	}
 }
 
+func WithCheckOptions(checkOptions []graph.LocalCheckerOption) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.checkOptions = checkOptions
+	}
+}
+
+// WithMaxConcurrentReads see server.WithMaxConcurrentReadsForListObjects
+func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
+	return func(d *ListObjectsQuery) {
+		d.maxConcurrentReads = limit
+	}
+}
+
 func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
@@ -106,12 +113,15 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 		listObjectsMaxResults:   defaultListObjectsMaxResults,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxConcurrentReads:      defaultMaxConcurrentReads,
+		maxConcurrentReads:      defaultMaxConcurrentReadsForListObjects,
+		checkOptions:            []graph.LocalCheckerOption{},
 	}
 
 	for _, opt := range opts {
 		opt(query)
 	}
+
+	query.datastore = storagewrappers.NewBoundedConcurrencyTupleReader(query.datastore, query.maxConcurrentReads)
 
 	return query
 }
@@ -207,7 +217,6 @@ func (q *ListObjectsQuery) evaluate(
 		connectedObjectsQuery := connectedobjects.NewConnectedObjectsQuery(q.datastore, typesys,
 			connectedobjects.WithResolveNodeLimit(q.resolveNodeLimit),
 			connectedobjects.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			connectedobjects.WithMaxResults(maxResults),
 		)
 
 		go func() {
@@ -222,28 +231,27 @@ func (q *ListObjectsQuery) evaluate(
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
+			// this is necessary to terminate the range loop below
 			close(connectedObjectsResChan)
 		}()
 
 		checkResolver := graph.NewLocalChecker(
 			storagewrappers.NewCombinedTupleReader(q.datastore, req.GetContextualTuples().GetTupleKeys()),
-			graph.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
-			graph.WithMaxConcurrentReads(q.maxConcurrentReads),
+			q.checkOptions...,
 		)
+		defer checkResolver.Close()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
 		wg := sync.WaitGroup{}
 
 		for res := range connectedObjectsResChan {
-
+			if atomic.LoadUint32(objectsFound) >= maxResults {
+				break
+			}
 			if res.ResultStatus == connectedobjects.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
-
-				if atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
-				}
-
+				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				continue
 			}
 
@@ -272,8 +280,8 @@ func (q *ListObjectsQuery) evaluate(
 					return
 				}
 
-				if resp.Allowed && atomic.AddUint32(objectsFound, 1) <= maxResults {
-					resultsChan <- ListObjectsResult{ObjectID: res.Object}
+				if resp.Allowed {
+					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -286,6 +294,13 @@ func (q *ListObjectsQuery) evaluate(
 	go handler()
 
 	return nil
+}
+
+func trySendObject(object string, objectsFound *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	if objectsFound != nil && atomic.AddUint32(objectsFound, 1) > maxResults {
+		return
+	}
+	resultsChan <- ListObjectsResult{ObjectID: object}
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
@@ -320,8 +335,7 @@ func (q *ListObjectsQuery) Execute(
 
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
-				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.listObjectsDeadline.String()),
+				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
 			return &openfgav1.ListObjectsResponse{
 				Objects: objects,
@@ -375,8 +389,7 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
-				ctx, "list objects timeout with list object configuration timeout",
-				zap.String("timeout duration", q.listObjectsDeadline.String()),
+				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
 			return nil
 

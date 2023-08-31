@@ -6,6 +6,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,14 +18,14 @@ const timeWaitingSpanAttribute = "time_waiting"
 var _ storage.RelationshipTupleReader = (*boundedConcurrencyTupleReader)(nil)
 
 var (
-	boundedReadDelayMsHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+	boundedReadDelayMsHistogram = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:                            "datastore_bounded_read_delay_ms",
 		Help:                            "Time spent waiting for Read, ReadUserTuple and ReadUsersetTuples calls to the datastore",
 		Buckets:                         []float64{1, 3, 5, 10, 25, 50, 100, 1000, 5000}, // milliseconds. Upper bound is config.UpstreamTimeout
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: time.Hour,
-	})
+	}, []string{"grpc_service", "grpc_method"})
 )
 
 type boundedConcurrencyTupleReader struct {
@@ -72,6 +73,21 @@ func (b *boundedConcurrencyTupleReader) ReadUsersetTuples(ctx context.Context, s
 	return b.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
 }
 
+func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
+	ctx context.Context,
+	store string,
+	filter storage.ReadStartingWithUserFilter,
+) (storage.TupleIterator, error) {
+	b.waitForLimiter(ctx)
+
+	defer func() {
+		<-b.limiter
+	}()
+
+	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
+
+}
+
 func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 	start := time.Now()
 
@@ -79,7 +95,13 @@ func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
 
 	end := time.Now()
 	timeWaiting := end.Sub(start).Milliseconds()
-	boundedReadDelayMsHistogram.Observe(float64(timeWaiting))
+
+	rpcInfo := telemetry.RPCInfoFromContext(ctx)
+	boundedReadDelayMsHistogram.WithLabelValues(
+		rpcInfo.Service,
+		rpcInfo.Method,
+	).Observe(float64(timeWaiting))
+
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.Int64(timeWaitingSpanAttribute, timeWaiting))
 }

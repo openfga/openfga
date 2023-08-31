@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -27,7 +26,6 @@ const (
 	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
 	defaultResolveNodeLimit        = 25
 	defaultResolveNodeBreadthLimit = 100
-	defaultMaxResults              = 1000
 )
 
 type ConnectedObjectsRequest struct {
@@ -107,7 +105,11 @@ type ConnectedObjectsQuery struct {
 	typesystem              *typesystem.TypeSystem
 	resolveNodeLimit        uint32
 	resolveNodeBreadthLimit uint32
-	maxResults              uint32
+
+	// visitedUsersetsMap map prevents visiting the same userset through the same ingress twice
+	visitedUsersetsMap *sync.Map
+	// candidateObjectsMap map prevents returning the same object twice
+	candidateObjectsMap *sync.Map
 }
 
 type ConnectedObjectsQueryOption func(d *ConnectedObjectsQuery)
@@ -124,19 +126,14 @@ func WithResolveNodeBreadthLimit(limit uint32) ConnectedObjectsQueryOption {
 	}
 }
 
-func WithMaxResults(maxResults uint32) ConnectedObjectsQueryOption {
-	return func(d *ConnectedObjectsQuery) {
-		d.maxResults = maxResults
-	}
-}
-
 func NewConnectedObjectsQuery(ds storage.RelationshipTupleReader, ts *typesystem.TypeSystem, opts ...ConnectedObjectsQueryOption) *ConnectedObjectsQuery {
 	query := &ConnectedObjectsQuery{
 		datastore:               ds,
 		typesystem:              ts,
 		resolveNodeLimit:        defaultResolveNodeLimit,
 		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxResults:              defaultMaxResults,
+		candidateObjectsMap:     new(sync.Map),
+		visitedUsersetsMap:      new(sync.Map),
 	}
 
 	for _, opt := range opts {
@@ -158,19 +155,32 @@ type ConnectedObjectsResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
+// Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
+// and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+func (c *ConnectedObjectsQuery) Execute(
+	ctx context.Context,
+	req *ConnectedObjectsRequest,
+	resultChan chan<- *ConnectedObjectsResult,
+) error {
+	return c.execute(ctx, req, resultChan, nil)
+}
+
 func (c *ConnectedObjectsQuery) execute(
 	ctx context.Context,
 	req *ConnectedObjectsRequest,
 	resultChan chan<- *ConnectedObjectsResult,
-	foundObjectsMap *sync.Map,
-	foundCount *uint32,
+	currentIngress *graph.RelationshipIngress,
 ) error {
-	ctx, span := tracer.Start(ctx, "connectedObjects.execute", trace.WithAttributes(
-		attribute.String("object_type", req.ObjectType),
-		attribute.String("relation", req.Relation),
-		attribute.String("user", req.User.String()),
+	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
+		attribute.String("target_type", req.ObjectType),
+		attribute.String("target_relation", req.Relation),
+		attribute.String("source", req.User.String()),
 	))
 	defer span.End()
+
+	if currentIngress != nil {
+		span.SetAttributes(attribute.String("ingress", currentIngress.String()))
+	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
 	if !ok {
@@ -206,6 +216,19 @@ func (c *ConnectedObjectsQuery) execute(
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		sourceUserObj = val.ObjectRelation.Object
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
+		sourceUserRel := val.ObjectRelation.GetRelation()
+
+		if currentIngress != nil {
+			key := fmt.Sprintf("%s#%s", sourceUserObj, currentIngress.String())
+			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
+				// we've already visited this userset through this ingress, exit to avoid an infinite cycle
+				return nil
+			}
+
+			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+				c.trySendCandidate(ctx, currentIngress, sourceUserObj, resultChan)
+			}
+		}
 	}
 
 	targetObjRef := typesystem.DirectRelationReference(req.ObjectType, req.Relation)
@@ -213,10 +236,9 @@ func (c *ConnectedObjectsQuery) execute(
 	// build the graph of possible edges between object types in the graph based on the authz model's type info
 	g := graph.BuildConnectedObjectGraph(c.typesystem)
 
-	// find the possible incoming edges (ingresses) between the target user reference and the source (object, relation) reference
-	span.SetAttributes(
-		attribute.String("_sourceUserRef", sourceUserRef.String()),
-		attribute.String("_targetObjRef", targetObjRef.String()))
+	// find all paths from target to source and then returns all the edges at distance 0 or 1 in those paths
+	// if the target relation is an intersection or a difference, e.g. viewer: can_view but not blocked
+	// it returns only one of those edges (the first one - e.g. can_view)
 	ingresses, err := g.PrunedRelationshipIngresses(targetObjRef, sourceUserRef)
 	if err != nil {
 		return err
@@ -225,9 +247,13 @@ func (c *ConnectedObjectsQuery) execute(
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
 
-	for i, ingress := range ingresses {
-		span.SetAttributes(attribute.String(fmt.Sprintf("_ingress %d", i), ingress.String()))
+	for _, ingress := range ingresses {
 		innerLoopIngress := ingress
+		if currentIngress != nil && currentIngress.Condition == graph.RequiresFurtherEvalCondition {
+			// propagate the condition to upcoming reverse expansions
+			// TODO don't mutate the ingress, keep track of the previous ingress's condition and use it in trySendCandidate
+			innerLoopIngress.Condition = graph.RequiresFurtherEvalCondition
+		}
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
@@ -239,11 +265,10 @@ func (c *ConnectedObjectsQuery) execute(
 
 			switch innerLoopIngress.Type {
 			case graph.DirectIngress:
-				return c.reverseExpandDirect(subgctx, r, resultChan, foundObjectsMap, foundCount)
+				return c.reverseExpandDirect(subgctx, r, resultChan)
 			case graph.ComputedUsersetIngress:
-
 				// lookup the rewritten target relation on the computed_userset ingress
-				return c.execute(ctx, &ConnectedObjectsRequest{
+				return c.execute(subgctx, &ConnectedObjectsRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
@@ -253,11 +278,10 @@ func (c *ConnectedObjectsQuery) execute(
 							Relation: innerLoopIngress.Ingress.GetRelation(),
 						},
 					},
-					ContextualTuples: req.ContextualTuples,
-				}, resultChan, foundObjectsMap, foundCount)
-
+					ContextualTuples: r.contextualTuples,
+				}, resultChan, innerLoopIngress)
 			case graph.TupleToUsersetIngress:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, foundObjectsMap, foundCount)
+				return c.reverseExpandTupleToUserset(subgctx, r, resultChan)
 			default:
 				return fmt.Errorf("unsupported ingress type")
 			}
@@ -265,31 +289,6 @@ func (c *ConnectedObjectsQuery) execute(
 	}
 
 	return subg.Wait()
-}
-
-// Execute yields all the objects of the provided objectType that
-// the given user has a specific relation with. The results will be limited by the request
-// maxResults. If a 0 maxResults is provided then all objects of the provided objectType will be
-// returned.
-func (c *ConnectedObjectsQuery) Execute(
-	ctx context.Context,
-	req *ConnectedObjectsRequest,
-	resultChan chan<- *ConnectedObjectsResult, // object string (e.g. document:1)
-) error {
-	ctx, span := tracer.Start(ctx, "connectedObjects.Execute", trace.WithAttributes(
-		attribute.String("object_type", req.ObjectType),
-		attribute.String("relation", req.Relation),
-		attribute.String("user", req.User.String()),
-	))
-	defer span.End()
-
-	var foundCount *uint32
-	if c.maxResults > 0 {
-		foundCount = new(uint32)
-	}
-
-	var foundObjects sync.Map
-	return c.execute(ctx, req, resultChan, &foundObjects, foundCount)
 }
 
 type reverseExpandRequest struct {
@@ -304,15 +303,9 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
-	foundObjectsMap *sync.Map,
-	foundCount *uint32,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
-		attribute.String("target.object_type", req.targetObjectRef.GetType()),
-		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
-		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
-		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
-		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
 	defer span.End()
@@ -324,29 +317,24 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 	targetObjectType := req.targetObjectRef.GetType()
 	targetObjectRel := req.targetObjectRef.GetRelation()
 
-	tuplesetRelation := req.ingress.TuplesetRelation.GetRelation()
-
 	var userFilter []*openfgav1.ObjectRelation
 
-	// e.g. 'user:bob'
-	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
-		})
-	}
-
+	// a TTU ingress can only have a userset as a source node
 	// e.g. 'group:eng#member'
 	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: val.ObjectRelation.Object,
 		})
+	} else {
+		panic("unexpected source for reverse expansion of tuple to userset")
 	}
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	// find all tuples of the form req.ingress.Type:...#req.ingress.TuplesetRelation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.ingress.Ingress.GetType(),
-		Relation:   tuplesetRelation,
+		Relation:   req.ingress.TuplesetRelation.GetRelation(),
 		UserFilter: userFilter,
 	})
 	if err != nil {
@@ -370,51 +358,12 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, foundObjectID := tuple.SplitObject(foundObject)
 
-		if _, ok := foundObjectsMap.LoadOrStore(foundObject, struct{}{}); ok {
-			// todo(jon-whit): we could optimize this by avoiding reading this
-			// from the database in the first place
-
-			// if we've already evaluated/found the object, then continue
-			continue
-		}
-
-		if foundObjectType == targetObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.maxResults {
-				break
-			}
-
-			resultStatus := NoFurtherEvalStatus
-			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
-				resultStatus = RequiresFurtherEvalStatus
-			}
-
-			resultChan <- &ConnectedObjectsResult{
-				Object:       foundObject,
-				ResultStatus: resultStatus,
-			}
-		}
-
-		var sourceUserRef IsUserRef
-		sourceUserRef = &UserRefObject{
-			Object: &openfgav1.Object{
-				Type: foundObjectType,
-				Id:   foundObjectID,
+		sourceUserRef := &UserRefObjectRelation{
+			ObjectRelation: &openfgav1.ObjectRelation{
+				Object:   foundObject,
+				Relation: ingress.GetRelation(),
 			},
-		}
-
-		if _, ok := req.sourceUserRef.(*UserRefTypedWildcard); ok {
-			sourceUserRef = &UserRefTypedWildcard{Type: foundObjectType}
-		}
-
-		if _, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-			sourceUserRef = &UserRefObjectRelation{
-				ObjectRelation: &openfgav1.ObjectRelation{
-					Object:   foundObject,
-					Relation: ingress.GetRelation(),
-				},
-			}
 		}
 
 		subg.Go(func() error {
@@ -424,7 +373,7 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
+			}, resultChan, req.ingress)
 		})
 	}
 
@@ -435,15 +384,9 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ConnectedObjectsResult,
-	foundObjectsMap *sync.Map,
-	foundCount *uint32,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		attribute.String("target.object_type", req.targetObjectRef.GetType()),
-		attribute.String("target.relation", req.targetObjectRef.GetRelation()),
-		attribute.String("ingress.object_type", req.ingress.Ingress.GetType()),
-		attribute.String("ingress.relation", req.ingress.Ingress.GetRelation()),
-		attribute.String("ingress.type", req.ingress.Type.String()),
+		attribute.String("ingress", req.ingress.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
 	))
 	defer span.End()
@@ -493,6 +436,7 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	// find all tuples of the form req.ingress.Type:...#req.ingress.Relation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: ingress.GetType(),
 		Relation:   ingress.GetRelation(),
@@ -519,31 +463,6 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
-		foundObjectType, _ := tuple.SplitObject(foundObject)
-
-		if _, ok := foundObjectsMap.LoadOrStore(foundObject, struct{}{}); ok {
-			// todo(jon-whit): we could optimize this by avoiding reading this
-			// from the database in the first place
-
-			// if we've already evaluated/found the object, then continue
-			continue
-		}
-
-		if foundObjectType == targetObjectType {
-			if foundCount != nil && atomic.AddUint32(foundCount, 1) > c.maxResults {
-				break
-			}
-
-			resultStatus := NoFurtherEvalStatus
-			if req.ingress.Condition == graph.RequiresFurtherEvalCondition {
-				resultStatus = RequiresFurtherEvalStatus
-			}
-
-			resultChan <- &ConnectedObjectsResult{
-				Object:       foundObject,
-				ResultStatus: resultStatus,
-			}
-		}
 
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
@@ -559,9 +478,29 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, foundObjectsMap, foundCount)
+			}, resultChan, req.ingress)
 		})
 	}
 
 	return subg.Wait()
+}
+
+func (c *ConnectedObjectsQuery) trySendCandidate(ctx context.Context, ingress *graph.RelationshipIngress, candidateObject string, candidateChan chan<- *ConnectedObjectsResult) {
+	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
+		attribute.String("object", candidateObject),
+		attribute.Bool("sent", false),
+	))
+	defer span.End()
+	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
+		resultStatus := NoFurtherEvalStatus
+		if ingress != nil && ingress.Condition == graph.RequiresFurtherEvalCondition {
+			span.SetAttributes(attribute.Bool("requires_further_eval", true))
+			resultStatus = RequiresFurtherEvalStatus
+		}
+		candidateChan <- &ConnectedObjectsResult{
+			Object:       candidateObject,
+			ResultStatus: resultStatus,
+		}
+		span.SetAttributes(attribute.Bool("sent", true))
+	}
 }

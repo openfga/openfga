@@ -302,6 +302,30 @@ func TestVerifyConfig(t *testing.T) {
 		err := VerifyConfig(cfg)
 		require.Error(t, err)
 	})
+
+	t.Run("empty_request_duration_datastore_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("non_int_request_duration_datastore_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{"12", "45a", "66"}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
+
+	t.Run("negative_request_duration_datastore_query_count_buckets", func(t *testing.T) {
+		cfg := DefaultConfig()
+		cfg.RequestDurationDatastoreQueryCountBuckets = []string{"12", "-45", "66"}
+
+		err := VerifyConfig(cfg)
+		require.Error(t, err)
+	})
 }
 
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
@@ -407,6 +431,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -889,6 +914,7 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	stringBody := string(resBody)
 	require.Contains(t, stringBody, "datastore_query_count")
+	require.Contains(t, stringBody, "request_duration_by_query_count_ms")
 	require.Contains(t, stringBody, "grpc_server_handling_seconds")
 	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
@@ -1059,6 +1085,33 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.trace.properties.serviceName.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
+
+	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.OTLP.Endpoint)
+
+	val = res.Get("properties.trace.properties.otlp.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Trace.OTLP.TLS.Enabled)
+
+	val = res.Get("properties.checkQueryCache.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
+
+	val = res.Get("properties.checkQueryCache.properties.limit.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.CheckQueryCache.Limit)
+
+	val = res.Get("properties.checkQueryCache.properties.ttl.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
+
+	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
+	require.True(t, val.Exists())
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
+	for index, arrayVal := range val.Array() {
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
+	}
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1067,6 +1120,10 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.False(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
+		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 
@@ -1096,6 +1153,32 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	require.Nil(t, rootCmd.Execute())
 }
 
+func TestParseConfig(t *testing.T) {
+	config := `checkQueryCache:
+    enabled: true
+    limit: 100
+    TTL: 5s
+requestDurationDatastoreQueryCountBuckets: [33,44]
+`
+	util.PrepareTempConfigFile(t, config)
+
+	runCmd := NewRunCommand()
+	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+		return nil
+	}
+	rootCmd := cmd.NewRootCommand()
+	rootCmd.AddCommand(runCmd)
+	rootCmd.SetArgs([]string{"run"})
+	require.Nil(t, rootCmd.Execute())
+
+	cfg, err := ReadConfig()
+	require.NoError(t, err)
+	require.True(t, cfg.CheckQueryCache.Enabled)
+	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
+	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
+	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
+}
+
 func TestRunCommandConfigIsMerged(t *testing.T) {
 	config := `datastore:
     engine: postgres
@@ -1104,12 +1187,22 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 	t.Setenv("OPENFGA_DATASTORE_URI", "postgres://postgres:PASS2@127.0.0.1:5432/postgres")
 	t.Setenv("OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "1")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
+	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
+	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
+
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))
+		require.True(t, viper.GetBool("check-query-cache-enabled"))
+		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
+		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
+
+		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -151,6 +151,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
 
+	flags.Bool("trace-otlp-tls-enabled", defaultConfig.Trace.OTLP.TLS.Enabled, "use TLS connection for trace collector")
+
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
@@ -178,6 +180,15 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("listObjects-deadline", defaultConfig.ListObjectsDeadline, "the timeout deadline for serving ListObjects requests")
 
 	flags.Uint32("listObjects-max-results", defaultConfig.ListObjectsMaxResults, "the maximum results to return in non-streaming ListObjects API responses. If 0, all results can be returned")
+
+	flags.Bool("check-query-cache-enabled", defaultConfig.CheckQueryCache.Enabled, "when executing Check and ListObjects requests, enables caching. This will turn Check and ListObjects responses into eventually consistent responses")
+
+	flags.Uint32("check-query-cache-limit", defaultConfig.CheckQueryCache.Limit, "if caching of Check and ListObjects calls is enabled, this is the size limit of the cache")
+
+	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
+
+	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
 
 	// NOTE: if you add a new flag here, update the function below, too
 
@@ -280,6 +291,11 @@ type TraceConfig struct {
 
 type OTLPTraceConfig struct {
 	Endpoint string
+	TLS      OTLPTraceTLSConfig
+}
+
+type OTLPTraceTLSConfig struct {
+	Enabled bool
 }
 
 // PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
@@ -299,6 +315,13 @@ type MetricConfig struct {
 	Enabled             bool
 	Addr                string
 	EnableRPCHistograms bool
+}
+
+// CheckQueryCache defines configuration for caching when resolving check
+type CheckQueryCache struct {
+	Enabled bool
+	Limit   uint32 // (in items)
+	TTL     time.Duration
 }
 
 type Config struct {
@@ -338,30 +361,34 @@ type Config struct {
 	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
-	Datastore  DatastoreConfig
-	GRPC       GRPCConfig
-	HTTP       HTTPConfig
-	Authn      AuthnConfig
-	Log        LogConfig
-	Trace      TraceConfig
-	Playground PlaygroundConfig
-	Profiler   ProfilerConfig
-	Metrics    MetricConfig
+	Datastore       DatastoreConfig
+	GRPC            GRPCConfig
+	HTTP            HTTPConfig
+	Authn           AuthnConfig
+	Log             LogConfig
+	Trace           TraceConfig
+	Playground      PlaygroundConfig
+	Profiler        ProfilerConfig
+	Metrics         MetricConfig
+	CheckQueryCache CheckQueryCache
+
+	RequestDurationDatastoreQueryCountBuckets []string
 }
 
 // DefaultConfig returns the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:                100,
-		MaxTypesPerAuthorizationModel:    100,
-		MaxConcurrentReadsForCheck:       math.MaxUint32,
-		MaxConcurrentReadsForListObjects: math.MaxUint32,
-		ChangelogHorizonOffset:           0,
-		ResolveNodeLimit:                 25,
-		ResolveNodeBreadthLimit:          100,
-		Experimentals:                    []string{},
-		ListObjectsDeadline:              3 * time.Second, // there is a 3-second timeout elsewhere
-		ListObjectsMaxResults:            1000,
+		MaxTuplesPerWrite:                         100,
+		MaxTypesPerAuthorizationModel:             100,
+		MaxConcurrentReadsForCheck:                math.MaxUint32,
+		MaxConcurrentReadsForListObjects:          math.MaxUint32,
+		ChangelogHorizonOffset:                    0,
+		ResolveNodeLimit:                          25,
+		ResolveNodeBreadthLimit:                   100,
+		Experimentals:                             []string{},
+		ListObjectsDeadline:                       3 * time.Second, // there is a 3-second timeout elsewhere
+		ListObjectsMaxResults:                     1000,
+		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
 			MaxCacheSize: 100000,
@@ -393,6 +420,9 @@ func DefaultConfig() *Config {
 			Enabled: false,
 			OTLP: OTLPTraceConfig{
 				Endpoint: "0.0.0.0:4317",
+				TLS: OTLPTraceTLSConfig{
+					Enabled: false,
+				},
 			},
 			SampleRatio: 0.2,
 			ServiceName: "openfga",
@@ -409,6 +439,11 @@ func DefaultConfig() *Config {
 			Enabled:             true,
 			Addr:                "0.0.0.0:2112",
 			EnableRPCHistograms: false,
+		},
+		CheckQueryCache: CheckQueryCache{
+			Enabled: false,
+			Limit:   10000,
+			TTL:     10 * time.Second,
 		},
 	}
 }
@@ -451,6 +486,7 @@ func MustDefaultConfigWithRandomPorts() *Config {
 func ReadConfig() (*Config, error) {
 	config := DefaultConfig()
 
+	viper.SetTypeByDefaultValue(true)
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -514,6 +550,16 @@ func VerifyConfig(cfg *Config) error {
 		}
 	}
 
+	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
+		return errors.New("request duration datastore query count buckets must not be empty")
+	}
+	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
+		valInt, err := strconv.Atoi(val)
+		if err != nil || valInt < 0 {
+			return errors.New("request duration datastore query count bucket items must be non-negative integer")
+		}
+	}
+
 	return nil
 }
 
@@ -539,18 +585,39 @@ type ServerContext struct {
 	Logger logger.Logger
 }
 
+func convertStringArrayToUintArray(stringArray []string) []uint {
+	uintArray := []uint{}
+	for _, val := range stringArray {
+		// note that we have already validated whether the array item is non-negative integer
+		valInt, err := strconv.Atoi(val)
+		if err == nil {
+			uintArray = append(uintArray, uint(valInt))
+		}
+	}
+	return uintArray
+}
+
 func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(
-			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+
+		options := []telemetry.TracerOption{
+			telemetry.WithOTLPEndpoint(
+				config.Trace.OTLP.Endpoint,
+			),
 			telemetry.WithAttributes(
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),
 			),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
-		)
+		}
+
+		if !config.Trace.OTLP.TLS.Enabled {
+			options = append(options, telemetry.WithOTLPInsecure())
+		}
+
+		tp = telemetry.MustNewTracerProvider(options...)
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -618,13 +685,11 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		requestid.NewUnaryInterceptor(),
-		grpc_validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		requestid.NewStreamingInterceptor(),
-		grpc_validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
@@ -720,6 +785,10 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 		server.WithListObjectsMaxResults(config.ListObjectsMaxResults),
 		server.WithMaxConcurrentReadsForListObjects(config.MaxConcurrentReadsForListObjects),
 		server.WithMaxConcurrentReadsForCheck(config.MaxConcurrentReadsForCheck),
+		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
+		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
+		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
+		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
 		server.WithExperimentals(experimentals...),
 	)
 
