@@ -351,11 +351,11 @@ func (c *ConnectedObjectsQuery) reverseExpandTupleToUserset(
 		Relation:   req.ingress.TuplesetRelation.GetRelation(),
 		UserFilter: userFilter,
 	})
+	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 	if err != nil {
 		return err
 	}
 	defer iter.Stop()
-	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
@@ -458,11 +458,11 @@ func (c *ConnectedObjectsQuery) reverseExpandDirect(
 		Relation:   ingress.GetRelation(),
 		UserFilter: userFilter,
 	})
+	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 	if err != nil {
 		return err
 	}
 	defer iter.Stop()
-	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 
 	subg, subgctx := errgroup.WithContext(ctx)
 	subg.SetLimit(int(c.resolveNodeBreadthLimit))
