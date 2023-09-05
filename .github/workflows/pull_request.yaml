@@ -116,7 +116,7 @@ jobs:
           key: ${{ runner.os }}-go-benchmark
 
       - name: Compare benchmark result
-        uses: benchmark-action/github-action-benchmark@29e55772d85cc51b2a291bde13f33ef9014d2d1f # v1.17.0
+        uses: benchmark-action/github-action-benchmark@70405016b032d44f409e4b1b451c40215cbe2393 # v1.18.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
