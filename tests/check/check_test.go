@@ -124,7 +124,7 @@ func TestCheckLogs(t *testing.T) {
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:anne"),
 			},
 			expectedContext: map[string]interface{}{
 				"grpc_service":           "openfga.v1.OpenFGAService",
@@ -321,7 +321,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 		})
 
 		require.NoError(b, err)
@@ -355,7 +355,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 			Trace:    true,
 		})
 
@@ -414,7 +414,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < b.N; i++ {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:anne"),
+			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "admin", "user:anne"),
 		})
 
 		require.NoError(b, err)
@@ -445,7 +445,7 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
 			// users can't be direct owners of repos
-			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "owner", "user:anne"),
+			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "owner", "user:anne"),
 		})
 
 		require.False(b, check.Allowed)
@@ -522,7 +522,7 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			TupleKey:             tuple.NewTupleKey("document:budget", "viewer", "user:anne"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 		})
 
 		require.False(b, check.Allowed)

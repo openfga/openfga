@@ -44,7 +44,7 @@ type stage struct {
 }
 
 type assertion struct {
-	Tuple            *openfgav1.TupleKey
+	Tuple            *openfgav1.CheckRequestTupleKey
 	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
@@ -102,7 +102,7 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
 	_, err = client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
-		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
+		TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:y"),
 		AuthorizationModelId: badModelID,
 	})
 

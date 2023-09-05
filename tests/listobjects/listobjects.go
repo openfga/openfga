@@ -235,7 +235,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					for _, object := range resp.Objects {
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 							StoreId:  storeID,
-							TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+							TupleKey: tuple.NewCheckRequestTupleKey(object, assertion.Request.Relation, assertion.Request.User),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
