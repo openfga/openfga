@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
@@ -16,6 +15,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -205,9 +206,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 }
 
 func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) {
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.Tuple{}, openfgav1.TupleKey{}, openfgav1.TupleChange{})
-	ignoreTimestampOpts := cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp")
-
+	ignoreTimestampOpts := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp")
 	var res *openfgav1.ReadChangesResponse
 	var err error
 	for i, test := range testCasesInOrder {
@@ -226,7 +225,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, res)
-				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreStateOpts, ignoreTimestampOpts, cmpopts.EquateEmpty()); diff != "" {
+				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreTimestampOpts, protocmp.Transform()); diff != "" {
 					t.Errorf("tuple change mismatch (-want +got):\n%s", diff)
 				}
 				if test.expectEmptyContinuationToken {
