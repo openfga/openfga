@@ -19,13 +19,14 @@ import (
 func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 	tests := []struct {
-		name             string
-		model            string
-		tuples           []*openfgav1.TupleKey
-		request          *connectedobjects.ConnectedObjectsRequest
-		resolveNodeLimit uint32
-		expectedResult   []*connectedobjects.ConnectedObjectsResult
-		expectedError    error
+		name                 string
+		model                string
+		tuples               []*openfgav1.TupleKey
+		request              *connectedobjects.ConnectedObjectsRequest
+		resolveNodeLimit     uint32
+		expectedResult       []*connectedobjects.ConnectedObjectsResult
+		expectedError        error
+		expectedDSQueryCount uint32
 	}{
 		{
 			name: "basic_intersection",
@@ -64,6 +65,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.RequiresFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "indirect_intersection",
@@ -104,6 +106,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.RequiresFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 
 		{
@@ -143,6 +146,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "direct_relations_involving_relationships_with_users_and_usersets",
@@ -182,6 +186,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "success_with_direct_relationships_and_computed_usersets",
@@ -222,6 +227,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "success_with_many_tuples",
@@ -280,6 +286,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 16,
 		},
 		{
 			name: "resolve_objects_involved_in_recursive_hierarchy",
@@ -321,6 +328,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 4,
 		},
 		{
 			name: "resolution_depth_exceeded_failure",
@@ -349,7 +357,8 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
 			},
-			expectedError: serverErrors.AuthorizationModelResolutionTooComplex,
+			expectedError:        serverErrors.AuthorizationModelResolutionTooComplex,
+			expectedDSQueryCount: 0,
 		},
 		{
 			name: "objects_connected_to_a_userset",
@@ -386,6 +395,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "objects_connected_to_a_userset_self_referencing",
@@ -414,6 +424,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_1",
@@ -447,6 +458,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_2",
@@ -483,6 +495,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_3",
@@ -520,6 +533,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_indirectly_through_a_ttu",
@@ -555,6 +569,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "directly_related_typed_wildcard",
@@ -586,6 +601,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "indirectly_related_typed_wildcard",
@@ -615,6 +631,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "relationship_through_multiple_indirections",
@@ -652,6 +669,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "typed_wildcard_relationship_through_multiple_indirections",
@@ -689,6 +707,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "simple_typed_wildcard_and_direct_relation",
@@ -720,6 +739,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_and_indirect_relation",
@@ -759,6 +779,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "connected_objects_with_public_user_access_1",
@@ -795,6 +816,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "connected_objects_with_public_user_access_2",
@@ -828,6 +850,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_1",
@@ -859,6 +882,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_2",
@@ -885,6 +909,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_3",
@@ -919,6 +944,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "non-assignable_ttu_relationship",
@@ -959,6 +985,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_without_wildcard_connectivity",
@@ -996,6 +1023,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_1",
@@ -1034,6 +1062,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_2",
@@ -1073,6 +1102,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_3",
@@ -1113,6 +1143,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 4,
 		},
 		{
 			name: "cyclical_tupleset_relation_terminates",
@@ -1142,6 +1173,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 2,
 		},
 		{
 			name: "does_not_send_duplicate_even_though_there_are_two_paths_to_same_solution",
@@ -1177,6 +1209,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 					ResultStatus: connectedobjects.NoFurtherEvalStatus,
 				},
 			},
+			expectedDSQueryCount: 4,
 		},
 	}
 
@@ -1222,8 +1255,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
+			resolutionMetadata := connectedobjects.NewResolutionMetadata()
+
 			go func() {
-				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan)
+				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				require.ErrorIs(err, test.expectedError)
 				close(resultChan)
 			}()
@@ -1236,6 +1271,7 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 			if test.expectedError == nil {
 				require.ElementsMatch(test.expectedResult, results)
+				require.Equal(test.expectedDSQueryCount, *resolutionMetadata.QueryCount)
 			}
 		})
 	}

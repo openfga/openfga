@@ -58,6 +58,11 @@ type ListObjectsQuery struct {
 	checkOptions []graph.LocalCheckerOption
 }
 
+type ListObjectsResponse struct {
+	Objects            []string
+	ResolutionMetadata connectedobjects.ResolutionMetadata
+}
+
 type ListObjectsQueryOption func(d *ListObjectsQuery)
 
 func WithListObjectsDeadline(deadline time.Duration) ListObjectsQueryOption {
@@ -148,6 +153,7 @@ func (q *ListObjectsQuery) evaluate(
 	req listObjectsRequest,
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
+	resolutionMetadata *connectedobjects.ResolutionMetadata,
 ) error {
 
 	targetObjectType := req.GetType()
@@ -226,7 +232,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
-			}, connectedObjectsResChan)
+			}, connectedObjectsResChan, resolutionMetadata)
 			if err != nil {
 				resultsChan <- ListObjectsResult{Err: err}
 			}
@@ -279,6 +285,7 @@ func (q *ListObjectsQuery) evaluate(
 					resultsChan <- ListObjectsResult{Err: err}
 					return
 				}
+				atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 
 				if resp.Allowed {
 					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
@@ -308,7 +315,7 @@ func trySendObject(object string, objectsFound *uint32, maxResults uint32, resul
 func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
-) (*openfgav1.ListObjectsResponse, error) {
+) (*ListObjectsResponse, error) {
 
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
@@ -323,7 +330,9 @@ func (q *ListObjectsQuery) Execute(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	resolutionMetadata := connectedobjects.NewResolutionMetadata()
+
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -337,8 +346,9 @@ func (q *ListObjectsQuery) Execute(
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return &openfgav1.ListObjectsResponse{
-				Objects: objects,
+			return &ListObjectsResponse{
+				Objects:            objects,
+				ResolutionMetadata: *resolutionMetadata,
 			}, nil
 
 		case result, channelOpen := <-resultsChan:
@@ -350,8 +360,9 @@ func (q *ListObjectsQuery) Execute(
 			}
 
 			if !channelOpen {
-				return &openfgav1.ListObjectsResponse{
-					Objects: objects,
+				return &ListObjectsResponse{
+					Objects:            objects,
+					ResolutionMetadata: *resolutionMetadata,
 				}, nil
 			}
 			objects = append(objects, result.ObjectID)
@@ -362,11 +373,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(
-	ctx context.Context,
-	req *openfgav1.StreamedListObjectsRequest,
-	srv openfgav1.OpenFGAService_StreamedListObjectsServer,
-) error {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*connectedobjects.ResolutionMetadata, error) {
 
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
@@ -379,9 +386,11 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 		defer cancel()
 	}
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults)
+	resolutionMetadata := connectedobjects.NewResolutionMetadata()
+
+	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for {
@@ -391,26 +400,26 @@ func (q *ListObjectsQuery) ExecuteStreamed(
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return nil
+			return resolutionMetadata, nil
 
 		case result, channelOpen := <-resultsChan:
 			if !channelOpen {
 				// Channel closed! No more results.
-				return nil
+				return resolutionMetadata, nil
 			}
 
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return result.Err
+					return nil, result.Err
 				}
 
-				return serverErrors.HandleError("", result.Err)
+				return nil, serverErrors.HandleError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 				Object: result.ObjectID,
 			}); err != nil {
-				return serverErrors.NewInternalError("", err)
+				return nil, serverErrors.NewInternalError("", err)
 			}
 		}
 	}
