@@ -8,13 +8,16 @@ assignees: ''
 ---
 
 **Summary**
-Please describe the bug here. What did you expect to happen (e.g. a request) and what did you get that was unexpected?
 
-**OpenFGA version or commit**: 
-Enter here.
+Describe the bug here. What did you expect to happen (e.g. a request) and what did you get that was unexpected?
+
+**OpenFGA version or commit**
+
+If you know it, enter here.
 
 **Store data**
-Please provide information about your authorization model and tuples. For example:
+
+If relevant, provide information about your authorization model and tuples. For example:
 
 ```
 model-file: |
@@ -35,4 +38,4 @@ tuples:
 
 **Other data**
 - How are you running OpenFGA? (As a binary, in Docker, in Kubernetes)
-- What data store are you using? (In memory, MySQL, Postgres)
+- What datastore are you using? (In memory, MySQL, Postgres)
