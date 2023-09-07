@@ -20,7 +20,7 @@ If you know it, enter here.
 If applicable, provide information about your authorization model, tuples, and the Check or ListObjects calls you're making. For example:
 
 ```yaml
-model-file: |
+model_file: |
   model
     schema 1.1
   type user
@@ -41,7 +41,7 @@ tests: # remove this if not a bug in Check or ListObjects API
         object: organization:openfga
         assertions:
           member: true
-    list-objects:
+    list_objects:
       - user: user:anne
         type: organization
         assertions:
