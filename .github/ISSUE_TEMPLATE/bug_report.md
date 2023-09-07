@@ -53,5 +53,5 @@ tests: # remove this if not a bug in Check or ListObjects API
 
 - How are you running OpenFGA? (As a binary, in Docker, in Kubernetes)
 - What datastore are you using? (In memory, MySQL, Postgres)
-- Are you running OpenFGA with any of the flags mentioned in `./openfga run --help`?
+- Are you running OpenFGA with any configuration overrides or with any of the flags mentioned in `./openfga run --help`?
 - Do you have any logs or traces that could help us debug the problem?
