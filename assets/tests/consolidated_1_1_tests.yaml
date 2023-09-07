@@ -4978,3 +4978,37 @@ tests:
               relation: list_relation
             expectation:
               - list_type:list_type1
+  - name: follows_correct_graph_edges
+    stages:
+      - model: |
+          type user
+
+          type repo
+            relations
+              define admin: [user] as self or repo_admin from owner
+              define owner: [organization] as self
+
+          type organization
+            relations
+              define member: [user] as self or owner
+              define owner: [user] as self
+              define repo_admin: [user, organization#member] as self
+        tuples:
+          - user: user:alex
+            relation: member
+            object: organization:openfga
+          - user: user:alex
+            relation: member
+            object: organization:acme
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:acme
+            relation: owner
+            object: repo:acme/acme
+        listObjectsAssertions:
+          - request:
+              user: user:alex
+              type: repo
+              relation: admin
+            expectation: [ ]

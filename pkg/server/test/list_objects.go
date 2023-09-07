@@ -271,7 +271,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					done <- struct{}{}
 				}()
 
-				err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:          storeID,
 					Type:             test.objectType,
 					Relation:         test.relation,
@@ -307,7 +307,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 }
 
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var listObjectsResponse *openfgav1.ListObjectsResponse //nolint
+var listObjectsResponse *commands.ListObjectsResponse //nolint
 
 func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatastore) {
 
@@ -360,7 +360,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 
 	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
-	var r *openfgav1.ListObjectsResponse
+	var r *commands.ListObjectsResponse
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
@@ -422,7 +422,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 
 	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
-	var r *openfgav1.ListObjectsResponse
+	var r *commands.ListObjectsResponse
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
