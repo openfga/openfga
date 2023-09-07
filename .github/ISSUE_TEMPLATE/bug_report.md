@@ -9,7 +9,11 @@ assignees: ''
 
 **Summary**
 
-Describe the bug here. What did you expect to happen and what did you get that was unexpected?
+Describe the bug here.
+
+- Steps to reproduce
+- What did you expect to happen?
+- What actually happened?
 
 **OpenFGA version or commit**
 
