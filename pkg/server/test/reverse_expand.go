@@ -8,7 +8,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/server/commands/connectedobjects"
+	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -16,25 +16,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
+func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 
 	tests := []struct {
 		name                 string
 		model                string
 		tuples               []*openfgav1.TupleKey
-		request              *connectedobjects.ConnectedObjectsRequest
+		request              *reverseexpand.ReverseExpandRequest
 		resolveNodeLimit     uint32
-		expectedResult       []*connectedobjects.ConnectedObjectsResult
+		expectedResult       []*reverseexpand.ReverseExpandResult
 		expectedError        error
 		expectedDSQueryCount uint32
 	}{
 		{
 			name: "basic_intersection",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -55,25 +55,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 				tuple.NewTupleKey("document:3", "allowed", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.RequiresFurtherEvalStatus,
+					ResultStatus: reverseexpand.RequiresFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.RequiresFurtherEvalStatus,
+					ResultStatus: reverseexpand.RequiresFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "indirect_intersection",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -100,10 +100,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:X", "writer", "user:jon"),
 				tuple.NewTupleKey("folder:X", "editor", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.RequiresFurtherEvalStatus,
+					ResultStatus: reverseexpand.RequiresFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
@@ -111,11 +111,11 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 
 		{
 			name: "resolve_direct_relationships_with_tuples_and_contextual_tuples",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -136,25 +136,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:doc1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:doc3",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "direct_relations_involving_relationships_with_users_and_usersets",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -176,25 +176,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:doc3", "viewer", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:doc1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:doc3",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "success_with_direct_relationships_and_computed_usersets",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -217,25 +217,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:doc3", "owner", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:doc1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:doc3",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "success_with_many_tuples",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -276,25 +276,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "group:openfga#member"),
 				tuple.NewTupleKey("group:openfga", "member", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:doc1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:doc2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 16,
 		},
 		{
 			name: "resolve_objects_involved_in_recursive_hierarchy",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -314,29 +314,29 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "folder:folder1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "folder:folder2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "folder:folder3",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 4,
 		},
 		{
 			name: "resolution_depth_exceeded_failure",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "folder",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -362,11 +362,11 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 		},
 		{
 			name: "objects_connected_to_a_userset",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "group",
 				Relation:   "member",
-				User: &connectedobjects.UserRefObjectRelation{
+				User: &reverseexpand.UserRefObjectRelation{
 					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   "group:iam",
 						Relation: "member",
@@ -385,25 +385,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "group:iam#member"),
 				tuple.NewTupleKey("group:iam", "member", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "group:opensource",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "group:eng",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "objects_connected_to_a_userset_self_referencing",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "group",
 				Relation:   "member",
-				User: &connectedobjects.UserRefObjectRelation{
+				User: &reverseexpand.UserRefObjectRelation{
 					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   "group:iam",
 						Relation: "member",
@@ -418,21 +418,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "group:iam",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_1",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -452,21 +452,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "viewer", "document:1#editor"),
 				tuple.NewTupleKey("document:1", "owner", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_2",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -489,21 +489,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "manager", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_3",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "trial",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "fede",
@@ -527,21 +527,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("trial:1", "editor", "team:devs#member"),
 				tuple.NewTupleKey("team:devs", "admin", "user:fede"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "trial:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "objects_connected_indirectly_through_a_ttu",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "view",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "organization",
 						Id:   "2",
@@ -563,21 +563,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "parent", "organization:1"),
 				tuple.NewTupleKey("organization:1", "viewer", "organization:2"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "directly_related_typed_wildcard",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &connectedobjects.UserRefTypedWildcard{Type: "user"},
+				User:       &reverseexpand.UserRefTypedWildcard{Type: "user"},
 			},
 			model: `
 			type user
@@ -591,25 +591,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:2", "viewer", "user:*"),
 				tuple.NewTupleKey("document:3", "viewer", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "indirectly_related_typed_wildcard",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &connectedobjects.UserRefTypedWildcard{Type: "user"},
+				User:       &reverseexpand.UserRefTypedWildcard{Type: "user"},
 			},
 			model: `
 			type user
@@ -625,21 +625,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:2", "viewer", "group:fga#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "relationship_through_multiple_indirections",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -663,21 +663,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "typed_wildcard_relationship_through_multiple_indirections",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -701,21 +701,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:eng", "member", "team:tigers#member"),
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "simple_typed_wildcard_and_direct_relation",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{Type: "user", Id: "jon"},
 				},
 			},
@@ -729,25 +729,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "viewer", "user:*"),
 				tuple.NewTupleKey("document:2", "viewer", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_and_indirect_relation",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "jon",
@@ -769,25 +769,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("document:2", "viewer", "group:fga#member"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
-			name: "connected_objects_with_public_user_access_1",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			name: "with_public_user_access_1",
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "*",
@@ -810,21 +810,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:2", "viewer", "group:fga#member"),
 				tuple.NewTupleKey("document:3", "viewer", "group:other#member"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
-			name: "connected_objects_with_public_user_access_2",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			name: "with_public_user_access_2",
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "resource",
 				Relation:   "reader",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{
 						Type: "user",
 						Id:   "bev",
@@ -844,21 +844,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("resource:x", "writer", "user:*"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "resource:x",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_1",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{
+				User: &reverseexpand.UserRefObject{
 					Object: &openfgav1.Object{Type: "user", Id: "jon"},
 				},
 				ContextualTuples: []*openfgav1.TupleKey{
@@ -872,25 +872,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user, user:*] as self
 			`,
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_2",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User:       &connectedobjects.UserRefTypedWildcard{Type: "user"},
+				User:       &reverseexpand.UserRefTypedWildcard{Type: "user"},
 				ContextualTuples: []*openfgav1.TupleKey{
 					tuple.NewTupleKey("document:1", "viewer", "employee:*"),
 					tuple.NewTupleKey("document:2", "viewer", "user:*"),
@@ -903,21 +903,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [user:*] as self
 			`,
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "simple_typed_wildcard_with_contextual_tuples_3",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObjectRelation{
+				User: &reverseexpand.UserRefObjectRelation{
 					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   "group:eng",
 						Relation: "member",
@@ -938,21 +938,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define viewer: [group#member] as self
 			`,
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 1,
 		},
 		{
 			name: "non-assignable_ttu_relationship",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -975,25 +975,25 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:2", "viewer", "user:*"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 				{
 					Object:       "document:2",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_without_wildcard_connectivity",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -1017,21 +1017,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:1", "viewer", "user:jon"),
 				tuple.NewTupleKey("folder:2", "viewer", "user:*"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_1",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -1056,21 +1056,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:1", "viewer", "group:eng#member"),
 				tuple.NewTupleKey("group:eng", "member", "user:*"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_2",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "resource",
 				Relation:   "writer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "anne",
 				}},
@@ -1096,21 +1096,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
 				tuple.NewTupleKey("group:fga", "member", "user:anne"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "resource:eng_handbook",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 3,
 		},
 		{
 			name: "non-assignable_ttu_relationship_through_indirection_3",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "resource",
 				Relation:   "reader",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "anne",
 				}},
@@ -1137,21 +1137,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("org:eng", "dept", "group:fga"),
 				tuple.NewTupleKey("group:fga", "member", "user:anne"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "resource:eng_handbook",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 4,
 		},
 		{
 			name: "cyclical_tupleset_relation_terminates",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "node",
 				Relation:   "editor",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "wonder",
 				}},
@@ -1167,21 +1167,21 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("node:abc", "editor", "user:wonder"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "node:abc",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 2,
 		},
 		{
 			name: "does_not_send_duplicate_even_though_there_are_two_paths_to_same_solution",
-			request: &connectedobjects.ConnectedObjectsRequest{
+			request: &reverseexpand.ReverseExpandRequest{
 				StoreID:    ulid.Make().String(),
 				ObjectType: "document",
 				Relation:   "viewer",
-				User: &connectedobjects.UserRefObject{Object: &openfgav1.Object{
+				User: &reverseexpand.UserRefObject{Object: &openfgav1.Object{
 					Type: "user",
 					Id:   "jon",
 				}},
@@ -1203,10 +1203,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("group:example1", "maintainer", "user:jon"),
 				tuple.NewTupleKey("group:example1", "member", "user:jon"),
 			},
-			expectedResult: []*connectedobjects.ConnectedObjectsResult{
+			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "document:1",
-					ResultStatus: connectedobjects.NoFurtherEvalStatus,
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
 			expectedDSQueryCount: 4,
@@ -1232,18 +1232,18 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			err = ds.Write(ctx, store, nil, test.tuples)
 			require.NoError(err)
 
-			var opts []connectedobjects.ConnectedObjectsQueryOption
+			var opts []reverseexpand.ReverseExpandQueryOption
 
 			if test.resolveNodeLimit != 0 {
-				opts = append(opts, connectedobjects.WithResolveNodeLimit(test.resolveNodeLimit))
+				opts = append(opts, reverseexpand.WithResolveNodeLimit(test.resolveNodeLimit))
 			}
 
-			connectedObjectsCmd := connectedobjects.NewConnectedObjectsQuery(ds, typesystem.New(model), opts...)
+			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, typesystem.New(model), opts...)
 
-			resultChan := make(chan *connectedobjects.ConnectedObjectsResult, 100)
+			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)
 			done := make(chan struct{})
 
-			var results []*connectedobjects.ConnectedObjectsResult
+			var results []*reverseexpand.ReverseExpandResult
 			go func() {
 				for result := range resultChan {
 					results = append(results, result)
@@ -1255,10 +1255,10 @@ func ConnectedObjectsTest(t *testing.T, ds storage.OpenFGADatastore) {
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			resolutionMetadata := connectedobjects.NewResolutionMetadata()
+			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			go func() {
-				err = connectedObjectsCmd.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				require.ErrorIs(err, test.expectedError)
 				close(resultChan)
 			}()
