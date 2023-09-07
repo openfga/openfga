@@ -157,7 +157,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {
-				detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
+				detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
@@ -176,14 +176,14 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, err)
+					require.NoError(t, err, detailedInfo)
 					require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
 
 				} else {
-					require.Error(t, err)
+					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 
 				// assert 2: on streaming list objects endpoint
@@ -221,13 +221,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				<-done
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, streamingErr)
+					require.NoError(t, streamingErr, detailedInfo)
 					require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
 				} else {
-					require.Error(t, streamingErr)
+					require.Error(t, streamingErr, detailedInfo)
 					e, ok := status.FromError(streamingErr)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 
 				if assertion.ErrorCode == 0 {
@@ -240,8 +240,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 								TupleKeys: ctxTuples,
 							},
 						})
-						require.NoError(t, err)
-						require.True(t, checkResp.Allowed)
+						require.NoError(t, err, detailedInfo)
+						require.True(t, checkResp.Allowed, detailedInfo)
 					}
 				}
 			}
