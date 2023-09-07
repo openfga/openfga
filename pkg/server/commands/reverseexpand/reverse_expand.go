@@ -280,7 +280,7 @@ func (c *ReverseExpandQuery) execute(
 					User: &UserRefObjectRelation{
 						ObjectRelation: &openfgav1.ObjectRelation{
 							Object:   sourceUserObj,
-							Relation: innerLoopEdge.TailUsersetNode.GetRelation(),
+							Relation: innerLoopEdge.TargetReference.GetRelation(),
 						},
 					},
 					ContextualTuples: r.contextualTuples,
@@ -326,9 +326,9 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
-	// find all tuples of the form req.edge.TailUsersetNode.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
+	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TailUsersetNode.GetType(),
+		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   req.edge.TuplesetRelation.GetRelation(),
 		UserFilter: userFilter,
 	})
@@ -357,7 +357,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
 				Object:   foundObject,
-				Relation: req.edge.TailUsersetNode.GetRelation(),
+				Relation: req.edge.TargetReference.GetRelation(),
 			},
 		}
 
@@ -395,7 +395,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 	targetUserObjectType := req.sourceUserRef.GetObjectType()
 
-	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TailUsersetNode, targetUserObjectType)
+	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
 	if err != nil {
 		return err
 	}
@@ -429,10 +429,10 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
-	// find all tuples of the form req.edge.TailUsersetNode.Type:...#req.edge.TailUsersetNode.Relation@req.sourceUserRef
+	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TargetReference.Relation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TailUsersetNode.GetType(),
-		Relation:   req.edge.TailUsersetNode.GetRelation(),
+		ObjectType: req.edge.TargetReference.GetType(),
+		Relation:   req.edge.TargetReference.GetRelation(),
 		UserFilter: userFilter,
 	})
 	if err != nil {

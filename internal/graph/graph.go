@@ -57,7 +57,7 @@ const (
 	// and some target user reference.
 	DirectEdge RelationshipEdgeType = iota
 	// TupleToUsersetEdge defines a connection between a source object reference
-	// and some target user reference that is conditional to a third user reference.
+	// and some target user reference that is co-dependent upon the lookup of a third object reference.
 	TupleToUsersetEdge
 	// ComputedUsersetEdge defines a direct connection between a source object reference
 	// and some target user reference. The difference with DirectEdge is that DirectEdge will involve
@@ -95,20 +95,20 @@ const (
 	NoFurtherEvalCondition
 )
 
-// RelationshipEdge represents a possible relationship some source object reference
+// RelationshipEdge represents a possible relationship between some source object reference
 // and a target user reference. The possibility is realized depending on the tuples and on the edge's type.
 type RelationshipEdge struct {
 	Type RelationshipEdgeType
 
 	// The edge is directed towards this node, which can be like group:*, or group, or group:member
-	TailUsersetNode *openfgav1.RelationReference
+	TargetReference *openfgav1.RelationReference
 
 	// If the type is TupleToUsersetEdge, this defines the TTU condition
-	// TODO this can be just a string for the relation (since the type will be the same as TailUsersetNode.Type)
+	// TODO this can be just a string for the relation (since the type will be the same as TargetReference.Type)
 	TuplesetRelation *openfgav1.RelationReference
 
 	// TODO this is leaking implementation details of ReverseExpand. This can be a boolean saying
-	// if `TailUsersetNode` is intersection or exclusion.
+	// if `TargetReference` is intersection or exclusion.
 	Condition EdgeCondition
 }
 
@@ -116,30 +116,30 @@ func (r RelationshipEdge) String() string {
 	// TODO also print the condition
 	val := ""
 	if r.TuplesetRelation != nil {
-		val = fmt.Sprintf("userset %s, type %s, tupleset %s", r.TailUsersetNode.String(), r.Type.String(), r.TuplesetRelation.String())
+		val = fmt.Sprintf("userset %s, type %s, tupleset %s", r.TargetReference.String(), r.Type.String(), r.TuplesetRelation.String())
 	} else {
-		val = fmt.Sprintf("userset %s, type %s", r.TailUsersetNode.String(), r.Type.String())
+		val = fmt.Sprintf("userset %s, type %s", r.TargetReference.String(), r.Type.String())
 	}
 	return strings.ReplaceAll(val, "  ", " ")
 }
 
-// TypesystemGraph represents a graph of relationships and the connectivity between
+// RelationshipGraph represents a graph of relationships and the connectivity between
 // object and relation references within the graph through direct or indirect relationships.
-type TypesystemGraph struct {
+type RelationshipGraph struct {
 	typesystem *typesystem.TypeSystem
 }
 
-// New returns a TypesystemGraph. The TypesystemGraph should be used to introspect what kind of relationships between
+// New returns a RelationshipGraph from an authorization model. The RelationshipGraph should be used to introspect what kind of relationships between
 // object types can exist. To visualize this graph, use https://github.com/jon-whit/openfga-graphviz-gen
-func New(typesystem *typesystem.TypeSystem) *TypesystemGraph {
-	return &TypesystemGraph{
+func New(typesystem *typesystem.TypeSystem) *RelationshipGraph {
+	return &RelationshipGraph{
 		typesystem: typesystem,
 	}
 }
 
 // GetRelationshipEdges finds all paths from a source to a target and then returns all the edges at distance 0 or 1 of the source in those paths.
-func (g *TypesystemGraph) GetRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
-	return g.relationshipEdges(target, source, map[string]struct{}{}, resolveAllEdges)
+func (g *RelationshipGraph) GetRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
+	return g.getRelationshipEdges(target, source, map[string]struct{}{}, resolveAllEdges)
 }
 
 // GetPrunedRelationshipEdges finds all paths from a source to a target and then returns all the edges at distance 0 or 1 of the source in those paths.
@@ -158,11 +158,11 @@ func (g *TypesystemGraph) GetRelationshipEdges(target *openfgav1.RelationReferen
 // The pruned relationship edges from the 'user' type to 'document#viewer' returns only the edge from 'user' to 'document#viewer' and with a 'RequiresFurtherEvalCondition'.
 // This is because when evaluating relationships involving intersection or exclusion we choose to only evaluate one operand of the rewrite rule, and for each result found
 // we call Check on the result to evaluate the sub-condition on the 'and allowed' bit.
-func (g *TypesystemGraph) GetPrunedRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
-	return g.relationshipEdges(target, source, map[string]struct{}{}, resolveAnyEdge)
+func (g *RelationshipGraph) GetPrunedRelationshipEdges(target *openfgav1.RelationReference, source *openfgav1.RelationReference) ([]*RelationshipEdge, error) {
+	return g.getRelationshipEdges(target, source, map[string]struct{}{}, resolveAnyEdge)
 }
 
-func (g *TypesystemGraph) relationshipEdges(
+func (g *RelationshipGraph) getRelationshipEdges(
 	target *openfgav1.RelationReference,
 	source *openfgav1.RelationReference,
 	visited map[string]struct{},
@@ -190,7 +190,7 @@ func (g *TypesystemGraph) relationshipEdges(
 }
 
 // getRelationshipEdgesWithTargetRewrite does a BFS on the graph starting at `target` and trying to reach `source`.
-func (g *TypesystemGraph) getRelationshipEdgesWithTargetRewrite(
+func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 	target *openfgav1.RelationReference,
 	source *openfgav1.RelationReference,
 	targetRewrite *openfgav1.Userset,
@@ -207,7 +207,7 @@ func (g *TypesystemGraph) getRelationshipEdgesWithTargetRewrite(
 			// if source=user, or define viewer:[user:*] as self
 			res = append(res, &RelationshipEdge{
 				Type:            DirectEdge,
-				TailUsersetNode: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 				Condition:       NoFurtherEvalCondition,
 			})
 		}
@@ -217,7 +217,7 @@ func (g *TypesystemGraph) getRelationshipEdgesWithTargetRewrite(
 		for _, typeRestriction := range typeRestrictions {
 			if typeRestriction.GetRelation() != "" { // e.g. define viewer:[team#member] as self
 				// recursively sub-collect any edges for (team#member, source)
-				edges, err := g.relationshipEdges(typeRestriction, source, visited, findEdgeOption)
+				edges, err := g.getRelationshipEdges(typeRestriction, source, visited, findEdgeOption)
 				if err != nil {
 					return nil, err
 				}
@@ -237,12 +237,12 @@ func (g *TypesystemGraph) getRelationshipEdgesWithTargetRewrite(
 		if sourceRelMatchesRewritten {
 			edges = append(edges, &RelationshipEdge{
 				Type:            ComputedUsersetEdge,
-				TailUsersetNode: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 				Condition:       NoFurtherEvalCondition,
 			})
 		}
 
-		collected, err := g.relationshipEdges(
+		collected, err := g.getRelationshipEdges(
 			typesystem.DirectRelationReference(target.GetType(), t.ComputedUserset.GetRelation()),
 			source,
 			visited,
@@ -294,13 +294,13 @@ func (g *TypesystemGraph) getRelationshipEdgesWithTargetRewrite(
 
 				res = append(res, &RelationshipEdge{
 					Type:             TupleToUsersetEdge,
-					TailUsersetNode:  typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+					TargetReference:  typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
 					TuplesetRelation: typesystem.DirectRelationReference(target.GetType(), tupleset),
 					Condition:        condition,
 				})
 			}
 
-			subResults, err := g.relationshipEdges(
+			subResults, err := g.getRelationshipEdges(
 				typesystem.DirectRelationReference(typeRestriction.GetType(), computedUserset),
 				source,
 				visited,
