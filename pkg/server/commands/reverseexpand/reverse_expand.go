@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
@@ -164,14 +165,25 @@ type ReverseExpandResult struct {
 	ResultStatus ConditionalResultStatus
 }
 
+type ResolutionMetadata struct {
+	QueryCount *uint32
+}
+
+func NewResolutionMetadata() *ResolutionMetadata {
+	return &ResolutionMetadata{
+		QueryCount: new(uint32),
+	}
+}
+
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
 // and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
-	return c.execute(ctx, req, resultChan, nil)
+	return c.execute(ctx, req, resultChan, nil, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -179,6 +191,7 @@ func (c *ReverseExpandQuery) execute(
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	currentEdge *graph.RelationshipEdge,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
@@ -270,9 +283,9 @@ func (c *ReverseExpandQuery) execute(
 
 			switch innerLoopEdge.Type {
 			case graph.DirectEdge:
-				return c.reverseExpandDirect(subgctx, r, resultChan)
+				return c.reverseExpandDirect(subgctx, r, resultChan, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
-				// lookup the rewritten target relation on the computed_userset edge
+				// lookup the rewritten target relation on the computed_userset ingress
 				return c.execute(subgctx, &ReverseExpandRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
@@ -284,9 +297,9 @@ func (c *ReverseExpandQuery) execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
-				}, resultChan, innerLoopEdge)
+				}, resultChan, innerLoopEdge, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan)
+				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
@@ -300,6 +313,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -332,6 +346,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		Relation:   req.edge.TuplesetRelation.GetRelation(),
 		UserFilter: userFilter,
 	})
+	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 	if err != nil {
 		return err
 	}
@@ -368,7 +383,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge)
+			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}
 
@@ -379,6 +394,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
+	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
@@ -435,6 +451,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		Relation:   req.edge.TargetReference.GetRelation(),
 		UserFilter: userFilter,
 	})
+	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
 	if err != nil {
 		return err
 	}
@@ -471,7 +488,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge)
+			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}
 
