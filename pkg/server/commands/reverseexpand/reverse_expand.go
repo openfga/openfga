@@ -183,7 +183,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	return c.execute(ctx, req, resultChan, nil, resolutionMetadata)
+	return c.execute(ctx, req, resultChan, nil, false, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -191,6 +191,7 @@ func (c *ReverseExpandQuery) execute(
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	currentEdge *graph.RelationshipEdge,
+	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
@@ -248,7 +249,7 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan)
+				c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan)
 			}
 		}
 	}
@@ -267,11 +268,7 @@ func (c *ReverseExpandQuery) execute(
 
 	for _, edge := range edges {
 		innerLoopEdge := edge
-		if currentEdge != nil && currentEdge.Condition == graph.RequiresFurtherEvalCondition {
-			// propagate the condition to upcoming reverse expansions
-			// TODO don't mutate the edge, keep track of the previous edge's condition and use it in trySendCandidate
-			innerLoopEdge.Condition = graph.RequiresFurtherEvalCondition
-		}
+		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceIsIntersectionOrExclusion
 		subg.Go(func() error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
@@ -283,7 +280,7 @@ func (c *ReverseExpandQuery) execute(
 
 			switch innerLoopEdge.Type {
 			case graph.DirectEdge:
-				return c.reverseExpandDirect(subgctx, r, resultChan, resolutionMetadata)
+				return c.reverseExpandDirect(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
 				// lookup the rewritten target relation on the computed_userset ingress
 				return c.execute(subgctx, &ReverseExpandRequest{
@@ -297,9 +294,9 @@ func (c *ReverseExpandQuery) execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
-				}, resultChan, innerLoopEdge, resolutionMetadata)
+				}, resultChan, innerLoopEdge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, resolutionMetadata)
+				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
@@ -313,6 +310,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
@@ -343,7 +341,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   req.edge.TuplesetRelation.GetRelation(),
+		Relation:   req.edge.TuplesetRelation,
 		UserFilter: userFilter,
 	})
 	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
@@ -383,7 +381,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge, resolutionMetadata)
+			}, resultChan, req.edge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
@@ -394,6 +392,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
 	req *reverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
@@ -488,14 +487,14 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge, resolutionMetadata)
+			}, resultChan, req.edge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
 	return subg.Wait()
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
@@ -503,7 +502,7 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.R
 	defer span.End()
 	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
 		resultStatus := NoFurtherEvalStatus
-		if edge != nil && edge.Condition == graph.RequiresFurtherEvalCondition {
+		if intersectionOrExclusionInPreviousEdges {
 			span.SetAttributes(attribute.Bool("requires_further_eval", true))
 			resultStatus = RequiresFurtherEvalStatus
 		}
