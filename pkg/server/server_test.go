@@ -900,11 +900,11 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
-			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("repo:openfga/openfga",
-					"reader",
-					"user:anne"),
-			}},
+			Writes: []*openfgav1.WriteRequestTupleKey{
+				{Object: "repo:openfga/openfga",
+					Relation: "reader",
+					User:     "user:anne"},
+			},
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)

@@ -33,6 +33,38 @@ func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
 	}
 }
 
+func ConvertTupleKeyToWriteTupleKey(tk *openfgav1.TupleKey) *openfgav1.WriteRequestTupleKey {
+	return &openfgav1.WriteRequestTupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func ConvertWriteRequestTupleKeyToTupleKey(tk *openfgav1.WriteRequestTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func ConvertWriteRequestsTupleKeyToTupleKeys(tks []*openfgav1.WriteRequestTupleKey) []*openfgav1.TupleKey {
+	result := make([]*openfgav1.TupleKey, 0, len(tks))
+	for _, tk := range tks {
+		result = append(result, ConvertWriteRequestTupleKeyToTupleKey(tk))
+	}
+	return result
+}
+
+func ConvertTupleKeysToWriteRequestTupleKeys(tks []*openfgav1.TupleKey) []*openfgav1.WriteRequestTupleKey {
+	result := make([]*openfgav1.WriteRequestTupleKey, 0, len(tks))
+	for _, tk := range tks {
+		result = append(result, ConvertTupleKeyToWriteTupleKey(tk))
+	}
+	return result
+}
+
 // ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
 // is the string 'objectType:objectId'.
 func ObjectKey(obj *openfgav1.Object) string {

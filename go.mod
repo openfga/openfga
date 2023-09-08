@@ -23,7 +23,7 @@ require (
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/karlseguin/ccache/v3 v3.0.3
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20230801154117-db20ad164368
+	github.com/openfga/api/proto v0.0.0-20230908234011-018169739359
 	github.com/pressly/goose/v3 v3.11.2
 	github.com/rs/cors v1.9.0
 	github.com/spf13/cobra v1.7.0
@@ -46,6 +46,7 @@ require (
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.0.2 // indirect
+	github.com/openfga/api v0.0.0-20230908234011-018169739359 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230731193218-e0aa005b6bdf // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230731193218-e0aa005b6bdf // indirect
 )

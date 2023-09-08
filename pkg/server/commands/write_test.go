@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
@@ -14,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
@@ -92,8 +94,8 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfgav1.TupleKey
-		writes        []*openfgav1.TupleKey
+		deletes       []*openfgav1.WriteRequestTupleKey
+		writes        []*openfgav1.WriteRequestTupleKey
 		expectedError error
 	}
 
@@ -102,6 +104,7 @@ func TestValidateWriteRequest(t *testing.T) {
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
+	badItemTk := tuple.ConvertTupleKeyToWriteTupleKey(badItem)
 
 	tests := []test{
 		{
@@ -112,8 +115,8 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:    "write_failure_with_invalid_user",
-			deletes: []*openfgav1.TupleKey{},
-			writes:  []*openfgav1.TupleKey{badItem},
+			deletes: []*openfgav1.WriteRequestTupleKey{},
+			writes:  []*openfgav1.WriteRequestTupleKey{badItemTk},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -123,8 +126,8 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name:    "delete_failure_with_invalid_user",
-			deletes: []*openfgav1.TupleKey{badItem},
-			writes:  []*openfgav1.TupleKey{},
+			deletes: []*openfgav1.WriteRequestTupleKey{badItemTk},
+			writes:  []*openfgav1.WriteRequestTupleKey{},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -154,11 +157,87 @@ func TestValidateWriteRequest(t *testing.T) {
 			ctx := context.Background()
 			req := &openfgav1.WriteRequest{
 				StoreId: "abcd123",
-				Writes:  &openfgav1.TupleKeys{TupleKeys: test.writes},
-				Deletes: &openfgav1.TupleKeys{TupleKeys: test.deletes},
+				Writes:  test.writes,
+				Deletes: test.deletes,
 			}
 
 			err := cmd.validateWriteRequest(ctx, req)
+			require.ErrorIs(t, err, test.expectedError)
+		})
+	}
+}
+
+func conditionedRelation(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
+	rel.Condition = condition
+	return rel
+}
+
+func TestValidateWriteRequestWhenModelWithConditions(t *testing.T) {
+	type test struct {
+		name          string
+		model         *openfgav1.AuthorizationModel
+		deletes       []*openfgav1.WriteRequestTupleKey
+		writes        []*openfgav1.WriteRequestTupleKey
+		expectedError error
+	}
+
+	tests := []test{
+		{
+			name: "success",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes: []*openfgav1.WriteRequestTupleKey{{
+				User:     "user:anne",
+				Relation: "viewer",
+				Object:   "document:budget",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+						"x": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
+					}},
+				},
+			}},
+			expectedError: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateConditionsInTuples(typesystem.New(test.model), test.writes, test.deletes)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}

@@ -38,7 +38,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
+	err := c.datastore.Write(ctx, req.GetStoreId(), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(req.GetDeletes()), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(req.GetWrites()))
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -52,8 +52,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
-	deletes := req.GetDeletes().GetTupleKeys()
-	writes := req.GetWrites().GetTupleKeys()
+	deletes := req.GetDeletes()
+	writes := req.GetWrites()
 
 	if deletes == nil && writes == nil {
 		return serverErrors.InvalidWriteInput
@@ -75,7 +75,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 		typesys := typesystem.New(authModel)
 
-		for _, tk := range writes {
+		for _, writeTk := range writes {
+			tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(writeTk)
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
@@ -103,7 +104,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		}
 	}
 
-	for _, tk := range deletes {
+	for _, deleteTk := range deletes {
+		tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(deleteTk)
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
 			return serverErrors.ValidationError(
 				&tupleUtils.InvalidTupleError{
@@ -114,7 +116,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		}
 	}
 
-	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
+	if err := c.validateNoDuplicatesAndCorrectSize(tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(deletes), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(writes)); err != nil {
 		return err
 	}
 
@@ -144,6 +146,11 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
 	}
+	return nil
+}
+
+func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.WriteRequestTupleKey, writes []*openfgav1.WriteRequestTupleKey) error {
+	// TODO
 	return nil
 }
 

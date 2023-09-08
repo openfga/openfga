@@ -491,7 +491,7 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 	type testData struct {
-		tuples []*openfgav1.TupleKey
+		tuples []*openfgav1.WriteRequestTupleKey
 		model  *openfgav1.AuthorizationModel
 	}
 
@@ -601,7 +601,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+					Writes:               test.testData.tuples,
 				})
 				require.NoError(t, err)
 			}
@@ -622,7 +622,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgav1.TupleKey
+		tuples []*openfgav1.WriteRequestTupleKey
 		model  string
 	}
 
@@ -673,9 +673,9 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				},
 			},
 			testData: &testData{
-				tuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-					tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				tuples: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
+					{Object: "document:1", Relation: "allowed", User: "user:jon"},
 				},
 				model: `
 				type user
@@ -715,7 +715,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+						Writes:               test.testData.tuples,
 					})
 					require.NoError(t, err)
 				}
@@ -802,10 +802,8 @@ func TestCheckWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-				},
+			Writes: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:*"},
 			},
 		})
 		require.NoError(t, err)
@@ -928,11 +926,9 @@ func TestExpandWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				},
+			Writes: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:*"},
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
 		})
 		require.NoError(t, err)
