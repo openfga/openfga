@@ -35,15 +35,8 @@ type ReverseExpandRequest struct {
 	Relation         string
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
-}
 
-// TODO combine with above?
-type reverseExpandRequest struct {
-	storeID          string
-	edge             *graph.RelationshipEdge
-	targetObjectRef  *openfgav1.RelationReference
-	sourceUserRef    IsUserRef
-	contextualTuples []*openfgav1.TupleKey
+	edge *graph.RelationshipEdge
 }
 
 type IsUserRef interface {
@@ -183,14 +176,13 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	return c.execute(ctx, req, resultChan, nil, false, resolutionMetadata)
+	return c.execute(ctx, req, resultChan, false, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
-	currentEdge *graph.RelationshipEdge,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
@@ -201,8 +193,8 @@ func (c *ReverseExpandQuery) execute(
 	))
 	defer span.End()
 
-	if currentEdge != nil {
-		span.SetAttributes(attribute.String("edge", currentEdge.String()))
+	if req.edge != nil {
+		span.SetAttributes(attribute.String("edge", req.edge.String()))
 	}
 
 	depth, ok := graph.ResolutionDepthFromContext(ctx)
@@ -215,8 +207,6 @@ func (c *ReverseExpandQuery) execute(
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
 	}
-
-	storeID := req.StoreID
 
 	var sourceUserRef *openfgav1.RelationReference
 	var sourceUserType, sourceUserObj string
@@ -241,8 +231,8 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 		sourceUserRel := val.ObjectRelation.GetRelation()
 
-		if currentEdge != nil {
-			key := fmt.Sprintf("%s#%s", sourceUserObj, currentEdge.String())
+		if req.edge != nil {
+			key := fmt.Sprintf("%s#%s", sourceUserObj, req.edge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
@@ -270,31 +260,27 @@ func (c *ReverseExpandQuery) execute(
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceIsIntersectionOrExclusion
 		subg.Go(func() error {
-			r := &reverseExpandRequest{
-				storeID:          storeID,
+			r := &ReverseExpandRequest{
+				StoreID:          req.StoreID,
+				ObjectType:       req.ObjectType,
+				Relation:         req.Relation,
+				User:             req.User,
+				ContextualTuples: req.ContextualTuples,
 				edge:             innerLoopEdge,
-				targetObjectRef:  targetObjRef,
-				sourceUserRef:    req.User,
-				contextualTuples: req.ContextualTuples,
 			}
 
 			switch innerLoopEdge.Type {
 			case graph.DirectEdge:
 				return c.reverseExpandDirect(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
-				// lookup the rewritten target relation on the computed_userset ingress
-				return c.execute(subgctx, &ReverseExpandRequest{
-					StoreID:    storeID,
-					ObjectType: req.ObjectType,
-					Relation:   req.Relation,
-					User: &UserRefObjectRelation{
-						ObjectRelation: &openfgav1.ObjectRelation{
-							Object:   sourceUserObj,
-							Relation: innerLoopEdge.TargetReference.GetRelation(),
-						},
+				r.User = &UserRefObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
+						Object:   sourceUserObj,
+						Relation: innerLoopEdge.TargetReference.GetRelation(),
 					},
-					ContextualTuples: r.contextualTuples,
-				}, resultChan, innerLoopEdge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				}
+				// lookup the rewritten target relation on the computed_userset ingress
+				return c.execute(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			default:
@@ -308,27 +294,22 @@ func (c *ReverseExpandQuery) execute(
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	ctx context.Context,
-	req *reverseExpandRequest,
+	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.sourceUserRef.String()),
+		attribute.String("source.user", req.User.String()),
 	))
 	defer span.End()
-
-	store := req.storeID
-
-	targetObjectType := req.targetObjectRef.GetType()
-	targetObjectRel := req.targetObjectRef.GetRelation()
 
 	var userFilter []*openfgav1.ObjectRelation
 
 	// a TTU edge can only have a userset as a source node
 	// e.g. 'group:eng#member'
-	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
+	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: val.ObjectRelation.Object,
 		})
@@ -336,10 +317,10 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		panic("unexpected source for reverse expansion of tuple to userset")
 	}
 
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   req.edge.TuplesetRelation,
 		UserFilter: userFilter,
@@ -376,12 +357,13 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 		subg.Go(func() error {
 			return c.execute(subgctx, &ReverseExpandRequest{
-				StoreID:          store,
-				ObjectType:       targetObjectType,
-				Relation:         targetObjectRel,
+				StoreID:          req.StoreID,
+				ObjectType:       req.ObjectType,
+				Relation:         req.Relation,
 				User:             sourceUserRef,
-				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				ContextualTuples: req.ContextualTuples,
+				edge:             req.edge,
+			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
@@ -390,25 +372,20 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
 	ctx context.Context,
-	req *reverseExpandRequest,
+	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.sourceUserRef.String()),
+		attribute.String("source.user", req.User.String()),
 	))
 	defer span.End()
 
-	store := req.storeID
-
-	targetObjectType := req.targetObjectRef.GetType()
-	targetObjectRel := req.targetObjectRef.GetRelation()
-
 	var userFilter []*openfgav1.ObjectRelation
 
-	targetUserObjectType := req.sourceUserRef.GetObjectType()
+	targetUserObjectType := req.User.GetObjectType()
 
 	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
 	if err != nil {
@@ -423,18 +400,18 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	}
 
 	sourceRelationRef := &openfgav1.RelationReference{
-		Type: req.sourceUserRef.GetObjectType(),
+		Type: req.User.GetObjectType(),
 	}
 
 	// e.g. 'user:bob'
-	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
+	if val, ok := req.User.(*UserRefObject); ok {
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
 			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
 		})
 	}
 
 	// e.g. 'group:eng#member'
-	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
+	if val, ok := req.User.(*UserRefObjectRelation); ok {
 		sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
 			Relation: val.ObjectRelation.Relation,
 		}
@@ -442,10 +419,10 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
+	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
 
 	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TargetReference.Relation@req.sourceUserRef
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
+	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
 		Relation:   req.edge.TargetReference.GetRelation(),
 		UserFilter: userFilter,
@@ -482,12 +459,13 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 		subg.Go(func() error {
 			return c.execute(subgctx, &ReverseExpandRequest{
-				StoreID:          store,
-				ObjectType:       targetObjectType,
-				Relation:         targetObjectRel,
+				StoreID:          req.StoreID,
+				ObjectType:       req.ObjectType,
+				Relation:         req.Relation,
 				User:             sourceUserRef,
-				ContextualTuples: req.contextualTuples,
-			}, resultChan, req.edge, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				ContextualTuples: req.ContextualTuples,
+				edge:             req.edge,
+			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 		})
 	}
 
