@@ -270,19 +270,17 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			switch innerLoopEdge.Type {
-			case graph.DirectEdge:
-				return c.reverseExpandDirect(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			case graph.DirectEdge, graph.TupleToUsersetEdge:
+				return c.readTuplesAndExecute(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
+				// follow the computed_userset edge
 				r.User = &UserRefObjectRelation{
 					ObjectRelation: &openfgav1.ObjectRelation{
 						Object:   sourceUserObj,
 						Relation: innerLoopEdge.TargetReference.GetRelation(),
 					},
 				}
-				// lookup the rewritten target relation on the computed_userset ingress
 				return c.execute(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
@@ -292,7 +290,7 @@ func (c *ReverseExpandQuery) execute(
 	return subg.Wait()
 }
 
-func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
+func (c *ReverseExpandQuery) readTuplesAndExecute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
@@ -306,23 +304,65 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	defer span.End()
 
 	var userFilter []*openfgav1.ObjectRelation
+	var relationFilter string
 
-	// a TTU edge can only have a userset as a source node
-	// e.g. 'group:eng#member'
-	if val, ok := req.User.(*UserRefObjectRelation); ok {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object: val.ObjectRelation.Object,
-		})
-	} else {
-		panic("unexpected source for reverse expansion of tuple to userset")
+	switch req.edge.Type {
+	case graph.DirectEdge:
+		relationFilter = req.edge.TargetReference.GetRelation()
+		targetUserObjectType := req.User.GetObjectType()
+
+		publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
+		if err != nil {
+			return err
+		}
+
+		if publiclyAssignable {
+			// e.g. 'user:*'
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: fmt.Sprintf("%s:*", targetUserObjectType),
+			})
+		}
+
+		sourceRelationRef := &openfgav1.RelationReference{
+			Type: req.User.GetObjectType(),
+		}
+
+		// e.g. 'user:bob'
+		if val, ok := req.User.(*UserRefObject); ok {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
+			})
+		}
+
+		// e.g. 'group:eng#member'
+		if val, ok := req.User.(*UserRefObjectRelation); ok {
+			sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
+				Relation: val.ObjectRelation.Relation,
+			}
+
+			userFilter = append(userFilter, val.ObjectRelation)
+		}
+	case graph.TupleToUsersetEdge:
+		relationFilter = req.edge.TuplesetRelation
+		// a TTU edge can only have a userset as a source node
+		// e.g. 'group:eng#member'
+		if val, ok := req.User.(*UserRefObjectRelation); ok {
+			userFilter = append(userFilter, &openfgav1.ObjectRelation{
+				Object: val.ObjectRelation.Object,
+			})
+		} else {
+			panic("unexpected source for reverse expansion of tuple to userset")
+		}
+	default:
+		return fmt.Errorf("unsupported edge type")
 	}
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
 
-	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
+	// find all tuples of the form req.edge.TargetReference.Type:...#relationFilter@userFilter
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   req.edge.TuplesetRelation,
+		Relation:   relationFilter,
 		UserFilter: userFilter,
 	})
 	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
@@ -347,122 +387,28 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		tk := t.GetKey()
 
 		foundObject := tk.GetObject()
+		var newRelation string
 
-		sourceUserRef := &UserRefObjectRelation{
-			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   foundObject,
-				Relation: req.edge.TargetReference.GetRelation(),
-			},
+		switch req.edge.Type {
+		case graph.DirectEdge:
+			newRelation = tk.GetRelation()
+		case graph.TupleToUsersetEdge:
+			newRelation = req.edge.TargetReference.GetRelation()
+		default:
+			return fmt.Errorf("unsupported edge type")
 		}
 
 		subg.Go(func() error {
 			return c.execute(subgctx, &ReverseExpandRequest{
-				StoreID:          req.StoreID,
-				ObjectType:       req.ObjectType,
-				Relation:         req.Relation,
-				User:             sourceUserRef,
-				ContextualTuples: req.ContextualTuples,
-				edge:             req.edge,
-			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
-		})
-	}
-
-	return subg.Wait()
-}
-
-func (c *ReverseExpandQuery) reverseExpandDirect(
-	ctx context.Context,
-	req *ReverseExpandRequest,
-	resultChan chan<- *ReverseExpandResult,
-	intersectionOrExclusionInPreviousEdges bool,
-	resolutionMetadata *ResolutionMetadata,
-) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
-		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.User.String()),
-	))
-	defer span.End()
-
-	var userFilter []*openfgav1.ObjectRelation
-
-	targetUserObjectType := req.User.GetObjectType()
-
-	publiclyAssignable, err := c.typesystem.IsPubliclyAssignable(req.edge.TargetReference, targetUserObjectType)
-	if err != nil {
-		return err
-	}
-
-	if publiclyAssignable {
-		// e.g. 'user:*'
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object: fmt.Sprintf("%s:*", targetUserObjectType),
-		})
-	}
-
-	sourceRelationRef := &openfgav1.RelationReference{
-		Type: req.User.GetObjectType(),
-	}
-
-	// e.g. 'user:bob'
-	if val, ok := req.User.(*UserRefObject); ok {
-		userFilter = append(userFilter, &openfgav1.ObjectRelation{
-			Object: tuple.BuildObject(val.Object.Type, val.Object.Id),
-		})
-	}
-
-	// e.g. 'group:eng#member'
-	if val, ok := req.User.(*UserRefObjectRelation); ok {
-		sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
-			Relation: val.ObjectRelation.Relation,
-		}
-
-		userFilter = append(userFilter, val.ObjectRelation)
-	}
-
-	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.ContextualTuples)
-
-	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TargetReference.Relation@req.sourceUserRef
-	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, req.StoreID, storage.ReadStartingWithUserFilter{
-		ObjectType: req.edge.TargetReference.GetType(),
-		Relation:   req.edge.TargetReference.GetRelation(),
-		UserFilter: userFilter,
-	})
-	atomic.AddUint32(resolutionMetadata.QueryCount, 1)
-	if err != nil {
-		return err
-	}
-	defer iter.Stop()
-
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
-
-	for {
-		t, err := iter.Next()
-		if err != nil {
-			if errors.Is(err, storage.ErrIteratorDone) {
-				break
-			}
-
-			return err
-		}
-
-		tk := t.GetKey()
-
-		foundObject := tk.GetObject()
-
-		sourceUserRef := &UserRefObjectRelation{
-			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   foundObject,
-				Relation: tk.GetRelation(),
-			},
-		}
-
-		subg.Go(func() error {
-			return c.execute(subgctx, &ReverseExpandRequest{
-				StoreID:          req.StoreID,
-				ObjectType:       req.ObjectType,
-				Relation:         req.Relation,
-				User:             sourceUserRef,
+				StoreID:    req.StoreID,
+				ObjectType: req.ObjectType,
+				Relation:   req.Relation,
+				User: &UserRefObjectRelation{
+					ObjectRelation: &openfgav1.ObjectRelation{
+						Object:   foundObject,
+						Relation: newRelation,
+					},
+				},
 				ContextualTuples: req.ContextualTuples,
 				edge:             req.edge,
 			}, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
