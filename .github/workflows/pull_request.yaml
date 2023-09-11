@@ -58,6 +58,8 @@ jobs:
         uses: actions/checkout@3df4ab11eba7bda6032a0b82a6bb43b11571feac # v3.5.2
       - name: Run govulncheck
         uses: golang/govulncheck-action@7da72f730e37eeaad891fcff0a532d27ed737cd4 # v1.0.1
+        with:
+          go-version-file: go.mod
 
   functional-tests:
       runs-on: ubuntu-latest
