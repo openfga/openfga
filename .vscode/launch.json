@@ -9,9 +9,9 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}/cmd/openfga/openfga.go",
+            "program": "${workspaceFolder}/cmd/openfga/main.go",
+            "args": ["run"],
             "env": {
-                "OPENFGA_DATASTORE_ENGINE": "postgres"
             }
         }
     ]
