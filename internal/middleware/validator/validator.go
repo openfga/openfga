@@ -42,7 +42,7 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
 			return handler(srv, &recvWrapper{
 				ctx:          ContextWithRequestIsValidated(stream.Context()),
-				ServerStream: stream,
+				ServerStream: ss,
 			})
 		})
 	}
