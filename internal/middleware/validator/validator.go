@@ -22,7 +22,7 @@ func RequestIsValidatedFromContext(ctx context.Context) bool {
 	return validated && ok
 }
 
-// UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool indicating if validation has been run.
+// UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating if validation has been run.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 	validator := grpc_validator.UnaryServerInterceptor()
