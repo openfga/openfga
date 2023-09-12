@@ -34,10 +34,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// StreamServerInterceptor returns a new streaming server interceptor that injects a bool indicating if validation has been run.
-//
-// It is expected that this middleware is run after all request validation middleware. Failing to run this middleware after
-// request validation middleware could lead to downstream issues.
+// StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating if validation has been run.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	validator := grpc_validator.StreamServerInterceptor()
 
