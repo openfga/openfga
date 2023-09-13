@@ -1082,7 +1082,7 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 		if related.Condition != "" {
 			// Validate the conditions referenced by the relations are included in the model.
 			if _, ok := t.conditions[related.Condition]; !ok {
-				return ErrConditionUndefined
+				return fmt.Errorf("condition %s is undefined for relation %s", conditionName, relationName)
 			}
 		}
 	}
