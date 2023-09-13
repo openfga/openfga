@@ -1,3 +1,4 @@
+// Package validator contains middleware that validates API input parameters.
 package validator
 
 import (
@@ -13,7 +14,7 @@ var (
 	requestIsValidatedCtxKey = ctxKey("request-validated")
 )
 
-func ContextWithRequestIsValidated(ctx context.Context) context.Context {
+func contextWithRequestIsValidated(ctx context.Context) context.Context {
 	return context.WithValue(ctx, requestIsValidatedCtxKey, true)
 }
 
@@ -22,26 +23,26 @@ func RequestIsValidatedFromContext(ctx context.Context) bool {
 	return validated && ok
 }
 
-// UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating if validation has been run.
+// UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 	validator := grpc_validator.UnaryServerInterceptor()
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		return validator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
-			return handler(ContextWithRequestIsValidated(ctx), req)
+			return handler(contextWithRequestIsValidated(ctx), req)
 		})
 	}
 }
 
-// StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating if validation has been run.
+// StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
 	validator := grpc_validator.StreamServerInterceptor()
 
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
 			return handler(srv, &recvWrapper{
-				ctx:          ContextWithRequestIsValidated(stream.Context()),
+				ctx:          contextWithRequestIsValidated(stream.Context()),
 				ServerStream: ss,
 			})
 		})
