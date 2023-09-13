@@ -471,7 +471,9 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(typesystem.ErrConditionUndefined),
+			err: serverErrors.InvalidAuthorizationModelInput(
+				fmt.Errorf("condition invalid_condition_name is undefined for relation viewer"),
+			),
 		},
 		{
 			name: "condition_fails_invalid_expression",

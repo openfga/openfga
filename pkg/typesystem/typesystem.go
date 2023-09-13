@@ -38,7 +38,6 @@ var (
 	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
 	ErrNoEntrypoints         = errors.New("no entrypoints defined")
 	ErrNoEntryPointsLoop     = errors.New("potential loop")
-	ErrConditionUndefined    = errors.New("undefined condition")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -1082,7 +1081,7 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 		if related.Condition != "" {
 			// Validate the conditions referenced by the relations are included in the model.
 			if _, ok := t.conditions[related.Condition]; !ok {
-				return fmt.Errorf("condition %s is undefined for relation %s", conditionName, relationName)
+				return fmt.Errorf("condition %s is undefined for relation %s", related.Condition, relationName)
 			}
 		}
 	}
