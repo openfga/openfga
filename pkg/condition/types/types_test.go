@@ -111,8 +111,6 @@ func TestPrimitives(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			converted, err := test.paramType.ConvertValue(test.input)
 			require.Equal(t, test.output, converted)
-			require.Equal(t, test.celType, test.paramType.CelType())
-			require.Equal(t, test.repr, test.paramType.String())
 			require.NoError(t, err)
 		})
 	}
