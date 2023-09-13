@@ -36,6 +36,7 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
@@ -685,11 +686,13 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		requestid.NewUnaryInterceptor(),
+		validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		requestid.NewStreamingInterceptor(),
+		validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
