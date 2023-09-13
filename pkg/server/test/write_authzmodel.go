@@ -593,6 +593,55 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				fmt.Errorf("expected a bool condition expression output, but got 'string'"),
 			),
 		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				fmt.Errorf("condition key 'condition2' does not match condition name 'condition3'"),
+			),
+		},
 	}
 
 	ctx := context.Background()
