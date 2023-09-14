@@ -1090,9 +1090,6 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 }
 
 // validateConditions validates the conditions provided in the model.
-//  1. Each condition should define a well-formed expression,
-//  2. Its parameters should be well-defined
-//  3. The expression and parameters should be compilable.
 func (t *TypeSystem) validateConditions() error {
 	for key, c := range t.conditions {
 		if key != c.Name {
