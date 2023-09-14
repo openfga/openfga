@@ -644,6 +644,42 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				fmt.Errorf("condition key 'condition2' does not match condition name 'condition3'"),
 			),
 		},
+		{
+			name: "condition_fails_missing_parameter",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'param1' (in container '')\n | param1 == 'ok'\n | ^"),
+			),
+		},
 	}
 
 	ctx := context.Background()
