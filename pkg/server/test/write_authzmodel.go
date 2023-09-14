@@ -476,7 +476,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
-			name: "condition_fails_invalid_expression",
+			name: "condition_fails_syntax_error",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -502,7 +502,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				Conditions: map[string]*openfgav1.Condition{
 					"condition1": {
 						Name:       "condition1",
-						Expression: "invalid",
+						Expression: "",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
 								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
@@ -512,7 +512,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: Syntax error: mismatched input '<EOF>' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}"),
 			),
 		},
 		{
