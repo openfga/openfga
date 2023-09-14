@@ -22,10 +22,12 @@ import (
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,7 +37,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 type ExperimentalFeatureFlag string
@@ -318,6 +322,19 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	const methodName = "listobjects"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  methodName,
+	})
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -343,9 +360,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
-	return q.Execute(
+	result, err := q.Execute(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		&openfgav1.ListObjectsRequest{
 			StoreId:              storeID,
@@ -356,6 +374,22 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			User:                 req.User,
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
+	queryCount := float64(*result.ResolutionMetadata.QueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
+	).Observe(queryCount)
+
+	return &openfgav1.ListObjectsResponse{
+		Objects: result.Objects,
+	}, nil
+
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
@@ -366,6 +400,19 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		attribute.String("user", req.GetUser()),
 	))
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	const methodName = "streamedlistobjects"
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  methodName,
+	})
 
 	storeID := req.GetStoreId()
 
@@ -392,17 +439,33 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		commands.WithResolveNodeLimit(s.resolveNodeLimit),
 		commands.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		commands.WithCheckOptions(checkOptions),
+		commands.WithMaxConcurrentReads(s.maxConcurrentReadsForListObjects),
 	)
 
 	req.AuthorizationModelId = typesys.GetAuthorizationModelID() // the resolved model id
-	return q.ExecuteStreamed(
+
+	resolutionMetadata, err := q.ExecuteStreamed(
 		typesystem.ContextWithTypesystem(ctx, typesys),
 		req,
 		srv,
 	)
+	if err != nil {
+		return err
+	}
+	queryCount := float64(*resolutionMetadata.QueryCount)
+
+	grpc_ctxtags.Extract(ctx).Set(datastoreQueryCountHistogramName, queryCount)
+	span.SetAttributes(attribute.Float64(datastoreQueryCountHistogramName, queryCount))
+	datastoreQueryCountHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
+	).Observe(queryCount)
+
+	return nil
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
+
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -410,6 +473,17 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Read",
+	})
 
 	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
@@ -423,6 +497,17 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	ctx, span := tracer.Start(ctx, "Write")
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Write",
+	})
 
 	storeID := req.GetStoreId()
 
@@ -450,6 +535,17 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Check",
+	})
 
 	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
 		return nil, serverErrors.InvalidCheckInput
@@ -530,6 +626,17 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "Expand",
+	})
+
 	storeID := req.GetStoreId()
 
 	typesys, err := s.resolveTypesystem(ctx, storeID, req.GetAuthorizationModelId())
@@ -551,6 +658,17 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
 	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -558,6 +676,17 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.WriteAuthorizationModelRequest) (*openfgav1.WriteAuthorizationModelResponse, error) {
 	ctx, span := tracer.Start(ctx, "WriteAuthorizationModel")
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "WriteAuthorizationModel",
+	})
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -574,6 +703,17 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 	ctx, span := tracer.Start(ctx, "ReadAuthorizationModels")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAuthorizationModels",
+	})
+
 	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
 	return c.Execute(ctx, req)
 }
@@ -581,6 +721,17 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {
 	ctx, span := tracer.Start(ctx, "WriteAssertions")
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "WriteAssertions",
+	})
 
 	storeID := req.GetStoreId()
 
@@ -608,6 +759,17 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 	ctx, span := tracer.Start(ctx, "ReadAssertions")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadAssertions",
+	})
+
 	typesys, err := s.resolveTypesystem(ctx, req.GetStoreId(), req.GetAuthorizationModelId())
 	if err != nil {
 		return nil, err
@@ -623,6 +785,17 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 	))
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ReadChanges",
+	})
+
 	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
 	return q.Execute(ctx, req)
 }
@@ -630,6 +803,17 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequest) (*openfgav1.CreateStoreResponse, error) {
 	ctx, span := tracer.Start(ctx, "CreateStore")
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "CreateStore",
+	})
 
 	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
 	res, err := c.Execute(ctx, req)
@@ -646,6 +830,17 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 	ctx, span := tracer.Start(ctx, "DeleteStore")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "DeleteStore",
+	})
+
 	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
@@ -661,6 +856,17 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 	ctx, span := tracer.Start(ctx, "GetStore")
 	defer span.End()
 
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "GetStore",
+	})
+
 	q := commands.NewGetStoreQuery(s.datastore, s.logger)
 	return q.Execute(ctx, req)
 }
@@ -668,6 +874,17 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
 	ctx, span := tracer.Start(ctx, "ListStores")
 	defer span.End()
+
+	if !validator.RequestIsValidatedFromContext(ctx) {
+		if err := req.Validate(); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
+		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		Method:  "ListStores",
+	})
 
 	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
 	return q.Execute(ctx, req)

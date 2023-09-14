@@ -3,6 +3,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -190,6 +191,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 
 			for _, assertion := range stage.CheckAssertions {
+				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
+
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
 					ctxTuples = append(ctxTuples, stage.Tuples...)
@@ -205,13 +208,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, err)
-					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+					require.NoError(t, err, detailedInfo)
+					require.Equal(t, assertion.Expectation, resp.Allowed, detailedInfo)
 				} else {
-					require.Error(t, err)
+					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 			}
 		}

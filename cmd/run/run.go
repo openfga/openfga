@@ -21,7 +21,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -37,6 +36,7 @@ import (
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
@@ -686,13 +686,13 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		requestid.NewUnaryInterceptor(),
-		grpc_validator.UnaryServerInterceptor(),
+		validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		requestid.NewStreamingInterceptor(),
-		grpc_validator.StreamServerInterceptor(),
+		validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
