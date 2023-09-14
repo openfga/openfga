@@ -297,7 +297,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecute", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
