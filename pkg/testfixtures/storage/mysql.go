@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -150,7 +151,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
 
-	err = mysql.SetLogger(goose.NopLogger())
+	err = mysql.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
 
 	goose.SetLogger(goose.NopLogger())
