@@ -44,7 +44,7 @@ func TestPrimitives(t *testing.T) {
 			input:         int64(10),
 			output:        nil,
 			repr:          "string",
-			expectedError: fmt.Errorf("for string: unexpected generic type value '*reflect.rtype', expected 'string'"),
+			expectedError: fmt.Errorf("for string: unexpected generic type value '\"int64\"', expected 'string'"),
 		},
 		{
 			name:      "valid_uint",
@@ -118,7 +118,7 @@ func TestPrimitives(t *testing.T) {
 			input:         "hello",
 			output:        nil,
 			repr:          "bool",
-			expectedError: fmt.Errorf("for bool: unexpected generic type value '*reflect.rtype', expected 'bool'"),
+			expectedError: fmt.Errorf("for bool: unexpected generic type value '\"string\"', expected 'bool'"),
 		},
 		{
 			name:          "invalid_string_to_double",
