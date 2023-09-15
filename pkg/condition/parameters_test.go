@@ -67,10 +67,8 @@ func TestCastContextToTypedParameters(t *testing.T) {
 					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
 				},
 			},
-			expectedParams: map[string]any{
-				"param1": mustConvertValue(types.StringParamType, "ok"),
-			},
-			expectedError: fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			expectedParams: nil,
+			expectedError:  fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
 		},
 	}
 
