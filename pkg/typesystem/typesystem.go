@@ -144,6 +144,11 @@ func Difference(base *openfgav1.Userset, sub *openfgav1.Userset) *openfgav1.User
 	}
 }
 
+func ConditionedRelationReference(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
+	rel.Condition = condition
+	return rel
+}
+
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition

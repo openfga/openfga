@@ -17,11 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func conditionedRelation(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
-	rel.Condition = condition
-	return rel
-}
-
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID := ulid.Make().String()
 
@@ -436,6 +431,43 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 		// conditions
 		{
+			name: "condition_valid",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
 			name: "condition_fails_undefined",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -452,7 +484,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
 									},
 								},
 							},
@@ -492,7 +524,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
 									},
 								},
 							},
@@ -532,7 +564,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
 									},
 								},
 							},
@@ -572,7 +604,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
 									},
 								},
 							},
@@ -612,7 +644,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
 									},
 								},
 							},
@@ -645,6 +677,42 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			),
 		},
 		{
+			name: "condition_fails_missing_parameters",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
+					},
+				},
+			},
+			err: serverErrors.InvalidAuthorizationModelInput(
+				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'param1' (in container '')\n | param1 == 'ok'\n | ^"),
+			),
+		},
+		{
 			name: "condition_fails_missing_parameter",
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -661,7 +729,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
 									},
 								},
 							},
@@ -672,7 +740,11 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					"condition1": {
 						Name:       "condition1",
 						Expression: "param1 == 'ok'",
-						Parameters: nil,
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param2": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
 					},
 				},
 			},

@@ -2,6 +2,7 @@ package typesystem
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
@@ -1863,7 +1864,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			name: "direct_and_wildcard",
 			model: `
 			type user
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1876,7 +1877,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			name: "direct_type",
 			model: `
 			type user
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1891,7 +1892,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			type user
 			  relations
 			    define manager: [user] as self
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1906,7 +1907,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			type group
 			  relations
 			    define member: [group#member] as self
-			
+
 			type document
 			  relations
 			    define viewer: [group#member] as self
@@ -2180,6 +2181,150 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestConditions(t *testing.T) {
+
+	tests := []struct {
+		name          string
+		model         *openfgav1.AuthorizationModel
+		expectedError error
+	}{
+		{
+			name: "condition_fails_undefined",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "invalid_condition_name"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("condition invalid_condition_name is undefined for relation viewer"),
+		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("condition key 'condition2' does not match condition name 'condition3'"),
+		},
+		{
+			name: "condition_valid",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewAndValidate(context.Background(), test.model)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.EqualError(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
