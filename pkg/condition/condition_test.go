@@ -155,7 +155,7 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected generic type value '*reflect.rtype', expected 'string'"),
+			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected generic type value '\"bool\"', expected 'string'"),
 		},
 	}
 
