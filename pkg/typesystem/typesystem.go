@@ -854,14 +854,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		}
 	}
 
-	if err := t.ensureNoCyclesInTupleToUsersetDefinitions(); err != nil {
-		return nil, err
-	}
-
-	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
-		return nil, err
-	}
-
 	return t, nil
 }
 
@@ -1066,83 +1058,6 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 				}
 			}
 		}
-	}
-
-	return nil
-}
-
-// ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
-//
-//	type folder
-//	  relations
-//	    define parent: [folder] as self
-//	    define viewer as viewer from parent
-//
-// and
-//
-//	type folder
-//	  relations
-//	    define parent as self
-//	    define viewer as viewer from parent
-func (t *TypeSystem) ensureNoCyclesInTupleToUsersetDefinitions() error {
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err == nil {
-			for relationName, relation := range relations {
-				switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
-				case *openfgav1.Userset_TupleToUserset:
-					// define viewer as viewer from parent
-					if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
-						tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
-						tuplesetRelation, err := t.GetRelation(objectType, tuplesetRelationName)
-						// define parent: [folder] as self
-						if err == nil {
-							switch tuplesetRelation.GetRewrite().Userset.(type) {
-							case *openfgav1.Userset_This:
-								if t.schemaVersion == SchemaVersion1_0 && len(t.typeDefinitions) == 1 {
-									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
-								}
-								if t.schemaVersion == SchemaVersion1_1 && len(tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
-									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// ensureNoCyclesInComputedRewrite throws an error on the following model because `folder` type is a cycle.
-//
-//	 type folder
-//		 relations
-//		  define parent as child
-//		  define child as parent
-func (t *TypeSystem) ensureNoCyclesInComputedRewrite() error {
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err == nil {
-			for sourceRelationName, relation := range relations {
-				switch source := relation.GetRewrite().Userset.(type) {
-				case *openfgav1.Userset_ComputedUserset:
-					target := source.ComputedUserset.GetRelation()
-					targetRelation, err := t.GetRelation(objectType, target)
-					if err == nil {
-						switch rewrite := targetRelation.GetRewrite().Userset.(type) {
-						case *openfgav1.Userset_ComputedUserset:
-							if rewrite.ComputedUserset.GetRelation() == sourceRelationName {
-								return &InvalidTypeError{ObjectType: objectType, Cause: ErrCycle}
-							}
-						}
-					}
-				}
-			}
-		}
-
 	}
 
 	return nil
