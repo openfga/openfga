@@ -91,7 +91,7 @@ type RelationshipEdge struct {
 	// If the type is TupleToUsersetEdge, this defines the TTU condition
 	TuplesetRelation string
 
-	TargetReferenceIsIntersectionOrExclusion bool
+	TargetReferenceInvolvesIntersectionOrExclusion bool
 }
 
 func (r RelationshipEdge) String() string {
@@ -188,9 +188,9 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		if directlyRelated || publiclyAssignable {
 			// if source=user, or define viewer:[user:*] as self
 			res = append(res, &RelationshipEdge{
-				Type:                                     DirectEdge,
-				TargetReference:                          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-				TargetReferenceIsIntersectionOrExclusion: false,
+				Type:            DirectEdge,
+				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			})
 		}
 
@@ -218,9 +218,9 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 
 		if sourceRelMatchesRewritten {
 			edges = append(edges, &RelationshipEdge{
-				Type:                                     ComputedUsersetEdge,
-				TargetReference:                          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-				TargetReferenceIsIntersectionOrExclusion: false,
+				Type:            ComputedUsersetEdge,
+				TargetReference: typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			})
 		}
 
@@ -269,10 +269,10 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 				}
 
 				res = append(res, &RelationshipEdge{
-					Type:                                     TupleToUsersetEdge,
-					TargetReference:                          typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
-					TuplesetRelation:                         tupleset,
-					TargetReferenceIsIntersectionOrExclusion: involvesIntersection || involvesExclusion,
+					Type:             TupleToUsersetEdge,
+					TargetReference:  typesystem.DirectRelationReference(target.GetType(), target.GetRelation()),
+					TuplesetRelation: tupleset,
+					TargetReferenceInvolvesIntersectionOrExclusion: involvesIntersection || involvesExclusion,
 				})
 			}
 
@@ -313,7 +313,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			}
 
 			for _, childresult := range childresults {
-				childresult.TargetReferenceIsIntersectionOrExclusion = true
+				childresult.TargetReferenceInvolvesIntersectionOrExclusion = true
 			}
 
 			return childresults, nil
@@ -331,7 +331,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		}
 
 		if len(edges) > 0 {
-			edges[0].TargetReferenceIsIntersectionOrExclusion = true
+			edges[0].TargetReferenceInvolvesIntersectionOrExclusion = true
 		}
 
 		return edges, nil
@@ -351,7 +351,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			}
 
 			for _, childresult := range childresults {
-				childresult.TargetReferenceIsIntersectionOrExclusion = true
+				childresult.TargetReferenceInvolvesIntersectionOrExclusion = true
 			}
 
 			return childresults, nil
@@ -367,7 +367,7 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		}
 
 		if len(baseEdges) > 0 {
-			baseEdges[0].TargetReferenceIsIntersectionOrExclusion = true
+			baseEdges[0].TargetReferenceInvolvesIntersectionOrExclusion = true
 		}
 
 		edges = append(edges, baseEdges...)

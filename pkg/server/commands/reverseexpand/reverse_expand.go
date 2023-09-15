@@ -258,7 +258,7 @@ func (c *ReverseExpandQuery) execute(
 
 	for _, edge := range edges {
 		innerLoopEdge := edge
-		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceIsIntersectionOrExclusion
+		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
 		subg.Go(func() error {
 			r := &ReverseExpandRequest{
 				StoreID:          req.StoreID,
