@@ -91,6 +91,14 @@ func TestPrimitives(t *testing.T) {
 			expectedError: fmt.Errorf("for uint: a uint value is expected, but found numeric value `-10.5`"),
 		},
 		{
+			name:          "invalid_double_to_int",
+			paramType:     IntParamType,
+			input:         float64(10.5),
+			output:        nil,
+			repr:          "int",
+			expectedError: fmt.Errorf("for int: a int value is expected, but found numeric value `10.5`"),
+		},
+		{
 			name:      "valid_string",
 			paramType: StringParamType,
 			input:     "hello",
@@ -111,6 +119,14 @@ func TestPrimitives(t *testing.T) {
 			output:        nil,
 			repr:          "bool",
 			expectedError: fmt.Errorf("for bool: unexpected generic type value '*reflect.rtype', expected 'bool'"),
+		},
+		{
+			name:          "invalid_string_to_double",
+			paramType:     DoubleParamType,
+			input:         "invalid",
+			output:        nil,
+			repr:          "double",
+			expectedError: fmt.Errorf("for double: a float64 value is expected, but found invalid string value `invalid`"),
 		},
 		{
 			name:      "valid_duration",
