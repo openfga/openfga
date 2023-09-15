@@ -245,6 +245,23 @@ func TestInvalidRewriteValidations(t *testing.T) {
 			err: ErrInvalidUsersetRewrite,
 		},
 		{
+			name: "duplicate_types_is_invalid",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "repo",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+					{
+						Type:      "repo",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+			},
+			err: ErrDuplicateTypes,
+		},
+		{
 			name: "invalid_relation:_self_reference_in_computedUserset",
 			model: &openfgav1.AuthorizationModel{
 				SchemaVersion: SchemaVersion1_1,
@@ -2178,6 +2195,53 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 				TypeDefinitions: typedefs,
 			})
 			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestHasTypeInfo(t *testing.T) {
+	tests := []struct {
+		name       string
+		schema     string
+		model      string
+		objectType string
+		relation   string
+		expected   bool
+	}{
+		{
+			name:   "has_type_info_true",
+			schema: SchemaVersion1_1,
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected:   true,
+		},
+		{
+			name:   "has_type_info_false",
+			schema: SchemaVersion1_0,
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected:   false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			typesys := New(&openfgav1.AuthorizationModel{
+				SchemaVersion:   test.schema,
+				TypeDefinitions: parser.MustParse(test.model),
+			})
+			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})
