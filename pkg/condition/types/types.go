@@ -45,6 +45,7 @@ var paramTypeString = map[openfgav1.ConditionParamTypeRef_TypeName]string{
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_TIMESTAMP: "timestamp",
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP:       "map",
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST:      "list",
+	openfgav1.ConditionParamTypeRef_TYPE_NAME_IPADDRESS: "ipaddress",
 }
 
 func registerParamTypeWithGenerics(

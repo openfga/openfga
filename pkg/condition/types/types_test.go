@@ -116,21 +116,21 @@ func TestPrimitives(t *testing.T) {
 	}
 }
 
-func mustMapParamType(genericTypes ...ParameterType) ParameterType {
-	paramType, err := MapParamType(genericTypes...)
-	if err != nil {
-		panic(err)
-	}
-	return paramType
-}
+// func mustMapParamType(genericTypes ...ParameterType) ParameterType {
+// 	paramType, err := MapParamType(genericTypes...)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	return paramType
+// }
 
-func mustListParamType(genericTypes ...ParameterType) ParameterType {
-	paramType, err := ListParamType(genericTypes...)
-	if err != nil {
-		panic(err)
-	}
-	return paramType
-}
+// func mustListParamType(genericTypes ...ParameterType) ParameterType {
+// 	paramType, err := ListParamType(genericTypes...)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	return paramType
+// }
 
 func mustParseIPAddress(ip string) IPAddress {
 	addr, err := ParseIPAddress(ip)
