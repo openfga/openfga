@@ -58,5 +58,4 @@ func TestIPaddressCELBinaryBinding(t *testing.T) {
 			require.Equal(t, test.result, val)
 		})
 	}
-
 }
