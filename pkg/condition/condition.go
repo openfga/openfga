@@ -16,6 +16,11 @@ type EvaluationResult struct {
 	ConditionMet bool
 }
 
+// EvaluableCondition represents a condition that can eventually be evaluated
+// given a CEL expression and a set of parameters. Calling .Evaluate() will
+// optionally call .Compile() which validates and compiles the expression and
+// parameter type definitions if it hasn't been done already.
+// Note: at the moment, this is not safe for concurrent use.
 type EvaluableCondition struct {
 	*openfgav1.Condition
 
@@ -23,7 +28,7 @@ type EvaluableCondition struct {
 }
 
 // Compile compiles a condition expression with a CEL environment
-// constructed from the condition's parameter type defintions into a valid
+// constructed from the condition's parameter type definitions into a valid
 // AST that can be evaluated at a later time.
 func (c *EvaluableCondition) Compile() error {
 	var envOpts []cel.EnvOption
@@ -69,7 +74,7 @@ func (c *EvaluableCondition) Compile() error {
 }
 
 // Evaluate evalutes the provided CEL condition expression with a CEL environment
-// constructed from the condition's parameter type defintions and using the
+// constructed from the condition's parameter type definitions and using the
 // context provided. If more than one source of context is provided, and if the
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
