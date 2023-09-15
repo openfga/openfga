@@ -55,7 +55,7 @@ func (q *ReadQuery) Execute(ctx context.Context, req *openfgav1.ReadRequest) (*o
 
 	paginationOptions := storage.NewPaginationOptions(req.GetPageSize().GetValue(), string(decodedContToken))
 
-	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tk, paginationOptions)
+	tuples, contToken, err := q.datastore.ReadPage(ctx, store, tupleUtils.ConvertReadRequestTupleKeyToTupleKey(tk), paginationOptions)
 	if err != nil {
 		return nil, serverErrors.HandleError("", err)
 	}

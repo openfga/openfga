@@ -18,6 +18,9 @@ var (
 			openfgav1.Userset{},
 			openfgav1.Userset_This{},
 			openfgav1.DirectUserset{},
+			openfgav1.CheckRequestTupleKey{},
+			openfgav1.ExpandRequestTupleKey{},
+			openfgav1.ReadRequestTupleKey{},
 			openfgav1.TupleKey{},
 			openfgav1.Tuple{},
 			openfgav1.TupleChange{},
@@ -35,6 +38,7 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
+	t.Run("TestRead", func(t *testing.T) { ReadTest(t, ds) })
 
 	// authorization models
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })

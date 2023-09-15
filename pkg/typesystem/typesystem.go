@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 )
@@ -149,6 +150,7 @@ type TypeSystem struct {
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
 	relations     map[string]map[string]*openfgav1.Relation
+	conditions    map[string]*condition.EvaluableCondition
 	modelID       string
 	schemaVersion string
 }
@@ -181,11 +183,17 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		relations[typeName] = tdRelations
 	}
 
+	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
+	for name, cond := range model.GetConditions() {
+		uncompiledConditions[name] = condition.NewUncompiled(cond)
+	}
+
 	return &TypeSystem{
 		modelID:         model.GetId(),
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 		relations:       relations,
+		conditions:      uncompiledConditions,
 	}
 }
 
@@ -846,7 +854,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		sort.Strings(relationNames)
 
 		for _, relationName := range relationNames {
-
 			err := t.validateRelation(typeName, relationName, relationMap)
 			if err != nil {
 				return nil, err
@@ -859,6 +866,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	}
 
 	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
+		return nil, err
+	}
+
+	if err := t.validateConditions(); err != nil {
 		return nil, err
 	}
 
@@ -1066,8 +1077,29 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 				}
 			}
 		}
+
+		if related.Condition != "" {
+			// Validate the conditions referenced by the relations are included in the model.
+			if _, ok := t.conditions[related.Condition]; !ok {
+				return fmt.Errorf("condition %s is undefined for relation %s", related.Condition, relationName)
+			}
+		}
 	}
 
+	return nil
+}
+
+// validateConditions validates the conditions provided in the model.
+func (t *TypeSystem) validateConditions() error {
+	for key, c := range t.conditions {
+		if key != c.Name {
+			return fmt.Errorf("condition key '%s' does not match condition name '%s'", key, c.Name)
+		}
+
+		if err := c.Compile(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

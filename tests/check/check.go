@@ -3,6 +3,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -44,7 +45,7 @@ type stage struct {
 }
 
 type assertion struct {
-	Tuple            *openfgav1.TupleKey
+	Tuple            *openfgav1.CheckRequestTupleKey
 	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
@@ -102,7 +103,7 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
 	_, err = client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:              storeID,
-		TupleKey:             tuple.NewTupleKey("doc:x", "viewer", "user:y"),
+		TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:y"),
 		AuthorizationModelId: badModelID,
 	})
 
@@ -190,6 +191,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 
 			for _, assertion := range stage.CheckAssertions {
+				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
+
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
 					ctxTuples = append(ctxTuples, tuple.ConvertWriteRequestsTupleKeyToTupleKeys(stage.Tuples)...)
@@ -205,13 +208,13 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				})
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, err)
-					require.Equal(t, assertion.Expectation, resp.Allowed, assertion)
+					require.NoError(t, err, detailedInfo)
+					require.Equal(t, assertion.Expectation, resp.Allowed, detailedInfo)
 				} else {
-					require.Error(t, err)
+					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 			}
 		}

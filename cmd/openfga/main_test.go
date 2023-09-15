@@ -518,7 +518,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              "1",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -529,7 +529,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String() + "A",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -540,7 +540,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -551,7 +551,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String() + "A",
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -562,7 +562,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -836,7 +836,7 @@ func TestCheckWorkflows(t *testing.T) {
 
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
@@ -935,7 +935,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err := client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -986,7 +986,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -1035,7 +1035,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -1087,7 +1087,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 

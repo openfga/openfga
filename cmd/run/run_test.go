@@ -886,7 +886,7 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:  storeID,
-		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
 	})
 	require.NoError(t, err)
 	require.True(t, checkResp.GetAllowed())

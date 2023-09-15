@@ -62,7 +62,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
 					User:     "user:github|jose",
@@ -102,7 +102,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:openfga/openfga",
 					User:   "user:github|jose",
 				},
@@ -150,7 +150,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:",
 					User:   "github|jose",
 				},
@@ -211,7 +211,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 					User:     "github|jose",
@@ -273,7 +273,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:openfga/openfga",
 					Relation: "admin",
 				},
@@ -334,7 +334,7 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			// input
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:openfga/openfga",
 				},
 			},
@@ -413,7 +413,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "openfga/iam",
 				},
 			},
@@ -433,7 +433,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: ":",
 				},
 			},
@@ -453,7 +453,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Relation: "admin",
 					User:     "github|jonallie",
 				},
@@ -474,7 +474,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object:   "repo:",
 					Relation: "writer",
 				},
@@ -495,7 +495,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Relation: "writer",
 				},
 			},
@@ -516,7 +516,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ReadRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ReadRequestTupleKey{
 					Object: "repo:openfga/openfga",
 				},
 				ContinuationToken: "foo",

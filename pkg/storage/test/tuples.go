@@ -674,6 +674,123 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 	})
 }
 
+func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	ctx := context.Background()
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "reader", "user:anne"),
+		tuple.NewTupleKey("document:1", "reader", "user:bob"),
+		tuple.NewTupleKey("document:1", "writer", "user:bob"),
+	}
+
+	storeID := ulid.Make().String()
+
+	err := datastore.Write(ctx, storeID, nil, tuples)
+	require.NoError(t, err)
+
+	t.Run("empty_filter_returns_all_tuples", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+			tuple.NewTupleKey("document:1", "writer", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_user_and_relation_and_objectID", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_user_and_relation_and_objectType", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:", "reader", "user:bob"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_relation_and_objectID", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "reader", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_objectID", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", ""),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:anne"),
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+			tuple.NewTupleKey("document:1", "writer", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+
+	t.Run("filter_by_objectID_and_user", func(t *testing.T) {
+		tupleIterator, err := datastore.Read(
+			ctx,
+			storeID,
+			tuple.NewTupleKey("document:1", "", "user:bob"),
+		)
+		require.NoError(t, err)
+		defer tupleIterator.Stop()
+
+		expectedTupleKeys := []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "reader", "user:bob"),
+			tuple.NewTupleKey("document:1", "writer", "user:bob"),
+		}
+
+		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))
+	})
+}
+
 func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions) []string {
 	var objects []string
 	for {
@@ -689,4 +806,22 @@ func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions
 		objects = append(objects, tp.GetKey().GetObject())
 	}
 	return objects
+}
+
+func getTupleKeys(tupleIterator storage.TupleIterator, t *testing.T) []*openfgav1.TupleKey {
+	t.Helper()
+	var tupleKeys []*openfgav1.TupleKey
+	for {
+		tp, err := tupleIterator.Next()
+		if err != nil {
+			if errors.Is(err, storage.ErrIteratorDone) {
+				break
+			}
+
+			require.Fail(t, err.Error())
+		}
+
+		tupleKeys = append(tupleKeys, tp.GetKey())
+	}
+	return tupleKeys
 }
