@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -150,7 +151,87 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 }
 
 func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.WriteRequestTupleKey, writes []*openfgav1.WriteRequestTupleKey) error {
-	// TODO
+	for _, write := range writes {
+		objectType := tupleUtils.GetType(write.Object)
+		userType := tupleUtils.GetType(write.User)
+		userRelation := tupleUtils.GetRelation(write.User)
+		relation, err := ts.GetRelation(objectType, write.Relation)
+		if err != nil {
+			return err
+		}
+
+		if write.Condition == nil {
+			conditionShouldBeDefined := false
+			for _, userset := range relation.TypeInfo.GetDirectlyRelatedUserTypes() {
+				if userset.RelationOrWildcard == nil {
+					if userset.Type == userType {
+						conditionShouldBeDefined = true
+					}
+				}
+				if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
+					if userset.Type == userType && userset.GetRelation() == userRelation {
+						conditionShouldBeDefined = true
+					}
+				}
+				if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
+					if userset.Type == userType {
+						conditionShouldBeDefined = true
+					}
+				}
+			}
+			if conditionShouldBeDefined {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("condition is missing"), TupleKey: write})
+			}
+		} else { // condition defined in the write
+			conditionContext, conditionDefined := ts.GetConditions()[write.Condition.ConditionName]
+			if !conditionDefined {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("undefined condition"), TupleKey: write})
+			}
+
+			validCondition := false
+			for _, userset := range relation.TypeInfo.GetDirectlyRelatedUserTypes() {
+				if userset.Type == userType && userset.Condition == write.Condition.ConditionName {
+					validCondition = true
+				}
+			}
+			if !validCondition {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: write})
+			}
+
+			for conditionInWriteParamName, conditionInWriteParamContext := range write.Condition.Context.Fields {
+				_, paramDefined := conditionContext.Parameters[conditionInWriteParamName]
+				if !paramDefined {
+					return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+						Cause: fmt.Errorf("undefined parameter"), TupleKey: write})
+				}
+				paramIncorrectType := false
+				switch conditionInWriteParamContext.Kind.(type) {
+				case *structpb.Value_StringValue:
+					//TODO
+				case *structpb.Value_NumberValue:
+					//TODO
+				case *structpb.Value_BoolValue:
+					//TODO
+				case *structpb.Value_NullValue:
+					//TODO
+				case *structpb.Value_ListValue:
+					//TODO
+				case *structpb.Value_StructValue:
+					//TODO
+				}
+
+				if paramIncorrectType {
+					return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+						Cause: fmt.Errorf("invalid type for parameter"), TupleKey: write})
+				}
+
+			}
+		}
+
+	}
 	return nil
 }
 

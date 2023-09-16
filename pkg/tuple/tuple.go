@@ -49,19 +49,30 @@ func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
 	}
 }
 
+func NewTupleKeyWithCondition(object, relation, user string, condition *openfgav1.RelationshipCondition) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:    object,
+		Relation:  relation,
+		User:      user,
+		Condition: condition,
+	}
+}
+
 func ConvertTupleKeyToWriteTupleKey(tk *openfgav1.TupleKey) *openfgav1.WriteRequestTupleKey {
 	return &openfgav1.WriteRequestTupleKey{
-		Object:   tk.GetObject(),
-		Relation: tk.GetRelation(),
-		User:     tk.GetUser(),
+		Object:    tk.GetObject(),
+		Relation:  tk.GetRelation(),
+		User:      tk.GetUser(),
+		Condition: tk.GetCondition(),
 	}
 }
 
 func ConvertWriteRequestTupleKeyToTupleKey(tk *openfgav1.WriteRequestTupleKey) *openfgav1.TupleKey {
 	return &openfgav1.TupleKey{
-		Object:   tk.GetObject(),
-		Relation: tk.GetRelation(),
-		User:     tk.GetUser(),
+		Object:    tk.GetObject(),
+		Relation:  tk.GetRelation(),
+		User:      tk.GetUser(),
+		Condition: tk.GetCondition(),
 	}
 }
 
@@ -177,6 +188,12 @@ func GetUserTypeFromUser(user string) UserType {
 // (i.e. no forbidden characters)
 func TupleKeyToString(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
+}
+
+// TupleKeyWithConditionToString converts a tuple key with condition into its string representation. It assumes the tupleKey is valid
+// (i.e. no forbidden characters)
+func TupleKeyWithConditionToString(tk TupleWithCondition) string {
+	return fmt.Sprintf("%s#%s@%s (condition %s)", tk.GetObject(), tk.GetRelation(), tk.GetUser(), tk.GetCondition())
 }
 
 // IsValidObject determines if a string s is a valid object. A valid object contains exactly one `:` and no `#` or spaces.

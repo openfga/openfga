@@ -173,6 +173,41 @@ func conditionedRelation(rel *openfgav1.RelationReference, condition string) *op
 }
 
 func TestValidateWriteRequestWhenModelWithConditions(t *testing.T) {
+	invalidConditionTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:anne", &openfgav1.RelationshipCondition{
+		ConditionName: "condition2",
+		Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+			"x": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
+		}},
+	})
+	undefinedConditionTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:anne", &openfgav1.RelationshipCondition{
+		ConditionName: "condition2",
+		Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+			"x": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
+		}},
+	})
+	missingConditionUserTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:bob", nil)
+	missingConditionUsersetTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "group:finance#member", nil)
+	missingConditionWildcardTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:*", nil)
+
+	undefinedParameterTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:charles", &openfgav1.RelationshipCondition{
+		ConditionName: "condition1",
+		Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+			"z": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
+		}},
+	})
+	invalidTypeStringTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:charles", &openfgav1.RelationshipCondition{
+		ConditionName: "condition1",
+		Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+			"x": {Kind: &structpb.Value_StringValue{StringValue: "invalid"}},
+		}},
+	})
+	invalidTypeNumberTK := tuple.NewTupleKeyWithCondition("document:budget", "viewer", "user:charles", &openfgav1.RelationshipCondition{
+		ConditionName: "condition1",
+		Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+			"x": {Kind: &structpb.Value_NumberValue{NumberValue: 1}},
+		}},
+	})
+
 	type test struct {
 		name          string
 		model         *openfgav1.AuthorizationModel
@@ -184,6 +219,164 @@ func TestValidateWriteRequestWhenModelWithConditions(t *testing.T) {
 	tests := []test{
 		{
 			name: "success",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_DOUBLE,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes: []*openfgav1.WriteRequestTupleKey{{
+				User:     "user:anne",
+				Relation: "viewer",
+				Object:   "document:budget",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context: &structpb.Struct{Fields: map[string]*structpb.Value{
+						"x": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
+					}},
+				},
+			}},
+			expectedError: nil,
+		},
+		{
+			name: "condition_for_userset_required_but_not_provided",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "group",
+						Relations: map[string]*openfgav1.Userset{
+							"member": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"member": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("group", "member"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(missingConditionUsersetTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("condition is missing"),
+					TupleKey: missingConditionUsersetTK,
+				},
+			),
+		},
+		{
+			name: "condition_for_user_required_but_not_provided",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(missingConditionUserTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("condition is missing"),
+					TupleKey: missingConditionUserTK,
+				},
+			),
+		},
+		{
+			name: "condition_for_wildcard_required_but_not_provided",
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
@@ -220,24 +413,261 @@ func TestValidateWriteRequestWhenModelWithConditions(t *testing.T) {
 				},
 			},
 			deletes: nil,
-			writes: []*openfgav1.WriteRequestTupleKey{{
-				User:     "user:anne",
-				Relation: "viewer",
-				Object:   "document:budget",
-				Condition: &openfgav1.RelationshipCondition{
-					ConditionName: "condition1",
-					Context: &structpb.Struct{Fields: map[string]*structpb.Value{
-						"x": {Kind: &structpb.Value_NumberValue{NumberValue: 2}},
-					}},
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(missingConditionWildcardTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("condition is missing"),
+					TupleKey: missingConditionWildcardTK,
 				},
-			}},
-			expectedError: nil,
+			),
 		},
+		{
+			name: "invalid_condition_for_type_restriction",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition2",
+						Expression: "y > 2",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"y": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(invalidConditionTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("invalid condition for type restriction"),
+					TupleKey: invalidConditionTK,
+				},
+			),
+		},
+		{
+			name: "undefined_condition",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(undefinedConditionTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("undefined condition"),
+					TupleKey: undefinedConditionTK,
+				},
+			),
+		},
+		{
+			name: "undefined_parameter",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(undefinedParameterTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("undefined parameter"),
+					TupleKey: undefinedParameterTK,
+				},
+			),
+		},
+		{
+			name: "invalid_type_for_parameter_string",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UINT,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(invalidTypeStringTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("invalid type for parameter"),
+					TupleKey: invalidTypeStringTK,
+				},
+			),
+		},
+		{
+			name: "invalid_type_for_parameter_number",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										conditionedRelation(typesystem.DirectRelationReference("user", ""), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "x > 1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"x": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			deletes: nil,
+			writes:  []*openfgav1.WriteRequestTupleKey{tuple.ConvertTupleKeyToWriteTupleKey(invalidTypeNumberTK)},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause:    fmt.Errorf("invalid type for parameter"),
+					TupleKey: invalidTypeStringTK,
+				},
+			),
+		},
+		// TODO more tests for remaining types
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := validateConditionsInTuples(typesystem.New(test.model), test.writes, test.deletes)
+			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
+			require.NoError(t, err)
+			err = validateConditionsInTuples(ts, test.deletes, test.writes)
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
