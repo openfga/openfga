@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/condition/types"
 	"golang.org/x/exp/maps"
@@ -55,9 +56,10 @@ func (c *EvaluableCondition) Compile() error {
 		return fmt.Errorf("failed to construct CEL env: %v", err)
 	}
 
-	ast, issues := env.Compile(c.Expression)
+	source := common.NewStringSource(c.Expression, c.Name)
+	ast, issues := env.CompileSource(source)
 	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("failed to compile condition expression: %v", issues.Err())
+		return &CompilationError{Expression: c.Expression, Cause: issues.Err()}
 	}
 
 	prg, err := env.Program(ast)

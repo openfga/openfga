@@ -534,7 +534,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				Conditions: map[string]*openfgav1.Condition{
 					"condition1": {
 						Name:       "condition1",
-						Expression: "",
+						Expression: "{",
 						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 							"param1": {
 								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
@@ -544,7 +544,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: Syntax error: mismatched input '<EOF>' expecting {'[', '{', '(', '.', '-', '!', 'true', 'false', 'null', NUM_FLOAT, NUM_INT, NUM_UINT, STRING, BYTES, IDENTIFIER}"),
+				fmt.Errorf("failed to compile condition expression '{'"),
 			),
 		},
 		{
@@ -709,7 +709,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'param1' (in container '')\n | param1 == 'ok'\n | ^"),
+				fmt.Errorf("failed to compile condition expression 'param1 == 'ok''"),
 			),
 		},
 		{
@@ -749,7 +749,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 				},
 			},
 			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'param1' (in container '')\n | param1 == 'ok'\n | ^"),
+				fmt.Errorf("failed to compile condition expression 'param1 == 'ok''"),
 			),
 		},
 	}
