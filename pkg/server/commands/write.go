@@ -149,7 +149,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.WriteFailedDueToInvalidInput(nil)
+		return serverErrors.NewInternalError("concurrent write conflict", err)
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
