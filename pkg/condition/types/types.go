@@ -53,7 +53,6 @@ func registerParamTypeWithGenerics(
 	genericTypeCount uint,
 	toParameterType func(genericType []ParameterType) ParameterType,
 ) func(genericTypes ...ParameterType) (ParameterType, error) {
-
 	paramTypeDefinitions[paramTypeKeyword] = paramTypeDefinition{
 		name:             paramTypeKeyword,
 		genericTypeCount: genericTypeCount,

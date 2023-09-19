@@ -10,7 +10,7 @@ import (
 func primitiveTypeConverterFunc[T any](value any) (any, error) {
 	v, ok := value.(T)
 	if !ok {
-		return nil, fmt.Errorf("unexpected generic type value '%q', expected '%T'", reflect.TypeOf(value), *new(T))
+		return nil, fmt.Errorf("unexpected type value '%q', expected '%T'", reflect.TypeOf(value), *new(T))
 	}
 
 	return v, nil
@@ -27,7 +27,7 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 	if !ok {
 		stringValue, ok := value.(string)
 		if !ok {
-			return nil, fmt.Errorf("unexpected generic type value '%q', expected '%T'", reflect.TypeOf(value), *new(T))
+			return nil, fmt.Errorf("unexpected type value '%q', expected '%T'", reflect.TypeOf(value), *new(T))
 		}
 
 		f, _, err := big.ParseFloat(stringValue, 10, 64, 0)
