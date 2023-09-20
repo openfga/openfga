@@ -332,7 +332,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 				return nil, err
 			}
 
-			break
+			return &model, nil
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -347,43 +347,17 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	// If we've loaded the model from a single row with pbdata,
-	// we can try to to cleanup the legacy rows.
-	if model.Id != "" {
-		_, err = p.stbl.
-			Delete("authorization_model").
-			Where(sq.Eq{"store": store, "authorization_model_id": modelID, "pbdata": nil}).
-			ExecContext(ctx)
-		if err != nil {
-			p.logger.Warn(
-				"failed to delete legacy models",
-				zap.String("store", store),
-				zap.String("authorization_model_id", modelID),
-			)
-		}
-
-		return &model, nil
-	}
-
 	if len(typeDefs) == 0 {
 		return nil, storage.ErrNotFound
 	}
 
-	// If we're recreating the model from multiple rows,
-	// we can try to lazily create a new row with a non-null pbdata column.
-	model = openfgav1.AuthorizationModel{
-		SchemaVersion:   schemaVersion,
-		Id:              modelID,
-		TypeDefinitions: typeDefs,
-	}
-
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if model.SchemaVersion != typesystem.SchemaVersion1_0 && model.SchemaVersion != typesystem.SchemaVersion1_1 {
-		model.SchemaVersion = typesystem.SchemaVersion1_0
+	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
+		schemaVersion = typesystem.SchemaVersion1_0
 
 		_, err = p.stbl.
 			Update("authorization_model").
-			Set("schema_version", typesystem.SchemaVersion1_0).
+			Set("schema_version", schemaVersion).
 			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
 			ExecContext(ctx)
 		if err != nil {
@@ -392,20 +366,11 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		}
 	}
 
-	pbdata, err := proto.Marshal(&model)
-	if err == nil {
-		_, err = p.stbl.
-			Insert("authorization_model").
-			Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "pbdata").
-			Values(store, model.Id, model.SchemaVersion, "", nil, pbdata).
-			ExecContext(ctx)
-		if err != nil {
-			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			p.logger.Warn("failed to lazily insert converged row", zap.String("store", store), zap.String("authorization_model_id", modelID))
-		}
-	}
-
-	return &model, nil
+	return &openfgav1.AuthorizationModel{
+		SchemaVersion:   schemaVersion,
+		Id:              modelID,
+		TypeDefinitions: typeDefs,
+	}, nil
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
@@ -524,6 +489,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return err
 	}
 
+	// Going on forward, we'll store each authorization model into a single row
 	sb = sb.Values(store, model.Id, schemaVersion, "", nil, pbdata)
 
 	for _, typeDef := range typeDefinitions {
@@ -532,6 +498,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 			return err
 		}
 
+		// For backwards compatibility, continue splitting into a row per type definition
 		sb = sb.Values(store, model.Id, schemaVersion, typeDef.GetType(), marshalledTypeDef, nil)
 	}
 

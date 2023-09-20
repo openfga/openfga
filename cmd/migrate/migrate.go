@@ -11,7 +11,8 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/openfga/openfga/assets"
+	mysqlmigrations "github.com/openfga/openfga/cmd/migrate/mysql"
+	postgresmigrations "github.com/openfga/openfga/cmd/migrate/postgres"
 	"github.com/pressly/goose/v3"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -23,6 +24,7 @@ const (
 	versionFlag          = "version"
 	timeoutFlag          = "timeout"
 	verboseMigrationFlag = "verbose"
+	migrationsPath       = "/dev/null"
 )
 
 func NewMigrateCommand() *cobra.Command {
@@ -59,7 +61,7 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	goose.SetLogger(goose.NopLogger())
 	goose.SetVerbose(verbose)
 
-	var driver, dialect, migrationsPath string
+	var driver, dialect string
 	switch engine {
 	case "memory":
 		log.Println("no migrations to run for `memory` datastore")
@@ -67,11 +69,11 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	case "mysql":
 		driver = "mysql"
 		dialect = "mysql"
-		migrationsPath = assets.MySQLMigrationDir
+		mysqlmigrations.Register()
 	case "postgres":
 		driver = "pgx"
 		dialect = "postgres"
-		migrationsPath = assets.PostgresMigrationDir
+		postgresmigrations.Register()
 	case "":
 		return fmt.Errorf("missing datastore engine type")
 	default:
@@ -106,8 +108,6 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	if err := goose.SetDialect(dialect); err != nil {
 		log.Fatalf("failed to initialize the migrate command: %v", err)
 	}
-
-	goose.SetBaseFS(assets.EmbedMigrations)
 
 	currentVersion, err := goose.GetDBVersion(db)
 	if err != nil {

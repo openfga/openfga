@@ -25,7 +25,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.3
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20230913165333-7f9cdb8acb3f
-	github.com/pressly/goose/v3 v3.15.0
+	github.com/pressly/goose/v3 v3.15.1-0.20230914132807-53f25a777917
 	github.com/rs/cors v1.10.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5

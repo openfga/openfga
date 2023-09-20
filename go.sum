@@ -262,8 +262,6 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0-rc4 h1:oOxKUJWnFC4YGHCCMNql1x4YaDfYBTS5Y4x/Cgeo1E0=
 github.com/opencontainers/image-spec v1.1.0-rc4/go.mod h1:X4pATf0uXsnn3g5aiGIsVnJBR4mxhKzfwmvK/B2NTm8=
-github.com/openfga/api/proto v0.0.0-20230801154117-db20ad164368 h1:xva1rkYhP0/Ocyg3O2RyeFj7vOa7UCKcuifUg+VmrNg=
-github.com/openfga/api/proto v0.0.0-20230801154117-db20ad164368/go.mod h1:/edBiulCLBxFw+Q1wfWyURo/grVjueLo6JWFPHHFTos=
 github.com/openfga/api/proto v0.0.0-20230913165333-7f9cdb8acb3f h1:YVAL4cZ4hsdU7fM4KSorQDhRYUBa8Q83mseBbzeY3GU=
 github.com/openfga/api/proto v0.0.0-20230913165333-7f9cdb8acb3f/go.mod h1:/edBiulCLBxFw+Q1wfWyURo/grVjueLo6JWFPHHFTos=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
@@ -276,8 +274,8 @@ github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINE
 github.com/pkg/sftp v1.13.1/go.mod h1:3HaPG6Dq1ILlpPZRO0HVMrsydcdLt6HRDccSgb87qRg=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/pressly/goose/v3 v3.15.0 h1:6tY5aDqFknY6VZkorFGgZtWygodZQxfmmEF4rqyJW9k=
-github.com/pressly/goose/v3 v3.15.0/go.mod h1:LlIo3zGccjb/YUgG+Svdb9Er14vefRdlDI7URCDrwYo=
+github.com/pressly/goose/v3 v3.15.1-0.20230914132807-53f25a777917 h1:G5GGFMSYzmbwSicZfCQfwHpY3mIg5ZP+PG/vMc0PkW0=
+github.com/pressly/goose/v3 v3.15.1-0.20230914132807-53f25a777917/go.mod h1:yXPvHSUBFO4hQCmidy0fjTCWGmNwmRfv9/3IyV36kHk=
 github.com/prometheus/client_golang v1.16.0 h1:yk/hx9hDbrGHovbci4BY+pRMfSuuat626eFsHb7tmT8=
 github.com/prometheus/client_golang v1.16.0/go.mod h1:Zsulrv/L9oM40tJ7T815tM89lFEugiJ9HzIqaAx4LKc=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
