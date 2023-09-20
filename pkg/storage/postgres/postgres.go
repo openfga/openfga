@@ -301,12 +301,14 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	defer span.End()
 
 	rows, err := p.stbl.
-		Select("schema_version", "type", "type_definition").
+		Select("schema_version", "type", "type_definition", "pbdata").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
 			"authorization_model_id": modelID,
-		}).QueryContext(ctx)
+		}).
+		OrderBy("pbdata").
+		QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -314,12 +316,23 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
+	model := openfgav1.AuthorizationModel{}
+
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
+		var marshalledModel []byte
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
 			return nil, sqlcommon.HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			break
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -334,16 +347,43 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
+	// If we've loaded the model from a single row with pbdata,
+	// we can try to to cleanup the legacy rows.
+	if model.Id != "" {
+		_, err = p.stbl.
+			Delete("authorization_model").
+			Where(sq.Eq{"store": store, "authorization_model_id": modelID, "pbdata": nil}).
+			ExecContext(ctx)
+		if err != nil {
+			p.logger.Warn(
+				"failed to delete legacy models",
+				zap.String("store", store),
+				zap.String("authorization_model_id", modelID),
+			)
+		}
+
+		return &model, nil
+	}
+
 	if len(typeDefs) == 0 {
 		return nil, storage.ErrNotFound
 	}
 
+	// If we're recreating the model from multiple rows,
+	// we can try to lazily create a new row with a non-null pbdata column.
+	model = openfgav1.AuthorizationModel{
+		SchemaVersion:   schemaVersion,
+		Id:              modelID,
+		TypeDefinitions: typeDefs,
+	}
+
 	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
-		schemaVersion = typesystem.SchemaVersion1_0
+	if model.SchemaVersion != typesystem.SchemaVersion1_0 && model.SchemaVersion != typesystem.SchemaVersion1_1 {
+		model.SchemaVersion = typesystem.SchemaVersion1_0
+
 		_, err = p.stbl.
 			Update("authorization_model").
-			Set("schema_version", schemaVersion).
+			Set("schema_version", typesystem.SchemaVersion1_0).
 			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
 			ExecContext(ctx)
 		if err != nil {
@@ -352,11 +392,20 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 		}
 	}
 
-	return &openfgav1.AuthorizationModel{
-		SchemaVersion:   schemaVersion,
-		Id:              modelID,
-		TypeDefinitions: typeDefs,
-	}, nil
+	pbdata, err := proto.Marshal(&model)
+	if err == nil {
+		_, err = p.stbl.
+			Insert("authorization_model").
+			Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "pbdata").
+			Values(store, model.Id, model.SchemaVersion, "", nil, pbdata).
+			ExecContext(ctx)
+		if err != nil {
+			// Don't worry if we error, we'll update it lazily next time, but let's log:
+			p.logger.Warn("failed to lazily insert converged row", zap.String("store", store), zap.String("authorization_model_id", modelID))
+		}
+	}
+
+	return &model, nil
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
@@ -468,18 +517,25 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 
 	sb := p.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "pbdata")
 
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
+	sb = sb.Values(store, model.Id, schemaVersion, "", nil, pbdata)
+
+	for _, typeDef := range typeDefinitions {
+		marshalledTypeDef, err := proto.Marshal(typeDef)
 		if err != nil {
 			return err
 		}
 
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
+		sb = sb.Values(store, model.Id, schemaVersion, typeDef.GetType(), marshalledTypeDef, nil)
 	}
 
-	_, err := sb.ExecContext(ctx)
+	_, err = sb.ExecContext(ctx)
 	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}
