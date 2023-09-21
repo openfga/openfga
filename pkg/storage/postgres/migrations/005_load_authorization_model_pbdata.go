@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -109,11 +110,15 @@ func converge(ctx context.Context, tx *sql.Tx, storeID, modelID string) error {
 
 	insertStmt := `
 	INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, pbdata)
-	VALUES ($1, $2, $3, $4, $5, $6);`
+	VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT ON CONSTRAINT authorization_model_pkey DO NOTHING;`
 
 	_, err = tx.ExecContext(ctx, insertStmt, storeID, modelID, schemaVersion, "", nil, pbdata)
 	if err != nil {
-		return err
+		// gracefully handle error if converged row already exists
+		if pe, ok := err.(*pgconn.PgError); ok && pe.Code != "23505" {
+			return err
+		}
+
 	}
 
 	deleteStmt := `

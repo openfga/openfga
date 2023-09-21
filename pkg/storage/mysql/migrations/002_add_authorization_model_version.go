@@ -7,7 +7,6 @@ import (
 
 func up002(ctx context.Context, tx *sql.Tx) error {
 	stmt := `ALTER TABLE authorization_model ADD COLUMN schema_version VARCHAR(5) NOT NULL DEFAULT '1.0';`
-
 	_, err := tx.ExecContext(ctx, stmt)
 	return err
 }
