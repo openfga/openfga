@@ -287,12 +287,14 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	defer span.End()
 
 	rows, err := m.stbl.
-		Select("schema_version", "type", "type_definition").
+		Select("schema_version", "type", "type_definition", "pbdata").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
 			"authorization_model_id": modelID,
-		}).QueryContext(ctx)
+		}).
+		OrderBy("pbdata").
+		QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -300,12 +302,23 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 
 	var schemaVersion string
 	var typeDefs []*openfgav1.TypeDefinition
+	model := openfgav1.AuthorizationModel{}
+
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
+		var marshalledModel []byte
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
 			return nil, sqlcommon.HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			return &model, nil
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -454,18 +467,27 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 
 	sb := m.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "pbdata")
 
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
+	// Going on forward, we'll store each authorization model into a single row
+	sb = sb.Values(store, model.Id, schemaVersion, "", nil, pbdata)
+
+	for _, typeDef := range typeDefinitions {
+		marshalledTypeDef, err := proto.Marshal(typeDef)
 		if err != nil {
 			return err
 		}
 
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
+		// For backwards compatibility, continue splitting into a row per type definition
+		sb = sb.Values(store, model.Id, schemaVersion, typeDef.GetType(), marshalledTypeDef, nil)
 	}
 
-	_, err := sb.ExecContext(ctx)
+	_, err = sb.ExecContext(ctx)
 	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}
