@@ -38,7 +38,6 @@ type MySQL struct {
 var _ storage.OpenFGADatastore = (*MySQL)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
-
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {

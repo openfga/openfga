@@ -38,7 +38,6 @@ func TestStaticTupleKeyIterator(t *testing.T) {
 }
 
 func TestCombinedIterator(t *testing.T) {
-
 	expected := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "bill"),
 		tuple.NewTupleKey("document:doc2", "editor", "bob"),
@@ -72,7 +71,6 @@ func TestCombinedIterator(t *testing.T) {
 }
 
 func ExampleNewFilteredTupleKeyIterator() {
-
 	tuples := []*openfgav1.TupleKey{
 		tuple.NewTupleKey("document:doc1", "viewer", "user:jon"),
 		tuple.NewTupleKey("document:doc1", "editor", "user:elbuo"),
