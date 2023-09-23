@@ -18,7 +18,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -286,76 +285,31 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	rows, err := m.stbl.
-		Select("schema_version", "type", "type_definition", "pbdata").
+	row := m.stbl.
+		Select("pbdata").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
 			"authorization_model_id": modelID,
 		}).
-		OrderBy("pbdata").
-		QueryContext(ctx)
+		QueryRowContext(ctx)
+
+	var marshalledModel []byte
+	err := row.Scan(&marshalledModel)
 	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-	defer rows.Close()
-
-	var schemaVersion string
-	var typeDefs []*openfgav1.TypeDefinition
-	model := openfgav1.AuthorizationModel{}
-
-	for rows.Next() {
-		var typeName string
-		var marshalledTypeDef []byte
-		var marshalledModel []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
-		if err != nil {
-			return nil, sqlcommon.HandleSQLError(err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, storage.ErrNotFound
 		}
 
-		if len(marshalledModel) > 0 {
-			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
-				return nil, err
-			}
-
-			return &model, nil
-		}
-
-		var typeDef openfgav1.TypeDefinition
-		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-			return nil, err
-		}
-
-		typeDefs = append(typeDefs, &typeDef)
-	}
-
-	if err := rows.Err(); err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if len(typeDefs) == 0 {
-		return nil, storage.ErrNotFound
+	var model openfgav1.AuthorizationModel
+	if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+		return nil, err
 	}
 
-	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
-		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = m.stbl.
-			Update("authorization_model").
-			Set("schema_version", schemaVersion).
-			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
-			ExecContext(ctx)
-		if err != nil {
-			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			m.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
-		}
-	}
-
-	return &openfgav1.AuthorizationModel{
-		SchemaVersion:   schemaVersion,
-		Id:              modelID,
-		TypeDefinitions: typeDefs,
-	}, nil
+	return &model, nil
 }
 
 func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
@@ -454,7 +408,6 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 	ctx, span := tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
-	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
@@ -465,29 +418,16 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 		return nil
 	}
 
-	sb := m.stbl.
-		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "pbdata")
-
 	pbdata, err := proto.Marshal(model)
 	if err != nil {
 		return err
 	}
 
-	// Going on forward, we'll store each authorization model into a single row
-	sb = sb.Values(store, model.Id, schemaVersion, "", nil, pbdata)
-
-	for _, typeDef := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(typeDef)
-		if err != nil {
-			return err
-		}
-
-		// For backwards compatibility, continue splitting into a row per type definition
-		sb = sb.Values(store, model.Id, schemaVersion, typeDef.GetType(), marshalledTypeDef, nil)
-	}
-
-	_, err = sb.ExecContext(ctx)
+	_, err = m.stbl.
+		Insert("authorization_model").
+		Columns("store", "authorization_model_id", "pbdata").
+		Values(store, model.Id, pbdata).
+		ExecContext(ctx)
 	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}
