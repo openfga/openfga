@@ -388,7 +388,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   ./openfga run --experimentals=otel-metrics --otel-telemetry-endpoint=127.0.0.1:4317 --otel-telemetry-protocol=http
   ```
 
-  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry-metrics-and-tracing).
+  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga/docker#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga/docker#telemetry).
 
 * Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) ([#444](https://github.com/openfga/openfga/pull/444))
 
@@ -412,7 +412,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   `--log-level` (can be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal'])
 
 * Support for Experimental Feature flags
-  A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features).
+  A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga/docker#experimental-features).
 
 ### Security
 * Patches [CVE-2022-23542](https://github.com/openfga/openfga/security/advisories/GHSA-m3q4-7qmj-657m) - relationship reads now respect type restrictions from prior models ([#422](https://github.com/openfga/openfga/pull/422)).
