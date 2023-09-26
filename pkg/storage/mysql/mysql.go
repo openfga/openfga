@@ -293,7 +293,6 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 			"store":                  store,
 			"authorization_model_id": modelID,
 		}).
-		OrderBy("serialized_protobuf desc").
 		QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
