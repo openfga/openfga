@@ -123,7 +123,7 @@ func NewUncompiled(condition *openfgav1.Condition) *EvaluableCondition {
 	return &EvaluableCondition{Condition: condition}
 }
 
-// NewUncompiled returns a new EvaluableCondition with a validated and
+// NewCompiled returns a new EvaluableCondition with a validated and
 // compiled expression.
 func NewCompiled(condition *openfgav1.Condition) (*EvaluableCondition, error) {
 	compiled := NewUncompiled(condition)
