@@ -32,6 +32,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/gjson v1.17.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.45.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.44.0
 	go.opentelemetry.io/otel v1.19.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.19.0
 	go.opentelemetry.io/otel/sdk v1.19.0
@@ -46,6 +47,7 @@ require (
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.0.2 // indirect
+	github.com/felixge/httpsnoop v1.0.3 // indirect
 	github.com/sagikazarmark/locafero v0.3.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
