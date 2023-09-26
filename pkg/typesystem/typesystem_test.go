@@ -9,6 +9,164 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestHasCycle(t *testing.T) {
+
+	tests := []struct {
+		name       string
+		model      string
+		objectType string
+		relation   string
+		expected   bool
+	}{
+		{
+			name: "test_1",
+			model: `
+			type resource
+			  relations
+			    define x as y
+			    define y as x
+			`,
+			objectType: "resource",
+			relation:   "x",
+			expected:   true,
+		},
+		{
+			name: "test_2",
+			model: `
+			type resource
+			  relations
+			    define x as y
+			    define y as z
+				define z as x
+			`,
+			objectType: "resource",
+			relation:   "y",
+			expected:   true,
+		},
+		{
+			name: "test_3",
+			model: `
+			type user
+
+			type resource
+			  relations
+			    define x: [user] as self or y
+			    define y: [user] as self or z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "z",
+			expected:   true,
+		},
+		{
+			name: "test_4",
+			model: `
+			type user
+
+			type resource
+			  relations
+			    define x: [user] as self or y
+			    define y: [user] as self or z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "z",
+			expected:   true,
+		},
+		{
+			name: "test_5",
+			model: `
+			type user
+
+			type resource
+			  relations
+				define x: [user] as self but not y
+				define y: [user] as self but not z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "x",
+			expected:   true,
+		},
+		{
+			name: "test_6",
+			model: `
+			type user
+
+			type group
+			  relations
+				define member: [user] as self or memberA or memberB or memberC
+				define memberA: [user] as self or member or memberB or memberC
+				define memberB: [user] as self or member or memberA or memberC
+				define memberC: [user] as self or member or memberA or memberB
+			`,
+			objectType: "group",
+			relation:   "member",
+			expected:   true,
+		},
+		{
+			name: "test_7",
+			model: `
+			type user
+
+			type account
+			relations
+				define admin: [user] as self or member or super_admin or owner
+				define member: [user] as self or owner or admin or super_admin
+				define super_admin: [user] as self or admin or member or owner
+				define owner: [user] as self
+			`,
+			objectType: "account",
+			relation:   "member",
+			expected:   true,
+		},
+		{
+			name: "test_8",
+			model: `
+			type user
+
+			type account
+			relations
+				define admin: [user] as self or member or super_admin or owner
+				define member: [user] as self or owner or admin or super_admin
+				define super_admin: [user] as self or admin or member or owner
+				define owner: [user] as self
+			`,
+			objectType: "account",
+			relation:   "owner",
+			expected:   false,
+		},
+		{
+			name: "test_9",
+			model: `
+			type user
+
+			type document
+			  relations
+				define editor: [user] as self
+				define viewer: [document#viewer] as self or editor
+			`,
+			objectType: "document",
+			relation:   "viewer",
+			expected:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			typesys := New(&openfgav1.AuthorizationModel{
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
+			})
+
+			hasCycle, err := typesys.HasCycle(test.objectType, test.relation)
+			require.Equal(t, test.expected, hasCycle)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestNewAndValidate(t *testing.T) {
 
 	tests := []struct {
