@@ -327,6 +327,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
+		sqlcommon.WithMetrics(config.Metrics.Enabled),
 	)
 
 	var datastore storage.OpenFGADatastore
@@ -341,12 +342,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
+			return fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
+			return fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
