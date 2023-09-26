@@ -300,7 +300,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	defer span.End()
 
 	row := p.stbl.
-		Select("pbdata").
+		Select("serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
@@ -439,7 +439,7 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 
 	_, err = p.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "pbdata").
+		Columns("store", "authorization_model_id", "serialized_protobuf").
 		Values(store, model.Id, pbdata).
 		ExecContext(ctx)
 	if err != nil {

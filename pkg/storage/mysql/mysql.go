@@ -286,7 +286,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	defer span.End()
 
 	row := m.stbl.
-		Select("pbdata").
+		Select("serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
@@ -425,7 +425,7 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 
 	_, err = m.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "pbdata").
+		Columns("store", "authorization_model_id", "serialized_protobuf").
 		Values(store, model.Id, pbdata).
 		ExecContext(ctx)
 	if err != nil {
