@@ -173,20 +173,6 @@ func TestPrimitives(t *testing.T) {
 			repr:          "ipaddress",
 			expectedError: fmt.Errorf("for ipaddress: could not parse string as an ipaddress `invalid`: ParseAddr(\"invalid\"): unable to parse IP"),
 		},
-		// {
-		// 	name:      "valid_map_string",
-		// 	paramType: mustMapParamType(StringParamType),
-		// 	input:     map[string]string{"hello": "world"},
-		// 	output:    map[string]string{"hello": "world"},
-		// 	repr:      "TYPE_NAME_MAP<string>",
-		// },
-		// {
-		// 	name:      "valid_list_string",
-		// 	paramType: mustListParamType(StringParamType),
-		// 	input:     []string{"hello", "world"},
-		// 	output:    []string{"hello", "world"},
-		// 	repr:      "TYPE_NAME_LIST<string>",
-		// },
 	}
 
 	for _, test := range tests {
@@ -205,22 +191,6 @@ func TestPrimitives(t *testing.T) {
 		})
 	}
 }
-
-// func mustMapParamType(genericTypes ...ParameterType) ParameterType {
-// 	paramType, err := MapParamType(genericTypes...)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	return paramType
-// }
-
-// func mustListParamType(genericTypes ...ParameterType) ParameterType {
-// 	paramType, err := ListParamType(genericTypes...)
-// 	if err != nil {
-// 		panic(err)
-// 	}
-// 	return paramType
-// }
 
 func mustParseIPAddress(ip string) IPAddress {
 	addr, err := ParseIPAddress(ip)
