@@ -12,7 +12,9 @@ import (
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestMySQLDatastore(t *testing.T) {
@@ -116,4 +118,29 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
 
+}
+
+func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	defer ds.Close()
+	store := "store"
+	modelID := "foo"
+	schemaVersion := typesystem.SchemaVersion1_0
+
+	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+	require.NoError(t, err)
+	pbdata := []byte{0x01, 0x02, 0x03}
+
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	require.NoError(t, err)
+
+	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }

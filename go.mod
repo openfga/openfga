@@ -17,29 +17,29 @@ require (
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
-	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.1
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.18.0
 	github.com/hashicorp/go-retryablehttp v0.7.4
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/karlseguin/ccache/v3 v3.0.3
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20230915160119-2b2e5aca7128
+	github.com/openfga/api/proto v0.0.0-20230926212222-c3a581feb40a
 	github.com/pressly/goose/v3 v3.15.0
 	github.com/rs/cors v1.10.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.16.0
 	github.com/stretchr/testify v1.8.4
-	github.com/tidwall/gjson v1.16.0
+	github.com/tidwall/gjson v1.17.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.44.0
 	go.opentelemetry.io/otel v1.18.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.18.0
 	go.opentelemetry.io/otel/sdk v1.18.0
 	go.opentelemetry.io/otel/trace v1.18.0
-	go.uber.org/zap v1.25.0
+	go.uber.org/zap v1.26.0
 	golang.org/x/sync v0.3.0
-	google.golang.org/grpc v1.58.0
+	google.golang.org/grpc v1.58.2
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )

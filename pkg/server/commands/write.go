@@ -237,7 +237,7 @@ func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.WriteFailedDueToInvalidInput(nil)
+		return serverErrors.NewInternalError("concurrent write conflict", err)
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}

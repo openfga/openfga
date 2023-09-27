@@ -5,8 +5,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
-const startingGenericTypeCount = 1
-
 var (
 	AnyParamType = registerParamType(
 		openfgav1.ConditionParamTypeRef_TYPE_NAME_ANY,
@@ -47,15 +45,5 @@ var (
 		openfgav1.ConditionParamTypeRef_TYPE_NAME_TIMESTAMP,
 		cel.TimestampType,
 		timestampTypeConverterFunc,
-	)
-	MapParamType = registerParamTypeWithGenerics(
-		openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP,
-		startingGenericTypeCount,
-		mapTypeConverterFunc,
-	)
-	ListParamType = registerParamTypeWithGenerics(
-		openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
-		startingGenericTypeCount,
-		listTypeConverterFunc,
 	)
 )

@@ -8,8 +8,8 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -357,7 +357,7 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 				tuple.NewTupleKey("folder:folder2", "parent", "folder:folder1"),
 				tuple.NewTupleKey("folder:folder3", "parent", "folder:folder2"),
 			},
-			expectedError:        serverErrors.AuthorizationModelResolutionTooComplex,
+			expectedError:        graph.ErrResolutionDepthExceeded,
 			expectedDSQueryCount: 0,
 		},
 		{

@@ -2,12 +2,171 @@ package typesystem
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHasCycle(t *testing.T) {
+
+	tests := []struct {
+		name       string
+		model      string
+		objectType string
+		relation   string
+		expected   bool
+	}{
+		{
+			name: "test_1",
+			model: `
+			type resource
+			  relations
+			    define x as y
+			    define y as x
+			`,
+			objectType: "resource",
+			relation:   "x",
+			expected:   true,
+		},
+		{
+			name: "test_2",
+			model: `
+			type resource
+			  relations
+			    define x as y
+			    define y as z
+				define z as x
+			`,
+			objectType: "resource",
+			relation:   "y",
+			expected:   true,
+		},
+		{
+			name: "test_3",
+			model: `
+			type user
+
+			type resource
+			  relations
+			    define x: [user] as self or y
+			    define y: [user] as self or z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "z",
+			expected:   true,
+		},
+		{
+			name: "test_4",
+			model: `
+			type user
+
+			type resource
+			  relations
+			    define x: [user] as self or y
+			    define y: [user] as self or z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "z",
+			expected:   true,
+		},
+		{
+			name: "test_5",
+			model: `
+			type user
+
+			type resource
+			  relations
+				define x: [user] as self but not y
+				define y: [user] as self but not z
+				define z: [user] as self or x
+			`,
+			objectType: "resource",
+			relation:   "x",
+			expected:   true,
+		},
+		{
+			name: "test_6",
+			model: `
+			type user
+
+			type group
+			  relations
+				define member: [user] as self or memberA or memberB or memberC
+				define memberA: [user] as self or member or memberB or memberC
+				define memberB: [user] as self or member or memberA or memberC
+				define memberC: [user] as self or member or memberA or memberB
+			`,
+			objectType: "group",
+			relation:   "member",
+			expected:   true,
+		},
+		{
+			name: "test_7",
+			model: `
+			type user
+
+			type account
+			relations
+				define admin: [user] as self or member or super_admin or owner
+				define member: [user] as self or owner or admin or super_admin
+				define super_admin: [user] as self or admin or member or owner
+				define owner: [user] as self
+			`,
+			objectType: "account",
+			relation:   "member",
+			expected:   true,
+		},
+		{
+			name: "test_8",
+			model: `
+			type user
+
+			type account
+			relations
+				define admin: [user] as self or member or super_admin or owner
+				define member: [user] as self or owner or admin or super_admin
+				define super_admin: [user] as self or admin or member or owner
+				define owner: [user] as self
+			`,
+			objectType: "account",
+			relation:   "owner",
+			expected:   false,
+		},
+		{
+			name: "test_9",
+			model: `
+			type user
+
+			type document
+			  relations
+				define editor: [user] as self
+				define viewer: [document#viewer] as self or editor
+			`,
+			objectType: "document",
+			relation:   "viewer",
+			expected:   false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			typesys := New(&openfgav1.AuthorizationModel{
+				SchemaVersion:   SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(test.model),
+			})
+
+			hasCycle, err := typesys.HasCycle(test.objectType, test.relation)
+			require.Equal(t, test.expected, hasCycle)
+			require.NoError(t, err)
+		})
+	}
+}
 
 func TestNewAndValidate(t *testing.T) {
 
@@ -243,6 +402,23 @@ func TestInvalidRewriteValidations(t *testing.T) {
 				},
 			},
 			err: ErrInvalidUsersetRewrite,
+		},
+		{
+			name: "duplicate_types_is_invalid",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type:      "repo",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+					{
+						Type:      "repo",
+						Relations: map[string]*openfgav1.Userset{},
+					},
+				},
+			},
+			err: ErrDuplicateTypes,
 		},
 		{
 			name: "invalid_relation:_self_reference_in_computedUserset",
@@ -1863,7 +2039,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			name: "direct_and_wildcard",
 			model: `
 			type user
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1876,7 +2052,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			name: "direct_type",
 			model: `
 			type user
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1891,7 +2067,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			type user
 			  relations
 			    define manager: [user] as self
-			
+
 			type document
 			  relations
 			    define viewer: [user] as self
@@ -1906,7 +2082,7 @@ func TestIsDirectlyRelated(t *testing.T) {
 			type group
 			  relations
 			    define member: [group#member] as self
-			
+
 			type document
 			  relations
 			    define viewer: [group#member] as self
@@ -2178,6 +2354,197 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 				TypeDefinitions: typedefs,
 			})
 			result, err := typesys.DirectlyRelatedUsersets(test.objectType, test.relation)
+			require.NoError(t, err)
+			require.Equal(t, test.expected, result)
+		})
+	}
+}
+
+func TestConditions(t *testing.T) {
+
+	tests := []struct {
+		name          string
+		model         *openfgav1.AuthorizationModel
+		expectedError error
+	}{
+		{
+			name: "condition_fails_undefined",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "invalid_condition_name"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("condition invalid_condition_name is undefined for relation viewer"),
+		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			expectedError: fmt.Errorf("condition key 'condition2' does not match condition name 'condition3'"),
+		},
+		{
+			name: "condition_valid",
+			model: &openfgav1.AuthorizationModel{
+				SchemaVersion: SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										ConditionedRelationReference(WildcardRelationReference("user"), "condition1"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := NewAndValidate(context.Background(), test.model)
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.EqualError(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestHasTypeInfo(t *testing.T) {
+	tests := []struct {
+		name       string
+		schema     string
+		model      string
+		objectType string
+		relation   string
+		expected   bool
+	}{
+		{
+			name:   "has_type_info_true",
+			schema: SchemaVersion1_1,
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed: [user] as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected:   true,
+		},
+		{
+			name:   "has_type_info_false",
+			schema: SchemaVersion1_0,
+			model: `type user
+
+			type folder
+			  relations
+			    define allowed as self`,
+			objectType: "folder",
+			relation:   "allowed",
+			expected:   false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			typesys := New(&openfgav1.AuthorizationModel{
+				SchemaVersion:   test.schema,
+				TypeDefinitions: parser.MustParse(test.model),
+			})
+			result, err := typesys.HasTypeInfo(test.objectType, test.relation)
 			require.NoError(t, err)
 			require.Equal(t, test.expected, result)
 		})

@@ -52,7 +52,10 @@ func TestNewCompiled(t *testing.T) {
 					},
 				},
 			},
-			err: fmt.Errorf("failed to compile condition expression: ERROR: <input>:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+			err: &condition.CompilationError{
+				Expression: "invalid",
+				Cause:      fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+			},
 		},
 		{
 			name: "invalid_output_type",
@@ -155,7 +158,7 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected generic type value '*reflect.rtype', expected 'string'"),
+			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
 		},
 	}
 

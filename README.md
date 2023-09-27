@@ -196,7 +196,7 @@ Take a look at examples of how to:
 - [Write an Authorization Model](https://openfga.dev/api/service#/Authorization%20Models/WriteAuthorizationModel)
 - [Write Relationship Tuples](https://openfga.dev/api/service#/Relationship%20Tuples/Write)
 - [Perform Authorization Checks](https://openfga.dev/api/service#/Relationship%20Queries/Check)
-- [Add Authentication to your OpenFGA server](https://openfga.dev/docs/getting-started/setup-openfga#configuring-authentication)
+- [Add Authentication to your OpenFGA server](https://openfga.dev/docs/getting-started/setup-openfga/docker#configuring-authentication)
 
 Don't hesitate to browse the official [Documentation](https://openfga.dev/), [API Reference](https://openfga.dev/api/service).
 

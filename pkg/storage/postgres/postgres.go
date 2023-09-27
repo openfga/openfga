@@ -301,12 +301,13 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	defer span.End()
 
 	rows, err := p.stbl.
-		Select("schema_version", "type", "type_definition").
+		Select("schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
 		Where(sq.Eq{
 			"store":                  store,
 			"authorization_model_id": modelID,
-		}).QueryContext(ctx)
+		}).
+		QueryContext(ctx)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
 	}
@@ -317,9 +318,20 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	for rows.Next() {
 		var typeName string
 		var marshalledTypeDef []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
+		var marshalledModel []byte
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
 		if err != nil {
 			return nil, sqlcommon.HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			// Prefer building an authorization model from the first row that has it available.
+			var model openfgav1.AuthorizationModel
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			return &model, nil
 		}
 
 		var typeDef openfgav1.TypeDefinition
@@ -466,9 +478,14 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 		return nil
 	}
 
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
 	sb := p.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf")
 
 	for _, td := range typeDefinitions {
 		marshalledTypeDef, err := proto.Marshal(td)
@@ -476,10 +493,10 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 			return err
 		}
 
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
+		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef, pbdata)
 	}
 
-	_, err := sb.ExecContext(ctx)
+	_, err = sb.ExecContext(ctx)
 	if err != nil {
 		return sqlcommon.HandleSQLError(err)
 	}

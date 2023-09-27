@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/condition/types"
 	"golang.org/x/exp/maps"
@@ -16,6 +17,11 @@ type EvaluationResult struct {
 	ConditionMet bool
 }
 
+// EvaluableCondition represents a condition that can eventually be evaluated
+// given a CEL expression and a set of parameters. Calling .Evaluate() will
+// optionally call .Compile() which validates and compiles the expression and
+// parameter type definitions if it hasn't been done already.
+// Note: at the moment, this is not safe for concurrent use.
 type EvaluableCondition struct {
 	*openfgav1.Condition
 
@@ -23,7 +29,7 @@ type EvaluableCondition struct {
 }
 
 // Compile compiles a condition expression with a CEL environment
-// constructed from the condition's parameter type defintions into a valid
+// constructed from the condition's parameter type definitions into a valid
 // AST that can be evaluated at a later time.
 func (c *EvaluableCondition) Compile() error {
 	var envOpts []cel.EnvOption
@@ -50,9 +56,10 @@ func (c *EvaluableCondition) Compile() error {
 		return fmt.Errorf("failed to construct CEL env: %v", err)
 	}
 
-	ast, issues := env.Compile(c.Expression)
+	source := common.NewStringSource(c.Expression, c.Name)
+	ast, issues := env.CompileSource(source)
 	if issues != nil && issues.Err() != nil {
-		return fmt.Errorf("failed to compile condition expression: %v", issues.Err())
+		return &CompilationError{Expression: c.Expression, Cause: issues.Err()}
 	}
 
 	prg, err := env.Program(ast)
@@ -69,7 +76,7 @@ func (c *EvaluableCondition) Compile() error {
 }
 
 // Evaluate evalutes the provided CEL condition expression with a CEL environment
-// constructed from the condition's parameter type defintions and using the
+// constructed from the condition's parameter type definitions and using the
 // context provided. If more than one source of context is provided, and if the
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
@@ -116,7 +123,7 @@ func NewUncompiled(condition *openfgav1.Condition) *EvaluableCondition {
 	return &EvaluableCondition{Condition: condition}
 }
 
-// NewUncompiled returns a new EvaluableCondition with a validated and
+// NewCompiled returns a new EvaluableCondition with a validated and
 // compiled expression.
 func NewCompiled(condition *openfgav1.Condition) (*EvaluableCondition, error) {
 	compiled := NewUncompiled(condition)
