@@ -25,11 +25,42 @@ var (
 	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
+func ConvertCheckRequestTupleKeyToTupleKey(tk *openfgav1.CheckRequestTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func ConvertReadRequestTupleKeyToTupleKey(tk *openfgav1.ReadRequestTupleKey) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
 func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
 	return &openfgav1.TupleKey{
 		Object:   object,
 		Relation: relation,
 		User:     user,
+	}
+}
+
+func NewCheckRequestTupleKey(object, relation, user string) *openfgav1.CheckRequestTupleKey {
+	return &openfgav1.CheckRequestTupleKey{
+		Object:   object,
+		Relation: relation,
+		User:     user,
+	}
+}
+
+func NewExpandRequestTupleKey(object, relation string) *openfgav1.ExpandRequestTupleKey {
+	return &openfgav1.ExpandRequestTupleKey{
+		Object:   object,
+		Relation: relation,
 	}
 }
 

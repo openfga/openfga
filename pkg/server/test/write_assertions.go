@@ -45,7 +45,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgav1.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgav1.Assertion{{
-					TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -55,7 +55,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			request: &openfgav1.WriteAssertionsRequest{
 				StoreId: store,
 				Assertions: []*openfgav1.Assertion{{
-					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
+					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				}},
 			},
@@ -73,7 +73,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				StoreId: store,
 				Assertions: []*openfgav1.Assertion{
 					{
-						TupleKey:    tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
+						TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "invalidrelation", "user:elbuo"),
 						Expectation: false,
 					},
 				},

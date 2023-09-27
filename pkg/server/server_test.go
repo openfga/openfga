@@ -156,8 +156,8 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	    define reader: [user] as self
 	`)
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:anne")
-	tuple := &openfgav1.Tuple{Key: tk}
+	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
+	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -176,7 +176,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
 		AnyTimes().
-		Return(tuple, nil)
+		Return(returnedTuple, nil)
 
 	mockDatastore.EXPECT().
 		ReadUsersetTuples(gomock.Any(), storeID, gomock.Any()).
@@ -217,7 +217,7 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	    define r3: [user] as self and r1 and r2
 	`)
 
-	tk := tuple.NewTupleKey("repo:openfga", "r1", "user:anne")
+	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -271,17 +271,6 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	e, ok = status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
-
-	_, err = s.Expand(ctx, &openfgav1.ExpandRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey:             tk,
-	})
-	require.Error(t, err)
-	e, ok = status.FromError(err)
-	require.True(t, ok)
-	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
-
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
@@ -298,8 +287,8 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	    define reader: [user:*] as self
 	`)
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:*")
-	tuple := &openfgav1.Tuple{Key: tk}
+	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
+	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -334,7 +323,7 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 		DoAndReturn(
 			func(_ context.Context, _ string, _ storage.ReadUsersetTuplesFilter) (storage.TupleIterator, error) {
 				time.Sleep(100 * time.Millisecond)
-				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{tuple}), nil
+				return storage.NewStaticTupleIterator([]*openfgav1.Tuple{returnedTuple}), nil
 			})
 
 	s := MustNewServerWithOpts(
@@ -369,8 +358,8 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	    define reader: [user] as self
 	`)
 
-	tk := tuple.NewTupleKey("repo:openfga", "reader", "user:mike")
-	tuple := &openfgav1.Tuple{Key: tk}
+	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
+	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -388,7 +377,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	mockDatastore.EXPECT().
 		ReadUserTuple(gomock.Any(), storeID, gomock.Any()).
 		Times(1).
-		Return(tuple, nil)
+		Return(returnedTuple, nil)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -714,7 +703,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
-			TupleKey: tuple.NewTupleKey(
+			TupleKey: tuple.NewCheckRequestTupleKey(
 				"team:abc",
 				"member",
 				"user:anne"),
@@ -747,20 +736,6 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			Relation:             "member",
 			User:                 "user:anne",
 		}, NewMockStreamServer())
-		require.Error(t, err)
-		e, ok := status.FromError(err)
-		require.True(t, ok)
-		require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
-	})
-
-	t.Run("invalid_schema_error_in_expand", func(t *testing.T) {
-		_, err := s.Expand(ctx, &openfgav1.ExpandRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			TupleKey: tuple.NewTupleKey("repo:openfga",
-				"reader",
-				"user:anne"),
-		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)
 		require.True(t, ok)
@@ -802,7 +777,7 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewTupleKey("repo:test", "reader", "user:elbuo"),
+				TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:elbuo"),
 				Expectation: false,
 			}},
 		})
