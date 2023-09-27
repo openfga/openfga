@@ -866,14 +866,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		}
 	}
 
-	if err := t.ensureNoCyclesInTupleToUsersetDefinitions(); err != nil {
-		return nil, err
-	}
-
-	if err := t.ensureNoCyclesInComputedRewrite(); err != nil {
-		return nil, err
-	}
-
 	if err := t.validateConditions(); err != nil {
 		return nil, err
 	}
@@ -914,6 +906,19 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 			ObjectType: typeName,
 			Relation:   relationName,
 			Cause:      cause,
+		}
+	}
+
+	hasCycle, err := t.HasCycle(typeName, relationName)
+	if err != nil {
+		return err
+	}
+
+	if hasCycle {
+		return &InvalidRelationError{
+			ObjectType: typeName,
+			Relation:   relationName,
+			Cause:      ErrCycle,
 		}
 	}
 
@@ -1108,83 +1113,6 @@ func (t *TypeSystem) validateConditions() error {
 	return nil
 }
 
-// ensureNoCyclesInTupleToUsersetDefinitions throws an error on the following models because `viewer` is a cycle.
-//
-//	type folder
-//	  relations
-//	    define parent: [folder] as self
-//	    define viewer as viewer from parent
-//
-// and
-//
-//	type folder
-//	  relations
-//	    define parent as self
-//	    define viewer as viewer from parent
-func (t *TypeSystem) ensureNoCyclesInTupleToUsersetDefinitions() error {
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err == nil {
-			for relationName, relation := range relations {
-				switch cyclicDefinition := relation.GetRewrite().Userset.(type) {
-				case *openfgav1.Userset_TupleToUserset:
-					// define viewer as viewer from parent
-					if cyclicDefinition.TupleToUserset.ComputedUserset.GetRelation() == relationName {
-						tuplesetRelationName := cyclicDefinition.TupleToUserset.GetTupleset().GetRelation()
-						tuplesetRelation, err := t.GetRelation(objectType, tuplesetRelationName)
-						// define parent: [folder] as self
-						if err == nil {
-							switch tuplesetRelation.GetRewrite().Userset.(type) {
-							case *openfgav1.Userset_This:
-								if t.schemaVersion == SchemaVersion1_0 && len(t.typeDefinitions) == 1 {
-									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
-								}
-								if t.schemaVersion == SchemaVersion1_1 && len(tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes) == 1 && tuplesetRelation.TypeInfo.DirectlyRelatedUserTypes[0].Type == objectType {
-									return &InvalidRelationError{ObjectType: objectType, Relation: relationName, Cause: ErrCycle}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-// ensureNoCyclesInComputedRewrite throws an error on the following model because `folder` type is a cycle.
-//
-//	 type folder
-//		 relations
-//		  define parent as child
-//		  define child as parent
-func (t *TypeSystem) ensureNoCyclesInComputedRewrite() error {
-	for objectType := range t.typeDefinitions {
-		relations, err := t.GetRelations(objectType)
-		if err == nil {
-			for sourceRelationName, relation := range relations {
-				switch source := relation.GetRewrite().Userset.(type) {
-				case *openfgav1.Userset_ComputedUserset:
-					target := source.ComputedUserset.GetRelation()
-					targetRelation, err := t.GetRelation(objectType, target)
-					if err == nil {
-						switch rewrite := targetRelation.GetRewrite().Userset.(type) {
-						case *openfgav1.Userset_ComputedUserset:
-							if rewrite.ComputedUserset.GetRelation() == sourceRelationName {
-								return &InvalidTypeError{ObjectType: objectType, Cause: ErrCycle}
-							}
-						}
-					}
-				}
-			}
-		}
-
-	}
-
-	return nil
-}
-
 func (t *TypeSystem) IsDirectlyAssignable(relation *openfgav1.Relation) bool {
 	return RewriteContainsSelf(relation.GetRewrite())
 }
@@ -1317,6 +1245,70 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 	}
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
+}
+
+func (t *TypeSystem) hasCycle(
+	objectType, relationName string,
+	rewrite *openfgav1.Userset,
+	visited map[string]struct{},
+) (bool, error) {
+
+	visited[fmt.Sprintf("%s#%s", objectType, relationName)] = struct{}{}
+
+	visitedCopy := maps.Clone(visited)
+
+	var children []*openfgav1.Userset
+
+	switch rw := rewrite.Userset.(type) {
+	case *openfgav1.Userset_This, *openfgav1.Userset_TupleToUserset:
+		return false, nil
+	case *openfgav1.Userset_ComputedUserset:
+		rewrittenRelation := rw.ComputedUserset.Relation
+
+		if _, ok := visited[fmt.Sprintf("%s#%s", objectType, rewrittenRelation)]; ok {
+			return true, nil
+		}
+
+		rewrittenRewrite, err := t.GetRelation(objectType, rewrittenRelation)
+		if err != nil {
+			return false, err
+		}
+
+		return t.hasCycle(objectType, rewrittenRelation, rewrittenRewrite.GetRewrite(), visitedCopy)
+	case *openfgav1.Userset_Union:
+		children = append(children, rw.Union.GetChild()...)
+	case *openfgav1.Userset_Intersection:
+		children = append(children, rw.Intersection.GetChild()...)
+	case *openfgav1.Userset_Difference:
+		children = append(children, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+	}
+
+	for _, child := range children {
+
+		hasCycle, err := t.hasCycle(objectType, relationName, child, visitedCopy)
+		if err != nil {
+			return false, err
+		}
+
+		if hasCycle {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// HasCycle runs a cycle detection test on the provided `objectType#relation` to see if the relation
+// defines a rewrite rule that is self-referencing in any way (through computed relationships).
+func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
+	visited := map[string]struct{}{}
+
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return false, err
+	}
+
+	return t.hasCycle(objectType, relationName, relation.GetRewrite(), visited)
 }
 
 // getAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value

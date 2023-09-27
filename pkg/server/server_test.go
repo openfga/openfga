@@ -545,257 +545,128 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	}
 }
 
-// This test ensures that when the data storage fails, ListObjects v0 throws an error
-func TestListObjects_Unoptimized_UnhappyPaths(t *testing.T) {
+func TestListObjects_ErrorCases(t *testing.T) {
 	ctx := context.Background()
 	store := ulid.Make().String()
-	modelID := ulid.Make().String()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	t.Run("database_errors", func(t *testing.T) {
+		mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		s := MustNewServerWithOpts(
+			WithDatastore(mockDatastore),
+		)
 
-		type repo
-		  relations
-		    define allowed: [user] as self
-		    define viewer: [user] as self and allowed
-		`),
-	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, errors.New("error reading from storage"))
+		modelID := ulid.Make().String()
 
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-	)
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: parser.MustParse(`
+			type user
+	
+			type document
+			  relations
+				define viewer: [user, user:*] as self
+			`),
+		}, nil)
 
-	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
-		res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "repo",
-			Relation:             "viewer",
-			User:                 "user:bob",
+		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
+			ObjectType: "document",
+			Relation:   "viewer",
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: "user:*"},
+				{Object: "user:bob"},
+			}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
+
+		t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
+			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              store,
+				AuthorizationModelId: modelID,
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:bob",
+			})
+
+			require.Nil(t, res)
+			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
 		})
 
-		require.Nil(t, res)
-		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
+			err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              store,
+				AuthorizationModelId: modelID,
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:bob",
+			}, NewMockStreamServer())
+
+			require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
+		})
 	})
 
-	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "repo",
-			Relation:             "viewer",
-			User:                 "user:bob",
-		}, NewMockStreamServer())
+	t.Run("graph_resolution_errors", func(t *testing.T) {
 
-		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
-	})
-}
+		s := MustNewServerWithOpts(
+			WithDatastore(memory.New()),
+			WithResolveNodeLimit(2),
+		)
 
-// This test ensures that when the data storage fails for known eror, ListObjects v0 throws the correct error
-func TestListObjects_Unoptimized_UnhappyPaths_Known_Error(t *testing.T) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-	modelID := ulid.Make().String()
+		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       store,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: parser.MustParse(`
+			type user
 
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
+			type group
+			  relations
+			    define member: [user, group#member] as self
 
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+			type document
+			  relations
+				define viewer: [group#member] as self
+			`),
+		})
+		require.NoError(t, err)
 
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		_, err = s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId: store,
+			Writes: &openfgav1.TupleKeys{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
+					tuple.NewTupleKey("group:1", "member", "group:2#member"),
+					tuple.NewTupleKey("group:2", "member", "group:3#member"),
+					tuple.NewTupleKey("group:3", "member", "user:jon"),
+				},
+			},
+		})
+		require.NoError(t, err)
 
-		type repo
-		  relations
-		    define allowed: [user] as self
-		    define viewer: [user] as self and allowed
-		`),
-	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).AnyTimes().Return(nil, serverErrors.AuthorizationModelResolutionTooComplex)
+		t.Run("resolution_depth_exceeded_error_unary", func(t *testing.T) {
+			res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+				StoreId:              store,
+				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			})
 
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-	)
-
-	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
-		res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "repo",
-			Relation:             "viewer",
-			User:                 "user:bob",
+			require.Nil(t, res)
+			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
 
-		require.Nil(t, res)
-		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
-	})
+		t.Run("resolution_depth_exceeded_error_streaming", func(t *testing.T) {
+			err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
+				StoreId:              store,
+				AuthorizationModelId: writeModelResp.GetAuthorizationModelId(),
+				Type:                 "document",
+				Relation:             "viewer",
+				User:                 "user:jon",
+			}, NewMockStreamServer())
 
-	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "repo",
-			Relation:             "viewer",
-			User:                 "user:bob",
-		}, NewMockStreamServer())
-
-		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
-	})
-}
-
-// This test ensures that when the data storage fails, ListObjects v1 throws an error
-func TestListObjects_UnhappyPaths(t *testing.T) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: []*openfgav1.TypeDefinition{
-			{
-				Type: "user",
-			},
-			{
-				Type: "document",
-				Relations: map[string]*openfgav1.Userset{
-					"viewer": typesystem.This(),
-				},
-				Metadata: &openfgav1.Metadata{
-					Relations: map[string]*openfgav1.RelationMetadata{
-						"viewer": {
-							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-								typesystem.DirectRelationReference("user", ""),
-								typesystem.WildcardRelationReference("user"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:*"},
-			{Object: "user:bob"},
-		}}).AnyTimes().Return(nil, errors.New("error reading from storage"))
-
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-	)
-
-	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
-		res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:bob",
+			require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 		})
-
-		require.Nil(t, res)
-		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
-	})
-
-	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:bob",
-		}, NewMockStreamServer())
-
-		require.ErrorIs(t, err, serverErrors.NewInternalError("", errors.New("error reading from storage")))
-	})
-}
-
-// This test ensures that when the data storage fails with known errors, ListObjects v1 throws an error
-func TestListObjects_UnhappyPaths_Known_Error(t *testing.T) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-	modelID := ulid.Make().String()
-
-	mockController := gomock.NewController(t)
-	defer mockController.Finish()
-
-	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-
-	mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
-		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: []*openfgav1.TypeDefinition{
-			{
-				Type: "user",
-			},
-			{
-				Type: "document",
-				Relations: map[string]*openfgav1.Userset{
-					"viewer": typesystem.This(),
-				},
-				Metadata: &openfgav1.Metadata{
-					Relations: map[string]*openfgav1.RelationMetadata{
-						"viewer": {
-							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-								typesystem.DirectRelationReference("user", ""),
-								typesystem.WildcardRelationReference("user"),
-							},
-						},
-					},
-				},
-			},
-		},
-	}, nil)
-	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
-		ObjectType: "document",
-		Relation:   "viewer",
-		UserFilter: []*openfgav1.ObjectRelation{
-			{Object: "user:*"},
-			{Object: "user:bob"},
-		}}).AnyTimes().Return(nil, serverErrors.AuthorizationModelResolutionTooComplex)
-
-	s := MustNewServerWithOpts(
-		WithDatastore(mockDatastore),
-	)
-
-	t.Run("error_listing_objects_from_storage_in_non-streaming_version", func(t *testing.T) {
-		res, err := s.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:bob",
-		})
-
-		require.Nil(t, res)
-		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
-	})
-
-	t.Run("error_listing_objects_from_storage_in_streaming_version", func(t *testing.T) {
-		err := s.StreamedListObjects(&openfgav1.StreamedListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:bob",
-		}, NewMockStreamServer())
-
-		require.ErrorIs(t, err, serverErrors.AuthorizationModelResolutionTooComplex)
 	})
 }
 

@@ -10,7 +10,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -209,7 +208,7 @@ func (c *ReverseExpandQuery) execute(
 		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	} else {
 		if depth >= c.resolveNodeLimit {
-			return serverErrors.AuthorizationModelResolutionTooComplex
+			return graph.ErrResolutionDepthExceeded
 		}
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)
