@@ -53,6 +53,8 @@ import (
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.uber.org/zap"
@@ -569,10 +571,16 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		handler := http.Handler(mux)
+
 		if config.Trace.Enabled {
-			// if tracig is enabled wrap the handler with otel to extract the
-			// trace context from incoming requests
-			handler = otelhttp.NewHandler(mux, "proxy")
+			propagator := otel.GetTextMapPropagator()
+			// If tracig is enabled wrap the handler with custom middleware that extracts
+			// the tracing context and sets the corrent tracing context.
+			// We use this in favor of [otelhttp.NewHandler] to avoid unnecessary nesting.
+			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ctx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+				handler.ServeHTTP(w, r.WithContext(ctx))
+			})
 		}
 
 		httpServer = &http.Server{
