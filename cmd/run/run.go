@@ -52,7 +52,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -62,6 +61,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
@@ -538,7 +538,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		if config.Trace.Enabled {
-			dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()))
+			dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(injectTraceMetadata))
 		}
 
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -725,4 +725,16 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
+}
+
+// injectTraceMetadata is lightweight [grpc.UnaryClientInterceptor] that injects trace metadata into outgoing grpc unary call
+// without wrapping the call in new span.
+// This method is used for proxying HTTP calls to the gRPC server implementation without adding unnecessary nesting.
+func injectTraceMetadata(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.MD{}
+	}
+	otelgrpc.Inject(ctx, &md)
+	return invoker(ctx, method, req, reply, cc, opts...)
 }
