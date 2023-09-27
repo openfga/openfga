@@ -31,10 +31,6 @@ var (
 	ErrCycleDetected = errors.New("a cycle has been detected")
 )
 
-var cycleDetectedCheckHandler = func(ctx context.Context) (*ResolveCheckResponse, error) {
-	return nil, ErrCycleDetected
-}
-
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
