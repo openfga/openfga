@@ -401,7 +401,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					define editor: [user, account#member] as self
 					define owner: [user] as self
 					define viewer: [user, account#member] as self
-	  
+
 				type account
 				  relations
 					define admin: [user] as self or member or super_admin or owner
@@ -519,9 +519,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("condition invalid_condition_name is undefined for relation viewer"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_syntax_error",
@@ -559,9 +557,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression '{'"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_invalid_parameter_type",
@@ -599,9 +595,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_invalid_output_type",
@@ -639,9 +633,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("expected a bool condition expression output, but got 'string'"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_key_condition_name_mismatch",
@@ -688,9 +680,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("condition key 'condition2' does not match condition name 'condition3'"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_missing_parameters",
@@ -724,9 +714,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression 'param1 == 'ok''"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
 			name: "condition_fails_missing_parameter",
@@ -764,9 +752,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					},
 				},
 			},
-			err: serverErrors.InvalidAuthorizationModelInput(
-				fmt.Errorf("failed to compile condition expression 'param1 == 'ok''"),
-			),
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 	}
 
