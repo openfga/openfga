@@ -103,8 +103,10 @@ func TestCheckLogs(t *testing.T) {
 
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: []*openfgav1.WriteRequestTupleKey{
-			{Object: "document:1", Relation: "viewer", User: "user:anne"},
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:anne"},
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -382,8 +384,10 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	for i := 0; i < 1000; i++ {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: []*openfgav1.WriteRequestTupleKey{
-				{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
+				},
 			},
 		})
 		require.NoError(b, err)
@@ -392,8 +396,10 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// one of those usersets gives access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: []*openfgav1.WriteRequestTupleKey{
-			{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
+			},
 		},
 	})
 	require.NoError(b, err)
@@ -401,8 +407,10 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	// add direct access to the repo
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: []*openfgav1.WriteRequestTupleKey{
-			{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
+			},
 		},
 	})
 	require.NoError(b, err)
@@ -480,8 +488,10 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			Writes: []*openfgav1.WriteRequestTupleKey{
-				{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
+				},
 			},
 		})
 		require.NoError(b, err)
@@ -491,8 +501,10 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: []*openfgav1.WriteRequestTupleKey{
-			{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
+			},
 		},
 	})
 	require.NoError(b, err)

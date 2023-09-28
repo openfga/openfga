@@ -601,7 +601,9 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               test.testData.tuples,
+					Writes: &openfgav1.WriteRequestTupleKeys{
+						TupleKeys: test.testData.tuples,
+					},
 				})
 				require.NoError(t, err)
 			}
@@ -715,7 +717,9 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes:               test.testData.tuples,
+						Writes: &openfgav1.WriteRequestTupleKeys{
+							TupleKeys: test.testData.tuples,
+						},
 					})
 					require.NoError(t, err)
 				}
@@ -802,8 +806,10 @@ func TestCheckWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: []*openfgav1.WriteRequestTupleKey{
-				{Object: "document:1", Relation: "viewer", User: "user:*"},
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -926,9 +932,11 @@ func TestExpandWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: []*openfgav1.WriteRequestTupleKey{
-				{Object: "document:1", Relation: "viewer", User: "user:*"},
-				{Object: "document:1", Relation: "viewer", User: "user:jon"},
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
+				},
 			},
 		})
 		require.NoError(t, err)

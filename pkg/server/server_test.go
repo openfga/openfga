@@ -565,7 +565,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
 			type user
-	
+
 			type document
 			  relations
 				define viewer: [user, user:*] as self
@@ -632,12 +632,12 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		_, err = s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId: store,
-			Writes: &openfgav1.TupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
-					tuple.NewTupleKey("group:1", "member", "group:2#member"),
-					tuple.NewTupleKey("group:2", "member", "group:3#member"),
-					tuple.NewTupleKey("group:3", "member", "user:jon"),
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					tuple.NewWriteRequestTupleKey("document:1", "viewer", "group:1#member"),
+					tuple.NewWriteRequestTupleKey("group:1", "member", "group:2#member"),
+					tuple.NewWriteRequestTupleKey("group:2", "member", "group:3#member"),
+					tuple.NewWriteRequestTupleKey("group:3", "member", "user:jon"),
 				},
 			},
 		})
@@ -746,10 +746,14 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
-			Writes: []*openfgav1.WriteRequestTupleKey{
-				{Object: "repo:openfga/openfga",
-					Relation: "reader",
-					User:     "user:anne"},
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{
+						Object:   "repo:openfga/openfga",
+						Relation: "reader",
+						User:     "user:anne",
+					},
+				},
 			},
 		})
 		require.Error(t, err)

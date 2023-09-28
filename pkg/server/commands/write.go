@@ -39,7 +39,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err := c.datastore.Write(ctx, req.GetStoreId(), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(req.GetDeletes()), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(req.GetWrites()))
+	err := c.datastore.Write(ctx, req.GetStoreId(), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes()), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites()))
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -60,7 +60,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		return serverErrors.InvalidWriteInput
 	}
 
-	if len(writes) > 0 {
+	if writes != nil && len(writes.TupleKeys) > 0 {
 
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
@@ -76,7 +76,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 		typesys := typesystem.New(authModel)
 
-		for _, writeTk := range writes {
+		for _, writeTk := range writes.TupleKeys {
 			tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(writeTk)
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
@@ -105,19 +105,21 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		}
 	}
 
-	for _, deleteTk := range deletes {
-		tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(deleteTk)
-		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
-			return serverErrors.ValidationError(
-				&tupleUtils.InvalidTupleError{
-					Cause:    fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: tk,
-				},
-			)
+	if deletes != nil {
+		for _, deleteTk := range deletes.TupleKeys {
+			tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(deleteTk)
+			if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
+				return serverErrors.ValidationError(
+					&tupleUtils.InvalidTupleError{
+						Cause:    fmt.Errorf("the 'user' field is malformed"),
+						TupleKey: tk,
+					},
+				)
+			}
 		}
 	}
 
-	if err := c.validateNoDuplicatesAndCorrectSize(tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(deletes), tupleUtils.ConvertWriteRequestsTupleKeyToTupleKeys(writes)); err != nil {
+	if err := c.validateNoDuplicatesAndCorrectSize(tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(deletes), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(writes)); err != nil {
 		return err
 	}
 
