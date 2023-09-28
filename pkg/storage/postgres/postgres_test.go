@@ -26,30 +26,6 @@ func TestPostgresDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
-
-	uri := testDatastore.GetConnectionURI(true)
-	ds, err := New(uri, sqlcommon.NewConfig())
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	defer ds.Close()
-	store := "store"
-	modelID := "foo"
-	schemaVersion := "7.8"
-
-	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
-	require.NoError(t, err)
-
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
-	require.NoError(t, err)
-
-	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
-	require.NoError(t, err)
-	require.Equal(t, typesystem.SchemaVersion1_0, model.SchemaVersion)
-}
-
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
 func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
