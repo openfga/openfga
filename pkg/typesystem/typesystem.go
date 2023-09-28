@@ -874,10 +874,6 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		return nil, err
 	}
 
-	if err := t.validateConditions(); err != nil {
-		return nil, err
-	}
-
 	return t, nil
 }
 
