@@ -232,6 +232,11 @@ func (q *ListObjectsQuery) evaluate(
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 			}, reverseExpandResultsChan, resolutionMetadata)
 			if err != nil {
+				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+					resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
+					return
+				}
+
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
@@ -280,6 +285,11 @@ func (q *ListObjectsQuery) evaluate(
 					},
 				})
 				if err != nil {
+					if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+						resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
+						return
+					}
+
 					resultsChan <- ListObjectsResult{Err: err}
 					return
 				}
@@ -352,6 +362,7 @@ func (q *ListObjectsQuery) Execute(
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 					return nil, result.Err
 				}
+
 				return nil, serverErrors.HandleError("", result.Err)
 			}
 

@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/exp/maps"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -26,12 +27,17 @@ const (
 	defaultMaxConcurrentReadsForCheck = math.MaxUint32
 )
 
+var (
+	ErrCycleDetected = errors.New("a cycle has been detected")
+)
+
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
 	ResolutionMetadata   *ResolutionMetadata
+	VisitedPaths         map[string]struct{}
 }
 
 type ResolveCheckResponse struct {
@@ -456,6 +462,18 @@ func (c *LocalChecker) ResolveCheck(
 		return nil, fmt.Errorf("relation '%s' undefined for object type '%s'", relation, objectType)
 	}
 
+	if req.VisitedPaths != nil {
+		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
+			return nil, ErrCycleDetected
+		}
+
+		req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())] = struct{}{}
+	} else {
+		req.VisitedPaths = map[string]struct{}{
+			tuple.TupleKeyToString(req.GetTupleKey()): {},
+		}
+	}
+
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
 		return nil, err
@@ -580,16 +598,23 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if usersetRelation != "" {
+					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser())
+
+					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
+						return nil, ErrCycleDetected
+					}
+
 					handlers = append(handlers, c.dispatch(
 						ctx,
 						&ResolveCheckRequest{
 							StoreID:              storeID,
 							AuthorizationModelID: req.GetAuthorizationModelID(),
-							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
+							TupleKey:             tupleKey,
 							ResolutionMetadata: &ResolutionMetadata{
 								Depth:               req.GetResolutionMetadata().Depth - 1,
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
 							},
+							VisitedPaths: maps.Clone(req.VisitedPaths),
 						}))
 				}
 			}
@@ -626,20 +651,27 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
 
+		rewrittenTupleKey := tuple.NewTupleKey(
+			req.TupleKey.GetObject(),
+			rewrite.ComputedUserset.GetRelation(),
+			req.TupleKey.GetUser(),
+		)
+
+		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(rewrittenTupleKey)]; visited {
+			return nil, ErrCycleDetected
+		}
+
 		return c.dispatch(
 			ctx,
 			&ResolveCheckRequest{
 				StoreID:              req.GetStoreID(),
 				AuthorizationModelID: req.GetAuthorizationModelID(),
-				TupleKey: tuple.NewTupleKey(
-					req.TupleKey.GetObject(),
-					rewrite.ComputedUserset.GetRelation(),
-					req.TupleKey.GetUser(),
-				),
+				TupleKey:             rewrittenTupleKey,
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
+				VisitedPaths: maps.Clone(req.VisitedPaths),
 			})(ctx)
 	}
 }
@@ -715,6 +747,10 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 			}
 
+			if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
+				return nil, ErrCycleDetected
+			}
+
 			handlers = append(handlers, c.dispatch(
 				ctx,
 				&ResolveCheckRequest{
@@ -725,6 +761,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 						Depth:               req.GetResolutionMetadata().Depth - 1,
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
 					},
+					VisitedPaths: maps.Clone(req.VisitedPaths),
 				}))
 		}
 

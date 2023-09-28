@@ -8,6 +8,28 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.2] - 2023-08-25
+### Added
+* Support TLS for OTLP trace endpoint ([#885](https://github.com/openfga/openfga/pull/885)) - thanks @matoous
+* Configurable limits to database reads per ListObjects query ([#967](https://github.com/openfga/openfga/pull/967))
+* Datastore query count labels to traces and query latency histogram in ListObjects ([#959](https://github.com/openfga/openfga/pull/959))
+* Github workflow to check markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
+
+### Fixed
+* Change response code to internal error for concurrency conflicts ([#1011](https://github.com/openfga/openfga/pull/1011))
+
+### Changed
+* Use slices and maps packages from go1.21 ([#969](https://github.com/openfga/openfga/pull/969)) - thanks @tranngoclam
+* Moved request validations to RPC handlers so library integrations benefit ([#975](https://github.com/openfga/openfga/pull/975), [#998](https://github.com/openfga/openfga/pull/998))
+* Refactored internal usages of ConnectedObjects to ReverseExpand ([#968](https://github.com/openfga/openfga/pull/968))
+* Expose validation middleware ([#1005](https://github.com/openfga/openfga/pull/1005))
+* Upgrade grpc validator middleware to the latest v2 package ([#1019](https://github.com/openfga/openfga/pull/1019)) - thanks @tranngoclam
+
+### Security
+* Patches [CVE-2023-43645](https://github.com/openfga/openfga/security/advisories/GHSA-2hm9-h873-pgqh) - see the CVE for more details
+
+  **[BREAKING]** If your model contained cycles or a relation definition that has the relation itself in its evaluation path, then Checks and queries that require evaluation will no longer be evaluated on v1.3.2+ and will return errors instead. You will need to update your models to remove the cycles.
+
 ## [1.3.1] - 2023-08-23
 
 ### Added
@@ -626,7 +648,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2
 [1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0
 [1.2.0]: https://github.com/openfga/openfga/releases/tag/v1.2.0

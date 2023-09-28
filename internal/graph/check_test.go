@@ -320,3 +320,101 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckWithUnexpectedCycle tests the LocalChecker to make sure that if a model includes a cycle
+// that should have otherwise been invalid according to the typesystem, then the check resolution will
+// avoid the cycle and return an error indicating a cycle was detected.
+func TestCheckWithUnexpectedCycle(t *testing.T) {
+	ds := memory.New()
+	defer ds.Close()
+
+	storeID := ulid.Make().String()
+
+	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+		tuple.NewTupleKey("resource:1", "parent", "resource:1"),
+	})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		model    string
+		tupleKey *openfgav1.TupleKey
+	}{
+		{
+			name: "test_1",
+			model: `
+			type user
+
+			type resource
+			  relations
+				define x: [user] as self but not y
+				define y: [user] as self but not z
+				define z: [user] as self or x
+			`,
+			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+		},
+		{
+			name: "test_2",
+			model: `
+			type user
+
+			type resource
+			  relations
+				define x: [user] as self and y
+				define y: [user] as self and z
+				define z: [user] as self or x
+			`,
+			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+		},
+		{
+			name: "test_3",
+			model: `
+			type resource
+			  relations
+				define x as y
+				define y as x
+			`,
+			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+		},
+		{
+			name: "test_4",
+			model: `
+			type resource
+			  relations
+			    define parent: [resource] as self
+				define x: [user] as self or x from parent
+			`,
+			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+		},
+	}
+
+	checker := NewLocalChecker(ds)
+
+	for _, test := range tests {
+		typedefs := parser.MustParse(test.model)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+			&openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				TypeDefinitions: typedefs,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			},
+		))
+
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           test.tupleKey,
+			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+		})
+
+		// if the branch producing the cycle is reached first, then an error is returned, otherwise
+		// a result is returned if some other terminal path of evaluation was reached before the cycle
+		if err != nil {
+			require.ErrorIs(t, err, ErrCycleDetected)
+		} else {
+			require.False(t, resp.GetAllowed())
+			require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly
+			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
+		}
+	}
+}

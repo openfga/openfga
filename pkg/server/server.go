@@ -582,7 +582,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		},
 	})
 	if err != nil {
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
 

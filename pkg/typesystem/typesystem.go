@@ -878,6 +878,19 @@ func (t *TypeSystem) validateRelation(typeName, relationName string, relationMap
 		}
 	}
 
+	hasCycle, err := t.HasCycle(typeName, relationName)
+	if err != nil {
+		return err
+	}
+
+	if hasCycle {
+		return &InvalidRelationError{
+			ObjectType: typeName,
+			Relation:   relationName,
+			Cause:      ErrCycle,
+		}
+	}
+
 	return nil
 }
 
@@ -1175,6 +1188,68 @@ func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRe
 	}
 
 	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
+}
+
+func (t *TypeSystem) hasCycle(
+	objectType, relationName string,
+	rewrite *openfgav1.Userset,
+	visited map[string]struct{},
+) (bool, error) {
+	visited[fmt.Sprintf("%s#%s", objectType, relationName)] = struct{}{}
+
+	visitedCopy := maps.Clone(visited)
+
+	var children []*openfgav1.Userset
+
+	switch rw := rewrite.Userset.(type) {
+	case *openfgav1.Userset_This, *openfgav1.Userset_TupleToUserset:
+		return false, nil
+	case *openfgav1.Userset_ComputedUserset:
+		rewrittenRelation := rw.ComputedUserset.Relation
+
+		if _, ok := visited[fmt.Sprintf("%s#%s", objectType, rewrittenRelation)]; ok {
+			return true, nil
+		}
+
+		rewrittenRewrite, err := t.GetRelation(objectType, rewrittenRelation)
+		if err != nil {
+			return false, err
+		}
+
+		return t.hasCycle(objectType, rewrittenRelation, rewrittenRewrite.GetRewrite(), visitedCopy)
+	case *openfgav1.Userset_Union:
+		children = append(children, rw.Union.GetChild()...)
+	case *openfgav1.Userset_Intersection:
+		children = append(children, rw.Intersection.GetChild()...)
+	case *openfgav1.Userset_Difference:
+		children = append(children, rw.Difference.GetBase(), rw.Difference.GetSubtract())
+	}
+
+	for _, child := range children {
+		hasCycle, err := t.hasCycle(objectType, relationName, child, visitedCopy)
+		if err != nil {
+			return false, err
+		}
+
+		if hasCycle {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// HasCycle runs a cycle detection test on the provided `objectType#relation` to see if the relation
+// defines a rewrite rule that is self-referencing in any way (through computed relationships).
+func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
+	visited := map[string]struct{}{}
+
+	relation, err := t.GetRelation(objectType, relationName)
+	if err != nil {
+		return false, err
+	}
+
+	return t.hasCycle(objectType, relationName, relation.GetRewrite(), visited)
 }
 
 // getAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
