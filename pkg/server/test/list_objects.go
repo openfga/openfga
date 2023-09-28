@@ -40,7 +40,7 @@ type listObjectsTestCase struct {
 	user                   string
 	relation               string
 	contextualTuples       *openfgav1.ContextualTupleKeys
-	allResults             []string //all the results. the server may return less
+	allResults             []string // all the results. the server may return less
 	maxResults             uint32
 	minimumResultsExpected uint32
 	listObjectsDeadline    time.Duration // 1 minute if not set
@@ -249,7 +249,6 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					graph.WithExistingCache(checkCache),
 					graph.WithCacheTTL(10*time.Second),
 				))
-
 			}
 
 			opts = append(opts, commands.WithCheckOptions(checkOptions))
@@ -310,7 +309,6 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 var listObjectsResponse *commands.ListObjectsResponse //nolint
 
 func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 	store := ulid.Make().String()
 

@@ -101,7 +101,6 @@ func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.
 	doForwardTrailers := requestAcceptsTrailers(r)
 
 	if doForwardTrailers {
-
 		handleForwardResponseTrailerHeader(w, md)
 		w.Header().Set("Transfer-Encoding", "chunked")
 	}

@@ -18,7 +18,7 @@ var testCases = map[string]struct {
 	code  int
 }{
 	// implemented in Fails_If_Using_Self_As_Type_Name
-	//"case1": {
+	// "case1": {
 	//	model: `
 	//	type user
 	//	type self

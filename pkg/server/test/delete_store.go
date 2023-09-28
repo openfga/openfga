@@ -12,7 +12,6 @@ import (
 )
 
 func TestDeleteStore(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 

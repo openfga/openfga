@@ -33,7 +33,6 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			resp, err := commands.NewCreateStoreCommand(datastore, logger).Execute(ctx, test.request)
 			require.NoError(t, err)
 

@@ -80,7 +80,6 @@ func TypeNotFound(objectType string) error {
 }
 
 func RelationNotFound(relation string, objectType string, tk *openfgav1.TupleKey) error {
-
 	msg := fmt.Sprintf("relation '%s#%s' not found", objectType, relation)
 	if tk != nil {
 		msg += fmt.Sprintf(" for tuple '%s'", tuple.TupleKeyToString(tk))

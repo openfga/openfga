@@ -72,7 +72,6 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	curTuple, err = iter.Next()
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.Key)
-
 }
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid
@@ -117,7 +116,6 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// we expect that objectID2 will return first because it has a smaller ulid
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
-
 }
 
 func TestReadAuthorizationModelUnmarshallError(t *testing.T) {

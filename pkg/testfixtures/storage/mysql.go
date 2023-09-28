@@ -99,7 +99,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	require.NoError(t, err, "failed to create mysql docker container")
 
 	stopContainer := func() {
-
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 

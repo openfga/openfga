@@ -39,7 +39,6 @@ type Postgres struct {
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
-
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {

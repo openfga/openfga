@@ -11,7 +11,6 @@ import (
 )
 
 func TestHasCycle(t *testing.T) {
-
 	tests := []struct {
 		name       string
 		model      string
@@ -155,7 +154,6 @@ func TestHasCycle(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typesys := New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.model),
@@ -169,7 +167,6 @@ func TestHasCycle(t *testing.T) {
 }
 
 func TestNewAndValidate(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		model         string
@@ -1627,7 +1624,6 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -1645,7 +1641,6 @@ func TestRelationInvolvesIntersection(t *testing.T) {
 }
 
 func TestRelationInvolvesExclusion(t *testing.T) {
-
 	tests := []struct {
 		name        string
 		model       string
@@ -1786,7 +1781,6 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -1804,7 +1798,6 @@ func TestRelationInvolvesExclusion(t *testing.T) {
 }
 
 func TestIsTuplesetRelation(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		model         *openfgav1.AuthorizationModel
@@ -2095,7 +2088,6 @@ func TestIsDirectlyRelated(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 			typesys := New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
@@ -2178,7 +2170,6 @@ func TestIsPubliclyAssignable(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 			typesys := New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   SchemaVersion1_1,
@@ -2217,7 +2208,6 @@ func TestRewriteContainsExclusion(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -2258,7 +2248,6 @@ func TestRewriteContainsIntersection(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{
@@ -2347,7 +2336,6 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.model)
 
 			typesys := New(&openfgav1.AuthorizationModel{

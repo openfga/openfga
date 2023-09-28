@@ -146,7 +146,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
-
 	checkCacheTotalCounter.Inc()
 
 	cacheKey, err := checkRequestCacheKey(req)
@@ -176,7 +175,6 @@ func (c *CachedCheckResolver) ResolveCheck(
 // cache key. If the contextual tuples are different order, it is possible that a different
 // cache key will be produced. This will result in duplicate entries.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-
 	var b bytes.Buffer
 	if err := gob.NewEncoder(&b).Encode(req.GetTupleKey()); err != nil {
 		return "", err

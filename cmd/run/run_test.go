@@ -453,7 +453,6 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
-
 }
 
 func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client, validToken string) {
@@ -646,7 +645,6 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-
 	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
@@ -1194,7 +1192,6 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-
 		require.Equal(t, "postgres", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, "1", viper.GetString("max-types-per-authorization-model"))

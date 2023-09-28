@@ -15,7 +15,6 @@ import (
 )
 
 func TestMemoizedTypesystemResolverFunc(t *testing.T) {
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 

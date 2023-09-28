@@ -67,7 +67,6 @@ func sanitizedMessage(message string) string {
 
 // NewEncodedError returns the encoded error with the correct http status code etc.
 func NewEncodedError(errorCode int32, message string) *EncodedError {
-
 	if !IsValidEncodedError(errorCode) {
 		return &EncodedError{
 			HTTPStatusCode: http.StatusInternalServerError,
@@ -184,7 +183,6 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 		if strings.HasPrefix(reason, "value must contain at least") {
 			return int32(openfgav1.ErrorCode_type_definitions_too_few_items)
 		}
-
 	}
 	// We will need to check for regex pattern
 	if strings.HasPrefix(field, "Relations[") {
@@ -199,7 +197,6 @@ func getCustomizedErrorCode(field string, reason string) int32 {
 	// When we get to here, this is not a type or message that we know well.
 	// We needs to return the generic error type
 	return int32(openfgav1.ErrorCode_validation_error)
-
 }
 
 func ConvertToEncodedErrorCode(statusError *status.Status) int32 {

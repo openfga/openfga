@@ -61,7 +61,7 @@ func (s *serverHandle) Cleanup() func() {
 // newOpenFGATester spins up an openfga container with the default service ports
 // exposed for testing purposes. Before running functional tests it is assumed
 // the openfga/openfga container is already built and available to the docker engine.
-func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
+func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 	t.Helper()
 
 	dockerClient, err := client.NewClientWithOpts(
@@ -103,7 +103,6 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 	require.NoError(t, err, "failed to create openfga docker container")
 
 	stopContainer := func() {
-
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -201,17 +200,13 @@ func newOpenFGATester(t *testing.T, args ...string) (OpenFGATester, error) {
 		grpcPort: grpcPort,
 		httpPort: httpPort,
 		cleanup:  stopContainer,
-	}, nil
+	}
 }
 
 func TestFunctionalGRPC(t *testing.T) {
-
-	require := require.New(t)
-
 	// tester can be shared across tests that aren't impacted
 	// by shared state
-	tester, err := newOpenFGATester(t)
-	require.NoError(err)
+	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
 
 	t.Run("TestCreateStore", func(t *testing.T) { GRPCCreateStoreTest(t, tester) })
@@ -231,8 +226,7 @@ func TestFunctionalGRPC(t *testing.T) {
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
-	tester, err := newOpenFGATester(t, "--authn-method", "preshared", "--authn-preshared-keys", "key1,key2")
-	require.NoError(t, err)
+	tester := newOpenFGATester(t, "--authn-method", "preshared", "--authn-preshared-keys", "key1,key2")
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
@@ -308,7 +302,6 @@ func GRPCReadChangesTest(t *testing.T, tester OpenFGATester) {
 }
 
 func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
-
 	type output struct {
 		errorCode codes.Code
 	}
@@ -406,8 +399,7 @@ func GRPCGetStoreTest(t *testing.T, tester OpenFGATester) {
 }
 
 func TestGRPCListStores(t *testing.T) {
-	tester, err := newOpenFGATester(t)
-	require.NoError(t, err)
+	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
@@ -415,7 +407,7 @@ func TestGRPCListStores(t *testing.T) {
 
 	client := openfgav1.NewOpenFGAServiceClient(conn)
 
-	_, err = client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+	_, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
 		Name: "openfga-demo",
 	})
 	require.NoError(t, err)
@@ -489,7 +481,6 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 }
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
-
 	type testData struct {
 		tuples []*openfgav1.TupleKey
 		model  *openfgav1.AuthorizationModel
@@ -696,7 +687,6 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			typedefs := parser.MustParse(test.testData.model)
 
 			storeID := test.input.StoreId
@@ -737,9 +727,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 // TestCheckWorkflows are tests that involve workflows that define assertions for
 // Checks against multi-model stores etc..
 func TestCheckWorkflows(t *testing.T) {
-
-	tester, err := newOpenFGATester(t)
-	require.NoError(t, err)
+	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
@@ -848,9 +836,7 @@ func TestCheckWorkflows(t *testing.T) {
 // TestExpandWorkflows are tests that involve workflows that define assertions for
 // Expands against multi-model stores etc..
 func TestExpandWorkflows(t *testing.T) {
-
-	tester, err := newOpenFGATester(t)
-	require.NoError(t, err)
+	tester := newOpenFGATester(t)
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
@@ -1115,7 +1101,6 @@ func TestExpandWorkflows(t *testing.T) {
 }
 
 func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
-
 	type output struct {
 		errorCode codes.Code
 	}
@@ -1171,7 +1156,6 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			response, err := client.ReadAuthorizationModel(context.Background(), test.input)
 
 			s, ok := status.FromError(err)
@@ -1180,14 +1164,13 @@ func GRPCReadAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
 
 			if test.output.errorCode == codes.OK {
 				_ = response // use response for assertions
-				//require.Equal(t, test.output.resp.Allowed, response.Allowed)
+				// require.Equal(t, test.output.resp.Allowed, response.Allowed)
 			}
 		})
 	}
 }
 
 func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
-
 	conn := connect(t, tester)
 	defer conn.Close()
 
@@ -1268,7 +1251,6 @@ func GRPCReadAuthorizationModelsTest(t *testing.T, tester OpenFGATester) {
 }
 
 func GRPCWriteAuthorizationModelTest(t *testing.T, tester OpenFGATester) {
-
 	type output struct {
 		errorCode codes.Code
 	}
