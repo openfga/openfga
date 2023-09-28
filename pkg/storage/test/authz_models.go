@@ -2,7 +2,6 @@ package test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -12,7 +11,6 @@ import (
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/proto"
 )
 
 func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -161,44 +159,4 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		require.NoError(t, err)
 		require.Equal(t, newModel.Id, latestID)
 	})
-}
-
-func ReadAuthorizationModelUnmarshallErrorTest(t *testing.T, engine string, uri string, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-
-	var (
-		stmt string
-		db   *sql.DB
-		err  error
-	)
-
-	switch engine {
-	case "postgres":
-		db, err = sql.Open("pgx", uri)
-		require.NoError(t, err)
-		defer db.Close()
-		stmt = "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6);"
-	case "mysql":
-		db, err = sql.Open("mysql", uri)
-		require.NoError(t, err)
-		defer db.Close()
-		stmt = "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?);"
-	default:
-		t.Fatalf("'%s' is not a supported datastore engine", engine)
-	}
-
-	store := "store"
-	modelID := "foo"
-	schemaVersion := typesystem.SchemaVersion1_0
-
-	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
-	require.NoError(t, err)
-	pbdata := []byte{0x01, 0x02, 0x03}
-
-	_, err = db.ExecContext(ctx, stmt, store, modelID, schemaVersion, "document", bytes, pbdata)
-	require.NoError(t, err)
-
-	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }
