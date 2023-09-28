@@ -16,7 +16,6 @@ import (
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
-
 	ds := memory.New()
 
 	storeID := ulid.Make().String()
@@ -283,7 +282,7 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 			maxDBReads: 6,
 		},
 		{
-			name:       "intersection_of_ttus", //union_or_ttu and union_and_ttu
+			name:       "intersection_of_ttus", // union_or_ttu and union_and_ttu
 			check:      tuple.NewTupleKey("document:x", "intersection_of_ttus", "user:maria"),
 			allowed:    true,
 			minDBReads: 4, // union_or_ttu (1 read) + union_and_ttu (3 reads)
@@ -293,7 +292,6 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 
 	// run the test many times to exercise all the possible DBReads
 	for i := 1; i < 1000; i++ {
-
 		t.Run(fmt.Sprintf("iteration_%v", i), func(t *testing.T) {
 			t.Parallel()
 			for _, test := range tests {

@@ -86,7 +86,6 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
-
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 

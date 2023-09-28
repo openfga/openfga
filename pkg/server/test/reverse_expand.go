@@ -17,7 +17,6 @@ import (
 )
 
 func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
-
 	tests := []struct {
 		name                 string
 		model                string

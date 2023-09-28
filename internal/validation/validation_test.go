@@ -11,7 +11,6 @@ import (
 )
 
 func TestValidateTuple(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		tuple         *openfgav1.TupleKey
@@ -674,7 +673,6 @@ func TestValidateTuple(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			err := ValidateTuple(typesystem.New(test.model), test.tuple)
 			require.ErrorIs(t, err, test.expectedError)
 		})

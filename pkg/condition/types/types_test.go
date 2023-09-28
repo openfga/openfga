@@ -132,7 +132,7 @@ func TestPrimitives(t *testing.T) {
 			name:      "valid_duration",
 			paramType: DurationParamType,
 			input:     "1h",
-			output:    time.Duration(1 * time.Hour),
+			output:    1 * time.Hour,
 			repr:      "duration",
 		},
 		{
@@ -147,7 +147,7 @@ func TestPrimitives(t *testing.T) {
 			name:      "valid_timestamp",
 			paramType: TimestampParamType,
 			input:     "1972-01-01T10:00:20.021Z",
-			output:    time.Time(time.Date(1972, time.January, 1, 10, 0, 20, 21000000, time.UTC)),
+			output:    time.Date(1972, time.January, 1, 10, 0, 20, 21000000, time.UTC),
 			repr:      "timestamp",
 		},
 		{

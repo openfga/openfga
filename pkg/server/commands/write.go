@@ -61,7 +61,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if writes != nil && len(writes.TupleKeys) > 0 {
-
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -229,10 +228,8 @@ func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.
 					return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
 						Cause: fmt.Errorf("invalid type for parameter"), TupleKey: write})
 				}
-
 			}
 		}
-
 	}
 	return nil
 }

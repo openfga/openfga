@@ -80,7 +80,6 @@ func testCheck(t *testing.T, client ClientInterface) {
 }
 
 func testBadAuthModelID(t *testing.T, client ClientInterface) {
-
 	ctx := context.Background()
 	resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "bad auth id"})
 	require.NoError(t, err)
@@ -131,7 +130,6 @@ func runTests(t *testing.T, params testParams) {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
-
 	}
 }
 
@@ -160,7 +158,6 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
-
 			var typedefs []*openfgav1.TypeDefinition
 			if schemaVersion == typesystem.SchemaVersion1_1 {
 				typedefs = parser.MustParse(stage.Model)
@@ -225,5 +222,4 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 		}
 	})
-
 }

@@ -274,7 +274,6 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 
 // Write provides the common method for writing to database across sql storage
 func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.Deletes, writes storage.Writes, now time.Time) error {
-
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return HandleSQLError(err)

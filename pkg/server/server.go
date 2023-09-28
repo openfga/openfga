@@ -254,7 +254,6 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 }
 
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
-
 	s := &Server{
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
@@ -312,7 +311,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
-
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
@@ -389,7 +387,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
-
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
@@ -465,7 +462,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
-
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -893,7 +889,6 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 // IsReady reports whether this OpenFGA server instance is ready to accept
 // traffic.
 func (s *Server) IsReady(ctx context.Context) (bool, error) {
-
 	// for now we only depend on the datastore being ready, but in the future
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
