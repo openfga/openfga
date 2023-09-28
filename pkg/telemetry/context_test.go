@@ -9,7 +9,6 @@ import (
 )
 
 func TestKnownRPCInfo(t *testing.T) {
-
 	rpcInfo := RPCInfo{
 		Method:  "check",
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
@@ -21,7 +20,6 @@ func TestKnownRPCInfo(t *testing.T) {
 }
 
 func TestUnknownRPCInfo(t *testing.T) {
-
 	output := RPCInfoFromContext(context.Background())
 	require.Equal(t, RPCInfo{
 		Method:  "unknown",

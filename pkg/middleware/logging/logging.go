@@ -53,7 +53,6 @@ type reporter struct {
 }
 
 func (r *reporter) PostCall(err error, _ time.Duration) {
-
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
@@ -78,7 +77,6 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
-
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
@@ -88,7 +86,6 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
-
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {

@@ -115,7 +115,6 @@ func TestServerWithMySQLDatastoreAndExplicitCredentials(t *testing.T) {
 }
 
 func BenchmarkOpenFGAServer(b *testing.B) {
-
 	b.Run("BenchmarkPostgresDatastore", func(b *testing.B) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(b, "postgres")
 
@@ -281,7 +280,6 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	e, ok = status.FromError(err)
 	require.True(t, ok)
 	require.Equal(t, codes.Code(openfgav1.ErrorCode_validation_error), e.Code())
-
 }
 
 func TestShortestPathToSolutionWins(t *testing.T) {
@@ -422,7 +420,6 @@ func TestResolveAuthorizationModel(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("no_latest_authorization_model_id_found", func(t *testing.T) {
-
 		store := ulid.Make().String()
 
 		mockController := gomock.NewController(t)
@@ -618,7 +615,6 @@ func TestListObjects_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("graph_resolution_errors", func(t *testing.T) {
-
 		s := MustNewServerWithOpts(
 			WithDatastore(memory.New()),
 			WithResolveNodeLimit(2),

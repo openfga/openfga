@@ -214,7 +214,6 @@ func TestCheckLogs(t *testing.T) {
 			require.Len(t, fields, 13)
 		})
 	}
-
 }
 
 func testRunAll(t *testing.T, engine string) {
@@ -295,7 +294,6 @@ func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.
 }
 
 func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
-
 	cancel, conn, client := setupBenchmarkTest(b, engine)
 	defer cancel()
 	defer conn.Close()

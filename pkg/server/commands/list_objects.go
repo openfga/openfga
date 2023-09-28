@@ -155,7 +155,6 @@ func (q *ListObjectsQuery) evaluate(
 	maxResults uint32,
 	resolutionMetadata *reverseexpand.ResolutionMetadata,
 ) error {
-
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
@@ -205,7 +204,6 @@ func (q *ListObjectsQuery) evaluate(
 
 		if tuple.IsTypedWildcard(userObj) {
 			sourceUserRef = &reverseexpand.UserRefTypedWildcard{Type: tuple.GetType(userObj)}
-
 		}
 
 		if userRel != "" {
@@ -326,7 +324,6 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
-
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
@@ -351,7 +348,6 @@ func (q *ListObjectsQuery) Execute(
 
 	for {
 		select {
-
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
@@ -385,7 +381,6 @@ func (q *ListObjectsQuery) Execute(
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, error) {
-
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -406,7 +401,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	for {
 		select {
-
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),

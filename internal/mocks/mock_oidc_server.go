@@ -52,7 +52,6 @@ func (server mockOidcServer) start() {
 	})
 
 	http.HandleFunc("/jwks.json", func(w http.ResponseWriter, r *http.Request) {
-
 		err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"keys": []map[string]string{
 				{
