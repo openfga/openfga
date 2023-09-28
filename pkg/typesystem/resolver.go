@@ -28,7 +28,6 @@ type TypesystemResolverFunc func(ctx context.Context, storeID, modelID string) (
 //
 // The memoized resolver function is safe for concurrent use.
 func MemoizedTypesystemResolverFunc(datastore storage.AuthorizationModelReadBackend) TypesystemResolverFunc {
-
 	lookupGroup := singleflight.Group{}
 
 	cache := ccache.New(ccache.Configure[*TypeSystem]())

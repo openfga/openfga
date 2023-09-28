@@ -97,7 +97,6 @@ func runTests(t *testing.T, params testParams) {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
-
 	}
 }
 
@@ -129,7 +128,6 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			var typedefs []*openfgav1.TypeDefinition
 			if schemaVersion == typesystem.SchemaVersion1_1 {
 				typedefs = parser.MustParse(stage.Model)
-
 			} else {
 				typedefs = v1parser.MustParse(stage.Model)
 			}
@@ -178,7 +176,6 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				if assertion.ErrorCode == 0 {
 					require.NoError(t, err, detailedInfo)
 					require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
-
 				} else {
 					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
@@ -214,7 +211,6 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 							}
 							break
 						}
-
 					}
 					done <- struct{}{}
 				}()
@@ -247,5 +243,4 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 		}
 	})
-
 }

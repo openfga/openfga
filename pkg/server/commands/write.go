@@ -60,7 +60,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if len(writes) > 0 {
-
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {

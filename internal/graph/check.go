@@ -31,10 +31,6 @@ var (
 	ErrCycleDetected = errors.New("a cycle has been detected")
 )
 
-var cycleDetectedCheckHandler = func(ctx context.Context) (*ResolveCheckResponse, error) {
-	return nil, ErrCycleDetected
-}
-
 type ResolveCheckRequest struct {
 	StoreID              string
 	AuthorizationModelID string
@@ -242,7 +238,6 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 // union implements a CheckFuncReducer that requires any of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first allowed outcome causes premature termination of the reducer.
 func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -285,7 +280,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 // intersection implements a CheckFuncReducer that requires all of the provided CheckHandlerFunc to resolve
 // to an allowed outcome. The first falsey or erroneous outcome causes premature termination of the reducer.
 func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-
 	ctx, cancel := context.WithCancel(ctx)
 	resultChan := make(chan checkOutcome, len(handlers))
 
@@ -338,7 +332,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 // outcome and a 'sub' CheckHandlerFunc to resolve to a falsey outcome. The base and sub computations are
 // handled concurrently relative to one another.
 func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandlerFunc) (*ResolveCheckResponse, error) {
-
 	if len(handlers) != 2 {
 		panic(fmt.Sprintf("expected two rewrite operands for exclusion operator, but got '%d'", len(handlers)))
 	}
@@ -434,7 +427,7 @@ func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
 
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
-func (c *LocalChecker) dispatch(ctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
+func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		return c.delegate.ResolveCheck(ctx, req)
 	}
@@ -470,7 +463,6 @@ func (c *LocalChecker) ResolveCheck(
 	}
 
 	if req.VisitedPaths != nil {
-
 		if _, visited := req.VisitedPaths[tuple.TupleKeyToString(req.GetTupleKey())]; visited {
 			return nil, ErrCycleDetected
 		}
@@ -495,7 +487,6 @@ func (c *LocalChecker) ResolveCheck(
 // while the second handler looks up relationships between the target 'object#relation' and any usersets
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
-
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
@@ -595,7 +586,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				// for 1.1 models, if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
 				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
-
 					wildcardType := tuple.GetType(usersetObject)
 
 					if tuple.GetType(tk.GetUser()) == wildcardType {
@@ -639,8 +629,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		var checkFuncs []CheckHandlerFunc
 
 		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                         //target
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), //source
+			typesystem.DirectRelationReference(objectType, relation),                                         // target
+			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), // source
 		)
 
 		if shouldCheckDirectTuple {
@@ -649,7 +639,6 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 
 		if len(directlyRelatedUsersetTypes) > 0 {
 			checkFuncs = append(checkFuncs, fn2)
-
 		}
 
 		return union(ctx, c.concurrencyLimit, checkFuncs...)
@@ -657,8 +646,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 }
 
 // checkComputedUserset evaluates the Check request with the rewritten relation (e.g. the computed userset relation).
-func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
-
+func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset_ComputedUserset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
@@ -691,7 +679,6 @@ func (c *LocalChecker) checkComputedUserset(parentctx context.Context, req *Reso
 // checkTTU looks up all tuples of the target tupleset relation on the provided object and for each one
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
-
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
@@ -792,7 +779,6 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		return unionResponse, err
-
 	}
 }
 
@@ -803,7 +789,6 @@ func (c *LocalChecker) checkSetOperation(
 	reducer CheckFuncReducer,
 	children ...*openfgav1.Userset,
 ) CheckHandlerFunc {
-
 	var handlers []CheckHandlerFunc
 
 	var reducerKey string
@@ -841,7 +826,6 @@ func (c *LocalChecker) checkRewrite(
 	req *ResolveCheckRequest,
 	rewrite *openfgav1.Userset,
 ) CheckHandlerFunc {
-
 	switch rw := rewrite.Userset.(type) {
 	case *openfgav1.Userset_This:
 		return c.checkDirect(ctx, req)

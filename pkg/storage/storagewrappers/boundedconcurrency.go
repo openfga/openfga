@@ -85,7 +85,6 @@ func (b *boundedConcurrencyTupleReader) ReadStartingWithUser(
 	}()
 
 	return b.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
-
 }
 
 func (b *boundedConcurrencyTupleReader) waitForLimiter(ctx context.Context) {
