@@ -187,14 +187,14 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 			return "", err
 		}
 
-		contextualTuplesCacheKey = c.String()
+		contextualTuplesCacheKey = "/" + c.String()
 	}
 
-	key := fmt.Sprintf("%s/%s/%s/%s",
+	key := fmt.Sprintf("%s/%s/%s%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
 		req.GetTupleKey(),
-		contextualTuplesCacheKey,
+		contextualTuplesCacheKey, // note that there is a prefix "/" if contextualTuplesCacheKey is not empty
 	)
 
 	return base64.StdEncoding.EncodeToString([]byte(key)), nil
