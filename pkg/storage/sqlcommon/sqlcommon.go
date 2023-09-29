@@ -366,20 +366,11 @@ func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, 
 		return err
 	}
 
-	sb := dbInfo.stbl.
+	_, err = dbInfo.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf")
-
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
-		if err != nil {
-			return err
-		}
-
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef, pbdata)
-	}
-
-	_, err = sb.ExecContext(ctx)
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		Values(store, model.Id, schemaVersion, "", nil, pbdata).
+		ExecContext(ctx)
 	if err != nil {
 		return HandleSQLError(err)
 	}
