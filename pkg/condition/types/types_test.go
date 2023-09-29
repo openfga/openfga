@@ -132,7 +132,7 @@ func TestPrimitives(t *testing.T) {
 			name:      "valid_duration",
 			paramType: DurationParamType,
 			input:     "1h",
-			output:    time.Duration(1 * time.Hour),
+			output:    1 * time.Hour,
 			repr:      "duration",
 		},
 		{
@@ -147,7 +147,7 @@ func TestPrimitives(t *testing.T) {
 			name:      "valid_timestamp",
 			paramType: TimestampParamType,
 			input:     "1972-01-01T10:00:20.021Z",
-			output:    time.Time(time.Date(1972, time.January, 1, 10, 0, 20, 21000000, time.UTC)),
+			output:    time.Date(1972, time.January, 1, 10, 0, 20, 21000000, time.UTC),
 			repr:      "timestamp",
 		},
 		{
@@ -172,6 +172,20 @@ func TestPrimitives(t *testing.T) {
 			output:        nil,
 			repr:          "ipaddress",
 			expectedError: fmt.Errorf("for ipaddress: could not parse string as an ipaddress `invalid`: ParseAddr(\"invalid\"): unable to parse IP"),
+		},
+		{
+			name:      "valid_map_string",
+			paramType: mustMapParamType(StringParamType),
+			input:     map[string]string{"hello": "world"},
+			output:    map[string]string{"hello": "world"},
+			repr:      "TYPE_NAME_MAP<string>",
+		},
+		{
+			name:      "valid_list_string",
+			paramType: mustListParamType(StringParamType),
+			input:     []string{"hello", "world"},
+			output:    []string{"hello", "world"},
+			repr:      "TYPE_NAME_LIST<string>",
 		},
 	}
 
@@ -199,4 +213,20 @@ func mustParseIPAddress(ip string) IPAddress {
 	}
 
 	return addr
+}
+
+func mustMapParamType(genericTypes ...ParameterType) ParameterType {
+	paramType, err := MapParamType(genericTypes...)
+	if err != nil {
+		panic(err)
+	}
+	return paramType
+}
+
+func mustListParamType(genericTypes ...ParameterType) ParameterType {
+	paramType, err := ListParamType(genericTypes...)
+	if err != nil {
+		panic(err)
+	}
+	return paramType
 }
