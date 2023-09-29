@@ -175,25 +175,26 @@ func (c *CachedCheckResolver) ResolveCheck(
 // cache key. If the contextual tuples are different order, it is possible that a different
 // cache key will be produced. This will result in duplicate entries.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	var b bytes.Buffer
-	if err := gob.NewEncoder(&b).Encode(req.GetTupleKey()); err != nil {
-		return "", err
+	var contextualTuplesCacheKey string
+
+	contextualTuples := req.GetContextualTuples()
+
+	if len(contextualTuples) > 0 {
+		var c bytes.Buffer
+
+		// only use gob if there are contextual tuples as it is CPU intensive
+		if err := gob.NewEncoder(&c).Encode(req.GetContextualTuples()); err != nil {
+			return "", err
+		}
+
+		contextualTuplesCacheKey = "/" + c.String()
 	}
 
-	tupleCacheKey := b.String()
-
-	var c bytes.Buffer
-	if err := gob.NewEncoder(&c).Encode(req.GetContextualTuples()); err != nil {
-		return "", err
-	}
-
-	contextualTuplesCacheKey := c.String()
-
-	key := fmt.Sprintf("%s/%s/%s/%s",
+	key := fmt.Sprintf("%s/%s/%s%s",
 		req.GetStoreID(),
 		req.GetAuthorizationModelID(),
-		tupleCacheKey,
-		contextualTuplesCacheKey,
+		req.GetTupleKey(),
+		contextualTuplesCacheKey, // note that there is a prefix "/" if contextualTuplesCacheKey is not empty
 	)
 
 	return base64.StdEncoding.EncodeToString([]byte(key)), nil
