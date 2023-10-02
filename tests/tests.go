@@ -7,6 +7,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/logger"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -21,13 +22,13 @@ type TestClientBootstrapper interface {
 	Write(ctx context.Context, in *openfgav1.WriteRequest, opts ...grpc.CallOption) (*openfgav1.WriteResponse, error)
 }
 
-func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
+func StartServer(t testing.TB, cfg *serverconfig.Config) context.CancelFunc {
 	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
 	serverCtx := &run.ServerContext{Logger: logger}
 	return StartServerWithContext(t, cfg, serverCtx)
 }
 
-func StartServerWithContext(t testing.TB, cfg *run.Config, serverCtx *run.ServerContext) context.CancelFunc {
+func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 

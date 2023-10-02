@@ -16,6 +16,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/pkg/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -573,7 +574,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
 			type user
-	
+
 			type document
 			  relations
 				define viewer: [user, user:*] as self
@@ -810,8 +811,9 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 }
 
 func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
-	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForCheck)
-	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForListObjects)
+	cfg := serverconfig.DefaultConfig()
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
