@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -401,7 +402,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 					define editor: [user, account#member] as self
 					define owner: [user] as self
 					define viewer: [user, account#member] as self
-	  
+
 				type account
 				  relations
 					define admin: [user] as self or member or super_admin or owner
@@ -444,6 +445,23 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
+		{
+			name: "validate_model_size",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:       storeID,
+				SchemaVersion: testutils.CreateRandomString(257 * 1_024),
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type other
+				  relations
+					define x: [user] as self but not y
+					define y: [user] as self but not z
+					define z: [user] as self or x
+				`),
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
+		},
 	}
 
 	ctx := context.Background()
@@ -451,7 +469,7 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger, 256*1_024)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)

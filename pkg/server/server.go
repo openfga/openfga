@@ -59,6 +59,7 @@ const (
 	defaultCheckQueryCacheLimit             = 10000
 	defaultCheckQueryCacheTTL               = 10 * time.Second
 	defaultCheckQueryCacheEnable            = false
+	defaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -103,6 +104,7 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
@@ -243,6 +245,12 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
+func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelSizeInBytes = size
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -264,6 +272,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsMaxResults:            defaultListObjectsMaxResults,
 		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
+		maxAuthorizationModelSizeInBytes: defaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
 		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
@@ -684,7 +693,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
