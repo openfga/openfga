@@ -292,7 +292,7 @@ func DefaultConfig() *Config {
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
 		Experimentals:                             []string{},
-		ListObjectsDeadline:                       DefaultListObjectsDeadline, // there is a 3-second timeout elsewhere
+		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
 		Datastore: DatastoreConfig{
