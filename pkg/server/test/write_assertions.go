@@ -89,7 +89,7 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger).Execute(ctx, model)
+			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger, 256*1_024).Execute(ctx, model)
 			require.NoError(t, err)
 
 			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
