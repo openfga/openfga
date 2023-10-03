@@ -12,6 +12,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -38,7 +39,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
+	err := c.datastore.Write(ctx, req.GetStoreId(), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes()), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites()))
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -52,14 +53,14 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
-	deletes := req.GetDeletes().GetTupleKeys()
-	writes := req.GetWrites().GetTupleKeys()
+	deletes := req.GetDeletes()
+	writes := req.GetWrites()
 
 	if deletes == nil && writes == nil {
 		return serverErrors.InvalidWriteInput
 	}
 
-	if len(writes) > 0 {
+	if writes != nil && len(writes.TupleKeys) > 0 {
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -74,7 +75,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 		typesys := typesystem.New(authModel)
 
-		for _, tk := range writes {
+		for _, writeTk := range writes.TupleKeys {
+			tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(writeTk)
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
@@ -102,18 +104,21 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		}
 	}
 
-	for _, tk := range deletes {
-		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
-			return serverErrors.ValidationError(
-				&tupleUtils.InvalidTupleError{
-					Cause:    fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: tk,
-				},
-			)
+	if deletes != nil {
+		for _, deleteTk := range deletes.TupleKeys {
+			tk := tupleUtils.ConvertWriteRequestTupleKeyToTupleKey(deleteTk)
+			if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
+				return serverErrors.ValidationError(
+					&tupleUtils.InvalidTupleError{
+						Cause:    fmt.Errorf("the 'user' field is malformed"),
+						TupleKey: tk,
+					},
+				)
+			}
 		}
 	}
 
-	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
+	if err := c.validateNoDuplicatesAndCorrectSize(tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(deletes), tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(writes)); err != nil {
 		return err
 	}
 
@@ -142,6 +147,89 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 
 	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
+	}
+	return nil
+}
+
+func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.WriteRequestTupleKey, writes []*openfgav1.WriteRequestTupleKey) error {
+	for _, write := range writes {
+		objectType := tupleUtils.GetType(write.Object)
+		userType := tupleUtils.GetType(write.User)
+		userRelation := tupleUtils.GetRelation(write.User)
+		relation, err := ts.GetRelation(objectType, write.Relation)
+		if err != nil {
+			return err
+		}
+
+		if write.Condition == nil {
+			conditionShouldBeDefined := false
+			for _, userset := range relation.TypeInfo.GetDirectlyRelatedUserTypes() {
+				if userset.RelationOrWildcard == nil {
+					if userset.Type == userType {
+						conditionShouldBeDefined = true
+					}
+				}
+				if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
+					if userset.Type == userType && userset.GetRelation() == userRelation {
+						conditionShouldBeDefined = true
+					}
+				}
+				if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
+					if userset.Type == userType {
+						conditionShouldBeDefined = true
+					}
+				}
+			}
+			if conditionShouldBeDefined {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("condition is missing"), TupleKey: write})
+			}
+		} else { // condition defined in the write
+			conditionContext, conditionDefined := ts.GetConditions()[write.Condition.ConditionName]
+			if !conditionDefined {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("undefined condition"), TupleKey: write})
+			}
+
+			validCondition := false
+			for _, userset := range relation.TypeInfo.GetDirectlyRelatedUserTypes() {
+				if userset.Type == userType && userset.Condition == write.Condition.ConditionName {
+					validCondition = true
+				}
+			}
+			if !validCondition {
+				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: write})
+			}
+
+			for conditionInWriteParamName, conditionInWriteParamContext := range write.Condition.Context.Fields {
+				_, paramDefined := conditionContext.Parameters[conditionInWriteParamName]
+				if !paramDefined {
+					return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+						Cause: fmt.Errorf("undefined parameter"), TupleKey: write})
+				}
+				paramIncorrectType := false
+				switch conditionInWriteParamContext.Kind.(type) {
+				case *structpb.Value_StringValue:
+					//TODO
+				case *structpb.Value_NumberValue:
+					//TODO
+				case *structpb.Value_BoolValue:
+					//TODO
+				case *structpb.Value_NullValue:
+					//TODO
+				case *structpb.Value_ListValue:
+					//TODO
+				case *structpb.Value_StructValue:
+					//TODO
+				}
+
+				if paramIncorrectType {
+					return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
+						Cause: fmt.Errorf("invalid type for parameter"), TupleKey: write})
+				}
+			}
+		}
 	}
 	return nil
 }

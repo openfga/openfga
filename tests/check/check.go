@@ -40,7 +40,7 @@ type testParams struct {
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
 	Model           string
-	Tuples          []*openfgav1.TupleKey
+	Tuples          []*openfgav1.WriteRequestTupleKey
 	CheckAssertions []*assertion `yaml:"checkAssertions"`
 }
 
@@ -181,7 +181,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId: storeID,
-						Writes:  &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						Writes: &openfgav1.WriteRequestTupleKeys{
+							TupleKeys: writeChunk,
+						},
 					})
 					require.NoError(t, err)
 				}
@@ -192,7 +194,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
-					ctxTuples = append(ctxTuples, stage.Tuples...)
+					stageTuples := tuple.ConvertWriteRequestsTupleKeysToTupleKeys(
+						&openfgav1.WriteRequestTupleKeys{TupleKeys: stage.Tuples},
+					)
+
+					ctxTuples = append(ctxTuples, stageTuples...)
 				}
 
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{

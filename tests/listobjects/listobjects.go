@@ -148,7 +148,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId: storeID,
-						Writes:  &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						Writes:  tuple.ConvertTupleKeysToWriteRequestTupleKeys(writeChunk),
 					})
 					require.NoError(t, err)
 				}

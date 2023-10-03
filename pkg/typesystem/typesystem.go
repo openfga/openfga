@@ -212,6 +212,10 @@ func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
 }
 
+func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
+	return t.conditions
+}
+
 func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefinition, bool) {
 	if typeDefinition, ok := t.typeDefinitions[objectType]; ok {
 		return typeDefinition, true

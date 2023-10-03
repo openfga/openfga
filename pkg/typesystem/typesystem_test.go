@@ -2349,7 +2349,6 @@ func TestDirectlyRelatedUsersets(t *testing.T) {
 }
 
 func TestConditions(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		model         *openfgav1.AuthorizationModel

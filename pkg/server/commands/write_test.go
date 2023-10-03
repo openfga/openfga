@@ -95,8 +95,8 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfgav1.TupleKey
-		writes        []*openfgav1.TupleKey
+		deletes       *openfgav1.WriteRequestTupleKeys
+		writes        *openfgav1.WriteRequestTupleKeys
 		expectedError error
 	}
 
@@ -105,6 +105,7 @@ func TestValidateWriteRequest(t *testing.T) {
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
+	badItemTk := tuple.ConvertTupleKeyToWriteTupleKey(badItem)
 
 	tests := []test{
 		{
@@ -114,9 +115,13 @@ func TestValidateWriteRequest(t *testing.T) {
 			expectedError: serverErrors.InvalidWriteInput,
 		},
 		{
-			name:    "write_failure_with_invalid_user",
-			deletes: []*openfgav1.TupleKey{},
-			writes:  []*openfgav1.TupleKey{badItem},
+			name: "write_failure_with_invalid_user",
+			deletes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{},
+			},
+			writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{badItemTk},
+			},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -125,9 +130,13 @@ func TestValidateWriteRequest(t *testing.T) {
 			),
 		},
 		{
-			name:    "delete_failure_with_invalid_user",
-			deletes: []*openfgav1.TupleKey{badItem},
-			writes:  []*openfgav1.TupleKey{},
+			name: "delete_failure_with_invalid_user",
+			deletes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{badItemTk},
+			},
+			writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{},
+			},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
@@ -148,7 +157,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 			cmd := NewWriteCommand(mockDatastore, logger)
 
-			if len(test.writes) > 0 {
+			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgav1.AuthorizationModel{
 					SchemaVersion: typesystem.SchemaVersion1_1,
 				}, nil)
@@ -157,8 +166,8 @@ func TestValidateWriteRequest(t *testing.T) {
 			ctx := context.Background()
 			req := &openfgav1.WriteRequest{
 				StoreId: "abcd123",
-				Writes:  &openfgav1.TupleKeys{TupleKeys: test.writes},
-				Deletes: &openfgav1.TupleKeys{TupleKeys: test.deletes},
+				Writes:  test.writes,
+				Deletes: test.deletes,
 			}
 
 			err := cmd.validateWriteRequest(ctx, req)
@@ -197,9 +206,13 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),
-		Writes: &openfgav1.TupleKeys{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:jon",
+				},
 			},
 		},
 	})
