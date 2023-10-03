@@ -91,6 +91,7 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
@@ -231,6 +232,12 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
+func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelSizeInBytes = size
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -252,6 +259,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
 		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
 		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
 		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
@@ -672,7 +680,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err

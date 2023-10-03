@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -9,21 +10,27 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // WriteAuthorizationModelCommand performs updates of the store authorization model.
 type WriteAuthorizationModelCommand struct {
-	backend storage.TypeDefinitionWriteBackend
-	logger  logger.Logger
+	backend                          storage.TypeDefinitionWriteBackend
+	logger                           logger.Logger
+	maxAuthorizationModelSizeInBytes int
 }
 
 func NewWriteAuthorizationModelCommand(
 	backend storage.TypeDefinitionWriteBackend,
 	logger logger.Logger,
+	maxAuthorizationModelSizeInBytes int,
 ) *WriteAuthorizationModelCommand {
 	return &WriteAuthorizationModelCommand{
-		backend: backend,
-		logger:  logger,
+		backend:                          backend,
+		logger:                           logger,
+		maxAuthorizationModelSizeInBytes: maxAuthorizationModelSizeInBytes,
 	}
 }
 
@@ -43,6 +50,15 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
+	}
+
+	// Validate the size in bytes of the wire-format encoding of the authorization model.
+	modelSize := proto.Size(model)
+	if modelSize > w.maxAuthorizationModelSizeInBytes {
+		return nil, status.Error(
+			codes.Code(openfgav1.ErrorCode_exceeded_entity_limit),
+			fmt.Sprintf("model exceeds size limit: %d bytes vs %d bytes", modelSize, w.maxAuthorizationModelSizeInBytes),
+		)
 	}
 
 	_, err := typesystem.NewAndValidate(ctx, model)

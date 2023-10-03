@@ -168,6 +168,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
 
+	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
+
 	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
 
 	flags.Uint32("max-concurrent-reads-for-check", defaultConfig.MaxConcurrentReadsForCheck, "the maximum allowed number of concurrent datastore reads in a single Check query. A high number means that you want Check latency to be low, at the expense of other queries performance")
@@ -541,6 +543,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
 		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
+		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithExperimentals(experimentals...),
 	)
 

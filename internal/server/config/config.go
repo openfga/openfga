@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	DefaultMaxTuplesPerWrite                = 100
+	DefaultMaxTypesPerAuthorizationModel    = 100
+	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
@@ -18,9 +21,10 @@ const (
 	DefaultListObjectsMaxResults            = 1000
 	DefaultMaxConcurrentReadsForCheck       = math.MaxUint32
 	DefaultMaxConcurrentReadsForListObjects = math.MaxUint32
-	DefaultCheckQueryCacheLimit             = 10000
-	DefaultCheckQueryCacheTTL               = 10 * time.Second
-	DefaultCheckQueryCacheEnable            = false
+
+	DefaultCheckQueryCacheLimit  = 10000
+	DefaultCheckQueryCacheTTL    = 10 * time.Second
+	DefaultCheckQueryCacheEnable = false
 )
 
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
@@ -173,6 +177,9 @@ type Config struct {
 	// authorization model for the WriteAuthorizationModel endpoint.
 	MaxTypesPerAuthorizationModel int
 
+	// MaxAuthorizationModelSizeInBytes defines the maximum size in bytes allowed for persisting an Authorization Model.
+	MaxAuthorizationModelSizeInBytes int
+
 	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads
 	// allowed in ListObjects queries
 	MaxConcurrentReadsForListObjects uint32
@@ -275,8 +282,9 @@ func (cfg *Config) Verify() error {
 // DefaultConfig is the OpenFGA server default configurations.
 func DefaultConfig() *Config {
 	return &Config{
-		MaxTuplesPerWrite:                         100,
-		MaxTypesPerAuthorizationModel:             100,
+		MaxTuplesPerWrite:                         DefaultMaxTuplesPerWrite,
+		MaxTypesPerAuthorizationModel:             DefaultMaxTypesPerAuthorizationModel,
+		MaxAuthorizationModelSizeInBytes:          DefaultMaxAuthorizationModelSizeInBytes,
 		MaxConcurrentReadsForCheck:                DefaultMaxConcurrentReadsForCheck,
 		MaxConcurrentReadsForListObjects:          DefaultMaxConcurrentReadsForListObjects,
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
