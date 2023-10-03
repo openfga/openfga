@@ -254,6 +254,10 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relati
 	return r, nil
 }
 
+func (t *TypeSystem) GetCondition(name string) *condition.EvaluableCondition {
+	return t.conditions[name]
+}
+
 // GetRelationReferenceAsString returns team#member, or team:*, or an empty string if the input is nil.
 func GetRelationReferenceAsString(rr *openfgav1.RelationReference) string {
 	if rr == nil {
@@ -855,6 +859,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 				return nil, err
 			}
 		}
+	}
+
+	if err := t.validateConditions(); err != nil {
+		return nil, err
 	}
 
 	if err := t.validateConditions(); err != nil {

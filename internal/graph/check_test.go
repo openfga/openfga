@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
@@ -46,7 +47,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	    define allowed: [user] as self
 	    define viewer: [group#member] as self or editor
 	    define editor: [group#member] as self and allowed
-	    
+
 	`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
@@ -417,4 +418,85 @@ func TestCheckWithUnexpectedCycle(t *testing.T) {
 			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
 		}
 	}
+}
+
+func TestCheckConditions(t *testing.T) {
+	ds := memory.New()
+
+	storeID := ulid.Make().String()
+
+	tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+		"param1": "ok",
+	})
+	require.NoError(t, err)
+
+	tk := tuple.NewTupleKey("document:abc", "parent", "folder:acme")
+	tk.Condition = &openfgav1.RelationshipCondition{
+		ConditionName: "condition1",
+		Context:       tkConditionContext,
+	}
+	err = ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{tk})
+	require.NoError(t, err)
+
+	checker := NewLocalChecker(ds)
+
+	typedefs := []*openfgav1.TypeDefinition{
+		{
+			Type: "folder",
+		},
+		{
+			Type: "document",
+			Relations: map[string]*openfgav1.Userset{
+				"parent": typesystem.This(),
+			},
+			Metadata: &openfgav1.Metadata{
+				Relations: map[string]*openfgav1.RelationMetadata{
+					"parent": {
+						DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+							typesystem.ConditionedRelationReference(typesystem.DirectRelationReference("folder", ""), "condition1"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	conditions := map[string]*openfgav1.Condition{
+		"condition1": {
+			Name:       "condition1",
+			Expression: "param1 == 'ok'",
+			Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {
+					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+				},
+			},
+		},
+	}
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		&openfgav1.AuthorizationModel{
+			Id:              ulid.Make().String(),
+			TypeDefinitions: typedefs,
+			Conditions:      conditions,
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+		},
+	)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	conditionContext, err := structpb.NewStruct(map[string]interface{}{
+		"param1": "notok",
+	})
+	require.NoError(t, err)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:            storeID,
+		TupleKey:           tuple.NewTupleKey("document:abc", "parent", "folder:acme"),
+		ResolutionMetadata: &ResolutionMetadata{Depth: 1},
+		Context:            conditionContext,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
 }

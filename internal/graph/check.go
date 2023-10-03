@@ -9,6 +9,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -17,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -36,6 +38,7 @@ type ResolveCheckRequest struct {
 	AuthorizationModelID string
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
 	ResolutionMetadata   *ResolutionMetadata
 	VisitedPaths         map[string]struct{}
 }
@@ -98,6 +101,13 @@ func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
 		return r.ResolutionMetadata
 	}
 
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
+	if r != nil {
+		return r.Context
+	}
 	return nil
 }
 
@@ -499,6 +509,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		storeID := req.GetStoreID()
 		tk := req.GetTupleKey()
 		objectType := tuple.GetType(tk.GetObject())
+		userType := tuple.GetType(tk.GetUser())
 		relation := tk.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
@@ -528,6 +539,33 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tk)
 
 			if t != nil && err == nil {
+				typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, relation)
+				if err != nil {
+					return nil, err
+				}
+
+				var condition *condition.EvaluableCondition
+				for _, typeRestriction := range typeRestrictions {
+					if typeRestriction.Type == userType && typeRestriction.Condition != "" {
+						condition = typesys.GetCondition(typeRestriction.Condition)
+						break
+					}
+				}
+
+				if condition != nil {
+					conditionResult, err := condition.Evaluate(
+						req.GetContext().AsMap(),
+						t.GetKey().GetCondition().GetContext().AsMap(),
+					)
+					if err != nil {
+						return nil, fmt.Errorf("failed to evaluate relationship condition: %v", err)
+					}
+
+					if !conditionResult.ConditionMet {
+						return response, nil
+					}
+				}
+
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
