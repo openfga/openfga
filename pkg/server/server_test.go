@@ -16,7 +16,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	serverconfig "github.com/openfga/openfga/pkg/server/config"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"

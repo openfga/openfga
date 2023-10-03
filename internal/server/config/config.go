@@ -1,3 +1,5 @@
+// Package config contains all knobs and defaults used to configure features of
+// OpenFGA when running as a standalone server.
 package config
 
 import (
@@ -29,7 +31,8 @@ type DatastoreConfig struct {
 	Username string
 	Password string
 
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
+	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before
+	// evicting
 	// old keys. The storage cache is used to cache query results for various static resources
 	// such as type definitions.
 	MaxCacheSize int
@@ -37,7 +40,8 @@ type DatastoreConfig struct {
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
 
-	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection pool.
+	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection
+	// pool.
 	MaxIdleConns int
 
 	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
@@ -77,10 +81,11 @@ type TLSConfig struct {
 // AuthnConfig defines OpenFGA server configurations for authentication specific settings.
 type AuthnConfig struct {
 
-	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared', 'oidc')
+	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
+	// 'oidc')
 	Method                   string
-	*AuthnOIDCConfig         `mapstructure:"oidc"`
-	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
+	*AuthnOIDCConfig         `       mapstructure:"oidc"`
+	*AuthnPresharedKeyConfig `       mapstructure:"preshared"`
 }
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
@@ -148,7 +153,8 @@ type CheckQueryCache struct {
 }
 
 type Config struct {
-	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
+	// If you change any of these settings, please update the documentation at
+	// https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
 
 	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
 	// before the server will respond. This is to protect the server from misuse of the
@@ -163,25 +169,31 @@ type Config struct {
 	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
 	MaxTuplesPerWrite int
 
-	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per authorization model for the WriteAuthorizationModel endpoint.
+	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per
+	// authorization model for the WriteAuthorizationModel endpoint.
 	MaxTypesPerAuthorizationModel int
 
-	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads allowed in ListObjects queries
+	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads
+	// allowed in ListObjects queries
 	MaxConcurrentReadsForListObjects uint32
 
-	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in Check queries
+	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in
+	// Check queries
 	MaxConcurrentReadsForCheck uint32
 
-	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
+	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur
+	// after this offset will not be included in the response of ReadChanges.
 	ChangelogHorizonOffset int
 
 	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
 	Experimentals []string
 
-	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query errors out.
+	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query
+	// errors out.
 	ResolveNodeLimit uint32
 
-	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
+	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated
+	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
 	Datastore       DatastoreConfig
@@ -200,7 +212,11 @@ type Config struct {
 
 func (cfg *Config) Verify() error {
 	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
-		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
+		return fmt.Errorf(
+			"config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)",
+			cfg.HTTP.UpstreamTimeout,
+			cfg.ListObjectsDeadline,
+		)
 	}
 
 	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
@@ -214,7 +230,9 @@ func (cfg *Config) Verify() error {
 		cfg.Log.Level != "error" &&
 		cfg.Log.Level != "panic" &&
 		cfg.Log.Level != "fatal" {
-		return fmt.Errorf("config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
+		return fmt.Errorf(
+			"config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']",
+		)
 	}
 
 	if cfg.Playground.Enabled {
@@ -245,7 +263,9 @@ func (cfg *Config) Verify() error {
 	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
 		valInt, err := strconv.Atoi(val)
 		if err != nil || valInt < 0 {
-			return errors.New("request duration datastore query count bucket items must be non-negative integer")
+			return errors.New(
+				"request duration datastore query count bucket items must be non-negative integer",
+			)
 		}
 	}
 
