@@ -179,7 +179,15 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 	}
 
 	var record TupleRecord
-	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.Ulid, &record.InsertedAt)
+	err := t.rows.Scan(
+		&record.Store,
+		&record.ObjectType,
+		&record.ObjectID,
+		&record.Relation,
+		&record.User,
+		&record.Ulid,
+		&record.InsertedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +197,9 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 
 // ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+func (t *SQLTupleIterator) ToArray(
+	opts storage.PaginationOptions,
+) ([]*openfgav1.Tuple, []byte, error) {
 	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
@@ -273,8 +283,32 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 	}
 }
 
+func marshalTKCondition(tk *openfgav1.TupleKey) (name string, context *string, err error) {
+	condition := tk.GetCondition()
+
+	if condition != nil {
+		name = condition.ConditionName
+		marshalled, err := json.Marshal(condition.Context.AsMap())
+		if err != nil {
+			return "", nil, err
+		}
+
+		marshalledString := string(marshalled)
+		context = &marshalledString
+	}
+
+	return name, context, nil
+}
+
 // Write provides the common method for writing to database across sql storage
-func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.Deletes, writes storage.Writes, now time.Time) error {
+func Write(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+	deletes storage.Deletes,
+	writes storage.Writes,
+	now time.Time,
+) error {
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return HandleSQLError(err)
@@ -285,7 +319,10 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+		Columns(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "operation", "ulid", "inserted_at",
+		)
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
@@ -293,14 +330,21 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
+		conditionName, conditionContext, err := marshalTKCondition(tk)
+		if err != nil {
+			return err
+		}
+
 		res, err := deleteBuilder.
 			Where(sq.Eq{
-				"store":       store,
-				"object_type": objectType,
-				"object_id":   objectID,
-				"relation":    tk.GetRelation(),
-				"_user":       tk.GetUser(),
-				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				"store":             store,
+				"object_type":       objectType,
+				"object_id":         objectID,
+				"relation":          tk.GetRelation(),
+				"_user":             tk.GetUser(),
+				"user_type":         tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				"condition_name":    conditionName,
+				"condition_context": conditionContext,
 			}).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
@@ -314,29 +358,65 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		}
 
 		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
+			return storage.InvalidWriteInputError(
+				tk,
+				openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(
+			store, objectType, objectID,
+			tk.GetRelation(), tk.GetUser(),
+			conditionName, conditionContext,
+			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			id, dbInfo.sqlTime,
+		)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "condition_name", "condition_context", "ulid", "inserted_at")
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
+		conditionName, conditionContext, err := marshalTKCondition(tk)
+		if err != nil {
+			return err
+		}
+
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, dbInfo.sqlTime).
+			Values(
+				store,
+				objectType,
+				objectID,
+				tk.GetRelation(),
+				tk.GetUser(),
+				tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				conditionName,
+				conditionContext,
+				id,
+				dbInfo.sqlTime,
+			).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(
+			store,
+			objectType,
+			objectID,
+			tk.GetRelation(),
+			tk.GetUser(),
+			conditionName,
+			conditionContext,
+			openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			id,
+			dbInfo.sqlTime,
+		)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -353,7 +433,12 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	return nil
 }
 
-func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, model *openfgav1.AuthorizationModel) error {
+func WriteAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store string,
+	model *openfgav1.AuthorizationModel,
+) error {
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
@@ -387,7 +472,11 @@ func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, 
 	return nil
 }
 
-func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID string) (*openfgav1.AuthorizationModel, error) {
+func ReadAuthorizationModel(
+	ctx context.Context,
+	dbInfo *DBInfo,
+	store, modelID string,
+) (*openfgav1.AuthorizationModel, error) {
 	rows, err := dbInfo.stbl.
 		Select("schema_version", "type", "type_definition", "serialized_protobuf").
 		From("authorization_model").
