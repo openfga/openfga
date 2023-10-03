@@ -177,7 +177,8 @@ type Config struct {
 	// authorization model for the WriteAuthorizationModel endpoint.
 	MaxTypesPerAuthorizationModel int
 
-	// MaxAuthorizationModelSizeInBytes defines the maximum size in bytes allowed for persisting an Authorization Model.
+	// MaxAuthorizationModelSizeInBytes defines the maximum size in bytes allowed for
+	// persisting an Authorization Model.
 	MaxAuthorizationModelSizeInBytes int
 
 	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads
