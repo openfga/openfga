@@ -257,19 +257,23 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 
 func TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend := writeFourTuplesConcurrently(t, store, datastore)
+
+	tuplesToWriteOne := []*openfgav1.TupleKey{tkMaria, tkCraig}
+	tuplesToWriteTwo := []*openfgav1.TupleKey{tkYamil}
+	totalTuplesToWrite := len(tuplesToWriteOne) + len(tuplesToWriteTwo)
+	ctx, backend := writeTuplesConcurrently(t, store, datastore, tuplesToWriteOne, tuplesToWriteTwo)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
 
 	// without type
 	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
 	require.NoError(t, err)
-	require.Len(t, res1.Changes, 4)
+	require.Len(t, res1.Changes, totalTuplesToWrite)
 
 	// with type
 	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "repo", "", storage.DefaultPageSize))
 	require.NoError(t, err)
-	require.Len(t, res2.Changes, 3)
+	require.Len(t, res2.Changes, totalTuplesToWrite)
 }
 
 func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
@@ -284,8 +288,8 @@ func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Cont
 	return ctx, datastore, nil
 }
 
-// writeFourTuplesConcurrently to expose potential race issues when reading changes
-func writeFourTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend) {
+// writeTuplesConcurrently writes two groups of tuples concurrently to expose potential race issues when reading changes
+func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore, tupleGroupOne, tupleGroupTwo []*openfgav1.TupleKey) (context.Context, storage.ChangelogBackend) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -293,8 +297,7 @@ func writeFourTuplesConcurrently(t *testing.T, store string, datastore storage.O
 	wg.Add(2)
 
 	go func() {
-		writes := []*openfgav1.TupleKey{tkMaria, tkCraig}
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupOne)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}
@@ -302,8 +305,7 @@ func writeFourTuplesConcurrently(t *testing.T, store string, datastore storage.O
 	}()
 
 	go func() {
-		writes := []*openfgav1.TupleKey{tkYamil, tkMariaOrg}
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupTwo)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}
