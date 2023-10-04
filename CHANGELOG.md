@@ -8,6 +8,20 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.3] - 2023-10-04
+
+### Added
+
+* Configurable size limit for Authorization Models ([#1032](https://github.com/openfga/openfga/pull/1032))
+
+### Fixed
+
+* Reduce use of GOB in encoded cache key ([#1029](https://github.com/openfga/openfga/pull/1029))
+
+### Changed
+
+* Move standalone server config defaults ([#1036](https://github.com/openfga/openfga/pull/1036))
+
 ## [1.3.2] - 2023-08-25
 ### Added
 * Support TLS for OTLP trace endpoint ([#885](https://github.com/openfga/openfga/pull/885)) - thanks @matoous
@@ -182,7 +196,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Ready for Production with Postgres 
+## Ready for Production with Postgres
 OpenFGA with Postgres is now considered stable and ready for production usage.
 
 ## Fixed
@@ -620,7 +634,7 @@ no tuple key instead.
 ### Changed
 * Env variables have a new mappings.
 
-  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
+  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`).
 
 ### Fixed
 * goroutine leaks in Check resolution. ([#113](https://github.com/openfga/openfga/pull/113))
@@ -648,7 +662,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
 [1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2
 [1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0
