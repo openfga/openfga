@@ -255,7 +255,7 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func TestReadChangesAfterConcurrentWrites(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend := writeFourTuplesConcurrently(t, store, datastore)
 
