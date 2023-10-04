@@ -52,8 +52,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.uber.org/zap"
@@ -61,7 +59,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 )
@@ -538,7 +535,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 
 		if config.Trace.Enabled {
-			dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(injectTraceMetadata))
+			dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(telemetry.GRPCUnaryTraceMetadataInjector))
+			dialOpts = append(dialOpts, grpc.WithStreamInterceptor(telemetry.GRPCStreamTraceMetadataInjector))
 		}
 
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -573,14 +571,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		handler := http.Handler(mux)
 
 		if config.Trace.Enabled {
-			propagator := otel.GetTextMapPropagator()
-			// If tracig is enabled wrap the handler with custom middleware that extracts
-			// the tracing context and sets the corrent tracing context.
-			// We use this in favor of [otelhttp.NewHandler] to avoid unnecessary nesting.
-			handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				ctx := propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
-				handler.ServeHTTP(w, r.WithContext(ctx))
-			})
+			handler = telemetry.HTTPServerTraceExtractor(handler)
 		}
 
 		httpServer = &http.Server{
@@ -725,16 +716,4 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	s.Logger.Info("server exited. goodbye 👋")
 
 	return nil
-}
-
-// injectTraceMetadata is lightweight [grpc.UnaryClientInterceptor] that injects trace metadata into outgoing grpc unary call
-// without wrapping the call in new span.
-// This method is used for proxying HTTP calls to the gRPC server implementation without adding unnecessary nesting.
-func injectTraceMetadata(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	md, ok := metadata.FromOutgoingContext(ctx)
-	if !ok {
-		md = metadata.MD{}
-	}
-	otelgrpc.Inject(ctx, &md)
-	return invoker(ctx, method, req, reply, cc, opts...)
 }
