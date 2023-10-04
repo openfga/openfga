@@ -21,6 +21,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -146,6 +147,7 @@ type listObjectsRequest interface {
 	GetRelation() string
 	GetUser() string
 	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetContext() *structpb.Struct
 }
 
 func (q *ListObjectsQuery) evaluate(
@@ -230,6 +232,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				Context:          req.GetContext(),
 			}, reverseExpandResultsChan, resolutionMetadata)
 			if err != nil {
 				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
@@ -280,6 +283,7 @@ func (q *ListObjectsQuery) evaluate(
 					AuthorizationModelID: req.GetAuthorizationModelId(),
 					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 					ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+					Context:              req.GetContext(),
 					ResolutionMetadata: &graph.ResolutionMetadata{
 						Depth: q.resolveNodeLimit,
 					},

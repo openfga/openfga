@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -34,6 +35,7 @@ type ReverseExpandRequest struct {
 	Relation         string
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
 }
 
 // TODO combine with above?
@@ -43,6 +45,7 @@ type reverseExpandRequest struct {
 	targetObjectRef  *openfgav1.RelationReference
 	sourceUserRef    IsUserRef
 	contextualTuples []*openfgav1.TupleKey
+	context          *structpb.Struct
 }
 
 type IsUserRef interface {
@@ -85,6 +88,7 @@ func (u *UserRefTypedWildcard) String() string {
 
 type UserRefObjectRelation struct {
 	ObjectRelation *openfgav1.ObjectRelation
+	Condition      *openfgav1.RelationshipCondition
 }
 
 func (*UserRefObjectRelation) isUserRef() {}
@@ -247,7 +251,7 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan)
+				c.trySendCandidate(ctx, currentEdge, val, resultChan)
 			}
 		}
 	}
@@ -278,6 +282,7 @@ func (c *ReverseExpandQuery) execute(
 				targetObjectRef:  targetObjRef,
 				sourceUserRef:    req.User,
 				contextualTuples: req.ContextualTuples,
+				context:          req.Context,
 			}
 
 			switch innerLoopEdge.Type {
@@ -296,6 +301,7 @@ func (c *ReverseExpandQuery) execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
+					Context:          r.context,
 				}, resultChan, innerLoopEdge, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
 				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, resolutionMetadata)
@@ -382,6 +388,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
+				Context:          req.context,
 			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}
@@ -471,13 +478,12 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 		tk := t.GetKey()
 
-		foundObject := tk.GetObject()
-
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   foundObject,
+				Object:   tk.GetObject(),
 				Relation: tk.GetRelation(),
 			},
+			Condition: tk.GetCondition(),
 		}
 
 		subg.Go(func() error {
@@ -487,6 +493,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
+				Context:          req.context,
 			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}
@@ -494,9 +501,13 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	return subg.Wait()
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(
+	ctx context.Context,
+	edge *graph.RelationshipEdge,
+	candidateObject *UserRefObjectRelation,
+	candidateChan chan<- *ReverseExpandResult) {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
-		attribute.String("object", candidateObject),
+		attribute.String("object", candidateObject.ObjectRelation.Object),
 		attribute.Bool("sent", false),
 	))
 	defer span.End()
@@ -506,8 +517,14 @@ func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.R
 			span.SetAttributes(attribute.Bool("requires_further_eval", true))
 			resultStatus = RequiresFurtherEvalStatus
 		}
+
+		if candidateObject.Condition != nil {
+			span.SetAttributes(attribute.Bool("requires_further_eval", true))
+			resultStatus = RequiresFurtherEvalStatus
+		}
+
 		candidateChan <- &ReverseExpandResult{
-			Object:       candidateObject,
+			Object:       candidateObject.ObjectRelation.Object,
 			ResultStatus: resultStatus,
 		}
 		span.SetAttributes(attribute.Bool("sent", true))
