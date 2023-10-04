@@ -8,6 +8,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -448,8 +449,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 		{
 			name: "validate_model_size",
 			request: &openfgav1.WriteAuthorizationModelRequest{
-				StoreId:       storeID,
-				SchemaVersion: testutils.CreateRandomString(257 * 1_024),
+				StoreId: storeID,
+				SchemaVersion: testutils.CreateRandomString(
+					serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+				),
 				TypeDefinitions: parser.MustParse(`
 				type user
 
@@ -469,7 +472,9 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore, logger, 256*1_024)
+			cmd := commands.NewWriteAuthorizationModelCommand(
+				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+			)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)

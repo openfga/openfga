@@ -7,6 +7,7 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -73,12 +74,18 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 				StoreId: store,
 				Assertions: []*openfgav1.Assertion{
 					{
-						TupleKey:    tuple.NewTupleKey("repo:test", "invalidrelation", "user:elbuo"),
+						TupleKey: tuple.NewTupleKey(
+							"repo:test",
+							"invalidrelation",
+							"user:elbuo",
+						),
 						Expectation: false,
 					},
 				},
 			},
-			err: serverErrors.ValidationError(fmt.Errorf("relation 'repo#invalidrelation' not found")),
+			err: serverErrors.ValidationError(
+				fmt.Errorf("relation 'repo#invalidrelation' not found"),
+			),
 		},
 	}
 
@@ -89,13 +96,17 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			modelID, err := commands.NewWriteAuthorizationModelCommand(datastore, logger, 256*1_024).Execute(ctx, model)
+			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
+				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+			)
+
+			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
 			require.NoError(t, err)
 
-			cmd := commands.NewWriteAssertionsCommand(datastore, logger)
 			test.request.AuthorizationModelId = modelID.AuthorizationModelId
 
-			_, err = cmd.Execute(ctx, test.request)
+			writeAssetionCmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			_, err = writeAssetionCmd.Execute(ctx, test.request)
 			require.ErrorIs(t, test.err, err)
 		})
 	}
