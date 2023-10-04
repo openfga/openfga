@@ -10,9 +10,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [1.3.3] - 2023-10-04
 
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.2...v1.3.3)
+
 ### Added
 
 * Configurable size limit for Authorization Models ([#1032](https://github.com/openfga/openfga/pull/1032))
+
+  We've introduced a new size limit for authorization models, provided a consistent behavior across datastores, which defaults to `256KB`. This can be configured by using the `--max-authorization-model-size-in-bytes` flag.
 
 ### Fixed
 
@@ -21,6 +25,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Changed
 
 * Move standalone server config defaults ([#1036](https://github.com/openfga/openfga/pull/1036))
+
+* Persist Authorization Models serialized protobuf in the database ([#1028](https://github.com/openfga/openfga/pull/1028))
+
+  In the next series of releases will be progressively introducing changes via code and database migrations that will allow authorization models to be stored in a single database row.
+
+  See [here for more details](https://github.com/openfga/openfga/issues/1025).
+
 
 ## [1.3.2] - 2023-08-25
 ### Added
