@@ -253,75 +253,13 @@ func ReadConfig() (*serverconfig.Config, error) {
 	return config, nil
 }
 
-func VerifyConfig(cfg *serverconfig.Config) error {
-	if int(cfg.MaxConcurrentReadsForCheck) > cfg.Datastore.MaxOpenConns {
-		fmt.Printf("config 'maxConcurrentReadsForCheck' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForCheck, cfg.Datastore.MaxOpenConns)
-	}
-
-	if int(cfg.MaxConcurrentReadsForListObjects) > cfg.Datastore.MaxOpenConns {
-		fmt.Printf("config 'maxConcurrentReadsForListObjects' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForListObjects, cfg.Datastore.MaxOpenConns)
-	}
-
-	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
-		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
-	}
-
-	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
-		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
-	}
-
-	if cfg.Log.Level != "none" &&
-		cfg.Log.Level != "debug" &&
-		cfg.Log.Level != "info" &&
-		cfg.Log.Level != "warn" &&
-		cfg.Log.Level != "error" &&
-		cfg.Log.Level != "panic" &&
-		cfg.Log.Level != "fatal" {
-		return fmt.Errorf("config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
-	}
-
-	if cfg.Playground.Enabled {
-		if !cfg.HTTP.Enabled {
-			return errors.New("the HTTP server must be enabled to run the openfga playground")
-		}
-
-		if !(cfg.Authn.Method == "none" || cfg.Authn.Method == "preshared") {
-			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
-		}
-	}
-
-	if cfg.HTTP.TLS.Enabled {
-		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
-			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
-		}
-	}
-
-	if cfg.GRPC.TLS.Enabled {
-		if cfg.GRPC.TLS.CertPath == "" || cfg.GRPC.TLS.KeyPath == "" {
-			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-		}
-	}
-
-	if len(cfg.RequestDurationDatastoreQueryCountBuckets) == 0 {
-		return errors.New("request duration datastore query count buckets must not be empty")
-	}
-	for _, val := range cfg.RequestDurationDatastoreQueryCountBuckets {
-		valInt, err := strconv.Atoi(val)
-		if err != nil || valInt < 0 {
-			return errors.New("request duration datastore query count bucket items must be non-negative integer")
-		}
-	}
-
-	return nil
-}
-
 func run(_ *cobra.Command, _ []string) {
 	config, err := ReadConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	if err := VerifyConfig(config); err != nil {
+	if err := config.Verify(); err != nil {
 		panic(err)
 	}
 

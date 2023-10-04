@@ -225,7 +225,7 @@ type authTest struct {
 }
 
 func runServer(ctx context.Context, cfg *serverconfig.Config) error {
-	if err := VerifyConfig(cfg); err != nil {
+	if err := cfg.Verify(); err != nil {
 		return err
 	}
 
