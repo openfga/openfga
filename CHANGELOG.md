@@ -28,7 +28,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Persist Authorization Models serialized protobuf in the database ([#1028](https://github.com/openfga/openfga/pull/1028))
 
-  In the next series of releases will be progressively introducing changes via code and database migrations that will allow authorization models to be stored in a single database row.
+  In the next series of releases will progressively introduce changes via code and database migrations that will allow authorization models to be stored in a single database row.
 
   See [here for more details](https://github.com/openfga/openfga/issues/1025).
 
