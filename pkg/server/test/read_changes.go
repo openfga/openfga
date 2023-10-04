@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -59,7 +60,7 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 
 func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, err := setup(store, datastore)
+	ctx, backend, err := writeTuples(store, datastore)
 	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -240,7 +241,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, err := setup(store, datastore)
+	ctx, backend, err := writeTuples(store, datastore)
 	require.NoError(t, err)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
@@ -254,7 +255,24 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func setup(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
+func TestReadChangesAfterConcurrentWrites(t *testing.T, datastore storage.OpenFGADatastore) {
+	store := testutils.CreateRandomString(10)
+	ctx, backend := writeFourTuplesConcurrently(t, store, datastore)
+
+	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
+
+	// without type
+	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
+	require.NoError(t, err)
+	require.Len(t, res1.Changes, 4)
+
+	// with type
+	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "repo", "", storage.DefaultPageSize))
+	require.NoError(t, err)
+	require.Len(t, res2.Changes, 3)
+}
+
+func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
 	ctx := context.Background()
 
 	writes := []*openfgav1.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
@@ -264,4 +282,35 @@ func setup(store string, datastore storage.OpenFGADatastore) (context.Context, s
 	}
 
 	return ctx, datastore, nil
+}
+
+// writeFourTuplesConcurrently to expose potential race issues when reading changes
+func writeFourTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend) {
+	t.Helper()
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		writes := []*openfgav1.TupleKey{tkMaria, tkCraig}
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		writes := []*openfgav1.TupleKey{tkYamil, tkMariaOrg}
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	return ctx, datastore
 }
