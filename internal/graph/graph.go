@@ -96,7 +96,7 @@ type RelationshipEdge struct {
 
 func (r RelationshipEdge) String() string {
 	// TODO also print the condition
-	val := ""
+	var val string
 	if r.TuplesetRelation != "" {
 		val = fmt.Sprintf("userset %s, type %s, tupleset %s", r.TargetReference.String(), r.Type.String(), r.TuplesetRelation)
 	} else {
