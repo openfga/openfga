@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -17,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -47,18 +47,6 @@ const (
 	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
 	authorizationModelIDKey                             = "authorization_model_id"
 	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
-
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultChangelogHorizonOffset           = 0
-	defaultResolveNodeLimit                 = 25
-	defaultResolveNodeBreadthLimit          = 100
-	defaultListObjectsDeadline              = 3 * time.Second
-	defaultListObjectsMaxResults            = 1000
-	defaultMaxConcurrentReadsForCheck       = math.MaxUint32
-	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
-	defaultCheckQueryCacheLimit             = 10000
-	defaultCheckQueryCacheTTL               = 10 * time.Second
-	defaultCheckQueryCacheEnable            = false
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -103,6 +91,7 @@ type Server struct {
 	listObjectsMaxResults            uint32
 	maxConcurrentReadsForListObjects uint32
 	maxConcurrentReadsForCheck       uint32
+	maxAuthorizationModelSizeInBytes int
 	experimentals                    []ExperimentalFeatureFlag
 
 	typesystemResolver typesystem.TypesystemResolverFunc
@@ -243,6 +232,12 @@ func WithRequestDurationByQueryHistogramBuckets(buckets []uint) OpenFGAServiceV1
 	}
 }
 
+func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.maxAuthorizationModelSizeInBytes = size
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -253,23 +248,23 @@ func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 }
 
 func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
-
 	s := &Server{
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
-		changelogHorizonOffset:           defaultChangelogHorizonOffset,
-		resolveNodeLimit:                 defaultResolveNodeLimit,
-		resolveNodeBreadthLimit:          defaultResolveNodeBreadthLimit,
-		listObjectsDeadline:              defaultListObjectsDeadline,
-		listObjectsMaxResults:            defaultListObjectsMaxResults,
-		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
-		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
+		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
+		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
+		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
+		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
-		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
-		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
-		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
+		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
+		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkCache:             nil,
 
 		requestDurationByQueryHistogramBuckets: []uint{50, 200},
@@ -311,7 +306,6 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 }
 
 func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequest) (*openfgav1.ListObjectsResponse, error) {
-
 	targetObjectType := req.GetType()
 
 	ctx, span := tracer.Start(ctx, "ListObjects", trace.WithAttributes(
@@ -388,7 +382,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	return &openfgav1.ListObjectsResponse{
 		Objects: result.Objects,
 	}, nil
-
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
@@ -464,7 +457,6 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 }
 
 func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfgav1.ReadResponse, error) {
-
 	tk := req.GetTupleKey()
 	ctx, span := tracer.Start(ctx, "Read", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
@@ -586,7 +578,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		},
 	})
 	if err != nil {
-		if errors.Is(err, graph.ErrResolutionDepthExceeded) {
+		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}
 
@@ -688,7 +680,7 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -893,7 +885,6 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 // IsReady reports whether this OpenFGA server instance is ready to accept
 // traffic.
 func (s *Server) IsReady(ctx context.Context) (bool, error) {
-
 	// for now we only depend on the datastore being ready, but in the future
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.

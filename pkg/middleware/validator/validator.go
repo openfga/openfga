@@ -4,7 +4,7 @@ package validator
 import (
 	"context"
 
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
+	grpcvalidator "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/validator"
 	"google.golang.org/grpc"
 )
 
@@ -25,8 +25,7 @@ func RequestIsValidatedFromContext(ctx context.Context) bool {
 
 // UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-
-	validator := grpc_validator.UnaryServerInterceptor()
+	validator := grpcvalidator.UnaryServerInterceptor()
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		return validator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
@@ -37,7 +36,7 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 // StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	validator := grpc_validator.StreamServerInterceptor()
+	validator := grpcvalidator.StreamServerInterceptor()
 
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {

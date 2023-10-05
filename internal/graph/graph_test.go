@@ -80,7 +80,6 @@ func TestRelationshipEdge_String(t *testing.T) {
 }
 
 func TestRelationshipEdgeType_String(t *testing.T) {
-
 	require.Equal(t, "direct", DirectEdge.String())
 	require.Equal(t, "computed_userset", ComputedUsersetEdge.String())
 	require.Equal(t, "ttu", TupleToUsersetEdge.String())
@@ -88,7 +87,6 @@ func TestRelationshipEdgeType_String(t *testing.T) {
 }
 
 func TestPrunedRelationshipEdges(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		model    string
@@ -278,7 +276,6 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 }
 
 func TestRelationshipEdges(t *testing.T) {
-
 	tests := []struct {
 		name     string
 		model    string

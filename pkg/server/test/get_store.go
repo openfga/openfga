@@ -39,7 +39,6 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-
 			query := commands.NewGetStoreQuery(datastore, logger)
 			resp, err := query.Execute(ctx, test.request)
 

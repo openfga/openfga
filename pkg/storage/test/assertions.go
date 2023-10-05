@@ -12,7 +12,6 @@ import (
 )
 
 func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 
 	t.Run("writing_and_reading_assertions_succeeds", func(t *testing.T) {

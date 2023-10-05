@@ -240,8 +240,8 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 		)
 		return edges, nil
 	case *openfgav1.Userset_TupleToUserset: // e.g. type document, define viewer as writer from parent
-		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               //parent
-		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() //writer
+		tupleset := t.TupleToUserset.GetTupleset().GetRelation()               // parent
+		computedUserset := t.TupleToUserset.GetComputedUserset().GetRelation() // writer
 
 		var res []*RelationshipEdge
 		// e.g. type document, define parent:[user, group] as self
@@ -287,7 +287,6 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 			}
 
 			res = append(res, subResults...)
-
 		}
 
 		return res, nil
@@ -321,7 +320,6 @@ func (g *RelationshipGraph) getRelationshipEdgesWithTargetRewrite(
 
 		var edges []*RelationshipEdge
 		for _, child := range t.Intersection.GetChild() {
-
 			res, err := g.getRelationshipEdgesWithTargetRewrite(target, source, child, visited, findEdgeOption)
 			if err != nil {
 				return nil, err

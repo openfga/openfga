@@ -14,7 +14,6 @@ import (
 )
 
 func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 
 	// Create some stores

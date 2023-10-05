@@ -10,7 +10,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
-	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -22,12 +22,6 @@ import (
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
-
-const (
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeLimit        = 25
-	defaultResolveNodeBreadthLimit = 100
-)
 
 type ReverseExpandRequest struct {
 	StoreID          string
@@ -133,8 +127,8 @@ func NewReverseExpandQuery(ds storage.RelationshipTupleReader, ts *typesystem.Ty
 	query := &ReverseExpandQuery{
 		datastore:               ds,
 		typesystem:              ts,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
 		candidateObjectsMap:     new(sync.Map),
 		visitedUsersetsMap:      new(sync.Map),
 	}
@@ -202,7 +196,7 @@ func (c *ReverseExpandQuery) execute(
 		ctx = graph.ContextWithResolutionDepth(ctx, 0)
 	} else {
 		if depth >= c.resolveNodeLimit {
-			return serverErrors.AuthorizationModelResolutionTooComplex
+			return graph.ErrResolutionDepthExceeded
 		}
 
 		ctx = graph.ContextWithResolutionDepth(ctx, depth+1)

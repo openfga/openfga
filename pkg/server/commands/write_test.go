@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -162,4 +165,44 @@ func TestValidateWriteRequest(t *testing.T) {
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
+}
+
+func TestTransactionalWriteFailedError(t *testing.T) {
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(10)
+
+	mockDatastore.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(
+			&openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define viewer: [user] as self
+				`),
+			}, nil)
+
+	mockDatastore.EXPECT().
+		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(storage.ErrTransactionalWriteFailed)
+
+	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger())
+
+	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
+		StoreId: ulid.Make().String(),
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+		},
+	})
+	require.ErrorIs(t, err, serverErrors.NewInternalError("concurrent write conflict", storage.ErrTransactionalWriteFailed))
+	require.Nil(t, resp)
 }

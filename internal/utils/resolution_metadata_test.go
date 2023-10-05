@@ -24,7 +24,6 @@ func TestResolutionMetadata(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			forkedResolutionCounter.AddResolve()
-
 		}()
 	}
 

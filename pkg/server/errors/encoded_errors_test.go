@@ -362,7 +362,6 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 }
 
 func TestSanitizeErrorMessage(t *testing.T) {
-
 	got := sanitizedMessage(`proto: (line 1:2): unknown field "foo"`) // uses a whitespace rune of U+00a0 (see https://pkg.go.dev/unicode#IsSpace)
 	expected := `(line 1:2): unknown field "foo"`
 

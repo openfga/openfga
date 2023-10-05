@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -23,16 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const (
-	streamedBufferSize = 100
-
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeLimit                 = 25
-	defaultResolveNodeBreadthLimit          = 100
-	defaultListObjectsDeadline              = 3 * time.Second
-	defaultListObjectsMaxResults            = 1000
-	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
-)
+const streamedBufferSize = 100
 
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
@@ -114,11 +106,11 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
-		listObjectsDeadline:     defaultListObjectsDeadline,
-		listObjectsMaxResults:   defaultListObjectsMaxResults,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxConcurrentReads:      defaultMaxConcurrentReadsForListObjects,
+		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
+		listObjectsMaxResults:   serverconfig.DefaultListObjectsMaxResults,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		checkOptions:            []graph.LocalCheckerOption{},
 	}
 
@@ -155,7 +147,6 @@ func (q *ListObjectsQuery) evaluate(
 	maxResults uint32,
 	resolutionMetadata *reverseexpand.ResolutionMetadata,
 ) error {
-
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
@@ -205,7 +196,6 @@ func (q *ListObjectsQuery) evaluate(
 
 		if tuple.IsTypedWildcard(userObj) {
 			sourceUserRef = &reverseexpand.UserRefTypedWildcard{Type: tuple.GetType(userObj)}
-
 		}
 
 		if userRel != "" {
@@ -234,6 +224,11 @@ func (q *ListObjectsQuery) evaluate(
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 			}, reverseExpandResultsChan, resolutionMetadata)
 			if err != nil {
+				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+					resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
+					return
+				}
+
 				resultsChan <- ListObjectsResult{Err: err}
 			}
 
@@ -282,6 +277,11 @@ func (q *ListObjectsQuery) evaluate(
 					},
 				})
 				if err != nil {
+					if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+						resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
+						return
+					}
+
 					resultsChan <- ListObjectsResult{Err: err}
 					return
 				}
@@ -316,7 +316,6 @@ func (q *ListObjectsQuery) Execute(
 	ctx context.Context,
 	req *openfgav1.ListObjectsRequest,
 ) (*ListObjectsResponse, error) {
-
 	resultsChan := make(chan ListObjectsResult, 1)
 	maxResults := q.listObjectsMaxResults
 	if maxResults > 0 {
@@ -341,7 +340,6 @@ func (q *ListObjectsQuery) Execute(
 
 	for {
 		select {
-
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
@@ -356,6 +354,7 @@ func (q *ListObjectsQuery) Execute(
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 					return nil, result.Err
 				}
+
 				return nil, serverErrors.HandleError("", result.Err)
 			}
 
@@ -374,7 +373,6 @@ func (q *ListObjectsQuery) Execute(
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
 func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, error) {
-
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -395,7 +393,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	for {
 		select {
-
 		case <-timeoutCtx.Done():
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
