@@ -375,7 +375,7 @@ func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
 	}
 
 	if currentVersion != latestDBVersion {
-		return false, fmt.Errorf("database version is %d but expected %d", currentVersion, latestDBVersion)
+		return false, fmt.Errorf("database version is %d but expected latest %d", currentVersion, latestDBVersion)
 	}
 
 	return true, nil
