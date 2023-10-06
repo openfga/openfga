@@ -41,7 +41,7 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 			}
 
 			ready, err = ds.IsReady(context.Background())
-			require.ErrorContains(t, err, "database version is 1 but expected latest 6")
+			require.ErrorContains(t, err, "database version is 1 but expected latest 7")
 			require.False(t, ready)
 		})
 	}
