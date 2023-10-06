@@ -5,26 +5,26 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 var (
 	cmpOpts = []cmp.Option{
 		cmpopts.IgnoreUnexported(
-			openfgapb.AuthorizationModel{},
-			openfgapb.TypeDefinition{},
-			openfgapb.Userset{},
-			openfgapb.Userset_This{},
-			openfgapb.DirectUserset{},
-			openfgapb.TupleKey{},
-			openfgapb.Tuple{},
-			openfgapb.TupleChange{},
-			openfgapb.Assertion{},
+			openfgav1.AuthorizationModel{},
+			openfgav1.TypeDefinition{},
+			openfgav1.Userset{},
+			openfgav1.Userset_This{},
+			openfgav1.DirectUserset{},
+			openfgav1.TupleKey{},
+			openfgav1.Tuple{},
+			openfgav1.TupleChange{},
+			openfgav1.Assertion{},
 		),
-		cmpopts.IgnoreFields(openfgapb.Tuple{}, "Timestamp"),
-		cmpopts.IgnoreFields(openfgapb.TupleChange{}, "Timestamp"),
+		cmpopts.IgnoreFields(openfgav1.Tuple{}, "Timestamp"),
+		cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp"),
 		testutils.TupleKeyCmpTransformer,
 	}
 )
@@ -33,9 +33,9 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	// tuples
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
-	t.Run("TestListObjectsByType", func(t *testing.T) { ListObjectsByTypeTest(t, ds) })
 	t.Run("TestReadChanges", func(t *testing.T) { ReadChangesTest(t, ds) })
 	t.Run("TestReadStartingWithUser", func(t *testing.T) { ReadStartingWithUserTest(t, ds) })
+	t.Run("TestRead", func(t *testing.T) { ReadTest(t, ds) })
 
 	// authorization models
 	t.Run("TestWriteAndReadAuthorizationModel", func(t *testing.T) { WriteAndReadAuthorizationModelTest(t, ds) })

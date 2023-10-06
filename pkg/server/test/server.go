@@ -6,10 +6,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 )
 
-const (
-	defaultResolveNodeLimit = 25
-)
-
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	RunQueryTests(t, ds)
 	RunCommandTests(t, ds)
@@ -19,7 +15,6 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadAuthorizationModelQueryErrors", func(t *testing.T) { TestReadAuthorizationModelQueryErrors(t, ds) })
 	t.Run("TestSuccessfulReadAuthorizationModelQuery", func(t *testing.T) { TestSuccessfulReadAuthorizationModelQuery(t, ds) })
 	t.Run("TestReadAuthorizationModel", func(t *testing.T) { ReadAuthorizationModelTest(t, ds) })
-
 	t.Run("TestExpandQuery", func(t *testing.T) { TestExpandQuery(t, ds) })
 	t.Run("TestExpandQueryErrors", func(t *testing.T) { TestExpandQueryErrors(t, ds) })
 
@@ -50,8 +45,12 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
+	t.Run("TestReadChangesAfterConcurrentWritesReturnsUniqueResults",
+		func(t *testing.T) { TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t, ds) },
+	)
 
 	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
+	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
@@ -60,7 +59,6 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestWriteAssertions", func(t *testing.T) { TestWriteAssertions(t, ds) })
 	t.Run("TestCreateStore", func(t *testing.T) { TestCreateStore(t, ds) })
 	t.Run("TestDeleteStore", func(t *testing.T) { TestDeleteStore(t, ds) })
-	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {

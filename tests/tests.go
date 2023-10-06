@@ -4,10 +4,12 @@ import (
 	"context"
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 )
 
@@ -15,19 +17,25 @@ import (
 // to bootstrap OpenFGA resources (stores, models, relationship tuples, etc..) needed to
 // execute tests.
 type TestClientBootstrapper interface {
-	CreateStore(ctx context.Context, in *openfgapb.CreateStoreRequest, opts ...grpc.CallOption) (*openfgapb.CreateStoreResponse, error)
-	WriteAuthorizationModel(ctx context.Context, in *openfgapb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgapb.WriteAuthorizationModelResponse, error)
-	Write(ctx context.Context, in *openfgapb.WriteRequest, opts ...grpc.CallOption) (*openfgapb.WriteResponse, error)
+	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
+	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
+	Write(ctx context.Context, in *openfgav1.WriteRequest, opts ...grpc.CallOption) (*openfgav1.WriteResponse, error)
 }
 
-func StartServer(t testing.TB, cfg *run.Config) context.CancelFunc {
+func StartServer(t testing.TB, cfg *serverconfig.Config) context.CancelFunc {
+	logger := logger.MustNewLogger(cfg.Log.Format, cfg.Log.Level)
+	serverCtx := &run.ServerContext{Logger: logger}
+	return StartServerWithContext(t, cfg, serverCtx)
+}
+
+func StartServerWithContext(t testing.TB, cfg *serverconfig.Config, serverCtx *run.ServerContext) context.CancelFunc {
 	container := storage.RunDatastoreTestContainer(t, cfg.Datastore.Engine)
 	cfg.Datastore.URI = container.GetConnectionURI(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		err := run.RunServer(ctx, cfg)
+		err := serverCtx.Run(ctx, cfg)
 		require.NoError(t, err)
 	}()
 

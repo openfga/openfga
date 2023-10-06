@@ -1,3 +1,4 @@
+// Package storeid contains middleware to log the store ID.
 package storeid
 
 import (
@@ -38,7 +39,6 @@ func contextWithHandle(ctx context.Context) context.Context {
 }
 
 func SetStoreIDInContext(ctx context.Context, req interface{}) {
-
 	handle := ctx.Value(storeIDCtxKey)
 	if handle == nil {
 		return
@@ -90,7 +90,6 @@ func (r *reporter) PostMsgReceive(msg interface{}, err error, _ time.Duration) {
 
 func reportable() interceptors.CommonReportableFunc {
 	return func(ctx context.Context, c interceptors.CallMeta) (interceptors.Reporter, context.Context) {
-
 		ctx = contextWithHandle(ctx)
 
 		r := reporter{ctx}

@@ -6,40 +6,39 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	type getStoreQueryTest struct {
 		_name            string
-		request          *openfgapb.GetStoreRequest
-		expectedResponse *openfgapb.GetStoreResponse
+		request          *openfgav1.GetStoreRequest
+		expectedResponse *openfgav1.GetStoreResponse
 		err              error
 	}
 
 	var tests = []getStoreQueryTest{
 		{
 			_name:   "ReturnsNotFound",
-			request: &openfgapb.GetStoreRequest{StoreId: "non-existent store"},
+			request: &openfgav1.GetStoreRequest{StoreId: "non-existent store"},
 			err:     serverErrors.StoreIDNotFound,
 		},
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.GetStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-
 			query := commands.NewGetStoreQuery(datastore, logger)
 			resp, err := query.Execute(ctx, test.request)
 
@@ -63,20 +62,20 @@ func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
 
-	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgapb.CreateStoreRequest{Name: store})
+	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: store})
 	require.NoError(t, err)
 
 	query := commands.NewGetStoreQuery(datastore, logger)
-	actualResponse, actualError := query.Execute(ctx, &openfgapb.GetStoreRequest{StoreId: createStoreResponse.Id})
+	actualResponse, actualError := query.Execute(ctx, &openfgav1.GetStoreRequest{StoreId: createStoreResponse.Id})
 	require.NoError(t, actualError)
 
-	expectedResponse := &openfgapb.GetStoreResponse{
+	expectedResponse := &openfgav1.GetStoreResponse{
 		Id:   createStoreResponse.Id,
 		Name: store,
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgapb.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgapb.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.GetStoreResponse{})
+	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
 
 	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("mismatch (-want +got):\n%s", diff)

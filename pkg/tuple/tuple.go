@@ -1,3 +1,4 @@
+// Package tuple contains code to manipulate tuples and errors related to tuples.
 package tuple
 
 import (
@@ -5,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type UserType string
@@ -24,8 +25,8 @@ var (
 	relationRegex = regexp.MustCompile(`^[^:#@\s]+$`)
 )
 
-func NewTupleKey(object, relation, user string) *openfgapb.TupleKey {
-	return &openfgapb.TupleKey{
+func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
 		Object:   object,
 		Relation: relation,
 		User:     user,
@@ -34,7 +35,7 @@ func NewTupleKey(object, relation, user string) *openfgapb.TupleKey {
 
 // ObjectKey returns the canonical key for the provided Object. The ObjectKey of an object
 // is the string 'objectType:objectId'.
-func ObjectKey(obj *openfgapb.Object) string {
+func ObjectKey(obj *openfgav1.Object) string {
 	return fmt.Sprintf("%s:%s", obj.Type, obj.Id)
 }
 
@@ -56,7 +57,7 @@ func BuildObject(objectType, objectID string) string {
 }
 
 // GetObjectRelationAsString returns a string like "object#relation". If there is no relation it returns "object"
-func GetObjectRelationAsString(objectRelation *openfgapb.ObjectRelation) string {
+func GetObjectRelationAsString(objectRelation *openfgav1.ObjectRelation) string {
 	if objectRelation.GetRelation() != "" {
 		return fmt.Sprintf("%s#%s", objectRelation.GetObject(), objectRelation.GetRelation())
 	}
@@ -111,7 +112,7 @@ func GetUserTypeFromUser(user string) UserType {
 
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters)
-func TupleKeyToString(tk *openfgapb.TupleKey) string {
+func TupleKeyToString(tk *openfgav1.TupleKey) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
 }
 
@@ -155,7 +156,7 @@ func IsTypedWildcard(s string) bool {
 	return false
 }
 
-func ToUserPartsFromObjectRelation(u *openfgapb.ObjectRelation) (string, string, string) {
+func ToUserPartsFromObjectRelation(u *openfgav1.ObjectRelation) (string, string, string) {
 	user := GetObjectRelationAsString(u)
 	return ToUserParts(user)
 }
