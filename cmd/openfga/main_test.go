@@ -324,9 +324,9 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 		uri := testDatastore.GetConnectionURI(true)
 
-		t.Logf("migrate database down to version 3")
+		t.Logf("migrate database down to version 4")
 		migrateCommand := migrate.NewMigrateCommand()
-		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(3)})
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(4)})
 		err := migrateCommand.Execute()
 		require.NoError(t, err)
 

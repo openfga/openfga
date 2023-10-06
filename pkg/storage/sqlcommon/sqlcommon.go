@@ -22,7 +22,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const latestDBVersion = 4
+// TODO everytime we add a migration we have to update this. Is there a better way?
+const latestDBVersion = 5
 
 type Config struct {
 	Username               string
