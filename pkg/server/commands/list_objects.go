@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
@@ -23,16 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-const (
-	streamedBufferSize = 100
-
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeLimit                 = 25
-	defaultResolveNodeBreadthLimit          = 100
-	defaultListObjectsDeadline              = 3 * time.Second
-	defaultListObjectsMaxResults            = 1000
-	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
-)
+const streamedBufferSize = 100
 
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
@@ -114,11 +106,11 @@ func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjects
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
-		listObjectsDeadline:     defaultListObjectsDeadline,
-		listObjectsMaxResults:   defaultListObjectsMaxResults,
-		resolveNodeLimit:        defaultResolveNodeLimit,
-		resolveNodeBreadthLimit: defaultResolveNodeBreadthLimit,
-		maxConcurrentReads:      defaultMaxConcurrentReadsForListObjects,
+		listObjectsDeadline:     serverconfig.DefaultListObjectsDeadline,
+		listObjectsMaxResults:   serverconfig.DefaultListObjectsMaxResults,
+		resolveNodeLimit:        serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit: serverconfig.DefaultResolveNodeBreadthLimit,
+		maxConcurrentReads:      serverconfig.DefaultMaxConcurrentReadsForListObjects,
 		checkOptions:            []graph.LocalCheckerOption{},
 	}
 

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -17,6 +16,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -47,19 +47,6 @@ const (
 	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
 	authorizationModelIDKey                             = "authorization_model_id"
 	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
-
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultChangelogHorizonOffset           = 0
-	defaultResolveNodeLimit                 = 25
-	defaultResolveNodeBreadthLimit          = 100
-	defaultListObjectsDeadline              = 3 * time.Second
-	defaultListObjectsMaxResults            = 1000
-	defaultMaxConcurrentReadsForCheck       = math.MaxUint32
-	defaultMaxConcurrentReadsForListObjects = math.MaxUint32
-	defaultCheckQueryCacheLimit             = 10000
-	defaultCheckQueryCacheTTL               = 10 * time.Second
-	defaultCheckQueryCacheEnable            = false
-	defaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -265,19 +252,19 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		logger:                           logger.NewNoopLogger(),
 		encoder:                          encoder.NewBase64Encoder(),
 		transport:                        gateway.NewNoopTransport(),
-		changelogHorizonOffset:           defaultChangelogHorizonOffset,
-		resolveNodeLimit:                 defaultResolveNodeLimit,
-		resolveNodeBreadthLimit:          defaultResolveNodeBreadthLimit,
-		listObjectsDeadline:              defaultListObjectsDeadline,
-		listObjectsMaxResults:            defaultListObjectsMaxResults,
-		maxConcurrentReadsForCheck:       defaultMaxConcurrentReadsForCheck,
-		maxConcurrentReadsForListObjects: defaultMaxConcurrentReadsForListObjects,
-		maxAuthorizationModelSizeInBytes: defaultMaxAuthorizationModelSizeInBytes,
+		changelogHorizonOffset:           serverconfig.DefaultChangelogHorizonOffset,
+		resolveNodeLimit:                 serverconfig.DefaultResolveNodeLimit,
+		resolveNodeBreadthLimit:          serverconfig.DefaultResolveNodeBreadthLimit,
+		listObjectsDeadline:              serverconfig.DefaultListObjectsDeadline,
+		listObjectsMaxResults:            serverconfig.DefaultListObjectsMaxResults,
+		maxConcurrentReadsForCheck:       serverconfig.DefaultMaxConcurrentReadsForCheck,
+		maxConcurrentReadsForListObjects: serverconfig.DefaultMaxConcurrentReadsForListObjects,
+		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
 		experimentals:                    make([]ExperimentalFeatureFlag, 0, 10),
 
-		checkQueryCacheEnabled: defaultCheckQueryCacheEnable,
-		checkQueryCacheLimit:   defaultCheckQueryCacheLimit,
-		checkQueryCacheTTL:     defaultCheckQueryCacheTTL,
+		checkQueryCacheEnabled: serverconfig.DefaultCheckQueryCacheEnable,
+		checkQueryCacheLimit:   serverconfig.DefaultCheckQueryCacheLimit,
+		checkQueryCacheTTL:     serverconfig.DefaultCheckQueryCacheTTL,
 		checkCache:             nil,
 
 		requestDurationByQueryHistogramBuckets: []uint{50, 200},
