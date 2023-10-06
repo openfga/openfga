@@ -317,6 +317,8 @@ func connect(t *testing.T, tester OpenFGATester) *grpc.ClientConn {
 	return conn
 }
 
+// MigrateDatastoreToVersion5Test is meant to prove that a server that hasn't been updated to the latest version
+// can still write tuples after the database has been migrated to version 5
 func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 	t.Run(engine, func(t *testing.T) {
 		store := ulid.Make().String()
@@ -330,20 +332,20 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		err := migrateCommand.Execute()
 		require.NoError(t, err)
 
-		t.Logf("start openfga 1.1.0 and wait for it to be ready")
+		t.Logf("start openfga 1.3.3 and wait for it to be ready")
 		// this is a hack to have the networking work in GitHub Actions
 		datastoreConnectionURI := strings.Replace(uri, "localhost", defaultIPAddressInLinux, -1)
-		tester := newOpenFGATester(t, "openfga/openfga:v1.1.0", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
+		tester := newOpenFGATester(t, "openfga/openfga:v1.3.3", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
 		defer tester.Cleanup()
 
 		t.Logf("create a client of openfga")
 		conn := connect(t, tester)
 		defer conn.Close()
 
-		client := openfgav1.NewOpenFGAServiceClient(conn)
+		openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
 
 		t.Logf("write authorization model")
-		_, err = client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		_, err = openfgaClient.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 			StoreId: store,
 			TypeDefinitions: parser.MustParse(`type user
           type document
@@ -354,7 +356,7 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		require.NoError(t, err)
 
 		t.Logf("write one tuple")
-		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		_, err = openfgaClient.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: store,
 			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:a"),
@@ -368,7 +370,7 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		require.NoError(t, err)
 
 		t.Logf("write another tuple")
-		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		_, err = openfgaClient.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: store,
 			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("document:1", "viewer", "user:b"),
@@ -377,7 +379,7 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		require.NoError(t, err)
 
 		t.Logf("read changes")
-		resp, err := client.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
+		resp, err := openfgaClient.ReadChanges(context.Background(), &openfgav1.ReadChangesRequest{
 			StoreId: store,
 		})
 		require.NoError(t, err)
