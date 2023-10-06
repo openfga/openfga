@@ -3,26 +3,20 @@ package memory
 import (
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
-var memoryStorage *MemoryBackend
-
-func init() {
-	memoryStorage = New(10000, 10000)
-}
-
 func TestMemdbStorage(t *testing.T) {
-	ds := New(10, 24)
+	ds := New()
 	test.RunAllTests(t, ds)
 }
 
 func TestStaticTupleIteratorNoRace(t *testing.T) {
 	iter := &staticIterator{
-		tuples: []*openfgapb.Tuple{
+		tuples: []*openfgav1.Tuple{
 			{
 				Key: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			},

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 type ReadChangesQuery struct {
@@ -30,7 +30,7 @@ func NewReadChangesQuery(backend storage.ChangelogBackend, logger logger.Logger,
 }
 
 // Execute the ReadChangesQuery, returning paginated `openfga.TupleChange`(s) and a possibly non-empty continuation token.
-func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChangesRequest) (*openfgapb.ReadChangesResponse, error) {
+func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgav1.ReadChangesRequest) (*openfgav1.ReadChangesResponse, error) {
 	decodedContToken, err := q.encoder.Decode(req.GetContinuationToken())
 	if err != nil {
 		return nil, serverErrors.InvalidContinuationToken
@@ -40,7 +40,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 	changes, contToken, err := q.backend.ReadChanges(ctx, req.StoreId, req.Type, paginationOptions, q.horizonOffset)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return &openfgapb.ReadChangesResponse{
+			return &openfgav1.ReadChangesResponse{
 				ContinuationToken: req.GetContinuationToken(),
 			}, nil
 		}
@@ -52,7 +52,7 @@ func (q *ReadChangesQuery) Execute(ctx context.Context, req *openfgapb.ReadChang
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	return &openfgapb.ReadChangesResponse{
+	return &openfgav1.ReadChangesResponse{
 		Changes:           changes,
 		ContinuationToken: encodedContToken,
 	}, nil

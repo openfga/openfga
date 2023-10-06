@@ -1,3 +1,4 @@
+// Package http contains utility functions to modify HTTP requests and responses
 package http
 
 import (
@@ -100,7 +101,6 @@ func CustomHTTPErrorHandler(ctx context.Context, w http.ResponseWriter, r *http.
 	doForwardTrailers := requestAcceptsTrailers(r)
 
 	if doForwardTrailers {
-
 		handleForwardResponseTrailerHeader(w, md)
 		w.Header().Set("Transfer-Encoding", "chunked")
 	}

@@ -38,7 +38,7 @@ run-postgres: build ## Run the OpenFGA server with Postgres storage
 .PHONY: start-mysql
 start-mysql: build ## Start a MySQL Docker container
 	docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=secret -e MYSQL_DATABASE=openfga mysql:8
-	
+
 .PHONY: migrate-mysql
 migrate-mysql: build ## Run MySQL migrations
 	# nosemgrep: detected-username-and-password-in-uri
@@ -54,7 +54,7 @@ download:
 
 .PHONY: install-tools
 install-tools: download ## Install developer tooling
-	@cd tools && go list -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
+	@cd tools && go list -e -f '{{range .Imports}}{{.}} {{end}}' tools.go | CGO_ENABLED=0 xargs go install -mod=readonly
 
 .PHONY: go-generate
 go-generate: install-tools
@@ -86,3 +86,7 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
+
+.PHONY: bench-cicd
+bench-cicd: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
+	go test ./... -bench="BenchmarkOpenFGAServer/BenchmarkMemoryDatastore|BenchmarkCheckMemory" -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem

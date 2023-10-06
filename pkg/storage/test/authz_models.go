@@ -6,23 +6,22 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func WriteAndReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
 	t.Run("write, then read, succeeds", func(t *testing.T) {
-		model := &openfgapb.AuthorizationModel{
+		model := &openfgav1.AuthorizationModel{
 			Id:              ulid.Make().String(),
 			SchemaVersion:   typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{{Type: "folder"}},
+			TypeDefinitions: []*openfgav1.TypeDefinition{{Type: "folder"}},
 		}
 
 		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
@@ -46,16 +45,16 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	ctx := context.Background()
 	store := ulid.Make().String()
 
-	model1 := &openfgapb.AuthorizationModel{
+	model1 := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1.Userset{
 					"viewer": {
-						Userset: &openfgapb.Userset_This{
-							This: &openfgapb.DirectUserset{},
+						Userset: &openfgav1.Userset_This{
+							This: &openfgav1.DirectUserset{},
 						},
 					},
 				},
@@ -66,16 +65,16 @@ func ReadAuthorizationModelsTest(t *testing.T, datastore storage.OpenFGADatastor
 	err := datastore.WriteAuthorizationModel(ctx, store, model1)
 	require.NoError(t, err)
 
-	model2 := &openfgapb.AuthorizationModel{
+	model2 := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_0,
-		TypeDefinitions: []*openfgapb.TypeDefinition{
+		TypeDefinitions: []*openfgav1.TypeDefinition{
 			{
 				Type: "folder",
-				Relations: map[string]*openfgapb.Userset{
+				Relations: map[string]*openfgav1.Userset{
 					"reader": {
-						Userset: &openfgapb.Userset_This{
-							This: &openfgapb.DirectUserset{},
+						Userset: &openfgav1.Userset_This{
+							This: &openfgav1.DirectUserset{},
 						},
 					},
 				},
@@ -122,15 +121,15 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 	t.Run("find_latest_authorization_model_should_succeed", func(t *testing.T) {
 		store := ulid.Make().String()
 
-		oldModel := &openfgapb.AuthorizationModel{
+		oldModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"viewer": {
-							Userset: &openfgapb.Userset_This{},
+							Userset: &openfgav1.Userset_This{},
 						},
 					},
 				},
@@ -139,15 +138,15 @@ func FindLatestAuthorizationModelIDTest(t *testing.T, datastore storage.OpenFGAD
 		err := datastore.WriteAuthorizationModel(ctx, store, oldModel)
 		require.NoError(t, err)
 
-		newModel := &openfgapb.AuthorizationModel{
+		newModel := &openfgav1.AuthorizationModel{
 			Id:            ulid.Make().String(),
 			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: []*openfgapb.TypeDefinition{
+			TypeDefinitions: []*openfgav1.TypeDefinition{
 				{
 					Type: "folder",
-					Relations: map[string]*openfgapb.Userset{
+					Relations: map[string]*openfgav1.Userset{
 						"reader": {
-							Userset: &openfgapb.Userset_This{},
+							Userset: &openfgav1.Userset_This{},
 						},
 					},
 				},

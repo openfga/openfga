@@ -2,19 +2,19 @@ package mysql
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/openfga/openfga/cmd"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	"github.com/openfga/openfga/pkg/storage/test"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
+	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	openfgav1 "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestMySQLDatastore(t *testing.T) {
@@ -27,28 +27,16 @@ func TestMySQLDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestMigrate(t *testing.T) {
-	engine := "mysql"
-	// starts the container and runs migration up to the latest migration version available
-	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
-	defer ds.Close()
-
-	// going from version 3 to 4 when migration #4 doesn't exist is a no-op
-	version := testDatastore.GetDatabaseSchemaVersion() + 1
-
-	migrateCommand := cmd.NewMigrateCommand()
-
-	for version >= 0 {
-		t.Logf("migrating to version %d", version)
-		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
-		err = migrateCommand.Execute()
-		require.NoError(t, err)
-		version--
-	}
+	ds.Close()
+	ready, err := ds.IsReady(context.Background())
+	require.Error(t, err)
+	require.False(t, ready)
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
@@ -96,7 +84,6 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	curTuple, err = iter.Next()
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.Key)
-
 }
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid
@@ -141,5 +128,29 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// we expect that objectID2 will return first because it has a smaller ulid
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
+}
 
+func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "mysql")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	defer ds.Close()
+	store := "store"
+	modelID := "foo"
+	schemaVersion := typesystem.SchemaVersion1_0
+
+	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+	require.NoError(t, err)
+	pbdata := []byte{0x01, 0x02, 0x03}
+
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES (?, ?, ?, ?, ?, ?)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	require.NoError(t, err)
+
+	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }
