@@ -1,3 +1,4 @@
+// Package listobjects contains integration tests for the ListObjects and StreamedListObjects APIs.
 package listobjects
 
 import (
@@ -5,20 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"testing"
 
 	v1parser "github.com/craigpastro/openfga-dsl-parser"
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
 	"github.com/stretchr/testify/require"
-	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v3"
 )
+
+var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
 
 type individualTest struct {
 	Name   string
@@ -37,13 +41,13 @@ type testParams struct {
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
 	Model                string
-	Tuples               []*pb.TupleKey
+	Tuples               []*openfgav1.TupleKey
 	ListObjectAssertions []*assertion `yaml:"listObjectsAssertions"`
 }
 
 type assertion struct {
-	Request          *pb.ListObjectsRequest
-	ContextualTuples []*pb.TupleKey `yaml:"contextualTuples"`
+	Request          *openfgav1.ListObjectsRequest
+	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
 	Expectation      []string
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
 }
@@ -51,8 +55,8 @@ type assertion struct {
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
 type ClientInterface interface {
 	check.ClientInterface
-	ListObjects(ctx context.Context, in *pb.ListObjectsRequest, opts ...grpc.CallOption) (*pb.ListObjectsResponse, error)
-	StreamedListObjects(ctx context.Context, in *pb.StreamedListObjectsRequest, opts ...grpc.CallOption) (pb.OpenFGAService_StreamedListObjectsClient, error)
+	ListObjects(ctx context.Context, in *openfgav1.ListObjectsRequest, opts ...grpc.CallOption) (*openfgav1.ListObjectsResponse, error)
+	StreamedListObjects(ctx context.Context, in *openfgav1.StreamedListObjectsRequest, opts ...grpc.CallOption) (openfgav1.OpenFGAService_StreamedListObjectsClient, error)
 }
 
 // RunAllTests will invoke all list objects tests
@@ -93,7 +97,6 @@ func runTests(t *testing.T, params testParams) {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
-
 	}
 }
 
@@ -115,39 +118,45 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		}
 
 		t.Parallel()
-		resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: name})
+		resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: name})
 		require.NoError(t, err)
 
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
 			// arrange: write model
-			var typedefs []*pb.TypeDefinition
+			var typedefs []*openfgav1.TypeDefinition
 			if schemaVersion == typesystem.SchemaVersion1_1 {
 				typedefs = parser.MustParse(stage.Model)
-
 			} else {
 				typedefs = v1parser.MustParse(stage.Model)
 			}
 
-			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
 			})
 			require.NoError(t, err)
 
+			tuples := stage.Tuples
+			tuplesLength := len(tuples)
 			// arrange: write tuples
-			if len(stage.Tuples) > 0 && !contextTupleTest {
-				_, err = client.Write(ctx, &pb.WriteRequest{
-					StoreId: storeID,
-					Writes:  &pb.TupleKeys{TupleKeys: stage.Tuples},
-				})
-				require.NoError(t, err)
+			if tuplesLength > 0 && !contextTupleTest {
+				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
+					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
+					writeChunk := (tuples)[i:end]
+					_, err = client.Write(ctx, &openfgav1.WriteRequest{
+						StoreId:              storeID,
+						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
+					})
+					require.NoError(t, err)
+				}
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {
-				detailedInfo := fmt.Sprintf("ListObject request: %s. Contextual tuples: %s", assertion.Request, assertion.ContextualTuples)
+				detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
@@ -155,44 +164,45 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 
 				// assert 1: on regular list objects endpoint
-				resp, err := client.ListObjects(ctx, &pb.ListObjectsRequest{
-					StoreId:  storeID,
-					Type:     assertion.Request.Type,
-					Relation: assertion.Request.Relation,
-					User:     assertion.Request.User,
-					ContextualTuples: &pb.ContextualTupleKeys{
+				resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					Type:                 assertion.Request.Type,
+					Relation:             assertion.Request.Relation,
+					User:                 assertion.Request.User,
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
 				})
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, err)
+					require.NoError(t, err, detailedInfo)
 					require.ElementsMatch(t, assertion.Expectation, resp.Objects, detailedInfo)
-
 				} else {
-					require.Error(t, err)
+					require.Error(t, err, detailedInfo)
 					e, ok := status.FromError(err)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 
 				// assert 2: on streaming list objects endpoint
 				done := make(chan struct{})
 				var streamedObjectIds []string
 
-				clientStream, err := client.StreamedListObjects(ctx, &pb.StreamedListObjectsRequest{
-					StoreId:  storeID,
-					Type:     assertion.Request.Type,
-					Relation: assertion.Request.Relation,
-					User:     assertion.Request.User,
-					ContextualTuples: &pb.ContextualTupleKeys{
+				clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					Type:                 assertion.Request.Type,
+					Relation:             assertion.Request.Relation,
+					User:                 assertion.Request.User,
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
 				}, []grpc.CallOption{}...)
 				require.NoError(t, err)
 
 				var streamingErr error
-				var streamingResp *pb.StreamedListObjectsResponse
+				var streamingResp *openfgav1.StreamedListObjectsResponse
 				go func() {
 					for {
 						streamingResp, streamingErr = clientStream.Recv()
@@ -204,38 +214,37 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 							}
 							break
 						}
-
 					}
 					done <- struct{}{}
 				}()
 				<-done
 
 				if assertion.ErrorCode == 0 {
-					require.NoError(t, streamingErr)
+					require.NoError(t, streamingErr, detailedInfo)
 					require.ElementsMatch(t, assertion.Expectation, streamedObjectIds, detailedInfo)
 				} else {
-					require.Error(t, streamingErr)
+					require.Error(t, streamingErr, detailedInfo)
 					e, ok := status.FromError(streamingErr)
-					require.True(t, ok)
-					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+					require.True(t, ok, detailedInfo)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()), detailedInfo)
 				}
 
 				if assertion.ErrorCode == 0 {
 					// assert 3: each object in the response of ListObjects should return check -> true
 					for _, object := range resp.Objects {
-						checkResp, err := client.Check(ctx, &pb.CheckRequest{
-							StoreId:  storeID,
-							TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
-							ContextualTuples: &pb.ContextualTupleKeys{
+						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+							TupleKey:             tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
 						})
-						require.NoError(t, err)
-						require.True(t, checkResp.Allowed)
+						require.NoError(t, err, detailedInfo)
+						require.True(t, checkResp.Allowed, detailedInfo)
 					}
 				}
 			}
 		}
 	})
-
 }

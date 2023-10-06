@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	expireTimeout = 10 * time.Minute //benchmarks take a while to run
+	expireTimeout = 10 * time.Minute // benchmarks take a while to run
 )
 
 type postgresTestContainer struct {
@@ -101,7 +101,6 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	require.NoError(t, err, "failed to create postgres docker container")
 
 	stopContainer := func() {
-
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 

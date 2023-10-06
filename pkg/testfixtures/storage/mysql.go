@@ -2,8 +2,10 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"testing"
 	"time"
@@ -97,7 +99,6 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	require.NoError(t, err, "failed to create mysql docker container")
 
 	stopContainer := func() {
-
 		t.Logf("stopping container %s", name)
 		timeoutSec := 5
 
@@ -149,18 +150,21 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 
 	uri := fmt.Sprintf("%s:%s@tcp(%s)/defaultdb?parseTime=true", mySQLTestContainer.username, mySQLTestContainer.password, mySQLTestContainer.addr)
 
-	err = mysql.SetLogger(goose.NopLogger())
+	err = mysql.SetLogger(log.New(io.Discard, "", 0))
 	require.NoError(t, err)
 
 	goose.SetLogger(goose.NopLogger())
 
-	db, err := goose.OpenDBWithDriver("mysql", uri)
-	require.NoError(t, err)
+	var db *sql.DB
 
 	backoffPolicy := backoff.NewExponentialBackOff()
-	backoffPolicy.MaxElapsedTime = time.Minute
+	backoffPolicy.MaxElapsedTime = 2 * time.Minute
 	err = backoff.Retry(
 		func() error {
+			db, err = goose.OpenDBWithDriver("mysql", uri)
+			if err != nil {
+				return err
+			}
 			return db.Ping()
 		},
 		backoffPolicy,

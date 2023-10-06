@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 )
 
@@ -37,7 +37,7 @@ func TestUnaryInterceptor(t *testing.T) {
 			return nil, nil
 		}
 
-		_, err := interceptor(context.Background(), &openfgapb.CheckRequest{StoreId: storeID}, &grpc.UnaryServerInfo{}, handler)
+		_, err := interceptor(context.Background(), &openfgav1.CheckRequest{StoreId: storeID}, &grpc.UnaryServerInfo{}, handler)
 		require.NoError(t, err)
 	})
 }
@@ -75,7 +75,7 @@ func TestStreamingInterceptor(t *testing.T) {
 
 	t.Run("streaming_interceptor_with_GetStoreId_in_request", func(t *testing.T) {
 		handler := func(srv interface{}, stream grpc.ServerStream) error {
-			err := stream.RecvMsg(&openfgapb.CheckRequest{StoreId: "abc"})
+			err := stream.RecvMsg(&openfgav1.CheckRequest{StoreId: "abc"})
 			require.NoError(t, err)
 
 			got, ok := StoreIDFromContext(stream.Context())

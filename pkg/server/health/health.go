@@ -1,3 +1,4 @@
+// Package health contains the service that check the health of an OpenFGA server.
 package health
 
 import (

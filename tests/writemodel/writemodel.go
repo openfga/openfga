@@ -1,3 +1,4 @@
+// Package writemodel contains integration tests for the WriteAuthorizationModel API.
 package writemodel
 
 import (
@@ -5,9 +6,9 @@ import (
 	"testing"
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
 )
@@ -17,7 +18,7 @@ var testCases = map[string]struct {
 	code  int
 }{
 	// implemented in Fails_If_Using_Self_As_Type_Name
-	//"case1": {
+	// "case1": {
 	//	model: `
 	//	type user
 	//	type self
@@ -346,8 +347,8 @@ var testCases = map[string]struct {
 
 // ClientInterface defines interface for running WriteAuthorizationModel tests
 type ClientInterface interface {
-	CreateStore(ctx context.Context, in *pb.CreateStoreRequest, opts ...grpc.CallOption) (*pb.CreateStoreResponse, error)
-	WriteAuthorizationModel(ctx context.Context, in *pb.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*pb.WriteAuthorizationModelResponse, error)
+	CreateStore(ctx context.Context, in *openfgav1.CreateStoreRequest, opts ...grpc.CallOption) (*openfgav1.CreateStoreResponse, error)
+	WriteAuthorizationModel(ctx context.Context, in *openfgav1.WriteAuthorizationModelRequest, opts ...grpc.CallOption) (*openfgav1.WriteAuthorizationModelResponse, error)
 }
 
 // RunAllTests will run all write model tests
@@ -369,11 +370,11 @@ func runTests(t *testing.T, client ClientInterface) {
 
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := client.CreateStore(ctx, &pb.CreateStoreRequest{Name: "write_model_test"})
+			resp, err := client.CreateStore(ctx, &openfgav1.CreateStoreRequest{Name: "write_model_test"})
 			require.NoError(t, err)
 
 			storeID := resp.GetId()
-			_, err = client.WriteAuthorizationModel(ctx, &pb.WriteAuthorizationModelRequest{
+			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: parser.MustParse(test.model),

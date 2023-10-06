@@ -3,10 +3,10 @@ package listobjects
 import (
 	"testing"
 
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
-	pb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -37,5 +37,5 @@ func testRunAll(t *testing.T, engine string) {
 	)
 	require.NoError(t, err)
 	defer conn.Close()
-	RunAllTests(t, pb.NewOpenFGAServiceClient(conn))
+	RunAllTests(t, openfgav1.NewOpenFGAServiceClient(conn))
 }

@@ -1,3 +1,4 @@
+// Package sqlcommon contains utility functions shared among all SQL data stores.
 package sqlcommon
 
 import (
@@ -12,14 +13,16 @@ import (
 	sq "github.com/Masterminds/squirrel"
 	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/pressly/goose/v3"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// TODO everytime we add a migration we have to update this. Is there a better way?
 const latestDBVersion = 5
 
 type Config struct {
@@ -126,9 +129,9 @@ type TupleRecord struct {
 	InsertedAt     time.Time
 }
 
-func (t *TupleRecord) AsTuple() *openfgapb.Tuple {
-	return &openfgapb.Tuple{
-		Key: &openfgapb.TupleKey{
+func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
+	return &openfgav1.Tuple{
+		Key: &openfgav1.TupleKey{
 			Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
 			Relation: t.Relation,
 			User:     tupleUtils.FromUserParts(t.UserObjectType, t.UserObjectID, t.UserRelation),
@@ -191,10 +194,10 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 	return &record, nil
 }
 
-// ToArray converts the tupleIterator to an []*openfgapb.Tuple and a possibly empty continuation token. If the
+// ToArray converts the tupleIterator to an []*openfgav1.Tuple and a possibly empty continuation token. If the
 // continuation token exists it is the ulid of the last element of the returned array.
-func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgapb.Tuple, []byte, error) {
-	var res []*openfgapb.Tuple
+func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgav1.Tuple, []byte, error) {
+	var res []*openfgav1.Tuple
 	for i := 0; i < opts.PageSize; i++ {
 		tupleRecord, err := t.next()
 		if err != nil {
@@ -224,7 +227,7 @@ func (t *SQLTupleIterator) ToArray(opts storage.PaginationOptions) ([]*openfgapb
 	return res, contToken, nil
 }
 
-func (t *SQLTupleIterator) Next() (*openfgapb.Tuple, error) {
+func (t *SQLTupleIterator) Next() (*openfgav1.Tuple, error) {
 	record, err := t.next()
 	if err != nil {
 		return nil, err
@@ -237,43 +240,6 @@ func (t *SQLTupleIterator) Stop() {
 	t.rows.Close()
 }
 
-type SQLObjectIterator struct {
-	rows     *sql.Rows
-	resultCh chan *openfgapb.Object
-	errCh    chan error
-}
-
-// NewSQLObjectIterator returns a tuple iterator for Postgres
-func NewSQLObjectIterator(rows *sql.Rows) *SQLObjectIterator {
-	return &SQLObjectIterator{
-		rows:     rows,
-		resultCh: make(chan *openfgapb.Object, 1),
-		errCh:    make(chan error, 1),
-	}
-}
-
-var _ storage.ObjectIterator = (*SQLObjectIterator)(nil)
-
-func (o *SQLObjectIterator) Next() (*openfgapb.Object, error) {
-	if !o.rows.Next() {
-		if err := o.rows.Err(); err != nil {
-			return nil, err
-		}
-		return nil, storage.ErrIteratorDone
-	}
-
-	var object openfgapb.Object
-	if err := o.rows.Scan(&object.Type, &object.Id); err != nil {
-		return nil, err
-	}
-
-	return &object, nil
-}
-
-func (o *SQLObjectIterator) Stop() {
-	_ = o.rows.Close()
-}
-
 func HandleSQLError(err error, args ...interface{}) error {
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
@@ -281,15 +247,15 @@ func HandleSQLError(err error, args ...interface{}) error {
 		return err
 	} else if strings.Contains(err.Error(), "duplicate key value") { // Postgres
 		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 			}
 		}
 		return storage.ErrCollision
 	} else if me, ok := err.(*mysql.MySQLError); ok && me.Number == 1062 {
 		if len(args) > 0 {
-			if tk, ok := args[0].(*openfgapb.TupleKey); ok {
-				return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE)
+			if tk, ok := args[0].(*openfgav1.TupleKey); ok {
+				return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 			}
 		}
 		return storage.ErrCollision
@@ -316,7 +282,6 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 
 // Write provides the common method for writing to database across sql storage
 func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.Deletes, writes storage.Writes, now time.Time) error {
-
 	txn, err := dbInfo.db.BeginTx(ctx, nil)
 	if err != nil {
 		return HandleSQLError(err)
@@ -360,10 +325,10 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		}
 
 		if rowsAffected != 1 {
-			return storage.InvalidWriteInputError(tk, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE)
+			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
 
 	insertBuilder := dbInfo.stbl.
@@ -383,7 +348,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgapb.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -419,4 +384,96 @@ func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, model *openfgav1.AuthorizationModel) error {
+	schemaVersion := model.GetSchemaVersion()
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) < 1 {
+		return nil
+	}
+
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
+	sb := dbInfo.stbl.
+		Insert("authorization_model").
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf")
+
+	for _, td := range typeDefinitions {
+		marshalledTypeDef, err := proto.Marshal(td)
+		if err != nil {
+			return err
+		}
+
+		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef, pbdata)
+	}
+
+	_, err = sb.ExecContext(ctx)
+	if err != nil {
+		return HandleSQLError(err)
+	}
+
+	return nil
+}
+
+func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID string) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+
+	var schemaVersion string
+	var typeDefs []*openfgav1.TypeDefinition
+	for rows.Next() {
+		var typeName string
+		var marshalledTypeDef []byte
+		var marshalledModel []byte
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		if err != nil {
+			return nil, HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			// Prefer building an authorization model from the first row that has it available.
+			var model openfgav1.AuthorizationModel
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			return &model, nil
+		}
+
+		var typeDef openfgav1.TypeDefinition
+		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
+			return nil, err
+		}
+
+		typeDefs = append(typeDefs, &typeDef)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	if len(typeDefs) == 0 {
+		return nil, storage.ErrNotFound
+	}
+
+	return &openfgav1.AuthorizationModel{
+		SchemaVersion:   schemaVersion,
+		Id:              modelID,
+		TypeDefinitions: typeDefs,
+	}, nil
 }

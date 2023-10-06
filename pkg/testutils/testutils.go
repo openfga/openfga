@@ -1,3 +1,4 @@
+// Package testutils contains code that is useful in tests.
 package testutils
 
 import (
@@ -5,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/google/go-cmp/cmp"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 const (
@@ -13,8 +14,8 @@ const (
 )
 
 var (
-	TupleKeyCmpTransformer = cmp.Transformer("Sort", func(in []*openfgapb.TupleKey) []*openfgapb.TupleKey {
-		out := append([]*openfgapb.TupleKey(nil), in...) // Copy input to avoid mutating it
+	TupleKeyCmpTransformer = cmp.Transformer("Sort", func(in []*openfgav1.TupleKey) []*openfgav1.TupleKey {
+		out := append([]*openfgav1.TupleKey(nil), in...) // Copy input to avoid mutating it
 
 		sort.SliceStable(out, func(i, j int) bool {
 			if out[i].Object > out[j].Object {

@@ -1,3 +1,4 @@
+// Package logging contains logging middleware
 package logging
 
 import (
@@ -13,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -29,6 +31,10 @@ const (
 	rawResponseKey     = "raw_response"
 	internalErrorKey   = "internal_error"
 	grpcReqCompleteKey = "grpc_req_complete"
+	userAgentKey       = "user_agent"
+
+	gatewayUserAgentHeader string = "grpcgateway-user-agent"
+	userAgentHeader        string = "user-agent"
 )
 
 func NewLoggingInterceptor(logger logger.Logger) grpc.UnaryServerInterceptor {
@@ -47,7 +53,6 @@ type reporter struct {
 }
 
 func (r *reporter) PostCall(err error, _ time.Duration) {
-
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
 	code := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
@@ -72,7 +77,6 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
-
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
@@ -82,13 +86,26 @@ func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 }
 
 func (r *reporter) PostMsgReceive(msg interface{}, _ error, _ time.Duration) {
-
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if req, err := r.protomarshaler.Marshal(protomsg); err == nil {
 			r.fields = append(r.fields, zap.Any(rawRequestKey, json.RawMessage(req)))
 		}
 	}
+}
+
+// userAgentFromContext returns the user agent field stored in context.
+// If context does not have user agent field, function will return empty string and false.
+func userAgentFromContext(ctx context.Context) (string, bool) {
+	if headers, ok := metadata.FromIncomingContext(ctx); ok {
+		if header := headers.Get(gatewayUserAgentHeader); len(header) > 0 {
+			return header[0], true
+		}
+		if header := headers.Get(userAgentHeader); len(header) > 0 {
+			return header[0], true
+		}
+	}
+	return "", false
 }
 
 func reportable(l logger.Logger) interceptors.CommonReportableFunc {
@@ -106,6 +123,10 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 
 		if requestID, ok := requestid.FromContext(ctx); ok {
 			fields = append(fields, zap.String(requestIDKey, requestID))
+		}
+
+		if userAgent, ok := userAgentFromContext(ctx); ok {
+			fields = append(fields, zap.String(userAgentKey, userAgent))
 		}
 
 		zapLogger := l.(*logger.ZapLogger)

@@ -5,24 +5,24 @@ import (
 	"testing"
 
 	"github.com/oklog/ulid/v2"
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
-	openfgapb "go.buf.build/openfga/go/openfga/api/openfga/v1"
 )
 
 func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 	type createStoreTestSettings struct {
 		name    string
-		request *openfgapb.CreateStoreRequest
+		request *openfgav1.CreateStoreRequest
 	}
 
 	var tests = []createStoreTestSettings{
 		{
 			name: "CreateStoreSucceeds",
-			request: &openfgapb.CreateStoreRequest{
+			request: &openfgav1.CreateStoreRequest{
 				Name: testutils.CreateRandomString(10),
 			},
 		},
@@ -33,7 +33,6 @@ func TestCreateStore(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-
 			resp, err := commands.NewCreateStoreCommand(datastore, logger).Execute(ctx, test.request)
 			require.NoError(t, err)
 
