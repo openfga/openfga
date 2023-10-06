@@ -23,7 +23,7 @@ import (
 )
 
 // TODO everytime we add a migration we have to update this. Is there a better way?
-const latestDBVersion = 5
+const latestDBVersion = 6
 
 type Config struct {
 	Username               string
