@@ -360,27 +360,6 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	return nil
 }
 
-// IsReady returns true if the connection to the datastore is successful and the latest migration available has run
-func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	currentVersion, err := goose.GetDBVersion(db)
-	if err != nil {
-		return false, err
-	}
-
-	if currentVersion != latestDBVersion {
-		return false, fmt.Errorf("database version is %d but expected latest %d", currentVersion, latestDBVersion)
-	}
-
-	return true, nil
-}
-
 func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, model *openfgav1.AuthorizationModel) error {
 	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
@@ -471,4 +450,25 @@ func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID 
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
+}
+
+// IsReady returns true if the connection to the datastore is successful and the latest migration available has run
+func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return false, err
+	}
+
+	currentVersion, err := goose.GetDBVersion(db)
+	if err != nil {
+		return false, err
+	}
+
+	if currentVersion != latestDBVersion {
+		return false, fmt.Errorf("database version is %d but expected latest %d", currentVersion, latestDBVersion)
+	}
+
+	return true, nil
 }

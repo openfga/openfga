@@ -37,7 +37,6 @@ func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 		require.NoError(t, err)
 		require.True(t, ready)
 	})
-
 	// tuples
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
