@@ -89,7 +89,7 @@ security-contacts:
 vulnerability-reporting:
   accepts-vulnerability-reports: true
   email-contact: security@openfga.dev
-  security-policy: https://foo.bar/reporting.html
+  security-policy: https://github.com/openfga/openfga/security/policy
   bug-bounty-available: false
 dependencies:
   third-party-packages: true
