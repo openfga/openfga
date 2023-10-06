@@ -12,6 +12,12 @@
             "default": 100,
             "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
+        "maxAuthorizationModelSizeInBytes": {
+            "description": "The maximum size in bytes allowed for persisting an Authorization Model (default is 256KB).",
+            "type": "integer",
+            "default": 262144,
+            "x-env-variable": "OPENFGA_MAX_AUTHORIZATION_MODEL_SIZE_IN_BYTES"
+        },
         "maxConcurrentReadsForCheck": {
             "description": "The maximum allowed number of concurrent reads in a single Check query (default is MaxUint32).",
             "type": "integer",
