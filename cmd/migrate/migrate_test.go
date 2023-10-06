@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -19,21 +20,29 @@ func TestMigrateCommandRollbacks(t *testing.T) {
 
 	for _, engine := range engines {
 		t.Run(engine, func(t *testing.T) {
-			container, _, uri, err := util.MustBootstrapDatastore(t, engine)
+			container, ds, uri, err := util.MustBootstrapDatastore(t, engine)
 			require.NoError(t, err)
+
+			ready, err := ds.IsReady(context.Background())
+			require.NoError(t, err)
+			require.True(t, ready)
 
 			// going from version 3 to 4 when migration #4 doesn't exist is a no-op
 			version := container.GetDatabaseSchemaVersion() + 1
 
 			migrateCommand := NewMigrateCommand()
 
-			for version >= 0 {
+			for version > 0 {
 				t.Logf("migrating to version %d", version)
 				migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(version))})
 				err = migrateCommand.Execute()
 				require.NoError(t, err)
 				version--
 			}
+
+			ready, err = ds.IsReady(context.Background())
+			require.ErrorContains(t, err, "database version is 1 but expected latest 6")
+			require.False(t, ready)
 		})
 	}
 }
