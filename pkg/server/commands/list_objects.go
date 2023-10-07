@@ -294,7 +294,6 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg.Wait()
 		reverseExpandQueryCancelFunc()
-		close(resultsChan)
 	}
 
 	go handler()
