@@ -210,13 +210,15 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		var objectsFound = new(uint32)
 
+		reverseExpandQueryContext, reverseExpandQueryCancelFunc := context.WithCancel(ctx)
+
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 		)
 
 		go func() {
-			err = reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
+			err = reverseExpandQuery.Execute(reverseExpandQueryContext, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
@@ -231,9 +233,6 @@ func (q *ListObjectsQuery) evaluate(
 
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-
-			// this is necessary to terminate the range loop below
-			close(reverseExpandResultsChan)
 		}()
 
 		checkResolver := graph.NewLocalChecker(
@@ -294,7 +293,7 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		wg.Wait()
-
+		reverseExpandQueryCancelFunc()
 		close(resultsChan)
 	}
 

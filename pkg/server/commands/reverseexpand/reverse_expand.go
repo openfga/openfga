@@ -177,7 +177,9 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	return c.execute(ctx, req, resultChan, nil, resolutionMetadata)
+	err := c.execute(ctx, req, resultChan, nil, resolutionMetadata)
+	close(resultChan)
+	return err
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -334,6 +336,9 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TuplesetRelation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),
@@ -439,6 +444,9 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 	combinedTupleReader := storagewrappers.NewCombinedTupleReader(c.datastore, req.contextualTuples)
 
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	// find all tuples of the form req.edge.TargetReference.Type:...#req.edge.TargetReference.Relation@req.sourceUserRef
 	iter, err := combinedTupleReader.ReadStartingWithUser(ctx, store, storage.ReadStartingWithUserFilter{
 		ObjectType: req.edge.TargetReference.GetType(),

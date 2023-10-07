@@ -1259,7 +1259,6 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			go func() {
 				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				require.ErrorIs(err, test.expectedError)
-				close(resultChan)
 			}()
 
 			select {
