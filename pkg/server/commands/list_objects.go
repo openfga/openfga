@@ -230,6 +230,9 @@ func (q *ListObjectsQuery) evaluate(
 					resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
 					return
 				}
+				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+					return
+                                }
 
 				resultsChan <- ListObjectsResult{Err: err}
 			}
@@ -294,6 +297,7 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg.Wait()
 		reverseExpandQueryCancelFunc()
+		close(resultsChan)
 	}
 
 	go handler()
