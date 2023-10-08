@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -600,6 +601,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
 		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
 		protocmp.Transform(),
+		testutils.TupleKeyCmpTransformer,
 	}
 
 	if diff := cmp.Diff(writes, receivedTuples, cmpOpts...); diff != "" {

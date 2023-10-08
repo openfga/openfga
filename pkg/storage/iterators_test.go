@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/testing/protocmp"
@@ -60,6 +61,7 @@ func TestCombinedIterator(t *testing.T) {
 	}
 
 	cmpOpts := []cmp.Option{
+		testutils.TupleKeyCmpTransformer,
 		protocmp.Transform(),
 	}
 
