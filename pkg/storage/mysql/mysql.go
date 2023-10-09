@@ -677,12 +677,5 @@ func (m *MySQL) ReadChanges(
 // IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
 func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := m.db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return sqlcommon.IsReady(ctx, m.db)
 }
