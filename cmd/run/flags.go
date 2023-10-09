@@ -140,6 +140,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("maxTypesPerAuthorizationModel", flags.Lookup("max-types-per-authorization-model"))
 		util.MustBindEnv("maxTypesPerAuthorizationModel", "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL", "OPENFGA_MAXTYPESPERAUTHORIZATIONMODEL")
 
+		util.MustBindPFlag("maxAuthorizationModelSizeInBytes", flags.Lookup("max-authorization-model-size-in-bytes"))
+		util.MustBindEnv("maxAuthorizationModelSizeInBytes", "OPENFGA_MAX_AUTHORIZATION_MODEL_SIZE_IN_BYTES", "OPENFGA_MAXAUTHORIZATIONMODELSIZEINBYTES")
+
 		util.MustBindPFlag("maxConcurrentReadsForListObjects", flags.Lookup("max-concurrent-reads-for-list-objects"))
 		util.MustBindEnv("maxConcurrentReadsForListObjects", "OPENFGA_MAX_CONCURRENT_READS_FOR_LIST_OBJECTS", "OPENFGA_MAXCONCURRENTREADSFORLISTOBJECTS")
 
