@@ -175,6 +175,12 @@
                     "type": "duration",
                     "default": "connections are not closed due to connection's age - database/sql default",
                     "x-env-variable": "OPENFGA_DATASTORE_CONN_MAX_LIFETIME"
+                },
+                "metricsEnabled": {
+                    "description": "enabled or disable sql metrics",
+                    "type": "boolean",
+                    "default": false,
+                    "x-env-variable": "OPENFGA_DATASTORE_METRICS_ENABLED"
                 }
             }
         },

@@ -105,7 +105,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
-	if cfg.Metrics {
+	if cfg.ExportMetrics {
 		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}

@@ -53,6 +53,9 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// MetricsEnabled enables export of SQL metrics.
+	MetricsEnabled bool
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.

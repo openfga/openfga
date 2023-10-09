@@ -136,6 +136,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 
+	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.MetricsEnabled, "enable/disable sql metrics")
+
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
 	flags.Int("playground-port", defaultConfig.Playground.Port, "the port to serve the local OpenFGA Playground on")
@@ -317,7 +319,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	dsCfg := sqlcommon.NewConfig(
+	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithLogger(s.Logger),
@@ -327,8 +329,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-		sqlcommon.WithMetrics(config.Metrics.Enabled),
-	)
+	}
+
+	if config.Datastore.MetricsEnabled {
+		datastoreOptions = append(datastoreOptions, sqlcommon.WithMetrics())
+	}
+
+	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
 
 	var datastore storage.OpenFGADatastore
 	var err error

@@ -890,6 +890,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.datastore.properties.connMaxLifetime.default")
 	require.True(t, val.Exists())
 
+	val = res.Get("properties.datastore.properties.metricsEnabled.default")
+	require.True(t, val.Exists())
+	require.False(t, val.Bool())
+
 	val = res.Get("properties.grpc.properties.addr.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.GRPC.Addr)
