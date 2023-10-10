@@ -210,6 +210,8 @@ func (q *ListObjectsQuery) evaluate(
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
 		var objectsFound = new(uint32)
 
+		wg := sync.WaitGroup{}
+
 		reverseExpandQueryContext, reverseExpandQueryCancelFunc := context.WithCancel(ctx)
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
@@ -217,7 +219,9 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 		)
 
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			err = reverseExpandQuery.Execute(reverseExpandQueryContext, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
@@ -233,7 +237,6 @@ func (q *ListObjectsQuery) evaluate(
 				} else {
 					resultsChan <- ListObjectsResult{Err: err}
 				}
-				close(resultsChan)
 			}
 		}()
 
@@ -244,8 +247,6 @@ func (q *ListObjectsQuery) evaluate(
 		defer checkResolver.Close()
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
-
-		wg := sync.WaitGroup{}
 
 		for res := range reverseExpandResultsChan {
 			if atomic.LoadUint32(objectsFound) >= maxResults {
@@ -296,6 +297,7 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg.Wait()
 		reverseExpandQueryCancelFunc()
+		close(resultsChan)
 	}
 
 	go handler()
