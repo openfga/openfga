@@ -4,7 +4,7 @@ package health
 import (
 	"context"
 
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"google.golang.org/grpc/codes"
 	healthv1pb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -21,7 +21,7 @@ type Checker struct {
 	TargetServiceName string
 }
 
-var _ grpc_auth.ServiceAuthFuncOverride = (*Checker)(nil)
+var _ grpcauth.ServiceAuthFuncOverride = (*Checker)(nil)
 
 // AuthFuncOverride implements the grpc_auth.ServiceAuthFuncOverride interface by bypassing authn middleware.
 func (o *Checker) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
