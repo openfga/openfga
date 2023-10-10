@@ -232,7 +232,7 @@ func (q *ListObjectsQuery) evaluate(
 				}
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 					return
-                                }
+				}
 
 				resultsChan <- ListObjectsResult{Err: err}
 			}
