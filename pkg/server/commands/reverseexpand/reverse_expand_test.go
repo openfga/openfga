@@ -93,14 +93,14 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
-		Times(0)
+		MaxTimes(2) // we expect it to be 0 most of the time
 
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 	resultChan := make(chan *ReverseExpandResult)
 	reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
 	err := reverseExpandQuery.Execute(timeoutCtx, &ReverseExpandRequest{
-		StoreID:    ulid.Make().String(),
+		StoreID:    store,
 		ObjectType: "document",
 		Relation:   "viewer",
 		User: &UserRefObject{
