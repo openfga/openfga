@@ -67,7 +67,7 @@ func (c *WriteCommand) validateWriteRequest(
 	deletes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes())
 	writes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites())
 
-	if deletes == nil && writes == nil {
+	if len(deletes) == 0 && len(writes) == 0 {
 		return serverErrors.InvalidWriteInput
 	}
 

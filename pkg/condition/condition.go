@@ -113,7 +113,7 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	typedParams, err := c.CastContextToTypedParameters(clonedMap)
 	if err != nil {
-		return emptyEvaluationResult, fmt.Errorf("failed to convert context to typed parameter values: %v", err)
+		return emptyEvaluationResult, err
 	}
 
 	out, _, err := c.program.Eval(typedParams)

@@ -136,11 +136,9 @@ func TestEvaluate(t *testing.T) {
 					},
 				},
 			},
-			context: map[string]interface{}{
-				"param2": "ok",
-			},
-			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+			context: nil,
+			result:  condition.EvaluationResult{ConditionMet: false},
+			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
 		},
 		{
 			name: "fail_unexpected_type",
