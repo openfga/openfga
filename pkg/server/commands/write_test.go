@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
@@ -158,9 +159,11 @@ func TestValidateWriteRequest(t *testing.T) {
 			cmd := NewWriteCommand(mockDatastore, logger)
 
 			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
-				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgav1.AuthorizationModel{
-					SchemaVersion: typesystem.SchemaVersion1_1,
-				}, nil)
+				mockDatastore.EXPECT().
+					ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).
+					Return(&openfgav1.AuthorizationModel{
+						SchemaVersion: typesystem.SchemaVersion1_1,
+					}, nil)
 			}
 
 			ctx := context.Background()
@@ -216,6 +219,199 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 			},
 		},
 	})
-	require.ErrorIs(t, err, serverErrors.NewInternalError("concurrent write conflict", storage.ErrTransactionalWriteFailed))
+	require.ErrorIs(
+		t,
+		err,
+		serverErrors.NewInternalError(
+			"concurrent write conflict",
+			storage.ErrTransactionalWriteFailed,
+		),
+	)
 	require.Nil(t, resp)
+}
+
+func TestValidateConditionsInTuples(t *testing.T) {
+	type test struct {
+		name          string
+		tuple         *openfgav1.TupleKey
+		expectedError error
+	}
+
+	model := &openfgav1.AuthorizationModel{
+		Id:            "authz-model-id",
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"owner":  typesystem.This(),
+					"writer": typesystem.This(),
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"owner": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+								typesystem.ConditionedRelationReference(
+									typesystem.DirectRelationReference("user", ""),
+									"condition1",
+								),
+							},
+						},
+						"writer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								typesystem.DirectRelationReference("user", ""),
+							},
+						},
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								typesystem.ConditionedRelationReference(
+									typesystem.WildcardRelationReference("user"),
+									"condition1",
+								),
+							},
+						},
+					},
+				},
+			},
+		},
+		Conditions: map[string]*openfgav1.Condition{
+			"condition1": {
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+		},
+	}
+
+	ts, err := typesystem.NewAndValidate(context.Background(), model)
+	require.NoError(t, err)
+
+	contextStructGood, err := structpb.NewStruct(map[string]interface{}{"param1": "ok"})
+	require.NoError(t, err)
+
+	contextStructBad, err := structpb.NewStruct(map[string]interface{}{"param1": "ok", "param2": 1})
+	require.NoError(t, err)
+
+	logger := logger.NewNoopLogger()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	cmd := NewWriteCommand(mockDatastore, logger)
+
+	tests := []test{
+		{
+			name: "valid_with_required_condition",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:jon",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context:       contextStructGood,
+				},
+			},
+		},
+		{
+			name: "valid_without_optional_condition",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "owner",
+				User:     "user:jon",
+			},
+		},
+		{
+			name: "valid_with_optional_condition",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "owner",
+				User:     "user:jon",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context:       contextStructGood,
+				},
+			},
+		},
+		{
+			name: "invalid_condition_missing",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:jon",
+			},
+			expectedError: serverErrors.ValidationError(&tuple.InvalidConditionalTupleError{
+				Cause: fmt.Errorf("condition is missing"), TupleKey: &openfgav1.TupleKey{
+					Object:   "document:1",
+					Relation: "viewer",
+					User:     "user:jon",
+				}},
+			),
+		},
+		{
+			name: "invalid_condition",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:2",
+				Relation: "writer",
+				User:     "user:jon",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context:       contextStructGood,
+				},
+			},
+			expectedError: serverErrors.ValidationError(&tuple.InvalidConditionalTupleError{
+				Cause: fmt.Errorf("invalid condition for type restriction"),
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "document:2",
+					Relation: "writer",
+					User:     "user:jon",
+					Condition: &openfgav1.RelationshipCondition{
+						ConditionName: "condition1",
+						Context:       contextStructGood,
+					},
+				}},
+			),
+		},
+		{
+			name: "invalid_condition_parameters",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:2",
+				Relation: "viewer",
+				User:     "user:jon",
+				Condition: &openfgav1.RelationshipCondition{
+					ConditionName: "condition1",
+					Context:       contextStructBad,
+				},
+			},
+			expectedError: serverErrors.ValidationError(&tuple.InvalidConditionalTupleError{
+				Cause: fmt.Errorf("found invalid context parameter: param2"),
+				TupleKey: &openfgav1.TupleKey{
+					Object:   "document:2",
+					Relation: "viewer",
+					User:     "user:jon",
+					Condition: &openfgav1.RelationshipCondition{
+						ConditionName: "condition1",
+						Context:       contextStructBad,
+					},
+				}},
+			),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := cmd.validateConditionInTuple(ts, test.tuple)
+			require.ErrorIs(t, err, test.expectedError)
+		})
+	}
 }

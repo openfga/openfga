@@ -75,6 +75,23 @@ func (c *EvaluableCondition) Compile() error {
 	return nil
 }
 
+func (c *EvaluableCondition) CastContextToTypedParameters(context map[string]any) (map[string]any, error) {
+	typedParams, err := castContextToTypedParameters(context, c.GetParameters())
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert context to typed parameter values: %v", err)
+	}
+
+	// validate against extraneous parameters
+	for key := range context {
+		_, ok := typedParams[key]
+		if !ok {
+			return nil, fmt.Errorf("found invalid context parameter: %s", key)
+		}
+	}
+
+	return typedParams, nil
+}
+
 // Evaluate evalutes the provided CEL condition expression with a CEL environment
 // constructed from the condition's parameter type definitions and using the
 // context provided. If more than one source of context is provided, and if the
@@ -94,7 +111,7 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		maps.Copy(clonedMap, contextMap)
 	}
 
-	typedParams, err := castContextToTypedParameters(clonedMap, c.GetParameters())
+	typedParams, err := c.CastContextToTypedParameters(clonedMap)
 	if err != nil {
 		return emptyEvaluationResult, fmt.Errorf("failed to convert context to typed parameter values: %v", err)
 	}
