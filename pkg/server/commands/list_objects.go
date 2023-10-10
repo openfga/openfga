@@ -228,13 +228,12 @@ func (q *ListObjectsQuery) evaluate(
 			if err != nil {
 				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 					resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
-					return
+				} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+					// don't send err through channel. we will send to clients the objects we have found
+				} else {
+					resultsChan <- ListObjectsResult{Err: err}
 				}
-				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-					return
-				}
-
-				resultsChan <- ListObjectsResult{Err: err}
+				close(resultsChan)
 			}
 		}()
 
@@ -297,7 +296,6 @@ func (q *ListObjectsQuery) evaluate(
 
 		wg.Wait()
 		reverseExpandQueryCancelFunc()
-		close(resultsChan)
 	}
 
 	go handler()
