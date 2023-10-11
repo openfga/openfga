@@ -83,7 +83,6 @@ func TestNewCompiled(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestEvaluate(t *testing.T) {

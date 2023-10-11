@@ -49,7 +49,6 @@ var ipaddrCelType = cel.ObjectType("IPAddress", traits.ReceiverType)
 //
 // See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
 func (ip IPAddress) ConvertToNative(typeDesc reflect.Type) (any, error) {
-
 	if reflect.TypeOf(ip).AssignableTo(typeDesc) {
 		return ip, nil
 	}
@@ -66,7 +65,6 @@ func (ip IPAddress) ConvertToNative(typeDesc reflect.Type) (any, error) {
 //
 // See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
 func (ip IPAddress) ConvertToType(typeValue ref.Type) ref.Val {
-
 	switch typeValue {
 	case types.StringType:
 		return types.String(ip.addr.String())
@@ -81,7 +79,6 @@ func (ip IPAddress) ConvertToType(typeValue ref.Type) ref.Val {
 //
 // See https://pkg.go.dev/github.com/google/cel-go/common/types/ref#Val
 func (ip IPAddress) Equal(other ref.Val) ref.Val {
-
 	otherip, ok := other.(IPAddress)
 	if !ok {
 		return types.NoSuchOverloadErr()
