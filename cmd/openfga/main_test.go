@@ -203,6 +203,99 @@ func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 	}
 }
 
+func TestCheckWithContextualTuplesAndQueryCacheEnabled(t *testing.T) {
+	tester := newOpenFGATester(t, "--experimentals=check-query-cache", "--check-query-cache-enabled=true")
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-test",
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
+
+	storeID := createResp.GetId()
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustParse(`
+		type fga_user
+
+		type timeslot
+		  relations
+			define user: [fga_user] as self
+
+		type commerce_store
+		  relations
+			define approved_hourly_access as user from approved_timeslot and hourly_employee
+			define approved_timeslot: [timeslot] as self
+			define hourly_employee: [fga_user] as self
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
+
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("commerce_store:0", "hourly_employee", "fga_user:anne"),
+				tuple.NewTupleKey("commerce_store:1", "hourly_employee", "fga_user:anne"),
+				tuple.NewTupleKey("commerce_store:0", "approved_timeslot", "timeslot:11_12"),
+				tuple.NewTupleKey("commerce_store:1", "approved_timeslot", "timeslot:12_13"),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewTupleKey("commerce_store:0", "approved_hourly_access", "fga_user:anne"),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, checkResp.GetAllowed())
+
+	checkResp, err = client.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.False(t, checkResp.GetAllowed())
+
+	checkResp, err = client.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey:             tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+		ContextualTuples: &openfgav1.ContextualTupleKeys{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("timeslot:12_13", "user", "fga_user:anne"),
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, checkResp.GetAllowed())
+}
+
 func TestFunctionalGRPC(t *testing.T) {
 	// tester can be shared across tests that aren't impacted
 	// by shared state
