@@ -223,11 +223,11 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			name: "issue_1058",
 			typeDefinitions: parser.MustParse(`
 			type fga_user
-	
+
 			type timeslot
 			  relations
 				define user: [fga_user] as self
-	
+
 			type commerce_store
 			  relations
 				define approved_hourly_access as user from approved_timeslot and hourly_employee
@@ -264,6 +264,91 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "cache_computed_userset_subproblem_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+
+			type document
+			  relations
+			    define restricted: [user] as self
+			    define viewer: [user] as self but not restricted
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			name: "cached_direct_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+
+			type document
+			  relations
+			    define viewer: [user] as self
+			`),
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      false,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			name: "cached_direct_userset_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+			
+			type group
+			  relations
+			    define restricted: [user] as self
+			    define member: [user] as self but not restricted
+
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "user:jon"),
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:eng", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -288,14 +373,16 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 
 			modelID := writeModelResp.GetAuthorizationModelId()
 
-			_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
-				StoreId:              storeID,
-				AuthorizationModelId: modelID,
-				Writes: &openfgav1.TupleKeys{
-					TupleKeys: test.tuples,
-				},
-			})
-			require.NoError(t, err)
+			if len(test.tuples) > 0 {
+				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes: &openfgav1.TupleKeys{
+						TupleKeys: test.tuples,
+					},
+				})
+				require.NoError(t, err)
+			}
 
 			for _, assertion := range test.assertions {
 				checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
