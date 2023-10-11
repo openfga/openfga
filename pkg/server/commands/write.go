@@ -113,10 +113,6 @@ func (c *WriteCommand) validateWriteRequest(
 					&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk},
 				)
 			}
-
-			if err := c.validateConditionInTuple(typesys, tk); err != nil {
-				return err
-			}
 		}
 	}
 
@@ -165,96 +161,6 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 	if len(tuples) > c.datastore.MaxTuplesPerWrite() {
 		return serverErrors.ExceededEntityLimit("write operations", c.datastore.MaxTuplesPerWrite())
 	}
-	return nil
-}
-
-func (c *WriteCommand) validateConditionInTuple(
-	ts *typesystem.TypeSystem,
-	tk *openfgav1.TupleKey,
-) error {
-	conditions := ts.GetConditions()
-	objectType := tupleUtils.GetType(tk.Object)
-	userType := tupleUtils.GetType(tk.User)
-	userRelation := tupleUtils.GetRelation(tk.User)
-
-	typeRestrictions, err := ts.GetDirectlyRelatedUserTypes(objectType, tk.Relation)
-	if err != nil {
-		return err
-	}
-
-	if tk.Condition == nil {
-		hasConditionedTypeRestriction := false
-		hasUnconditionedTypeRestriction := false
-
-		for _, userset := range typeRestrictions {
-			if userset.Type != userType {
-				continue
-			}
-
-			if userset.Condition == "" {
-				hasUnconditionedTypeRestriction = true
-				continue
-			}
-
-			if userset.RelationOrWildcard == nil {
-				hasConditionedTypeRestriction = true
-				continue
-			}
-
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				if userset.GetRelation() == userRelation {
-					hasConditionedTypeRestriction = true
-					continue
-				}
-			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				hasConditionedTypeRestriction = true
-				continue
-			}
-		}
-
-		// A condition is only required if all the direct relationship type
-		// restrictions are conditioned. Example:
-		// define viewer: [user, user with condition]: not required
-		// define viewer: [user]: not required
-		// define viewer: [user with condition]: required
-		if hasConditionedTypeRestriction && !hasUnconditionedTypeRestriction {
-			return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
-			})
-		}
-
-		return nil
-	} else { // condition defined in the write
-		condition, conditionDefined := conditions[tk.Condition.ConditionName]
-		if !conditionDefined {
-			return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
-			})
-		}
-
-		validCondition := false
-		for _, userset := range typeRestrictions {
-			if userset.Type == userType && userset.Condition == tk.Condition.ConditionName {
-				validCondition = true
-				continue
-			}
-		}
-
-		if !validCondition {
-			return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
-			})
-		}
-
-		_, err := condition.CastContextToTypedParameters(tk.Condition.Context.AsMap())
-		if err != nil {
-			return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
-				Cause: err, TupleKey: tk,
-			})
-		}
-	}
-
 	return nil
 }
 
