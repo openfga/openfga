@@ -19,7 +19,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -39,7 +38,6 @@ type Postgres struct {
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
 
 func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
-
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {
@@ -300,63 +298,7 @@ func (p *Postgres) ReadAuthorizationModel(ctx context.Context, store string, mod
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModel")
 	defer span.End()
 
-	rows, err := p.stbl.
-		Select("schema_version", "type", "type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-		}).QueryContext(ctx)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-	defer rows.Close()
-
-	var schemaVersion string
-	var typeDefs []*openfgav1.TypeDefinition
-	for rows.Next() {
-		var typeName string
-		var marshalledTypeDef []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
-		if err != nil {
-			return nil, sqlcommon.HandleSQLError(err)
-		}
-
-		var typeDef openfgav1.TypeDefinition
-		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-			return nil, err
-		}
-
-		typeDefs = append(typeDefs, &typeDef)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	if len(typeDefs) == 0 {
-		return nil, storage.ErrNotFound
-	}
-
-	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
-		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = p.stbl.
-			Update("authorization_model").
-			Set("schema_version", schemaVersion).
-			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
-			ExecContext(ctx)
-		if err != nil {
-			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			p.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
-		}
-	}
-
-	return &openfgav1.AuthorizationModel{
-		SchemaVersion:   schemaVersion,
-		Id:              modelID,
-		TypeDefinitions: typeDefs,
-	}, nil
+	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, modelID)
 }
 
 func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
@@ -455,36 +397,13 @@ func (p *Postgres) WriteAuthorizationModel(ctx context.Context, store string, mo
 	ctx, span := tracer.Start(ctx, "postgres.WriteAuthorizationModel")
 	defer span.End()
 
-	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > p.MaxTypesPerAuthorizationModel() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(p.maxTypesPerModelField)
 	}
 
-	if len(typeDefinitions) < 1 {
-		return nil
-	}
-
-	sb := p.stbl.
-		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
-
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
-		if err != nil {
-			return err
-		}
-
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
-	}
-
-	_, err := sb.ExecContext(ctx)
-	if err != nil {
-		return sqlcommon.HandleSQLError(err)
-	}
-
-	return nil
+	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(p.db, p.stbl, "NOW()"), store, model)
 }
 
 // CreateStore is slightly different between Postgres and MySQL
@@ -749,12 +668,5 @@ func (p *Postgres) ReadChanges(
 // IsReady reports whether this Postgres datastore instance is ready
 // to accept connections.
 func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := p.db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return sqlcommon.IsReady(ctx, p.db)
 }

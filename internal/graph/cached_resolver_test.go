@@ -356,7 +356,6 @@ func TestResolveCheckFromCache(t *testing.T) {
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
 			require.Nil(t, err)
-
 		})
 	}
 }

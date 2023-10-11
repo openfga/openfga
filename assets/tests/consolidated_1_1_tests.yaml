@@ -4939,3 +4939,76 @@ tests:
               relation: a1
               user: user:maria
             errorCode: 2002
+  - name: race_condition_same_user_same_object_diff_relation
+    stages:
+      - model: |
+          type user
+          type test_type
+            relations
+              define relation1: [user] as self
+              define relation2: [user] as self
+          type list_type
+            relations
+              define list_relation: [test_type#relation1,test_type#relation2] as self
+        tuples:
+          - user: user:test_user
+            relation: relation1
+            object: test_type:test_type1
+          - user: user:test_user
+            relation: relation2
+            object: test_type:test_type1
+          - user: test_type:test_type1#relation1
+            relation: list_relation
+            object: list_type:list_type1
+        checkAssertions:
+          - tuple:
+              user: user:test_user
+              relation: list_relation
+              object: list_type:list_type1
+            expectation: true
+          - tuple:
+              user: user:test_user
+              relation: list_relation
+              object: list_type:list_type2
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:test_user
+              type: list_type
+              relation: list_relation
+            expectation:
+              - list_type:list_type1
+  - name: follows_correct_graph_edges
+    stages:
+      - model: |
+          type user
+
+          type repo
+            relations
+              define admin: [user] as self or repo_admin from owner
+              define owner: [organization] as self
+
+          type organization
+            relations
+              define member: [user] as self or owner
+              define owner: [user] as self
+              define repo_admin: [user, organization#member] as self
+        tuples:
+          - user: user:alex
+            relation: member
+            object: organization:openfga
+          - user: user:alex
+            relation: member
+            object: organization:acme
+          - user: organization:openfga
+            relation: owner
+            object: repo:openfga/openfga
+          - user: organization:acme
+            relation: owner
+            object: repo:acme/acme
+        listObjectsAssertions:
+          - request:
+              user: user:alex
+              type: repo
+              relation: admin
+            expectation: [ ]

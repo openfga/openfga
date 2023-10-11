@@ -12,6 +12,12 @@
             "default": 100,
             "x-env-variable": "OPENFGA_MAX_TYPES_PER_AUTHORIZATION_MODEL"
         },
+        "maxAuthorizationModelSizeInBytes": {
+            "description": "The maximum size in bytes allowed for persisting an Authorization Model (default is 256KB).",
+            "type": "integer",
+            "default": 262144,
+            "x-env-variable": "OPENFGA_MAX_AUTHORIZATION_MODEL_SIZE_IN_BYTES"
+        },
         "maxConcurrentReadsForCheck": {
             "description": "The maximum allowed number of concurrent reads in a single Check query (default is MaxUint32).",
             "type": "integer",
@@ -55,6 +61,17 @@
             "minimum": 0,
             "default": 1000,
             "x-env-variable": "OPENFGA_LIST_OBJECTS_MAX_RESULTS"
+        },
+        "requestDurationDatastoreQueryCountBuckets": {
+            "description": "Datastore query count buckets used to label the histogram metric for measuring request duration.",
+            "type": "array",
+            "items": {
+                "minimum": 0,
+                "type": "integer"
+            },
+            "minItems": 1,
+            "default": [50, 200],
+            "x-env-variable": "OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS"
         },
         "experimentals": {
             "description": "a list of experimental features to enable",
@@ -310,6 +327,17 @@
                             "type": "string",
                             "default": "0.0.0.0:4317",
                             "x-env-variable": "OPENFGA_TRACE_OTLP_ENDPOINT"
+                        },
+                        "tls": {
+                            "type": "object",
+                            "properties": {
+                                "enabled": {
+                                    "description": "Whether to use TLS connection for the trace collector",
+                                    "type": "boolean",
+                                    "default": false,
+                                    "x-env-variable": "OPENFGA_TRACE_OTLP_TLS_ENABLED"
+                                }
+                            }
                         }
                     }
                 },

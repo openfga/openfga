@@ -30,6 +30,7 @@ import (
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -223,8 +224,8 @@ type authTest struct {
 	expectedStatusCode    int
 }
 
-func runServer(ctx context.Context, cfg *Config) error {
-	if err := VerifyConfig(cfg); err != nil {
+func runServer(ctx context.Context, cfg *serverconfig.Config) error {
+	if err := cfg.Verify(); err != nil {
 		return err
 	}
 
@@ -233,81 +234,10 @@ func runServer(ctx context.Context, cfg *Config) error {
 	return serverCtx.Run(ctx, cfg)
 }
 
-func TestVerifyConfig(t *testing.T) {
-	t.Run("UpstreamTimeout_cannot_be_less_than_ListObjectsDeadline", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.ListObjectsDeadline = 5 * time.Minute
-		cfg.HTTP.UpstreamTimeout = 2 * time.Second
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "config 'http.upstreamTimeout' (2s) cannot be lower than 'listObjectsDeadline' config (5m0s)")
-	})
-
-	t.Run("failing_to_set_http_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.HTTP.TLS = &TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
-	})
-
-	t.Run("failing_to_set_grpc_cert_path_will_not_allow_server_to_start", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.GRPC.TLS = &TLSConfig{
-			Enabled: true,
-			KeyPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-	})
-
-	t.Run("failing_to_set_http_key_path_will_not_allow_server_to_start", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.HTTP.TLS = &TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'http.tls.cert' and 'http.tls.key' configs must be set")
-	})
-
-	t.Run("failing_to_set_grpc_key_path_will_not_allow_server_to_start", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.GRPC.TLS = &TLSConfig{
-			Enabled:  true,
-			CertPath: "some/path",
-		}
-
-		err := VerifyConfig(cfg)
-		require.EqualError(t, err, "'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-	})
-
-	t.Run("non_log_format", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.Log.Format = "notaformat"
-
-		err := VerifyConfig(cfg)
-		require.Error(t, err)
-	})
-
-	t.Run("non_log_level", func(t *testing.T) {
-		cfg := DefaultConfig()
-		cfg.Log.Level = "notalevel"
-
-		err := VerifyConfig(cfg)
-		require.Error(t, err)
-	})
-}
-
 func TestBuildServiceWithPresharedKeyAuthenticationFailsIfZeroKeys(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
-	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{}
+	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{}
 
 	err := runServer(context.Background(), cfg)
 	require.EqualError(t, err, "failed to initialize authenticator: invalid auth configuration, please specify at least one key")
@@ -340,7 +270,7 @@ func TestBuildServiceWithNoAuth(t *testing.T) {
 func TestBuildServiceWithPresharedKeyAuthentication(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
-	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 
@@ -407,6 +337,7 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	cfg.Trace.Enabled = true
 	cfg.Trace.SampleRatio = 1
 	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
+	cfg.Trace.OTLP.TLS.Enabled = false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -428,7 +359,6 @@ func TestBuildServiceWithTracingEnabled(t *testing.T) {
 	time.Sleep(sdktrace.DefaultScheduleDelay * time.Millisecond)
 
 	require.Equal(t, 1, otlpServer.GetExportCount())
-
 }
 
 func tryStreamingListObjects(t *testing.T, test authTest, httpAddr string, retryClient *retryablehttp.Client, validToken string) {
@@ -527,7 +457,7 @@ func tryGetStores(t *testing.T, test authTest, httpAddr string, retryClient *ret
 func TestHTTPServerWithCORS(t *testing.T) {
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "preshared"
-	cfg.Authn.AuthnPresharedKeyConfig = &AuthnPresharedKeyConfig{
+	cfg.Authn.AuthnPresharedKeyConfig = &serverconfig.AuthnPresharedKeyConfig{
 		Keys: []string{"KEYONE", "KEYTWO"},
 	}
 	cfg.HTTP.CORSAllowedOrigins = []string{"http://openfga.dev", "http://localhost"}
@@ -621,13 +551,12 @@ func TestHTTPServerWithCORS(t *testing.T) {
 }
 
 func TestBuildServerWithOIDCAuthentication(t *testing.T) {
-
 	oidcServerPort, oidcServerPortReleaser := TCPRandomPort()
 	localOIDCServerURL := fmt.Sprintf("http://localhost:%d", oidcServerPort)
 
 	cfg := MustDefaultConfigWithRandomPorts()
 	cfg.Authn.Method = "oidc"
-	cfg.Authn.AuthnOIDCConfig = &AuthnOIDCConfig{
+	cfg.Authn.AuthnOIDCConfig = &serverconfig.AuthnOIDCConfig{
 		Audience: "openfga.dev",
 		Issuer:   localOIDCServerURL,
 	}
@@ -695,7 +624,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer certsAndKeys.Clean()
 
 		cfg := MustDefaultConfigWithRandomPorts()
-		cfg.HTTP.TLS = &TLSConfig{
+		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -717,7 +646,7 @@ func TestHTTPServingTLS(t *testing.T) {
 		defer certsAndKeys.Clean()
 
 		cfg := MustDefaultConfigWithRandomPorts()
-		cfg.HTTP.TLS = &TLSConfig{
+		cfg.HTTP.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -755,7 +684,7 @@ func TestGRPCServingTLS(t *testing.T) {
 
 		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
-		cfg.GRPC.TLS = &TLSConfig{
+		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
 		}
@@ -778,7 +707,7 @@ func TestGRPCServingTLS(t *testing.T) {
 
 		cfg := MustDefaultConfigWithRandomPorts()
 		cfg.HTTP.Enabled = false
-		cfg.GRPC.TLS = &TLSConfig{
+		cfg.GRPC.TLS = &serverconfig.TLSConfig{
 			Enabled:  true,
 			CertPath: certsAndKeys.serverCertFile,
 			KeyPath:  certsAndKeys.serverKeyFile,
@@ -889,6 +818,7 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	stringBody := string(resBody)
 	require.Contains(t, stringBody, "datastore_query_count")
+	require.Contains(t, stringBody, "request_duration_by_query_count_ms")
 	require.Contains(t, stringBody, "grpc_server_handling_seconds")
 	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
@@ -1060,6 +990,14 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Trace.ServiceName)
 
+	val = res.Get("properties.trace.properties.otlp.properties.endpoint.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.String(), cfg.Trace.OTLP.Endpoint)
+
+	val = res.Get("properties.trace.properties.otlp.properties.tls.properties.enabled.default")
+	require.True(t, val.Exists())
+	require.Equal(t, val.Bool(), cfg.Trace.OTLP.TLS.Enabled)
+
 	val = res.Get("properties.checkQueryCache.properties.enabled.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.Bool(), cfg.CheckQueryCache.Enabled)
@@ -1071,6 +1009,13 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.checkQueryCache.properties.ttl.default")
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.CheckQueryCache.TTL.String())
+
+	val = res.Get("properties.requestDurationDatastoreQueryCountBuckets.default")
+	require.True(t, val.Exists())
+	require.Equal(t, len(val.Array()), len(cfg.RequestDurationDatastoreQueryCountBuckets))
+	for index, arrayVal := range val.Array() {
+		require.Equal(t, arrayVal.String(), cfg.RequestDurationDatastoreQueryCountBuckets[index])
+	}
 }
 
 func TestRunCommandNoConfigDefaultValues(t *testing.T) {
@@ -1082,6 +1027,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 		require.False(t, viper.GetBool("check-query-cache-enabled"))
 		require.Equal(t, uint32(0), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 0*time.Second, viper.GetDuration("check-query-cache-ttl"))
+		require.Equal(t, []int{}, viper.GetIntSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 
@@ -1116,6 +1062,7 @@ func TestParseConfig(t *testing.T) {
     enabled: true
     limit: 100
     TTL: 5s
+requestDurationDatastoreQueryCountBuckets: [33,44]
 `
 	util.PrepareTempConfigFile(t, config)
 
@@ -1133,6 +1080,7 @@ func TestParseConfig(t *testing.T) {
 	require.True(t, cfg.CheckQueryCache.Enabled)
 	require.Equal(t, uint32(100), cfg.CheckQueryCache.Limit)
 	require.Equal(t, 5*time.Second, cfg.CheckQueryCache.TTL)
+	require.Equal(t, []string{"33", "44"}, cfg.RequestDurationDatastoreQueryCountBuckets)
 }
 
 func TestRunCommandConfigIsMerged(t *testing.T) {
@@ -1146,6 +1094,7 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_ENABLED", "true")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_LIMIT", "33")
 	t.Setenv("OPENFGA_CHECK_QUERY_CACHE_TTL", "5s")
+	t.Setenv("OPENFGA_REQUEST_DURATION_DATASTORE_QUERY_COUNT_BUCKETS", "33 44")
 
 	runCmd := NewRunCommand()
 	runCmd.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -1155,6 +1104,8 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 		require.True(t, viper.GetBool("check-query-cache-enabled"))
 		require.Equal(t, uint32(33), viper.GetUint32("check-query-cache-limit"))
 		require.Equal(t, 5*time.Second, viper.GetDuration("check-query-cache-ttl"))
+
+		require.Equal(t, []string{"33", "44"}, viper.GetStringSlice("request-duration-datastore-query-count-buckets"))
 		return nil
 	}
 

@@ -41,7 +41,6 @@ func (c *ContextualTupleReader) Read(
 	storeID string,
 	tk *openfgav1.TupleKey,
 ) (storage.TupleIterator, error) {
-
 	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
 
 	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk)
@@ -58,7 +57,6 @@ func (c *ContextualTupleReader) ReadPage(
 	tk *openfgav1.TupleKey,
 	opts storage.PaginationOptions,
 ) ([]*openfgav1.Tuple, []byte, error) {
-
 	// no reading from contextual tuples
 
 	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
@@ -69,7 +67,6 @@ func (c *ContextualTupleReader) ReadUserTuple(
 	store string,
 	tk *openfgav1.TupleKey,
 ) (*openfgav1.Tuple, error) {
-
 	filteredContextualTuples := filterTuples(c.contextualTuples, tk.Object, tk.Relation)
 
 	for _, t := range filteredContextualTuples {
@@ -86,7 +83,6 @@ func (c *ContextualTupleReader) ReadUsersetTuples(
 	store string,
 	filter storage.ReadUsersetTuplesFilter,
 ) (storage.TupleIterator, error) {
-
 	var usersetTuples []*openfgav1.Tuple
 
 	for _, t := range filterTuples(c.contextualTuples, filter.Object, filter.Relation) {
@@ -110,7 +106,6 @@ func (c *ContextualTupleReader) ReadStartingWithUser(
 	store string,
 	filter storage.ReadStartingWithUserFilter,
 ) (storage.TupleIterator, error) {
-
 	var filteredTuples []*openfgav1.Tuple
 	for _, t := range c.contextualTuples {
 		if tuple.GetType(t.GetObject()) != filter.ObjectType {

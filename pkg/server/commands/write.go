@@ -60,7 +60,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if len(writes) > 0 {
-
 		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -149,7 +148,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.T
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.WriteFailedDueToInvalidInput(nil)
+		return serverErrors.NewInternalError("concurrent write conflict", err)
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}

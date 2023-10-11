@@ -40,7 +40,7 @@ type listObjectsTestCase struct {
 	user                   string
 	relation               string
 	contextualTuples       *openfgav1.ContextualTupleKeys
-	allResults             []string //all the results. the server may return less
+	allResults             []string // all the results. the server may return less
 	maxResults             uint32
 	minimumResultsExpected uint32
 	listObjectsDeadline    time.Duration // 1 minute if not set
@@ -51,7 +51,7 @@ type listObjectsTestCase struct {
 func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore) {
 	testCases := []listObjectsTestCase{
 		{
-			name:   "respects_when_schema_1_1_and_reverse_expansion_implementation",
+			name:   "max_results_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
 			type user
@@ -75,34 +75,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			useCheckCache:          false,
 		},
 		{
-			name:   "respects_when_schema_1_1_and_ttu_in_model_and_reverse_expansion_implementation",
-			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type folder
-			  relations
-			    define viewer: [user] as self
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("folder:x", "viewer", "user:alice"),
-				tuple.NewTupleKey("document:1", "parent", "folder:x"),
-				tuple.NewTupleKey("document:2", "parent", "folder:x"),
-				tuple.NewTupleKey("document:3", "parent", "folder:x"),
-			},
-			user:                   "user:alice",
-			objectType:             "document",
-			relation:               "viewer",
-			maxResults:             2,
-			minimumResultsExpected: 2,
-			allResults:             []string{"document:1", "document:2", "document:3"},
-			useCheckCache:          false,
-		},
-		{
-			name:   "respects_when_schema_1_1_and_concurrent_checks_implementation",
+			name:   "max_results_with_model_that_uses_exclusion",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
 			type user
@@ -124,6 +97,31 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			maxResults:             2,
 			minimumResultsExpected: 2,
 			allResults:             []string{"org:1", "org:2", "org:3"},
+			useCheckCache:          false,
+		},
+		{
+			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
+			schema: typesystem.SchemaVersion1_1,
+			model: `
+ 			type user
+ 			type org
+ 			  relations
+ 				define blocked: [user] as self
+ 				define admin: [user] as self but not blocked
+ 			`,
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("org:2", "blocked", "user:charlie"),
+				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
+				tuple.NewTupleKey("org:2", "admin", "user:charlie"),
+				tuple.NewTupleKey("org:3", "admin", "user:charlie"),
+			},
+			user:                   "user:charlie",
+			objectType:             "org",
+			relation:               "admin",
+			contextualTuples:       &openfgav1.ContextualTupleKeys{},
+			maxResults:             2,
+			minimumResultsExpected: 2,
+			allResults:             []string{"org:1", "org:3"},
 			useCheckCache:          false,
 		},
 		{
@@ -251,7 +249,6 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					graph.WithExistingCache(checkCache),
 					graph.WithCacheTTL(10*time.Second),
 				))
-
 			}
 
 			opts = append(opts, commands.WithCheckOptions(checkOptions))
@@ -273,7 +270,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 					done <- struct{}{}
 				}()
 
-				err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:          storeID,
 					Type:             test.objectType,
 					Relation:         test.relation,
@@ -284,6 +281,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 				<-done
 
 				require.NoError(t, err)
+				// there is no upper bound of the number of results for the streamed version
 				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
 				require.ElementsMatch(t, test.allResults, streamedObjectIds)
 			})
@@ -308,10 +306,9 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 }
 
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
-var listObjectsResponse *openfgav1.ListObjectsResponse //nolint
+var listObjectsResponse *commands.ListObjectsResponse //nolint
 
 func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatastore) {
-
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -361,7 +358,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 
 	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
-	var r *openfgav1.ListObjectsResponse
+	var r *commands.ListObjectsResponse
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 
@@ -423,7 +420,7 @@ func BenchmarkListObjectsWithConcurrentChecks(b *testing.B, ds storage.OpenFGADa
 
 	listObjectsQuery := commands.NewListObjectsQuery(ds)
 
-	var r *openfgav1.ListObjectsResponse
+	var r *commands.ListObjectsResponse
 
 	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
 

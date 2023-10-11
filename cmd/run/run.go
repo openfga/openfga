@@ -6,21 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"math"
 	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
 	"os/signal"
 	goruntime "runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -31,11 +30,13 @@ import (
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/gateway"
 	authnmw "github.com/openfga/openfga/internal/middleware/authn"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
 	"github.com/openfga/openfga/pkg/middleware/logging"
 	"github.com/openfga/openfga/pkg/middleware/requestid"
 	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/middleware/validator"
 	"github.com/openfga/openfga/pkg/server"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/health"
@@ -76,7 +77,7 @@ func NewRunCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	defaultConfig := DefaultConfig()
+	defaultConfig := serverconfig.DefaultConfig()
 	flags := cmd.Flags()
 
 	flags.StringSlice("experimentals", defaultConfig.Experimentals, "a list of experimental features to enable")
@@ -151,6 +152,8 @@ func NewRunCommand() *cobra.Command {
 
 	flags.String("trace-otlp-endpoint", defaultConfig.Trace.OTLP.Endpoint, "the endpoint of the trace collector")
 
+	flags.Bool("trace-otlp-tls-enabled", defaultConfig.Trace.OTLP.TLS.Enabled, "use TLS connection for trace collector")
+
 	flags.Float64("trace-sample-ratio", defaultConfig.Trace.SampleRatio, "the fraction of traces to sample. 1 means all, 0 means none.")
 
 	flags.String("trace-service-name", defaultConfig.Trace.ServiceName, "the service name included in sampled traces.")
@@ -164,6 +167,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Int("max-tuples-per-write", defaultConfig.MaxTuplesPerWrite, "the maximum allowed number of tuples per Write transaction")
 
 	flags.Int("max-types-per-authorization-model", defaultConfig.MaxTypesPerAuthorizationModel, "the maximum allowed number of type definitions per authorization model")
+
+	flags.Int("max-authorization-model-size-in-bytes", defaultConfig.MaxAuthorizationModelSizeInBytes, "the maximum size in bytes allowed for persisting an Authorization Model.")
 
 	flags.Uint32("max-concurrent-reads-for-list-objects", defaultConfig.MaxConcurrentReadsForListObjects, "the maximum allowed number of concurrent datastore reads in a single ListObjects query. A high number means that you want ListObjects latency to be low, at the expense of other queries performance")
 
@@ -185,251 +190,14 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("check-query-cache-ttl", defaultConfig.CheckQueryCache.TTL, "if caching of Check and ListObjects is enabled, this is the TTL of each value")
 
+	// Unfortunately UintSlice/IntSlice does not work well when used as environment variable, we need to stick with string slice and convert back to integer
+	flags.StringSlice("request-duration-datastore-query-count-buckets", defaultConfig.RequestDurationDatastoreQueryCountBuckets, "datastore query count buckets used in labelling request duration by query count histogram")
+
 	// NOTE: if you add a new flag here, update the function below, too
 
 	cmd.PreRun = bindRunFlagsFunc(flags)
 
 	return cmd
-}
-
-// DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
-type DatastoreConfig struct {
-
-	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
-	Engine   string
-	URI      string
-	Username string
-	Password string
-
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before evicting
-	// old keys. The storage cache is used to cache query results for various static resources
-	// such as type definitions.
-	MaxCacheSize int
-
-	// MaxOpenConns is the maximum number of open connections to the database.
-	MaxOpenConns int
-
-	// MaxIdleConns is the maximum number of connections to the datastore in the idle connection pool.
-	MaxIdleConns int
-
-	// ConnMaxIdleTime is the maximum amount of time a connection to the datastore may be idle.
-	ConnMaxIdleTime time.Duration
-
-	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
-	ConnMaxLifetime time.Duration
-}
-
-// GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
-type GRPCConfig struct {
-	Addr string
-	TLS  *TLSConfig
-}
-
-// HTTPConfig defines OpenFGA server configurations for HTTP server specific settings.
-type HTTPConfig struct {
-	Enabled bool
-	Addr    string
-	TLS     *TLSConfig
-
-	// UpstreamTimeout is the timeout duration for proxying HTTP requests upstream
-	// to the grpc endpoint. It cannot be smaller than Config.ListObjectsDeadline.
-	UpstreamTimeout time.Duration
-
-	CORSAllowedOrigins []string
-	CORSAllowedHeaders []string
-}
-
-// TLSConfig defines configuration specific to Transport Layer Security (TLS) settings.
-type TLSConfig struct {
-	Enabled  bool
-	CertPath string `mapstructure:"cert"`
-	KeyPath  string `mapstructure:"key"`
-}
-
-// AuthnConfig defines OpenFGA server configurations for authentication specific settings.
-type AuthnConfig struct {
-
-	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared', 'oidc')
-	Method                   string
-	*AuthnOIDCConfig         `mapstructure:"oidc"`
-	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
-}
-
-// AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
-type AuthnOIDCConfig struct {
-	Issuer   string
-	Audience string
-}
-
-// AuthnPresharedKeyConfig defines configurations for the 'preshared' method of authentication.
-type AuthnPresharedKeyConfig struct {
-	// Keys define the preshared keys to verify authn tokens against.
-	Keys []string
-}
-
-// LogConfig defines OpenFGA server configurations for log specific settings. For production we
-// recommend using the 'json' log format.
-type LogConfig struct {
-	// Format is the log format to use in the log output (e.g. 'text' or 'json')
-	Format string
-
-	// Level is the log level to use in the log output (e.g. 'none', 'debug', or 'info')
-	Level string
-}
-
-type TraceConfig struct {
-	Enabled     bool
-	OTLP        OTLPTraceConfig `mapstructure:"otlp"`
-	SampleRatio float64
-	ServiceName string
-}
-
-type OTLPTraceConfig struct {
-	Endpoint string
-}
-
-// PlaygroundConfig defines OpenFGA server configurations for the Playground specific settings.
-type PlaygroundConfig struct {
-	Enabled bool
-	Port    int
-}
-
-// ProfilerConfig defines server configurations specific to pprof profiling.
-type ProfilerConfig struct {
-	Enabled bool
-	Addr    string
-}
-
-// MetricConfig defines configurations for serving custom metrics from OpenFGA.
-type MetricConfig struct {
-	Enabled             bool
-	Addr                string
-	EnableRPCHistograms bool
-}
-
-// CheckQueryCache defines configuration for caching when resolving check
-type CheckQueryCache struct {
-	Enabled bool
-	Limit   uint32 // (in items)
-	TTL     time.Duration
-}
-
-type Config struct {
-	// If you change any of these settings, please update the documentation at https://github.com/openfga/openfga.dev/blob/main/docs/content/intro/setup-openfga.mdx
-
-	// ListObjectsDeadline defines the maximum amount of time to accumulate ListObjects results
-	// before the server will respond. This is to protect the server from misuse of the
-	// ListObjects endpoints. It cannot be larger than HTTPConfig.UpstreamTimeout.
-	ListObjectsDeadline time.Duration
-
-	// ListObjectsMaxResults defines the maximum number of results to accumulate
-	// before the non-streaming ListObjects API will respond to the client.
-	// This is to protect the server from misuse of the ListObjects endpoints.
-	ListObjectsMaxResults uint32
-
-	// MaxTuplesPerWrite defines the maximum number of tuples per Write endpoint.
-	MaxTuplesPerWrite int
-
-	// MaxTypesPerAuthorizationModel defines the maximum number of type definitions per authorization model for the WriteAuthorizationModel endpoint.
-	MaxTypesPerAuthorizationModel int
-
-	// MaxConcurrentReadsForListObjects defines the maximum number of concurrent database reads allowed in ListObjects queries
-	MaxConcurrentReadsForListObjects uint32
-
-	// MaxConcurrentReadsForCheck defines the maximum number of concurrent database reads allowed in Check queries
-	MaxConcurrentReadsForCheck uint32
-
-	// ChangelogHorizonOffset is an offset in minutes from the current time. Changes that occur after this offset will not be included in the response of ReadChanges.
-	ChangelogHorizonOffset int
-
-	// Experimentals is a list of the experimental features to enable in the OpenFGA server.
-	Experimentals []string
-
-	// ResolveNodeLimit indicates how deeply nested an authorization model can be before a query errors out.
-	ResolveNodeLimit uint32
-
-	// ResolveNodeBreadthLimit indicates how many nodes on a given level can be evaluated concurrently in a query
-	ResolveNodeBreadthLimit uint32
-
-	Datastore       DatastoreConfig
-	GRPC            GRPCConfig
-	HTTP            HTTPConfig
-	Authn           AuthnConfig
-	Log             LogConfig
-	Trace           TraceConfig
-	Playground      PlaygroundConfig
-	Profiler        ProfilerConfig
-	Metrics         MetricConfig
-	CheckQueryCache CheckQueryCache
-}
-
-// DefaultConfig returns the OpenFGA server default configurations.
-func DefaultConfig() *Config {
-	return &Config{
-		MaxTuplesPerWrite:                100,
-		MaxTypesPerAuthorizationModel:    100,
-		MaxConcurrentReadsForCheck:       math.MaxUint32,
-		MaxConcurrentReadsForListObjects: math.MaxUint32,
-		ChangelogHorizonOffset:           0,
-		ResolveNodeLimit:                 25,
-		ResolveNodeBreadthLimit:          100,
-		Experimentals:                    []string{},
-		ListObjectsDeadline:              3 * time.Second, // there is a 3-second timeout elsewhere
-		ListObjectsMaxResults:            1000,
-		Datastore: DatastoreConfig{
-			Engine:       "memory",
-			MaxCacheSize: 100000,
-			MaxIdleConns: 10,
-			MaxOpenConns: 30,
-		},
-		GRPC: GRPCConfig{
-			Addr: "0.0.0.0:8081",
-			TLS:  &TLSConfig{Enabled: false},
-		},
-		HTTP: HTTPConfig{
-			Enabled:            true,
-			Addr:               "0.0.0.0:8080",
-			TLS:                &TLSConfig{Enabled: false},
-			UpstreamTimeout:    5 * time.Second,
-			CORSAllowedOrigins: []string{"*"},
-			CORSAllowedHeaders: []string{"*"},
-		},
-		Authn: AuthnConfig{
-			Method:                  "none",
-			AuthnPresharedKeyConfig: &AuthnPresharedKeyConfig{},
-			AuthnOIDCConfig:         &AuthnOIDCConfig{},
-		},
-		Log: LogConfig{
-			Format: "text",
-			Level:  "info",
-		},
-		Trace: TraceConfig{
-			Enabled: false,
-			OTLP: OTLPTraceConfig{
-				Endpoint: "0.0.0.0:4317",
-			},
-			SampleRatio: 0.2,
-			ServiceName: "openfga",
-		},
-		Playground: PlaygroundConfig{
-			Enabled: true,
-			Port:    3000,
-		},
-		Profiler: ProfilerConfig{
-			Enabled: false,
-			Addr:    ":3001",
-		},
-		Metrics: MetricConfig{
-			Enabled:             true,
-			Addr:                "0.0.0.0:2112",
-			EnableRPCHistograms: false,
-		},
-		CheckQueryCache: CheckQueryCache{
-			Enabled: false,
-			Limit:   10000,
-			TTL:     10 * time.Second,
-		},
-	}
 }
 
 // TCPRandomPort tries to find a random TCP Port. If it can't find one, it panics. Else, it returns the port and a function that releases the port.
@@ -446,8 +214,8 @@ func TCPRandomPort() (int, func()) {
 
 // MustDefaultConfigWithRandomPorts returns the DefaultConfig, but with random ports for the grpc and http addresses.
 // This function may panic if somehow a random port cannot be chosen.
-func MustDefaultConfigWithRandomPorts() *Config {
-	config := DefaultConfig()
+func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
+	config := serverconfig.DefaultConfig()
 
 	// Since this is used for tests, turn the following off:
 	config.Playground.Enabled = false
@@ -467,9 +235,10 @@ func MustDefaultConfigWithRandomPorts() *Config {
 // ReadConfig returns the OpenFGA server configuration based on the values provided in the server's 'config.yaml' file.
 // The 'config.yaml' file is loaded from '/etc/openfga', '$HOME/.openfga', or the current working directory. If no configuration
 // file is present, the default values are returned.
-func ReadConfig() (*Config, error) {
-	config := DefaultConfig()
+func ReadConfig() (*serverconfig.Config, error) {
+	config := serverconfig.DefaultConfig()
 
+	viper.SetTypeByDefaultValue(true)
 	err := viper.ReadInConfig()
 	if err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
@@ -484,65 +253,13 @@ func ReadConfig() (*Config, error) {
 	return config, nil
 }
 
-func VerifyConfig(cfg *Config) error {
-	if int(cfg.MaxConcurrentReadsForCheck) > cfg.Datastore.MaxOpenConns {
-		fmt.Printf("config 'maxConcurrentReadsForCheck' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForCheck, cfg.Datastore.MaxOpenConns)
-	}
-
-	if int(cfg.MaxConcurrentReadsForListObjects) > cfg.Datastore.MaxOpenConns {
-		fmt.Printf("config 'maxConcurrentReadsForListObjects' (%d) should not be higher than 'datastore.maxOpenConns' config (%d)\n", cfg.MaxConcurrentReadsForListObjects, cfg.Datastore.MaxOpenConns)
-	}
-
-	if cfg.ListObjectsDeadline > cfg.HTTP.UpstreamTimeout {
-		return fmt.Errorf("config 'http.upstreamTimeout' (%s) cannot be lower than 'listObjectsDeadline' config (%s)", cfg.HTTP.UpstreamTimeout, cfg.ListObjectsDeadline)
-	}
-
-	if cfg.Log.Format != "text" && cfg.Log.Format != "json" {
-		return fmt.Errorf("config 'log.format' must be one of ['text', 'json']")
-	}
-
-	if cfg.Log.Level != "none" &&
-		cfg.Log.Level != "debug" &&
-		cfg.Log.Level != "info" &&
-		cfg.Log.Level != "warn" &&
-		cfg.Log.Level != "error" &&
-		cfg.Log.Level != "panic" &&
-		cfg.Log.Level != "fatal" {
-		return fmt.Errorf("config 'log.level' must be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal']")
-	}
-
-	if cfg.Playground.Enabled {
-		if !cfg.HTTP.Enabled {
-			return errors.New("the HTTP server must be enabled to run the openfga playground")
-		}
-
-		if !(cfg.Authn.Method == "none" || cfg.Authn.Method == "preshared") {
-			return errors.New("the playground only supports authn methods 'none' and 'preshared'")
-		}
-	}
-
-	if cfg.HTTP.TLS.Enabled {
-		if cfg.HTTP.TLS.CertPath == "" || cfg.HTTP.TLS.KeyPath == "" {
-			return errors.New("'http.tls.cert' and 'http.tls.key' configs must be set")
-		}
-	}
-
-	if cfg.GRPC.TLS.Enabled {
-		if cfg.GRPC.TLS.CertPath == "" || cfg.GRPC.TLS.KeyPath == "" {
-			return errors.New("'grpc.tls.cert' and 'grpc.tls.key' configs must be set")
-		}
-	}
-
-	return nil
-}
-
 func run(_ *cobra.Command, _ []string) {
 	config, err := ReadConfig()
 	if err != nil {
 		panic(err)
 	}
 
-	if err := VerifyConfig(config); err != nil {
+	if err := config.Verify(); err != nil {
 		panic(err)
 	}
 
@@ -558,18 +275,39 @@ type ServerContext struct {
 	Logger logger.Logger
 }
 
-func (s *ServerContext) Run(ctx context.Context, config *Config) error {
+func convertStringArrayToUintArray(stringArray []string) []uint {
+	uintArray := []uint{}
+	for _, val := range stringArray {
+		// note that we have already validated whether the array item is non-negative integer
+		valInt, err := strconv.Atoi(val)
+		if err == nil {
+			uintArray = append(uintArray, uint(valInt))
+		}
+	}
+	return uintArray
+}
+
+func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
 	tp := sdktrace.NewTracerProvider()
 	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s'", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint))
-		tp = telemetry.MustNewTracerProvider(
-			telemetry.WithOTLPEndpoint(config.Trace.OTLP.Endpoint),
+		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+
+		options := []telemetry.TracerOption{
+			telemetry.WithOTLPEndpoint(
+				config.Trace.OTLP.Endpoint,
+			),
 			telemetry.WithAttributes(
 				semconv.ServiceNameKey.String(config.Trace.ServiceName),
 				semconv.ServiceVersionKey.String(build.Version),
 			),
 			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
-		)
+		}
+
+		if !config.Trace.OTLP.TLS.Enabled {
+			options = append(options, telemetry.WithOTLPInsecure())
+		}
+
+		tp = telemetry.MustNewTracerProvider(options...)
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
@@ -637,13 +375,13 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
 		requestid.NewUnaryInterceptor(),
-		grpc_validator.UnaryServerInterceptor(),
+		validator.UnaryServerInterceptor(),
 		grpc_ctxtags.UnaryServerInterceptor(),
 	}
 
 	streamingInterceptors := []grpc.StreamServerInterceptor{
 		requestid.NewStreamingInterceptor(),
-		grpc_validator.StreamServerInterceptor(),
+		validator.StreamServerInterceptor(),
 		grpc_ctxtags.StreamServerInterceptor(),
 	}
 
@@ -664,11 +402,11 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(s.Logger),
-		grpc_auth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		grpc_auth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),
@@ -742,6 +480,8 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 		server.WithCheckQueryCacheEnabled(config.CheckQueryCache.Enabled),
 		server.WithCheckQueryCacheLimit(config.CheckQueryCache.Limit),
 		server.WithCheckQueryCacheTTL(config.CheckQueryCache.TTL),
+		server.WithRequestDurationByQueryHistogramBuckets(convertStringArrayToUintArray(config.RequestDurationDatastoreQueryCountBuckets)),
+		server.WithMaxAuthorizationModelSizeInBytes(config.MaxAuthorizationModelSizeInBytes),
 		server.WithExperimentals(experimentals...),
 	)
 
@@ -893,7 +633,6 @@ func (s *ServerContext) Run(ctx context.Context, config *Config) error {
 
 		mux := http.NewServeMux()
 		mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
 			if strings.HasPrefix(r.URL.Path, "/playground") {
 				if r.URL.Path == "/playground" || r.URL.Path == "/playground/index.html" {
 					err = tmpl.Execute(w, struct {

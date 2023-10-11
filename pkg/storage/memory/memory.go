@@ -406,7 +406,6 @@ func (s *MemoryBackend) ReadStartingWithUser(
 				matches = append(matches, t)
 			}
 		}
-
 	}
 	return &staticIterator{tuples: matches}, nil
 }

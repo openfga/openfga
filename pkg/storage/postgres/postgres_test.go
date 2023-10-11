@@ -26,28 +26,16 @@ func TestPostgresDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
-func TestReadAuthorizationModelPostgresSpecificCases(t *testing.T) {
+func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
 
 	uri := testDatastore.GetConnectionURI(true)
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
-
-	ctx := context.Background()
-	defer ds.Close()
-	store := "store"
-	modelID := "foo"
-	schemaVersion := "7.8"
-
-	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
-	require.NoError(t, err)
-
-	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition) VALUES ($1, $2, $3, $4, $5)", store, modelID, schemaVersion, "document", bytes)
-	require.NoError(t, err)
-
-	model, err := ds.ReadAuthorizationModel(ctx, store, modelID)
-	require.NoError(t, err)
-	require.Equal(t, typesystem.SchemaVersion1_0, model.SchemaVersion)
+	ds.Close()
+	ready, err := ds.IsReady(context.Background())
+	require.Error(t, err)
+	require.False(t, ready)
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
@@ -96,7 +84,6 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	curTuple, err = iter.Next()
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.Key)
-
 }
 
 // TestReadPageEnsureNoOrder asserts that the read page is ordered by ulid
@@ -141,5 +128,29 @@ func TestReadPageEnsureOrder(t *testing.T) {
 	// we expect that objectID2 will return first because it has a smaller ulid
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
+}
 
+func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	defer ds.Close()
+	store := "store"
+	modelID := "foo"
+	schemaVersion := typesystem.SchemaVersion1_0
+
+	bytes, err := proto.Marshal(&openfgav1.TypeDefinition{Type: "document"})
+	require.NoError(t, err)
+	pbdata := []byte{0x01, 0x02, 0x03}
+
+	_, err = ds.db.ExecContext(ctx, "INSERT INTO authorization_model (store, authorization_model_id, schema_version, type, type_definition, serialized_protobuf) VALUES ($1, $2, $3, $4, $5, $6)", store, modelID, schemaVersion, "document", bytes, pbdata)
+	require.NoError(t, err)
+
+	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }

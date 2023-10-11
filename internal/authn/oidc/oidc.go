@@ -12,7 +12,7 @@ import (
 
 	"github.com/MicahParks/keyfunc"
 	"github.com/golang-jwt/jwt/v4"
-	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -33,7 +33,7 @@ type RemoteOidcAuthenticator struct {
 }
 
 var (
-	jwkRefreshInterval, _ = time.ParseDuration("48h")
+	jwkRefreshInterval = 48 * time.Hour
 
 	errInvalidAudience = status.Error(codes.Code(openfgav1.AuthErrorCode_auth_failed_invalid_audience), "invalid audience")
 	errInvalidClaims   = status.Error(codes.Code(openfgav1.AuthErrorCode_invalid_claims), "invalid claims")

@@ -211,6 +211,11 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 			expectedErrorCode: int32(openfgav1.InternalErrorCode_unavailable),
 		},
 		{
+			_name:             "unauthenticated",
+			status:            status.New(codes.Unauthenticated, "other error"),
+			expectedErrorCode: int32(openfgav1.AuthErrorCode_unauthenticated),
+		},
+		{
 			_name:             "data_loss",
 			status:            status.New(codes.DataLoss, "other error"),
 			expectedErrorCode: int32(openfgav1.InternalErrorCode_data_loss),
@@ -357,7 +362,6 @@ func TestConvertToEncodedErrorCode(t *testing.T) {
 }
 
 func TestSanitizeErrorMessage(t *testing.T) {
-
 	got := sanitizedMessage(`proto: (line 1:2): unknown field "foo"`) // uses a whitespace rune of U+00a0 (see https://pkg.go.dev/unicode#IsSpace)
 	expected := `(line 1:2): unknown field "foo"`
 

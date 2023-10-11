@@ -8,6 +8,90 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.3] - 2023-10-04
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.2...v1.3.3)
+
+### Added
+
+* Configurable size limit for Authorization Models ([#1032](https://github.com/openfga/openfga/pull/1032))
+
+  We've introduced a new size limit for authorization models, provided a consistent behavior across datastores, which defaults to `256KB`. This can be configured by using the `--max-authorization-model-size-in-bytes` flag.
+
+### Fixed
+
+* Reduce use of GOB in encoded cache key ([#1029](https://github.com/openfga/openfga/pull/1029))
+
+### Changed
+
+* Move standalone server config defaults ([#1036](https://github.com/openfga/openfga/pull/1036))
+
+* Persist Authorization Models serialized protobuf in the database ([#1028](https://github.com/openfga/openfga/pull/1028))
+
+  In the next series of releases will progressively introduce changes via code and database migrations that will allow authorization models to be stored in a single database row.
+
+  See [here for more details](https://github.com/openfga/openfga/issues/1025).
+
+
+## [1.3.2] - 2023-08-25
+### Added
+* Support TLS for OTLP trace endpoint ([#885](https://github.com/openfga/openfga/pull/885)) - thanks @matoous
+* Configurable limits to database reads per ListObjects query ([#967](https://github.com/openfga/openfga/pull/967))
+* Datastore query count labels to traces and query latency histogram in ListObjects ([#959](https://github.com/openfga/openfga/pull/959))
+* Github workflow to check markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
+
+### Fixed
+* Change response code to internal error for concurrency conflicts ([#1011](https://github.com/openfga/openfga/pull/1011))
+
+### Changed
+* Use slices and maps packages from go1.21 ([#969](https://github.com/openfga/openfga/pull/969)) - thanks @tranngoclam
+* Moved request validations to RPC handlers so library integrations benefit ([#975](https://github.com/openfga/openfga/pull/975), [#998](https://github.com/openfga/openfga/pull/998))
+* Refactored internal usages of ConnectedObjects to ReverseExpand ([#968](https://github.com/openfga/openfga/pull/968))
+* Expose validation middleware ([#1005](https://github.com/openfga/openfga/pull/1005))
+* Upgrade grpc validator middleware to the latest v2 package ([#1019](https://github.com/openfga/openfga/pull/1019)) - thanks @tranngoclam
+
+### Security
+* Patches [CVE-2023-43645](https://github.com/openfga/openfga/security/advisories/GHSA-2hm9-h873-pgqh) - see the CVE for more details
+
+  **[BREAKING]** If your model contained cycles or a relation definition that has the relation itself in its evaluation path, then Checks and queries that require evaluation will no longer be evaluated on v1.3.2+ and will return errors instead. You will need to update your models to remove the cycles.
+
+## [1.3.1] - 2023-08-23
+
+### Added
+* Count datastore queries involved in Check resolution metadata ([#880](https://github.com/openfga/openfga/pull/880))
+
+  OpenFGA request logs and traces will now include a field `datastore_query_count` that shows how many queries were involved in a single Check resolution.
+
+* Histogram metric to report the `datastore_query_count` per Check ([#924](https://github.com/openfga/openfga/pull/932))
+
+  This new metric can be used to report percentiles of the number of database queries required to resolve Check requests.
+
+* Check request duration histogram labeled by method and datastore query count ([#950](https://github.com/openfga/openfga/pull/950))
+
+  The `request_duration_by_query_count_ms` metric reports the total request duration (in ms) labelled by the RPC method and ranges of observations for the `datastore_query_count`. This metrics allows operators of an OpenFGA server to report request duration percentiles for Check requests based on the number of database queries that were required to resolve the query.
+
+* Optimize Check to avoid database lookups in some scenarios ([#932](https://github.com/openfga/openfga/pull/932))
+
+* CachedCheckResolver for caching Check subproblems ([#891](https://github.com/openfga/openfga/pull/891))
+
+  This experimental feature adds new caching capabilities to the OpenFGA server. It is an "opt-in" feature and thus must be enabled. To enable this feature you must specify the experimental flag `check-query-cache` and set the  `--check-query-cache-enabled=true` flag.
+
+  ```shell
+  openfga run --experimentals check-query-cache --check-query-cache-enabled=true
+  ```
+
+* Server request logs now include the `user-agent` ([#943](https://github.com/openfga/openfga/pull/943))
+
+### Changed
+* Default Check and ListObjects concurrency read limits ([#916](https://github.com/openfga/openfga/pull/916))
+
+  In our last release [v1.3.0](https://github.com/openfga/openfga/releases/tag/v1.3.0) we modified the default behavior of Check and ListObjects such that it limits/restricts the degree of concurrency that is allowed for a single request. This change was unintended. This release reverts the default behavior back to unbounded concurrency limits (the prior default). The change mostly affects those using OpenFGA as a library.
+
+* Bumped up to Go 1.21 ([#952](https://github.com/openfga/openfga/pull/952))
+
+### Security
+* Patches [CVE-2023-40579](https://github.com/openfga/openfga/security/advisories/GHSA-jcf2-mxr2-gmqp) - see the CVE for more details
+
 ## [1.3.0] - 2023-08-01
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.2.0...v1.3.0)
@@ -123,7 +207,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Ready for Production with Postgres 
+## Ready for Production with Postgres
 OpenFGA with Postgres is now considered stable and ready for production usage.
 
 ## Fixed
@@ -351,7 +435,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   ./openfga run --experimentals=otel-metrics --otel-telemetry-endpoint=127.0.0.1:4317 --otel-telemetry-protocol=http
   ```
 
-  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga#telemetry-metrics-and-tracing).
+  For more information see the official documentation on [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga/docker#experimental-features) and [Telemetry](https://openfga.dev/docs/getting-started/setup-openfga/docker#telemetry).
 
 * Type-bound public access support in the optimized ListObjects implementation (when the `list-objects-optimized` experimental feature is enabled) ([#444](https://github.com/openfga/openfga/pull/444))
 
@@ -375,7 +459,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
   `--log-level` (can be one of ['none', 'debug', 'info', 'warn', 'error', 'panic', 'fatal'])
 
 * Support for Experimental Feature flags
-  A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga#experimental-features).
+  A new flag `--experimentals` has been added to enable certain experimental features in OpenFGA. For more information see [Experimental Features](https://openfga.dev/docs/getting-started/setup-openfga/docker#experimental-features).
 
 ### Security
 * Patches [CVE-2022-23542](https://github.com/openfga/openfga/security/advisories/GHSA-m3q4-7qmj-657m) - relationship reads now respect type restrictions from prior models ([#422](https://github.com/openfga/openfga/pull/422)).
@@ -561,7 +645,7 @@ no tuple key instead.
 ### Changed
 * Env variables have a new mappings.
 
-  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
+  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`).
 
 ### Fixed
 * goroutine leaks in Check resolution. ([#113](https://github.com/openfga/openfga/pull/113))
@@ -589,7 +673,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
+[1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2
+[1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0
 [1.2.0]: https://github.com/openfga/openfga/releases/tag/v1.2.0
 [1.1.1]: https://github.com/openfga/openfga/releases/tag/v1.1.1

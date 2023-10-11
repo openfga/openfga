@@ -45,9 +45,12 @@ func RunQueryTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestReadChangesReturnsSameContTokenWhenNoChanges",
 		func(t *testing.T) { TestReadChangesReturnsSameContTokenWhenNoChanges(t, ds) },
 	)
+	t.Run("TestReadChangesAfterConcurrentWritesReturnsUniqueResults",
+		func(t *testing.T) { TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t, ds) },
+	)
 
 	t.Run("TestListObjectsRespectsMaxResults", func(t *testing.T) { TestListObjectsRespectsMaxResults(t, ds) })
-	t.Run("TestConnectedObjects", func(t *testing.T) { ConnectedObjectsTest(t, ds) })
+	t.Run("TestReverseExpand", func(t *testing.T) { TestReverseExpand(t, ds) })
 }
 
 func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
