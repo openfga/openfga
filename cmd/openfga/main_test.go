@@ -204,7 +204,7 @@ func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 	}
 }
 
-func TestCheckWithContextualTuplesAndQueryCacheEnabled(t *testing.T) {
+func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	tester := newOpenFGATester(t, "--experimentals=check-query-cache", "--check-query-cache-enabled=true")
 	defer tester.Cleanup()
 
