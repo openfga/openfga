@@ -199,6 +199,15 @@ func TestPrimitives(t *testing.T) {
 			repr:      "TYPE_NAME_MAP<string>",
 		},
 		{
+			name:      "invalid_map",
+			paramType: mustMapParamType(StringParamType),
+			input:     map[int]any{123: "world"},
+			expectedError: fmt.Errorf(
+				"for TYPE_NAME_MAP<string>: map requires a map, found: map[int]interface {}",
+			),
+			repr: "TYPE_NAME_MAP<string>",
+		},
+		{
 			name:      "invalid_map_string",
 			paramType: mustMapParamType(StringParamType),
 			input:     map[string]any{"hello": 1},
@@ -213,6 +222,15 @@ func TestPrimitives(t *testing.T) {
 			input:     []any{"hello", "world"},
 			output:    []any{"hello", "world"},
 			repr:      "TYPE_NAME_LIST<string>",
+		},
+		{
+			name:      "invalid_list",
+			paramType: mustListParamType(StringParamType),
+			input:     "hello",
+			expectedError: fmt.Errorf(
+				"for TYPE_NAME_LIST<string>: list requires a list, found: string",
+			),
+			repr: "TYPE_NAME_LIST<string>",
 		},
 		{
 			name:      "invalid_list_string",
