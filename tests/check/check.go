@@ -11,6 +11,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -41,15 +42,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.TupleKey
-	CheckAssertions []*assertion `yaml:"checkAssertions"`
-}
-
-type assertion struct {
-	Tuple            *openfgav1.TupleKey
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
-	Expectation      bool
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
-	Trace            string
+	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests

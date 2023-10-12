@@ -606,7 +606,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 						&ResolveCheckRequest{
 							StoreID:              storeID,
 							AuthorizationModelID: req.GetAuthorizationModelID(),
-							TupleKey:             tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser()),
+							TupleKey:             tupleKey,
 							ContextualTuples:     req.GetContextualTuples(),
 							ResolutionMetadata: &ResolutionMetadata{
 								Depth:               req.GetResolutionMetadata().Depth - 1,
@@ -666,6 +666,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 				AuthorizationModelID: req.GetAuthorizationModelID(),
 				ContextualTuples:     req.GetContextualTuples(),
 				TupleKey:             rewrittenTupleKey,
+				ContextualTuples:     req.GetContextualTuples(),
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth - 1,
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
