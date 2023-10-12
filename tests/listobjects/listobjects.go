@@ -13,6 +13,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
+	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
@@ -42,14 +43,7 @@ type testParams struct {
 type stage struct {
 	Model                string
 	Tuples               []*openfgav1.TupleKey
-	ListObjectAssertions []*assertion `yaml:"listObjectsAssertions"`
-}
-
-type assertion struct {
-	Request          *openfgav1.ListObjectsRequest
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
-	Expectation      []string
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	ListObjectAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
 }
 
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
