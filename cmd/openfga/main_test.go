@@ -22,6 +22,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/migrate"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -219,6 +220,210 @@ func newOpenFGATester(t *testing.T, openfgaImage string, args ...string) OpenFGA
 		grpcPort: grpcPort,
 		httpPort: httpPort,
 		cleanup:  stopContainer,
+	}
+}
+
+func TestCheckWithQueryCacheEnabled(t *testing.T) {
+	tester := newOpenFGATester(t, "--experimentals=check-query-cache", "--check-query-cache-enabled=true")
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	tests := []struct {
+		name            string
+		typeDefinitions []*openfgav1.TypeDefinition
+		tuples          []*openfgav1.TupleKey
+		assertions      []checktest.Assertion
+	}{
+		{
+			name: "issue_1058",
+			typeDefinitions: parser.MustParse(`
+			type fga_user
+
+			type timeslot
+			  relations
+				define user: [fga_user] as self
+
+			type commerce_store
+			  relations
+				define approved_hourly_access as user from approved_timeslot and hourly_employee
+				define approved_timeslot: [timeslot] as self
+				define hourly_employee: [fga_user] as self
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("commerce_store:0", "hourly_employee", "fga_user:anne"),
+				tuple.NewTupleKey("commerce_store:1", "hourly_employee", "fga_user:anne"),
+				tuple.NewTupleKey("commerce_store:0", "approved_timeslot", "timeslot:11_12"),
+				tuple.NewTupleKey("commerce_store:1", "approved_timeslot", "timeslot:12_13"),
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:0", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+					},
+					Expectation: true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:11_12", "user", "fga_user:anne"),
+					},
+					Expectation: false,
+				},
+				{
+					Tuple: tuple.NewTupleKey("commerce_store:1", "approved_hourly_access", "fga_user:anne"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("timeslot:12_13", "user", "fga_user:anne"),
+					},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			name: "cache_computed_userset_subproblem_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+
+			type document
+			  relations
+			    define restricted: [user] as self
+			    define viewer: [user] as self but not restricted
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
+		{
+			name: "cached_direct_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+
+			type document
+			  relations
+			    define viewer: [user] as self
+			`),
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      false,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					},
+					Expectation: true,
+				},
+			},
+		},
+		{
+			name: "cached_direct_userset_relationship_with_contextual_tuple",
+			typeDefinitions: parser.MustParse(`
+			type user
+			
+			type group
+			  relations
+			    define restricted: [user] as self
+			    define member: [user] as self but not restricted
+
+			type document
+			  relations
+			    define viewer: [group#member] as self
+			`),
+			tuples: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+				tuple.NewTupleKey("group:eng", "member", "user:jon"),
+			},
+			assertions: []checktest.Assertion{
+				{
+					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{},
+					Expectation:      true,
+				},
+				{
+					Tuple: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					ContextualTuples: []*openfgav1.TupleKey{
+						tuple.NewTupleKey("group:eng", "restricted", "user:jon"),
+					},
+					Expectation: false,
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+
+		t.Run(test.name, func(t *testing.T) {
+			createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+				Name: test.name,
+			})
+			require.NoError(t, err)
+			require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
+
+			storeID := createResp.GetId()
+
+			writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+				StoreId:         storeID,
+				TypeDefinitions: test.typeDefinitions,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			})
+			require.NoError(t, err)
+			require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
+
+			modelID := writeModelResp.GetAuthorizationModelId()
+
+			if len(test.tuples) > 0 {
+				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					Writes: &openfgav1.TupleKeys{
+						TupleKeys: test.tuples,
+					},
+				})
+				require.NoError(t, err)
+			}
+
+			for _, assertion := range test.assertions {
+				checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+					StoreId:              storeID,
+					AuthorizationModelId: modelID,
+					TupleKey:             assertion.Tuple,
+					ContextualTuples: &openfgav1.ContextualTupleKeys{
+						TupleKeys: assertion.ContextualTuples,
+					},
+				})
+
+				if assertion.ErrorCode == 0 {
+					require.NoError(t, err)
+					require.Equal(t, assertion.Expectation, checkResp.GetAllowed())
+				} else {
+					require.Error(t, err)
+					e, ok := status.FromError(err)
+					require.True(t, ok)
+					require.Equal(t, assertion.ErrorCode, int(e.Code()))
+				}
+			}
+		})
 	}
 }
 
