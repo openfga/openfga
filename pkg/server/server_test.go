@@ -263,16 +263,11 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer timeoutCancel()
 
-	checkResp, err := s.Check(timeoutCtx, &openfgav1.CheckRequest{
-		StoreId:              storeID,
-		AuthorizationModelId: modelID,
-		TupleKey:             tuple.NewTupleKey("document:0", "editor", "user:jon"),
-	})
-
-	// If ListObjects is still hogging the database connection pool even after responding, then this Check fails.
-	// If ListObjects is closing up its connections effectively then this Check will not fail.
+	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
+	// If ListObjects is closing up its connections effectively then this will not fail.
+	ready, err := ds.IsReady(timeoutCtx)
 	require.NoError(t, err)
-	require.True(t, checkResp.GetAllowed())
+	require.True(t, ready)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {

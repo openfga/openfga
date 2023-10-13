@@ -235,7 +235,6 @@ func (q *ListObjectsQuery) evaluate(
 				}
 
 				resultsChan <- ListObjectsResult{Err: err}
-				return
 			}
 		}()
 
