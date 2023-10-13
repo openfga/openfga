@@ -185,7 +185,7 @@ func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.
 					Cause: fmt.Errorf("condition is missing"), TupleKey: write})
 			}
 		} else { // condition defined in the write
-			conditionContext, conditionDefined := ts.GetConditions()[write.Condition.ConditionName]
+			conditionContext, conditionDefined := ts.GetConditions()[write.Condition.Name]
 			if !conditionDefined {
 				return serverErrors.ValidationError(&tupleUtils.InvalidConditionalTupleError{
 					Cause: fmt.Errorf("undefined condition"), TupleKey: write})
@@ -193,7 +193,7 @@ func validateConditionsInTuples(ts *typesystem.TypeSystem, deletes []*openfgav1.
 
 			validCondition := false
 			for _, userset := range relation.TypeInfo.GetDirectlyRelatedUserTypes() {
-				if userset.Type == userType && userset.Condition == write.Condition.ConditionName {
+				if userset.Type == userType && userset.Condition == write.Condition.Name {
 					validCondition = true
 				}
 			}

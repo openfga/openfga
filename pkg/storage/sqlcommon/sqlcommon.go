@@ -287,7 +287,7 @@ func marshalTKCondition(tk *openfgav1.TupleKey) (name string, context *string, e
 	condition := tk.GetCondition()
 
 	if condition != nil {
-		name = condition.ConditionName
+		name = condition.Name
 		marshalled, err := json.Marshal(condition.Context.AsMap())
 		if err != nil {
 			return "", nil, err
