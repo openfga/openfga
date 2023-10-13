@@ -1213,6 +1213,8 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 	}
 
 	for _, test := range tests {
+		test := test
+
 		t.Run(test.name, func(t *testing.T) {
 			require := require.New(t)
 
@@ -1257,7 +1259,7 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			go func() {
-				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				err := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 				require.ErrorIs(err, test.expectedError)
 			}()
 
