@@ -165,7 +165,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				typedefs = v1parser.MustParse(stage.Model)
 			}
 
-			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
@@ -180,7 +180,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
-						StoreId: storeID,
+						StoreId:              storeID,
+						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
 						Writes: &openfgav1.WriteRequestTupleKeys{
 							TupleKeys: writeChunk,
 						},
@@ -202,8 +203,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-					StoreId:  storeID,
-					TupleKey: assertion.Tuple,
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					TupleKey:             assertion.Tuple,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},

@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"sync"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/storage"
@@ -22,12 +22,6 @@ import (
 )
 
 var tracer = otel.Tracer("internal/graph/check")
-
-const (
-	// same values as run.DefaultConfig() (TODO break the import cycle, remove these hardcoded values and import those constants here)
-	defaultResolveNodeBreadthLimit    = 25
-	defaultMaxConcurrentReadsForCheck = math.MaxUint32
-)
 
 var (
 	ErrCycleDetected = errors.New("a cycle has been detected")
@@ -168,8 +162,8 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
 	checker := &LocalChecker{
 		ds:                 ds,
-		concurrencyLimit:   defaultResolveNodeBreadthLimit,
-		maxConcurrentReads: defaultMaxConcurrentReadsForCheck,
+		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
+		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 	}
 	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
 
