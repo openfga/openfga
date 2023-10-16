@@ -88,8 +88,8 @@ type AuthnConfig struct {
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string
-	*AuthnOIDCConfig         `       mapstructure:"oidc"`
-	*AuthnPresharedKeyConfig `       mapstructure:"preshared"`
+	*AuthnOIDCConfig         `mapstructure:"oidc"`
+	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
 }
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.
