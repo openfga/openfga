@@ -215,7 +215,12 @@ func (q *ListObjectsQuery) evaluate(
 			reverseexpand.WithResolveNodeBreadthLimit(q.resolveNodeBreadthLimit),
 		)
 
+		wg := sync.WaitGroup{}
+
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+
 			err = reverseExpandQuery.Execute(ctx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
@@ -231,9 +236,6 @@ func (q *ListObjectsQuery) evaluate(
 
 				resultsChan <- ListObjectsResult{Err: err}
 			}
-
-			// this is necessary to terminate the range loop below
-			close(reverseExpandResultsChan)
 		}()
 
 		checkResolver := graph.NewLocalChecker(
@@ -244,12 +246,11 @@ func (q *ListObjectsQuery) evaluate(
 
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
-		wg := sync.WaitGroup{}
-
 		for res := range reverseExpandResultsChan {
 			if atomic.LoadUint32(objectsFound) >= maxResults {
 				break
 			}
+
 			if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
 				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
@@ -294,7 +295,6 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		wg.Wait()
-
 		close(resultsChan)
 	}
 
@@ -355,7 +355,11 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				return nil, serverErrors.HandleError("", result.Err)
+				if !(errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded)) {
+					return nil, serverErrors.HandleError("", result.Err)
+				}
+
+				continue
 			}
 
 			if !channelOpen {
