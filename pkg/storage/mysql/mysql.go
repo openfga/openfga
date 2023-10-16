@@ -129,7 +129,7 @@ func (m *MySQL) read(ctx context.Context, store string, tupleKey *openfgav1.Tupl
 	defer span.End()
 
 	sb := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -212,7 +212,7 @@ func (m *MySQL) ReadUsersetTuples(ctx context.Context, store string, filter stor
 	ctx, span := tracer.Start(ctx, "mysql.ReadUsersetTuples")
 	defer span.End()
 
-	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := m.stbl.Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -261,7 +261,7 @@ func (m *MySQL) ReadStartingWithUser(ctx context.Context, store string, opts sto
 	}
 
 	rows, err := m.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,

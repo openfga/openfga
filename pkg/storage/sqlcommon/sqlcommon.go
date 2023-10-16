@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -113,22 +114,33 @@ func NewConfig(opts ...DatastoreOption) *Config {
 }
 
 type TupleRecord struct {
-	Store      string
-	ObjectType string
-	ObjectID   string
-	Relation   string
-	User       string
-	Ulid       string
-	InsertedAt time.Time
+	Store            string
+	ObjectType       string
+	ObjectID         string
+	Relation         string
+	User             string
+	ConditionName    string
+	ConditionContext *structpb.Struct
+	Ulid             string
+	InsertedAt       time.Time
 }
 
 func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
+	tk := &openfgav1.TupleKey{
+		Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
+		Relation: t.Relation,
+		User:     t.User,
+	}
+
+	if t.ConditionName != "" {
+		tk.Condition = &openfgav1.RelationshipCondition{
+			ConditionName: t.ConditionName,
+			Context:       t.ConditionContext,
+		}
+	}
+
 	return &openfgav1.Tuple{
-		Key: &openfgav1.TupleKey{
-			Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
-			Relation: t.Relation,
-			User:     t.User,
-		},
+		Key:       tk,
 		Timestamp: timestamppb.New(t.InsertedAt),
 	}
 }
@@ -178,6 +190,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
+	var conditionContext *[]byte
 	var record TupleRecord
 	err := t.rows.Scan(
 		&record.Store,
@@ -185,11 +198,21 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 		&record.ObjectID,
 		&record.Relation,
 		&record.User,
+		&record.ConditionName,
+		&conditionContext,
 		&record.Ulid,
 		&record.InsertedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(*conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
 	}
 
 	return &record, nil
@@ -283,23 +306,6 @@ func NewDBInfo(db *sql.DB, stbl sq.StatementBuilderType, sqlTime interface{}) *D
 	}
 }
 
-func marshalTKCondition(tk *openfgav1.TupleKey) (name string, context *string, err error) {
-	condition := tk.GetCondition()
-
-	if condition != nil {
-		name = condition.ConditionName
-		marshalled, err := json.Marshal(condition.Context.AsMap())
-		if err != nil {
-			return "", nil, err
-		}
-
-		marshalledString := string(marshalled)
-		context = &marshalledString
-	}
-
-	return name, context, nil
-}
-
 // Write provides the common method for writing to database across sql storage
 func Write(
 	ctx context.Context,
@@ -330,7 +336,7 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalTKCondition(tk)
+		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
 			return err
 		}
@@ -381,7 +387,7 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalTKCondition(tk)
+		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
 		if err != nil {
 			return err
 		}
