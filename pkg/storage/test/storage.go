@@ -1,6 +1,7 @@
 package test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -8,6 +9,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -33,6 +35,11 @@ var (
 )
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
+	t.Run("TestDatastoreIsReady", func(t *testing.T) {
+		ready, err := ds.IsReady(context.Background())
+		require.NoError(t, err)
+		require.True(t, ready)
+	})
 	// tuples
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
 	t.Run("TestTuplePaginationOptions", func(t *testing.T) { TuplePaginationOptionsTest(t, ds) })
