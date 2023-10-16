@@ -177,6 +177,7 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	defer close(resultChan)
 	return c.execute(ctx, req, resultChan, nil, resolutionMetadata)
 }
 
@@ -242,7 +243,9 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan)
+				if err := c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -489,22 +492,30 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	return subg.Wait()
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
 	))
 	defer span.End()
+
 	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
 		resultStatus := NoFurtherEvalStatus
 		if edge != nil && edge.Condition == graph.RequiresFurtherEvalCondition {
 			span.SetAttributes(attribute.Bool("requires_further_eval", true))
 			resultStatus = RequiresFurtherEvalStatus
 		}
-		candidateChan <- &ReverseExpandResult{
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case candidateChan <- &ReverseExpandResult{
 			Object:       candidateObject,
 			ResultStatus: resultStatus,
+		}:
+			span.SetAttributes(attribute.Bool("sent", true))
 		}
-		span.SetAttributes(attribute.Bool("sent", true))
 	}
+
+	return nil
 }
