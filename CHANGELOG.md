@@ -8,6 +8,23 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.4] - 2023-10-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.3...v1.3.4)
+
+### Fixed
+
+* Incorrect string in model validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
+* Incorrect results can be returned by Check API when passing in contextual tuples and the `check-query-cache` experimental flag is turned on ([#1059](https://github.com/openfga/openfga/pull/1059))
+
+### Changed
+
+* Bumped up to Go 1.21.3 ([#1060](https://github.com/openfga/openfga/pull/1060))
+
+### Security
+
+* Patches [CVE-2023-45810](https://github.com/openfga/openfga/security/advisories/GHSA-hr4f-6jh8-f2vq). See the CVE for more details
+
 ## [1.3.3] - 2023-10-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.2...v1.3.3)
@@ -38,7 +55,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Support TLS for OTLP trace endpoint ([#885](https://github.com/openfga/openfga/pull/885)) - thanks @matoous
 * Configurable limits to database reads per ListObjects query ([#967](https://github.com/openfga/openfga/pull/967))
 * Datastore query count labels to traces and query latency histogram in ListObjects ([#959](https://github.com/openfga/openfga/pull/959))
-* Github workflow to check markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
+* GitHub workflow to check Markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
 
 ### Fixed
 * Change response code to internal error for concurrency conflicts ([#1011](https://github.com/openfga/openfga/pull/1011))
@@ -115,7 +132,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * [BREAKING] Imports for OpenFGA protobuf API dependencies ([#898](https://github.com/openfga/openfga/pull/898))
   * **Problem** - Previously we depended on [Buf remote generated packages](https://buf.build/docs/bsr/remote-packages/overview), but they recently deprecated protobuf imports served from the `go.buf.build` domain (see [Migrate from remote generation alpha](https://buf.build/docs/migration-guides/migrate-remote-generation-alpha)). OpenFGA builds are currently broken as a result of this.
   * **Change** - We switched our protobuf API dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. So we no longer use Buf remote generated packages in favor of packages we managed in the [`openfga/api`](https://github.com/openfga/api) repository. This fixes existing build issues.
-  * **Impact** - Developers using the OpenFGA as a library or the gRPC API must change their protobuf dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. A global find/replace and package depedency update should fix it. Here's a diff demonstrating the changes for a Go app, for example:
+  * **Impact** - Developers using the OpenFGA as a library or the gRPC API must change their protobuf dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. A global find/replace and package dependency update should fix it. Here's a diff demonstrating the changes for a Go app, for example:
 
     ```go
     import (
@@ -220,7 +237,7 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 ## Added
 * Release artifacts are now signed and include a Software Bill of Materials (SBOM) ([#683](https://github.com/openfga/openfga/pull/683))
 
-  The SBOM (Software Bill of Materials) is included in each Github release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
+  The SBOM (Software Bill of Materials) is included in each GitHub release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
 
   Developers will be able to verify the signature of the release artifacts with the following workflow(s):
 
@@ -361,7 +378,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 ### Fixed
 * Undefined computed relations on tuplesets now behave properly ([#532](https://github.com/openfga/openfga/pull/532))
 
-  If you had a model involing two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
+  If you had a model involving two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
   ```
   type document
     relations
@@ -674,6 +691,7 @@ no tuple key instead.
 * Early support for preshared key or OIDC authentication methods
 
 [Unreleased]: https://github.com/openfga/openfga/compare/v1.3.3...HEAD
+[1.3.4]: https://github.com/openfga/openfga/releases/tag/v1.3.4
 [1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
 [1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2
 [1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
