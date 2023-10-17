@@ -19,11 +19,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func conditionedRelation(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
-	rel.Condition = condition
-	return rel
-}
-
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	storeID := ulid.Make().String()
 
@@ -489,7 +484,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -526,7 +524,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
 									},
 								},
 							},
@@ -564,7 +565,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -602,7 +606,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -640,7 +647,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -678,7 +688,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -725,7 +738,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -759,7 +775,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -799,7 +818,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
 									},
 								},
 							},
@@ -837,7 +859,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -875,7 +900,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -913,7 +941,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -951,7 +982,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -998,7 +1032,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										conditionedRelation(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},

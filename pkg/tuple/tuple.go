@@ -57,15 +57,6 @@ func NewWriteRequestTupleKey(object, relation, user string) *openfgav1.WriteRequ
 	}
 }
 
-func NewTupleKeyWithCondition(object, relation, user string, condition *openfgav1.RelationshipCondition) *openfgav1.TupleKey {
-	return &openfgav1.TupleKey{
-		Object:    object,
-		Relation:  relation,
-		User:      user,
-		Condition: condition,
-	}
-}
-
 func ConvertTupleKeyToWriteTupleKey(tk *openfgav1.TupleKey) *openfgav1.WriteRequestTupleKey {
 	return &openfgav1.WriteRequestTupleKey{
 		Object:    tk.GetObject(),

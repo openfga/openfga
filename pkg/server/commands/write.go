@@ -34,10 +34,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
-func (c *WriteCommand) Execute(
-	ctx context.Context,
-	req *openfgav1.WriteRequest,
-) (*openfgav1.WriteResponse, error) {
+func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
@@ -55,10 +52,7 @@ func (c *WriteCommand) Execute(
 	return &openfgav1.WriteResponse{}, nil
 }
 
-func (c *WriteCommand) validateWriteRequest(
-	ctx context.Context,
-	req *openfgav1.WriteRequest,
-) error {
+func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.WriteRequest) error {
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
@@ -134,12 +128,8 @@ func (c *WriteCommand) validateWriteRequest(
 	return nil
 }
 
-// validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and
-// length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
-	deletes []*openfgav1.TupleKey,
-	writes []*openfgav1.TupleKey,
-) error {
+// validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
+func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.TupleKey, writes []*openfgav1.TupleKey) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {
