@@ -178,7 +178,6 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-
 	err := c.execute(ctx, req, resultChan, nil, resolutionMetadata)
 	if err != nil {
 		resultChan <- &ReverseExpandResult{Err: err}
