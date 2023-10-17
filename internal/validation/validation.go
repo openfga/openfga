@@ -225,7 +225,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 		return nil
 	} else {
-		condition, ok := typesys.GetConditions()[tk.Condition.ConditionName]
+		condition, ok := typesys.GetConditions()[tk.Condition.Name]
 		if !ok {
 			return &tuple.InvalidConditionalTupleError{
 				Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
@@ -234,7 +234,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 		validCondition := false
 		for _, userset := range typeRestrictions {
-			if userset.Type == userType && userset.Condition == tk.Condition.ConditionName {
+			if userset.Type == userType && userset.Condition == tk.Condition.Name {
 				validCondition = true
 				continue
 			}

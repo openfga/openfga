@@ -263,6 +263,8 @@ github.com/opencontainers/image-spec v1.1.0-rc4 h1:oOxKUJWnFC4YGHCCMNql1x4YaDfYB
 github.com/opencontainers/image-spec v1.1.0-rc4/go.mod h1:X4pATf0uXsnn3g5aiGIsVnJBR4mxhKzfwmvK/B2NTm8=
 github.com/openfga/api/proto v0.0.0-20230926212222-c3a581feb40a h1:MvrYriqPhMnTTayk09aWmX39gHqRC/UtMerxlo70gZA=
 github.com/openfga/api/proto v0.0.0-20230926212222-c3a581feb40a/go.mod h1:/edBiulCLBxFw+Q1wfWyURo/grVjueLo6JWFPHHFTos=
+github.com/openfga/api/proto v0.0.0-20231013152440-fb9e0a84ee12 h1:wYOH1WVhFR8VA6WwJnEB1uEY8JVN6dOM0PQ/XfGJjO8=
+github.com/openfga/api/proto v0.0.0-20231013152440-fb9e0a84ee12/go.mod h1:jiL2FBwXhWDlpPiXe4myQt88pKpprl1RLLc0TuN3w2g=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/pelletier/go-toml/v2 v2.1.0 h1:FnwAJ4oYMvbT/34k9zzHuZNrhlz48GB3/s6at6/MHO4=

@@ -134,8 +134,8 @@ func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
 
 	if t.ConditionName != "" {
 		tk.Condition = &openfgav1.RelationshipCondition{
-			ConditionName: t.ConditionName,
-			Context:       t.ConditionContext,
+			Name:    t.ConditionName,
+			Context: t.ConditionContext,
 		}
 	}
 

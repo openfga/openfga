@@ -14,7 +14,7 @@ func marshalRelationshipCondition(
 			return "", nil, err
 		}
 
-		return rel.ConditionName, &context, err
+		return rel.Name, &context, err
 	}
 
 	return "", nil, nil

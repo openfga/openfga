@@ -320,8 +320,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				Relation: "viewer",
 				User:     "user:*",
 				Condition: &openfgav1.RelationshipCondition{
-					ConditionName: "condition1",
-					Context:       contextStructGood,
+					Name:    "condition1",
+					Context: contextStructGood,
 				},
 			},
 		},
@@ -340,8 +340,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				Relation: "owner",
 				User:     "user:jon",
 				Condition: &openfgav1.RelationshipCondition{
-					ConditionName: "condition1",
-					Context:       contextStructGood,
+					Name:    "condition1",
+					Context: contextStructGood,
 				},
 			},
 		},
@@ -370,8 +370,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				Relation: "writer",
 				User:     "user:jon",
 				Condition: &openfgav1.RelationshipCondition{
-					ConditionName: "condition1",
-					Context:       contextStructGood,
+					Name:    "condition1",
+					Context: contextStructGood,
 				},
 			},
 			expectedError: serverErrors.ValidationError(
@@ -382,8 +382,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 						Relation: "writer",
 						User:     "user:jon",
 						Condition: &openfgav1.RelationshipCondition{
-							ConditionName: "condition1",
-							Context:       contextStructGood,
+							Name:    "condition1",
+							Context: contextStructGood,
 						},
 					},
 				},
@@ -396,8 +396,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				Relation: "viewer",
 				User:     "user:*",
 				Condition: &openfgav1.RelationshipCondition{
-					ConditionName: "condition1",
-					Context:       contextStructBad,
+					Name:    "condition1",
+					Context: contextStructBad,
 				},
 			},
 			expectedError: serverErrors.ValidationError(
@@ -408,8 +408,8 @@ func TestValidateConditionsInTuples(t *testing.T) {
 						Relation: "viewer",
 						User:     "user:*",
 						Condition: &openfgav1.RelationshipCondition{
-							ConditionName: "condition1",
-							Context:       contextStructBad,
+							Name:    "condition1",
+							Context: contextStructBad,
 						},
 					},
 				},
