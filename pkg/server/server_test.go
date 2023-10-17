@@ -235,9 +235,9 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 	modelID := writeAuthzModelResp.GetAuthorizationModelId()
 
 	numTuples := 2000
-	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+	tuples := make([]*openfgav1.WriteRequestTupleKey, 0, numTuples)
 	for i := 0; i < numTuples; i++ {
-		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
+		tk := tuple.NewWriteRequestTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
 		tuples = append(tuples, tk)
 	}
@@ -245,7 +245,7 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
-		Writes: &openfgav1.TupleKeys{
+		Writes: &openfgav1.WriteRequestTupleKeys{
 			TupleKeys: tuples,
 		},
 	})
