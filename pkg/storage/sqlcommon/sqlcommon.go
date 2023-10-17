@@ -539,3 +539,15 @@ func ReadAuthorizationModel(
 		TypeDefinitions: typeDefs,
 	}, nil
 }
+
+// IsReady returns true if the connection to the datastore is successful
+func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}

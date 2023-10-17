@@ -48,6 +48,33 @@ var paramTypeString = map[openfgav1.ConditionParamTypeRef_TypeName]string{
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_IPADDRESS: "ipaddress",
 }
 
+func registerParamTypeWithGenerics(
+	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
+	genericTypeCount uint,
+	toParameterType func(genericType []ParameterType) ParameterType,
+) func(genericTypes ...ParameterType) (ParameterType, error) {
+	paramTypeDefinitions[paramTypeKeyword] = paramTypeDefinition{
+		name:             paramTypeKeyword,
+		genericTypeCount: genericTypeCount,
+		toParameterType: func(genericTypes []ParameterType) (*ParameterType, error) {
+			if uint(len(genericTypes)) != genericTypeCount {
+				return nil, fmt.Errorf("type `%s` requires %d generic types; found %d", paramTypeKeyword, genericTypeCount, len(genericTypes))
+			}
+
+			built := toParameterType(genericTypes)
+			return &built, nil
+		},
+	}
+
+	return func(genericTypes ...ParameterType) (ParameterType, error) {
+		if uint(len(genericTypes)) != genericTypeCount {
+			return ParameterType{}, fmt.Errorf("invalid number of parameters given to type constructor. expected: %d, found: %d", genericTypeCount, len(genericTypes))
+		}
+
+		return toParameterType(genericTypes), nil
+	}
+}
+
 func registerParamType(
 	paramTypeKeyword openfgav1.ConditionParamTypeRef_TypeName,
 	celType *cel.Type,
