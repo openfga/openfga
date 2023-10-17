@@ -15,10 +15,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -155,6 +155,7 @@ const (
 )
 
 type ReverseExpandResult struct {
+	Err          error
 	Object       string
 	ResultStatus ConditionalResultStatus
 }
@@ -177,8 +178,15 @@ func (c *ReverseExpandQuery) Execute(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
-	defer close(resultChan)
-	return c.execute(ctx, req, resultChan, nil, resolutionMetadata)
+
+	err := c.execute(ctx, req, resultChan, nil, resolutionMetadata)
+	if err != nil {
+		resultChan <- &ReverseExpandResult{Err: err}
+	} else {
+		close(resultChan)
+	}
+
+	return err
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -188,6 +196,10 @@ func (c *ReverseExpandQuery) execute(
 	currentEdge *graph.RelationshipEdge,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
 		attribute.String("target_relation", req.Relation),
@@ -259,8 +271,9 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for _, edge := range edges {
 		innerLoopEdge := edge
@@ -269,7 +282,7 @@ func (c *ReverseExpandQuery) execute(
 			// TODO don't mutate the edge, keep track of the previous edge's condition and use it in trySendCandidate
 			innerLoopEdge.Condition = graph.RequiresFurtherEvalCondition
 		}
-		subg.Go(func() error {
+		pool.Go(func(ctx context.Context) error {
 			r := &reverseExpandRequest{
 				storeID:          storeID,
 				edge:             innerLoopEdge,
@@ -280,10 +293,10 @@ func (c *ReverseExpandQuery) execute(
 
 			switch innerLoopEdge.Type {
 			case graph.DirectEdge:
-				return c.reverseExpandDirect(subgctx, r, resultChan, resolutionMetadata)
+				return c.reverseExpandDirect(ctx, r, resultChan, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
 				// lookup the rewritten target relation on the computed_userset ingress
-				return c.execute(subgctx, &ReverseExpandRequest{
+				return c.execute(ctx, &ReverseExpandRequest{
 					StoreID:    storeID,
 					ObjectType: req.ObjectType,
 					Relation:   req.Relation,
@@ -296,14 +309,14 @@ func (c *ReverseExpandQuery) execute(
 					ContextualTuples: r.contextualTuples,
 				}, resultChan, innerLoopEdge, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
-				return c.reverseExpandTupleToUserset(subgctx, r, resultChan, resolutionMetadata)
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
 		})
 	}
 
-	return subg.Wait()
+	return pool.Wait()
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -312,6 +325,10 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
@@ -349,8 +366,9 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	}
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -373,8 +391,8 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 			},
 		}
 
-		subg.Go(func() error {
-			return c.execute(subgctx, &ReverseExpandRequest{
+		pool.Go(func(ctx context.Context) error {
+			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
@@ -384,7 +402,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		})
 	}
 
-	return subg.Wait()
+	return pool.Wait()
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
@@ -393,6 +411,10 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.sourceUserRef.String()),
@@ -454,8 +476,9 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	}
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -478,8 +501,8 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 			},
 		}
 
-		subg.Go(func() error {
-			return c.execute(subgctx, &ReverseExpandRequest{
+		pool.Go(func(ctx context.Context) error {
+			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:          store,
 				ObjectType:       targetObjectType,
 				Relation:         targetObjectRel,
@@ -489,7 +512,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		})
 	}
 
-	return subg.Wait()
+	return pool.Wait()
 }
 
 func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
