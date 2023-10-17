@@ -320,7 +320,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			name: "cached_direct_userset_relationship_with_contextual_tuple",
 			typeDefinitions: parser.MustParse(`
 			type user
-			
+
 			type group
 			  relations
 			    define restricted: [user] as self
@@ -385,10 +385,19 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			}
 
 			for _, assertion := range test.assertions {
+				var tk *openfgav1.CheckRequestTupleKey
+				if assertion.Tuple != nil {
+					tk = tuple.NewCheckRequestTupleKey(
+						assertion.Tuple.GetObject(),
+						assertion.Tuple.GetRelation(),
+						assertion.Tuple.GetUser(),
+					)
+				}
+
 				checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					TupleKey:             assertion.Tuple,
+					TupleKey:             tk,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: assertion.ContextualTuples,
 					},
