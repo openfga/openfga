@@ -21,6 +21,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -187,9 +188,10 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
+	var conditionContext *[]byte
 	var record sqlcommon.TupleRecord
 	err := m.stbl.
-		Select("object_type", "object_id", "relation", "_user").
+		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -200,9 +202,17 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.ConditionName, &conditionContext)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(*conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
 	}
 
 	return record.AsTuple(), nil

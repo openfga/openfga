@@ -207,13 +207,44 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
+	t.Run("inserting_a_tuple_twice_either_conditioned_or_not_fails", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+		expectedError := storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
+
+		// First write should succeed.
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk})
+		require.NoError(t, err)
+
+		// Second write of the same tuple but conditioned should still fail.
+		err = datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{
+			{
+				Object:   tk.Object,
+				Relation: tk.Relation,
+				User:     tk.User,
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "condition",
+				},
+			},
+		})
+		require.EqualError(t, err, expectedError.Error())
+	})
+
 	t.Run("reading_a_tuple_that_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tuple1 := tuple.NewTupleKey("doc:readme", "owner", "user:jon")
 		tuple2 := tuple.NewTupleKey("doc:readme", "viewer", "doc:other#viewer")
 		tuple3 := tuple.NewTupleKey("doc:readme", "viewer", "user:*")
+		tuple4 := &openfgav1.TupleKey{
+			Object:   "doc:readme",
+			Relation: "viewer",
+			User:     "user:anne",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "condition",
+			},
+		}
 
-		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple1, tuple2, tuple3})
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tuple1, tuple2, tuple3, tuple4})
 		require.NoError(t, err)
 
 		gotTuple, err := datastore.ReadUserTuple(ctx, storeID, tuple1)
@@ -234,6 +265,13 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		if diff := cmp.Diff(tuple3, gotTuple.Key, cmpOpts...); diff != "" {
+			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
+		}
+
+		gotTuple, err = datastore.ReadUserTuple(ctx, storeID, tuple4)
+		require.NoError(t, err)
+
+		if diff := cmp.Diff(tuple4, gotTuple.Key, cmpOpts...); diff != "" {
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 	})
@@ -563,6 +601,14 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 		tuple.NewTupleKey("document:doc2", "viewer", "group:eng#member"),
 		tuple.NewTupleKey("document:doc3", "editor", "user:jon"),
 		tuple.NewTupleKey("folder:folder1", "viewer", "user:jon"),
+		{
+			Object:   "document:doc4",
+			Relation: "viewer",
+			User:     "user:jon",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "condition",
+			},
+		},
 	}
 
 	t.Run("returns_results_with_two_user_filters", func(t *testing.T) {
@@ -592,7 +638,7 @@ func ReadStartingWithUserTest(t *testing.T, datastore storage.OpenFGADatastore) 
 
 		objects := getObjects(tupleIterator, require)
 
-		require.ElementsMatch([]string{"document:doc1", "document:doc2"}, objects)
+		require.ElementsMatch([]string{"document:doc1", "document:doc2", "document:doc4"}, objects)
 	})
 
 	t.Run("returns_no_results_if_the_input_users_do_not_match_the_tuples", func(t *testing.T) {
@@ -681,6 +727,14 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		tuple.NewTupleKey("document:1", "reader", "user:anne"),
 		tuple.NewTupleKey("document:1", "reader", "user:bob"),
 		tuple.NewTupleKey("document:1", "writer", "user:bob"),
+		{
+			Object:   "document:2",
+			Relation: "viewer",
+			User:     "user:anne",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "condition",
+			},
+		},
 	}
 
 	storeID := ulid.Make().String()
@@ -701,6 +755,14 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			tuple.NewTupleKey("document:1", "reader", "user:anne"),
 			tuple.NewTupleKey("document:1", "reader", "user:bob"),
 			tuple.NewTupleKey("document:1", "writer", "user:bob"),
+			{
+				Object:   "document:2",
+				Relation: "viewer",
+				User:     "user:anne",
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "condition",
+				},
+			},
 		}
 
 		require.ElementsMatch(t, expectedTupleKeys, getTupleKeys(tupleIterator, t))

@@ -27,6 +27,7 @@ var (
 			openfgav1.Tuple{},
 			openfgav1.TupleChange{},
 			openfgav1.Assertion{},
+			openfgav1.RelationshipCondition{},
 		),
 		cmpopts.IgnoreFields(openfgav1.Tuple{}, "Timestamp"),
 		cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp"),
