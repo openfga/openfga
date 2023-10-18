@@ -66,6 +66,8 @@ func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
 }
 
 func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	b.Run("BenchmarkListObjectsWithReverseExpand", func(b *testing.B) { BenchmarkListObjectsWithReverseExpand(b, ds) })
-	b.Run("BenchmarkListObjectsWithConcurrentChecks", func(b *testing.B) { BenchmarkListObjectsWithConcurrentChecks(b, ds) })
+	b.Run("BenchmarkListObjectsWithMaxConcurrentReadsEqualToOne", func(b *testing.B) { BenchmarkListObjectsWithMaxConcurrentReadsEqualToOne(b, ds) })
+	b.Run("BenchmarkListObjectsWithMaxConcurrentReadsEqualToThirty", func(b *testing.B) { BenchmarkListObjectsWithMaxConcurrentReadsEqualToThirty(b, ds) })
+	b.Run("BenchmarkListObjectsWithMaxResultsEqualToZero", func(b *testing.B) { BenchmarkListObjectsWithMaxResultsEqualToZero(b, ds) })
+	b.Run("BenchmarkListObjectsWithMaxResultsEqualToOne", func(b *testing.B) { BenchmarkListObjectsWithMaxResultsEqualToOne(b, ds) })
 }
