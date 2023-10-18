@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -857,6 +858,40 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 								Value: &openfgav1.UsersetTree_Leaf_Users{
 									Users: &openfgav1.UsersetTree_Users{
 										Users: []string{"document:2#editor"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "userset_defines_itself",
+			model: &openfgav1.AuthorizationModel{
+				Id:            ulid.Make().String(),
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: parser.MustParse(`
+				type user
+
+				type document
+				  relations
+				    define viewer: [user] as self
+				`),
+			},
+			tuples: []*openfgav1.TupleKey{},
+			request: &openfgav1.ExpandRequest{
+				TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			},
+			expected: &openfgav1.ExpandResponse{
+				Tree: &openfgav1.UsersetTree{
+					Root: &openfgav1.UsersetTree_Node{
+						Name: "document:1#viewer",
+						Value: &openfgav1.UsersetTree_Node_Leaf{
+							Leaf: &openfgav1.UsersetTree_Leaf{
+								Value: &openfgav1.UsersetTree_Leaf_Users{
+									Users: &openfgav1.UsersetTree_Users{
+										Users: []string{},
 									},
 								},
 							},

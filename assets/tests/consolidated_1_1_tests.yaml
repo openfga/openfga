@@ -5012,3 +5012,29 @@ tests:
               type: repo
               relation: admin
             expectation: [ ]
+  - name: userset_defines_itself
+    stages:
+      - model: |
+          type user
+
+          type document
+            relations
+              define viewer: [user] as self
+        tuples:
+        checkAssertions:
+          - tuple:
+              user: document:1#viewer
+              relation: viewer
+              object: document:1
+            expectation: true
+          - tuple:
+              user: document:2#viewer
+              relation: viewer
+              object: document:1
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: document:1#viewer
+              type: document
+              relation: viewer
+            expectation: ["document:1"]

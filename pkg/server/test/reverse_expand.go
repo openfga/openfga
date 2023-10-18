@@ -393,6 +393,10 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 					Object:       "group:eng",
 					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
+				{
+					Object:       "group:iam",
+					ResultStatus: reverseexpand.NoFurtherEvalStatus,
+				},
 			},
 			expectedDSQueryCount: 3,
 		},
@@ -414,16 +418,14 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			  relations
 			    define member: [group#member] as self
 			`,
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("group:iam", "member", "group:iam#member"),
-			},
+			tuples: []*openfgav1.TupleKey{},
 			expectedResult: []*reverseexpand.ReverseExpandResult{
 				{
 					Object:       "group:iam",
 					ResultStatus: reverseexpand.NoFurtherEvalStatus,
 				},
 			},
-			expectedDSQueryCount: 2,
+			expectedDSQueryCount: 1,
 		},
 		{
 			name: "objects_connected_through_a_computed_userset_1",

@@ -235,6 +235,14 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
 		sourceUserRel := val.ObjectRelation.GetRelation()
 
+		if currentEdge == nil {
+			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
+				if err := c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan); err != nil {
+					return err
+				}
+			}
+		}
+
 		if currentEdge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, currentEdge.String())
 			if _, loaded := c.visitedUsersetsMap.LoadOrStore(key, struct{}{}); loaded {
