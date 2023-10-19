@@ -233,7 +233,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 
 		validCondition := false
-		for _, userset := range typeRestrictions {
+		for _, directlyRelatedType := range typeRestrictions {
 			if userset.Type == userType && userset.Condition == tk.Condition.Name {
 				validCondition = true
 				continue
