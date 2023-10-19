@@ -304,13 +304,11 @@ func (q *ListObjectsQuery) evaluate(
 }
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if getAllResults(maxResults) {
-		goto send
+	if !getAllResults(maxResults) {
+		if objectsFound.Add(1) > maxResults {
+			return
+		}
 	}
-	if objectsFound.Add(1) > maxResults {
-		return
-	}
-send:
 	resultsChan <- ListObjectsResult{ObjectID: object}
 }
 
