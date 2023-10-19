@@ -126,7 +126,7 @@ func TestEvaluate(t *testing.T) {
 			err:     nil,
 		},
 		{
-			name: "fail_no_such_attribute",
+			name: "fail_no_such_attribute_nil_context",
 			condition: &openfgav1.Condition{
 				Name:       "condition1",
 				Expression: "param1 == 'ok'",
@@ -139,6 +139,23 @@ func TestEvaluate(t *testing.T) {
 			context: nil,
 			result:  condition.EvaluationResult{ConditionMet: false},
 			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+		},
+		{
+			name: "fail_found_invalid_context_parameter",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"param2": "ok",
+			},
+			result: condition.EvaluationResult{ConditionMet: false},
+			err:    fmt.Errorf("found invalid context parameter: param2"),
 		},
 		{
 			name: "fail_unexpected_type",
