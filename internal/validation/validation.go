@@ -224,33 +224,33 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 
 		return nil
-	} else {
-		condition, ok := typesys.GetConditions()[tk.Condition.Name]
-		if !ok {
-			return &tuple.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
-			}
-		}
+	}
 
-		validCondition := false
-		for _, directlyRelatedType := range typeRestrictions {
-			if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
-				validCondition = true
-				continue
-			}
+	condition, ok := typesys.GetConditions()[tk.Condition.Name]
+	if !ok {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
 		}
+	}
 
-		if !validCondition {
-			return &tuple.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
-			}
+	validCondition := false
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
+			validCondition = true
+			continue
 		}
+	}
 
-		_, err := condition.CastContextToTypedParameters(tk.Condition.Context.AsMap())
-		if err != nil {
-			return &tuple.InvalidConditionalTupleError{
-				Cause: err, TupleKey: tk,
-			}
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	_, err = condition.CastContextToTypedParameters(tk.Condition.Context.AsMap())
+	if err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
 		}
 	}
 
