@@ -94,7 +94,7 @@ jobs:
 
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
 
@@ -106,7 +106,6 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
-        timeout-minutes: 5
         run: |
           set -o pipefail
           make bench | tee ${{ github.sha }}_bench_output.txt
