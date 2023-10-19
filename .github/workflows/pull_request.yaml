@@ -94,7 +94,7 @@ jobs:
 
   go-bench:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
 
@@ -106,9 +106,10 @@ jobs:
 
       # Run benchmark with `go test -bench` and stores the output to a file
       - name: Run benchmark
+        timeout-minutes: 5
         run: |
           set -o pipefail
-          make bench-cicd | tee ${{ github.sha }}_bench_output.txt
+          make bench | tee ${{ github.sha }}_bench_output.txt
 
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
