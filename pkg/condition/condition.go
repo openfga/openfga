@@ -75,21 +75,50 @@ func (c *EvaluableCondition) Compile() error {
 	return nil
 }
 
-func (c *EvaluableCondition) CastContextToTypedParameters(context map[string]any) (map[string]any, error) {
-	typedParams, err := castContextToTypedParameters(context, c.GetParameters())
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert context to typed parameter values: %v", err)
+// CastContextToTypedParameters converts the provided context to typed condition
+// parameters and returns an error if any additional context fields are provided
+// that are not defined by the evaluable condition.
+func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]any) (map[string]any, error) {
+	if len(contextMap) == 0 {
+		return nil, nil
+	}
+
+	parameterTypes := c.GetParameters()
+
+	if len(parameterTypes) == 0 {
+		return nil, fmt.Errorf("no parameters defined for the condition")
+	}
+
+	converted := make(map[string]any, len(contextMap))
+
+	for key, value := range contextMap {
+		paramTypeRef, ok := parameterTypes[key]
+		if !ok {
+			continue
+		}
+
+		varType, err := types.DecodeParameterType(paramTypeRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.TypeName, err)
+		}
+
+		convertedParam, err := varType.ConvertValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert context parameter '%s': %w", key, err)
+		}
+
+		converted[key] = convertedParam
 	}
 
 	// validate against extraneous parameters
-	for key := range context {
-		_, ok := typedParams[key]
+	for key := range contextMap {
+		_, ok := converted[key]
 		if !ok {
 			return nil, fmt.Errorf("found invalid context parameter: %s", key)
 		}
 	}
 
-	return typedParams, nil
+	return converted, nil
 }
 
 // Evaluate evalutes the provided CEL condition expression with a CEL environment
