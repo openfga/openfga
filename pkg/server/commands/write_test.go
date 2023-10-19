@@ -415,6 +415,32 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				},
 			),
 		},
+		{
+			name: "undefined_condition",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:*",
+				Condition: &openfgav1.RelationshipCondition{
+					Name:    "condition2",
+					Context: contextStructGood,
+				},
+			},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidConditionalTupleError{
+					Cause: fmt.Errorf("undefined condition"),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "document:1",
+						Relation: "viewer",
+						User:     "user:*",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition2",
+							Context: contextStructGood,
+						},
+					},
+				},
+			),
+		},
 	}
 
 	for _, test := range tests {
