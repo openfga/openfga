@@ -185,7 +185,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		hasConditionedTypeRestriction := false
 		hasUnconditionedTypeRestriction := false
 
-		for _, userset := range typeRestrictions {
+		for _, directlyRelatedType := range typeRestrictions {
 			if userset.Type != userType {
 				continue
 			}
