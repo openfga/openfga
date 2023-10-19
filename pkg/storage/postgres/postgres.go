@@ -668,12 +668,5 @@ func (p *Postgres) ReadChanges(
 // IsReady reports whether this Postgres datastore instance is ready
 // to accept connections.
 func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := p.db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return sqlcommon.IsReady(ctx, p.db)
 }

@@ -13,6 +13,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
+	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
@@ -42,14 +43,7 @@ type testParams struct {
 type stage struct {
 	Model                string
 	Tuples               []*openfgav1.TupleKey
-	ListObjectAssertions []*assertion `yaml:"listObjectsAssertions"`
-}
-
-type assertion struct {
-	Request          *openfgav1.ListObjectsRequest
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
-	Expectation      []string
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the ListObjects call failed.
+	ListObjectAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
 }
 
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
@@ -132,7 +126,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				typedefs = v1parser.MustParse(stage.Model)
 			}
 
-			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
@@ -147,8 +141,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
-						StoreId: storeID,
-						Writes:  &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						StoreId:              storeID,
+						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
 					})
 					require.NoError(t, err)
 				}
@@ -164,10 +159,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 				// assert 1: on regular list objects endpoint
 				resp, err := client.ListObjects(ctx, &openfgav1.ListObjectsRequest{
-					StoreId:  storeID,
-					Type:     assertion.Request.Type,
-					Relation: assertion.Request.Relation,
-					User:     assertion.Request.User,
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					Type:                 assertion.Request.Type,
+					Relation:             assertion.Request.Relation,
+					User:                 assertion.Request.User,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
@@ -188,10 +184,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				var streamedObjectIds []string
 
 				clientStream, err := client.StreamedListObjects(ctx, &openfgav1.StreamedListObjectsRequest{
-					StoreId:  storeID,
-					Type:     assertion.Request.Type,
-					Relation: assertion.Request.Relation,
-					User:     assertion.Request.User,
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					Type:                 assertion.Request.Type,
+					Relation:             assertion.Request.Relation,
+					User:                 assertion.Request.User,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
@@ -230,8 +227,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					// assert 3: each object in the response of ListObjects should return check -> true
 					for _, object := range resp.Objects {
 						checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
-							StoreId:  storeID,
-							TupleKey: tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
+							StoreId:              storeID,
+							AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+							TupleKey:             tuple.NewTupleKey(object, assertion.Request.Relation, assertion.Request.User),
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
