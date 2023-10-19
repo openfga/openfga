@@ -334,116 +334,6 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 // Used to avoid compiler optimizations (see https://dave.cheney.net/2013/06/30/how-to-write-benchmarks-in-go)
 var listObjectsResponse *commands.ListObjectsResponse //nolint
 
-func BenchmarkListObjectsWithMaxConcurrentReadsEqualToOne(b *testing.B, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-
-	model, modelID, numberObjectsAccesible := setupListObjectsBenchmark(b, ds, store)
-
-	listObjectsQuery := commands.NewListObjectsQuery(ds, commands.WithMaxConcurrentReads(1))
-
-	var r *commands.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r, _ = listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:maria",
-		})
-		require.LessOrEqual(b, len(r.Objects), numberObjectsAccesible)
-	}
-
-	listObjectsResponse = r
-}
-
-func BenchmarkListObjectsWithMaxConcurrentReadsEqualToThirty(b *testing.B, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-
-	model, modelID, numberObjectsAccesible := setupListObjectsBenchmark(b, ds, store)
-
-	listObjectsQuery := commands.NewListObjectsQuery(ds, commands.WithMaxConcurrentReads(30))
-
-	var r *commands.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r, _ = listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:maria",
-		})
-		require.LessOrEqual(b, len(r.Objects), numberObjectsAccesible)
-	}
-
-	listObjectsResponse = r
-}
-
-func BenchmarkListObjectsWithMaxResultsEqualToZero(b *testing.B, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-
-	model, modelID, numberObjectsAccesible := setupListObjectsBenchmark(b, ds, store)
-
-	listObjectsQuery := commands.NewListObjectsQuery(ds,
-		commands.WithListObjectsMaxResults(0))
-
-	var r *commands.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r, _ = listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:maria",
-		})
-		require.Len(b, r.Objects, numberObjectsAccesible)
-	}
-
-	listObjectsResponse = r
-}
-
-func BenchmarkListObjectsWithMaxResultsEqualToOne(b *testing.B, ds storage.OpenFGADatastore) {
-	ctx := context.Background()
-	store := ulid.Make().String()
-
-	model, modelID, _ := setupListObjectsBenchmark(b, ds, store)
-
-	listObjectsQuery := commands.NewListObjectsQuery(ds,
-		commands.WithListObjectsMaxResults(1))
-
-	var r *commands.ListObjectsResponse
-
-	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		r, _ = listObjectsQuery.Execute(ctx, &openfgav1.ListObjectsRequest{
-			StoreId:              store,
-			AuthorizationModelId: modelID,
-			Type:                 "document",
-			Relation:             "viewer",
-			User:                 "user:maria",
-		})
-		require.Len(b, r.Objects, 1)
-	}
-
-	listObjectsResponse = r
-}
-
 // setupListObjectsBenchmark writes the model and lots of tuples
 func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeID string) (*openfgav1.AuthorizationModel, string, int) {
 	b.Helper()
@@ -479,4 +369,80 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	}
 
 	return model, modelID, numberObjectsAccesible
+}
+
+func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
+	ctx := context.Background()
+	store := ulid.Make().String()
+
+	model, modelID, numberObjectsAccessible := setupListObjectsBenchmark(b, ds, store)
+	ctx = typesystem.ContextWithTypesystem(ctx, typesystem.New(model))
+
+	req := &openfgav1.ListObjectsRequest{
+		StoreId:              store,
+		AuthorizationModelId: modelID,
+		Type:                 "document",
+		Relation:             "viewer",
+		User:                 "user:maria",
+	}
+
+	b.ResetTimer()
+
+	var r *commands.ListObjectsResponse
+
+	var oneResultElapsed, allResultsElapsed, oneReadAtATimeElapsed, thirtyReadsAtATimeElapsed time.Duration
+
+	b.Run("oneResult", func(b *testing.B) {
+		listObjectsQuery := commands.NewListObjectsQuery(ds,
+			commands.WithListObjectsMaxResults(1),
+		)
+		for i := 0; i < b.N; i++ {
+			r, _ := listObjectsQuery.Execute(ctx, req)
+			require.Len(b, r.Objects, 1)
+		}
+
+		listObjectsResponse = r
+		oneResultElapsed = b.Elapsed()
+	})
+	b.Run("allResults", func(b *testing.B) {
+		listObjectsQuery := commands.NewListObjectsQuery(ds,
+			commands.WithListObjectsMaxResults(0),
+		)
+		for i := 0; i < b.N; i++ {
+			r, _ := listObjectsQuery.Execute(ctx, req)
+			require.Len(b, r.Objects, numberObjectsAccessible)
+		}
+
+		listObjectsResponse = r
+		allResultsElapsed = b.Elapsed()
+	})
+
+	b.Run("MaxConcurrentReadsEqualToOne", func(b *testing.B) {
+		listObjectsQuery := commands.NewListObjectsQuery(ds,
+			commands.WithMaxConcurrentReads(1),
+		)
+		for i := 0; i < b.N; i++ {
+			r, _ := listObjectsQuery.Execute(ctx, req)
+			require.Len(b, r.Objects, numberObjectsAccessible)
+		}
+
+		listObjectsResponse = r
+		oneReadAtATimeElapsed = b.Elapsed()
+	})
+
+	b.Run("MaxConcurrentReadsEqualToThirty", func(b *testing.B) {
+		listObjectsQuery := commands.NewListObjectsQuery(ds,
+			commands.WithMaxConcurrentReads(30),
+		)
+		for i := 0; i < b.N; i++ {
+			r, _ := listObjectsQuery.Execute(ctx, req)
+			require.Len(b, r.Objects, numberObjectsAccessible)
+		}
+
+		listObjectsResponse = r
+		thirtyReadsAtATimeElapsed = b.Elapsed()
+	})
+
+	require.GreaterOrEqual(b, allResultsElapsed, oneResultElapsed)
+	require.GreaterOrEqual(b, oneReadAtATimeElapsed, thirtyReadsAtATimeElapsed)
 }

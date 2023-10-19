@@ -247,7 +247,7 @@ func (q *ListObjectsQuery) evaluate(
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
 		for res := range reverseExpandResultsChan {
-			if !getAllResults(maxResults) && objectsFound.Load() >= maxResults {
+			if !(maxResults == 0) && objectsFound.Load() >= maxResults {
 				break
 			}
 
@@ -304,16 +304,12 @@ func (q *ListObjectsQuery) evaluate(
 }
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if !getAllResults(maxResults) {
+	if !(maxResults == 0) {
 		if objectsFound.Add(1) > maxResults {
 			return
 		}
 	}
 	resultsChan <- ListObjectsResult{ObjectID: object}
-}
-
-func getAllResults(maxResults uint32) bool {
-	return maxResults == 0
 }
 
 // Execute the ListObjectsQuery, returning a list of object IDs up to a maximum of q.listObjectsMaxResults
