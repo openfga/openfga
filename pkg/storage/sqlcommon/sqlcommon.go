@@ -343,14 +343,12 @@ func Write(
 
 		res, err := deleteBuilder.
 			Where(sq.Eq{
-				"store":             store,
-				"object_type":       objectType,
-				"object_id":         objectID,
-				"relation":          tk.GetRelation(),
-				"_user":             tk.GetUser(),
-				"user_type":         tupleUtils.GetUserTypeFromUser(tk.GetUser()),
-				"condition_name":    conditionName,
-				"condition_context": conditionContext,
+				"store":       store,
+				"object_type": objectType,
+				"object_id":   objectID,
+				"relation":    tk.GetRelation(),
+				"_user":       tk.GetUser(),
+				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
 			}).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
