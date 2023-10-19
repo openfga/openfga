@@ -182,48 +182,31 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 	}
 
 	if tk.Condition == nil {
-		hasConditionedTypeRestriction := false
-		hasUnconditionedTypeRestriction := false
-
 		for _, directlyRelatedType := range typeRestrictions {
+			if directlyRelatedType.Condition != "" {
+				continue
+			}
+
 			if directlyRelatedType.Type != userType {
 				continue
 			}
 
-			if directlyRelatedType.Condition == "" {
-				hasUnconditionedTypeRestriction = true
-				continue
-			}
+			if directlyRelatedType.GetRelationOrWildcard() != nil {
+				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+					continue
+				}
 
-			if directlyRelatedType.RelationOrWildcard == nil {
-				hasConditionedTypeRestriction = true
-				continue
-			}
-
-			if _, ok := directlyRelatedType.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				if directlyRelatedType.GetRelation() == userRelation {
-					hasConditionedTypeRestriction = true
+				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.User) {
 					continue
 				}
 			}
-			if _, ok := directlyRelatedType.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
-				hasConditionedTypeRestriction = true
-				continue
-			}
+
+			return nil
 		}
 
-		// A condition is only required if all the direct relationship type
-		// restrictions are conditioned. Example:
-		// define viewer: [user, user with condition]: not required
-		// define viewer: [user]: not required
-		// define viewer: [user with condition]: required
-		if hasConditionedTypeRestriction && !hasUnconditionedTypeRestriction {
-			return &tuple.InvalidConditionalTupleError{
-				Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
-			}
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
 		}
-
-		return nil
 	}
 
 	condition, ok := typesys.GetConditions()[tk.Condition.Name]
