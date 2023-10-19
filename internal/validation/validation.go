@@ -186,27 +186,27 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		hasUnconditionedTypeRestriction := false
 
 		for _, directlyRelatedType := range typeRestrictions {
-			if userset.Type != userType {
+			if directlyRelatedType.Type != userType {
 				continue
 			}
 
-			if userset.Condition == "" {
+			if directlyRelatedType.Condition == "" {
 				hasUnconditionedTypeRestriction = true
 				continue
 			}
 
-			if userset.RelationOrWildcard == nil {
+			if directlyRelatedType.RelationOrWildcard == nil {
 				hasConditionedTypeRestriction = true
 				continue
 			}
 
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
-				if userset.GetRelation() == userRelation {
+			if _, ok := directlyRelatedType.RelationOrWildcard.(*openfgav1.RelationReference_Relation); ok {
+				if directlyRelatedType.GetRelation() == userRelation {
 					hasConditionedTypeRestriction = true
 					continue
 				}
 			}
-			if _, ok := userset.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
+			if _, ok := directlyRelatedType.RelationOrWildcard.(*openfgav1.RelationReference_Wildcard); ok {
 				hasConditionedTypeRestriction = true
 				continue
 			}
@@ -234,7 +234,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 
 		validCondition := false
 		for _, directlyRelatedType := range typeRestrictions {
-			if userset.Type == userType && userset.Condition == tk.Condition.Name {
+			if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
 				validCondition = true
 				continue
 			}
