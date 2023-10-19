@@ -190,7 +190,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	var conditionContext *[]byte
+	var conditionContext []byte
 	var record TupleRecord
 	err := t.rows.Scan(
 		&record.Store,
@@ -209,7 +209,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
-		if err := proto.Unmarshal(*conditionContext, &conditionContextStruct); err != nil {
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
 			return nil, err
 		}
 		record.ConditionContext = &conditionContextStruct

@@ -188,7 +188,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var conditionContext *[]byte
+	var conditionContext []byte
 	var record sqlcommon.TupleRecord
 	err := m.stbl.
 		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
@@ -209,7 +209,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
-		if err := proto.Unmarshal(*conditionContext, &conditionContextStruct); err != nil {
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
 			return nil, err
 		}
 		record.ConditionContext = &conditionContextStruct
