@@ -371,6 +371,7 @@ func BenchmarkListObjectsWithReverseExpand(b *testing.B, ds storage.OpenFGADatas
 			Relation:             "viewer",
 			User:                 "user:999",
 		})
+		time.Sleep(1 * time.Second)
 	}
 
 	listObjectsResponse = r
