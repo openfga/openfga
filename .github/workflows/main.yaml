@@ -26,23 +26,23 @@ jobs:
           set -o pipefail
           make bench-cicd | tee bench_output.txt
 
-      # Download previous benchmark result from cache (if exists)
-      - name: Download previous benchmark data
-        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
-        with:
-          path: ./cache
-          key: ${{ runner.os }}-go-benchmark
-
-      - name: Store benchmark result
+      - name: Get benchmark as JSON
         uses: benchmark-action/github-action-benchmark@70405016b032d44f409e4b1b451c40215cbe2393 # v1.18.0
         with:
           # What benchmark tool the output.txt came from
           tool: 'go'
           # Where the output from the benchmark tool is stored
           output-file-path: bench_output.txt
-          # Where the previous data file is stored
+          # Write benchmarks to this file
           external-data-json-path: ./cache/benchmark-data.json
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
+
+      - name: Save benchmark JSON to cache
+        uses: actions/cache/save@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+        with:
+          path: ./cache/benchmark-data.json
+          # Save with commit hash to avoid "cache already exists"
+          key: ${{ github.sha }}-go-benchmark
