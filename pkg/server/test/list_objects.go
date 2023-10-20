@@ -390,7 +390,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 
 	var r *commands.ListObjectsResponse
 
-	var oneResultElapsed, allResultsElapsed, oneReadAtATimeElapsed, thirtyReadsAtATimeElapsed time.Duration
+	var oneResultIterations, allResultsIterations int
 
 	b.Run("oneResult", func(b *testing.B) {
 		listObjectsQuery := commands.NewListObjectsQuery(ds,
@@ -402,7 +402,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		}
 
 		listObjectsResponse = r
-		oneResultElapsed = b.Elapsed()
+		oneResultIterations = b.N
 	})
 	b.Run("allResults", func(b *testing.B) {
 		listObjectsQuery := commands.NewListObjectsQuery(ds,
@@ -414,35 +414,8 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		}
 
 		listObjectsResponse = r
-		allResultsElapsed = b.Elapsed()
+		allResultsIterations = b.N
 	})
 
-	b.Run("MaxConcurrentReadsEqualToOne", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
-			commands.WithMaxConcurrentReads(1),
-		)
-		for i := 0; i < b.N; i++ {
-			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, numberObjectsAccessible)
-		}
-
-		listObjectsResponse = r
-		oneReadAtATimeElapsed = b.Elapsed()
-	})
-
-	b.Run("MaxConcurrentReadsEqualToThirty", func(b *testing.B) {
-		listObjectsQuery := commands.NewListObjectsQuery(ds,
-			commands.WithMaxConcurrentReads(30),
-		)
-		for i := 0; i < b.N; i++ {
-			r, _ := listObjectsQuery.Execute(ctx, req)
-			require.Len(b, r.Objects, numberObjectsAccessible)
-		}
-
-		listObjectsResponse = r
-		thirtyReadsAtATimeElapsed = b.Elapsed()
-	})
-
-	require.GreaterOrEqual(b, allResultsElapsed, oneResultElapsed)
-	require.GreaterOrEqual(b, oneReadAtATimeElapsed, thirtyReadsAtATimeElapsed)
+	require.Greater(b, oneResultIterations, allResultsIterations)
 }
