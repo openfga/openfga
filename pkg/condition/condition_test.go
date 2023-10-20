@@ -189,7 +189,7 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
+			err:    fmt.Errorf("failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
 		},
 	}
 
@@ -202,7 +202,7 @@ func TestEvaluate(t *testing.T) {
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
-				require.Equal(t, test.err, err)
+				require.EqualError(t, err, test.err.Error())
 			} else {
 				require.NoError(t, err)
 			}

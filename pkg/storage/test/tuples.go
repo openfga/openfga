@@ -230,6 +230,36 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.EqualError(t, err, expectedError.Error())
 	})
 
+	t.Run("inserting_conditioned_tuple_and_deleting_tuple_succeeds", func(t *testing.T) {
+		storeID := ulid.Make().String()
+		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
+
+		writes := []*openfgav1.TupleKey{
+			{
+				Object:   tk.Object,
+				Relation: tk.Relation,
+				User:     tk.User,
+				Condition: &openfgav1.RelationshipCondition{
+					Name: "condition",
+				},
+			},
+		}
+
+		deletes := []*openfgav1.TupleKey{
+			{
+				Object:   tk.Object,
+				Relation: tk.Relation,
+				User:     tk.User,
+			},
+		}
+
+		err := datastore.Write(ctx, storeID, nil, writes)
+		require.NoError(t, err)
+
+		err = datastore.Write(ctx, storeID, deletes, nil)
+		require.NoError(t, err)
+	})
+
 	t.Run("reading_a_tuple_that_exists_succeeds", func(t *testing.T) {
 		storeID := ulid.Make().String()
 		tuple1 := tuple.NewTupleKey("doc:readme", "owner", "user:jon")
