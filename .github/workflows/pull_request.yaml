@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write # to be able to write comments
+  contents: read
 
 jobs:
   lint:
@@ -139,7 +139,5 @@ jobs:
           # Workflow will fail when an alert happens
           fail-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-on-alert: true
           # Enable Job Summary for PRs
           summary-always: true
-          comment-always: true
