@@ -24,7 +24,7 @@ jobs:
       - name: Run benchmark
         run: |
           set -o pipefail
-          make bench-cicd | tee bench_output.txt
+          make bench | tee bench_output.txt
 
       - name: Get benchmark as JSON
         uses: benchmark-action/github-action-benchmark@70405016b032d44f409e4b1b451c40215cbe2393 # v1.18.0
