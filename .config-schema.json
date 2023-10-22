@@ -78,7 +78,7 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["check-query-cache"]
+                "enum": [""]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
