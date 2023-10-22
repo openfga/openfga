@@ -42,6 +42,7 @@ import (
 
 const (
 	baseFunctionalTestImage = "openfga/openfga:functionaltest"
+	customImage             = "openfga/openfga:feat-split-user-column"
 	defaultIPAddressInLinux = "172.17.0.1" // https://stackoverflow.com/q/65497331
 )
 
@@ -81,7 +82,7 @@ func newOpenFGATester(t *testing.T, openfgaImage string, args ...string) OpenFGA
 	)
 	require.NoError(t, err)
 
-	if openfgaImage != baseFunctionalTestImage {
+	if openfgaImage != baseFunctionalTestImage && openfgaImage != customImage {
 		t.Logf("Pulling image %s", openfgaImage)
 		reader, err := dockerClient.ImagePull(context.Background(), openfgaImage, types.ImagePullOptions{})
 		require.NoError(t, err)
@@ -456,6 +457,11 @@ func TestDatastoreMigrations(t *testing.T) {
 			MigrateDatastoreToVersion5Test(t, engine)
 		}
 	})
+	t.Run("TestMigrateDatastoreToVersion6", func(t *testing.T) {
+		for _, engine := range engines {
+			MigrateDatastoreToVersion6Test(t, engine)
+		}
+	})
 }
 
 func TestGRPCWithPresharedKey(t *testing.T) {
@@ -589,6 +595,116 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, 2, len(resp.Changes))
+	})
+}
+
+func MigrateDatastoreToVersion6Test(t *testing.T, engine string) {
+	t.Run(engine, func(t *testing.T) {
+		store := ulid.Make().String()
+		t.Logf("start the database container and run migrations up to the latest migration version available")
+		testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+		uri := testDatastore.GetConnectionURI(true)
+
+		t.Logf("migrate database down to version 4")
+		migrateCommand := migrate.NewMigrateCommand()
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(4)})
+		err := migrateCommand.Execute()
+		require.NoError(t, err)
+
+		t.Logf("start openfga on branch feat-split-user-column and wait for it to be ready")
+		// this is a hack to have the networking work in GitHub Actions
+		datastoreConnectionURI := strings.Replace(uri, "localhost", defaultIPAddressInLinux, -1)
+		tester := newOpenFGATester(t, "openfga/openfga:feat-split-user-column", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
+		defer tester.Cleanup()
+
+		t.Logf("create a client of openfga")
+		conn := connect(t, tester)
+		defer conn.Close()
+
+		openfgaClient := openfgav1.NewOpenFGAServiceClient(conn)
+
+		t.Logf("write authorization model")
+		_, err = openfgaClient.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+			StoreId: store,
+			TypeDefinitions: parser.MustParse(`type user
+          type group
+            relations
+              define member: [user] as self
+          type document
+            relations
+              define viewer: [user, user:*, group#member] as self`),
+			SchemaVersion: typesystem.SchemaVersion1_1,
+		})
+		require.NoError(t, err)
+
+		t.Logf("write one tuple per _user format")
+		_, err = openfgaClient.Write(context.Background(), &openfgav1.WriteRequest{
+			StoreId: store,
+			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKey("document:1", "viewer", "user:a"),
+				tuple.NewTupleKey("document:2", "viewer", "user:*"),
+				tuple.NewTupleKey("document:3", "viewer", "group:fga#member"),
+			}},
+		})
+		require.NoError(t, err)
+
+		t.Logf("migrate database up to version 5")
+		migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(5)})
+		err = migrateCommand.Execute()
+		require.NoError(t, err)
+
+		t.Logf("checks should work")
+		c1, err := openfgaClient.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:a"),
+		})
+		require.NoError(t, err)
+		require.True(t, c1.Allowed)
+
+		c2, err := openfgaClient.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:2", "viewer", "user:*"),
+		})
+		require.NoError(t, err)
+		require.True(t, c2.Allowed)
+
+		c3, err := openfgaClient.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:  store,
+			TupleKey: tuple.NewTupleKey("document:3", "viewer", "group:fga#member"),
+		})
+		require.NoError(t, err)
+		require.True(t, c3.Allowed)
+
+		t.Logf("ListObjects should work")
+		res, err := openfgaClient.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:  store,
+			Type:     "document",
+			Relation: "viewer",
+			User:     "user:a",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, len(res.Objects))
+		require.ElementsMatch(t, []string{"document:1", "document:2"}, res.Objects)
+
+		res, err = openfgaClient.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:  store,
+			Type:     "document",
+			Relation: "viewer",
+			User:     "user:*",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.Objects))
+		require.Equal(t, "document:2", res.Objects[0])
+
+		res, err = openfgaClient.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+			StoreId:  store,
+			Type:     "document",
+			Relation: "viewer",
+			User:     "group:fga#member",
+		})
+		require.NoError(t, err)
+		require.Equal(t, 1, len(res.Objects))
+		require.Equal(t, "document:3", res.Objects[0])
 	})
 }
 

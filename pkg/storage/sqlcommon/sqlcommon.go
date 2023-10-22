@@ -23,7 +23,7 @@ import (
 )
 
 // TODO everytime we add a migration we have to update this. Is there a better way?
-const latestDBVersion = 5
+const latestDBVersion = 6
 
 type Config struct {
 	Username               string
@@ -117,13 +117,16 @@ func NewConfig(opts ...DatastoreOption) *Config {
 }
 
 type TupleRecord struct {
-	Store      string
-	ObjectType string
-	ObjectID   string
-	Relation   string
-	User       string
-	Ulid       string
-	InsertedAt time.Time
+	Store          string
+	ObjectType     string
+	ObjectID       string
+	Relation       string
+	User           string
+	UserObjectType string
+	UserObjectID   string
+	UserRelation   string
+	Ulid           string
+	InsertedAt     time.Time
 }
 
 func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
@@ -131,7 +134,7 @@ func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
 		Key: &openfgav1.TupleKey{
 			Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
 			Relation: t.Relation,
-			User:     t.User,
+			User:     tupleUtils.FromUserParts(t.UserObjectType, t.UserObjectID, t.UserRelation),
 		},
 		Timestamp: timestamppb.New(t.InsertedAt),
 	}
@@ -183,7 +186,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 	}
 
 	var record TupleRecord
-	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.Ulid, &record.InsertedAt)
+	err := t.rows.Scan(&record.Store, &record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.UserObjectType, &record.UserObjectID, &record.UserRelation, &record.Ulid, &record.InsertedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -296,15 +299,19 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	for _, tk := range deletes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		res, err := deleteBuilder.
 			Where(sq.Eq{
-				"store":       store,
-				"object_type": objectType,
-				"object_id":   objectID,
-				"relation":    tk.GetRelation(),
-				"_user":       tk.GetUser(),
-				"user_type":   tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				"store":            store,
+				"object_type":      objectType,
+				"object_id":        objectID,
+				"relation":         tk.GetRelation(),
+				"_user":            tk.GetUser(),
+				"user_type":        tupleUtils.GetUserTypeFromUser(tk.GetUser()),
+				"user_object_type": userObjectType,
+				"user_object_id":   userObjectID,
+				"user_relation":    userRelation,
 			}).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
@@ -320,8 +327,6 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 		if rowsAffected != 1 {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
-
-		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
