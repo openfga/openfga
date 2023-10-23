@@ -77,8 +77,7 @@
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
-                "type": "string",
-                "enum": ["check-query-cache"]
+                "type": "string"
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
