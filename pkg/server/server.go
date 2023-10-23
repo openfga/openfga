@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -44,6 +46,7 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
 	authorizationModelIDKey                             = "authorization_model_id"
+	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -274,6 +277,19 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 	s.checkOptions = []graph.LocalCheckerOption{
 		graph.WithResolveNodeBreadthLimit(s.resolveNodeBreadthLimit),
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
+	}
+
+	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
+		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
+			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
+			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
+		s.checkCache = ccache.New(
+			ccache.Configure[*graph.CachedResolveCheckResponse]().MaxSize(int64(s.checkQueryCacheLimit)),
+		)
+		s.checkOptions = append(s.checkOptions, graph.WithCachedResolver(
+			graph.WithExistingCache(s.checkCache),
+			graph.WithCacheTTL(s.checkQueryCacheTTL),
+		))
 	}
 
 	if s.datastore == nil {
