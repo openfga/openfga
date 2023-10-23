@@ -386,8 +386,6 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		User:                 "user:maria",
 	}
 
-	b.ResetTimer()
-
 	var r *commands.ListObjectsResponse
 
 	var oneResultIterations, allResultsIterations int
@@ -396,6 +394,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		listObjectsQuery := commands.NewListObjectsQuery(ds,
 			commands.WithListObjectsMaxResults(1),
 		)
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
 			require.Len(b, r.Objects, 1)
@@ -408,6 +407,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		listObjectsQuery := commands.NewListObjectsQuery(ds,
 			commands.WithListObjectsMaxResults(0),
 		)
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			r, _ := listObjectsQuery.Execute(ctx, req)
 			require.Len(b, r.Objects, numberObjectsAccessible)
