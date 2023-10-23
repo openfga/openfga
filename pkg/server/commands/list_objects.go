@@ -252,7 +252,7 @@ func (q *ListObjectsQuery) evaluate(
 				break
 			}
 
-			if objectsFound.Load() >= maxResults {
+			if !(maxResults == 0) && objectsFound.Load() >= maxResults {
 				break
 			}
 
@@ -310,8 +310,10 @@ func (q *ListObjectsQuery) evaluate(
 }
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if objectsFound != nil && objectsFound.Add(1) > maxResults {
-		return
+	if !(maxResults == 0) {
+		if objectsFound != nil && objectsFound.Add(1) > maxResults {
+			return
+		}
 	}
 	resultsChan <- ListObjectsResult{ObjectID: object}
 }
