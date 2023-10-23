@@ -19,6 +19,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -41,7 +43,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse postgres connection uri: %w", err)
+			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
 		}
 
 		username := ""
@@ -68,7 +70,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -100,7 +102,13 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	if cfg.ExportMetrics {
+		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &Postgres{
