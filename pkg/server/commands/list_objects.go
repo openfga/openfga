@@ -311,7 +311,7 @@ func (q *ListObjectsQuery) evaluate(
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
 	if !(maxResults == 0) {
-		if objectsFound != nil && objectsFound.Add(1) > maxResults {
+		if objectsFound.Add(1) > maxResults {
 			return
 		}
 	}
