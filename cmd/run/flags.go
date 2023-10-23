@@ -92,8 +92,8 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag("datastore.connMaxLifetime", flags.Lookup("datastore-conn-max-lifetime"))
 		util.MustBindEnv("datastore.connMaxLifetime", "OPENFGA_DATASTORE_CONN_MAX_LIFETIME", "OPENFGA_DATASTORE_CONNMAXLIFETIME")
 
-		util.MustBindPFlag("datastore.metricsEnabled", flags.Lookup("datastore-metrics-enabled"))
-		util.MustBindEnv("datastore.metricsEnabled", "OPENFGA_DATASTORE_METRICS_ENABLED", "OPENFGA_DATASTORE_METRICSENABLED")
+		util.MustBindPFlag("datastore.metrics.enabled", flags.Lookup("datastore-metrics-enabled"))
+		util.MustBindEnv("datastore.metrics.enabled", "OPENFGA_DATASTORE_METRICS_ENABLED")
 
 		util.MustBindPFlag("playground.enabled", flags.Lookup("playground-enabled"))
 		util.MustBindEnv("playground.enabled", "OPENFGA_PLAYGROUND_ENABLED")

@@ -27,6 +27,11 @@ const (
 	DefaultCheckQueryCacheEnable = false
 )
 
+type DatastoreMetricsConfig struct {
+	// Enabled enables export of the Datastore metrics.
+	Enabled bool
+}
+
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
@@ -54,8 +59,8 @@ type DatastoreConfig struct {
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
 
-	// MetricsEnabled enables export of SQL metrics.
-	MetricsEnabled bool
+	// Metrics is configuration for the Datastore metrics.
+	Metrics DatastoreMetricsConfig
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.

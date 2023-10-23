@@ -136,7 +136,7 @@ func NewRunCommand() *cobra.Command {
 
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
 
-	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.MetricsEnabled, "enable/disable sql metrics")
+	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
@@ -331,7 +331,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
 	}
 
-	if config.Datastore.MetricsEnabled {
+	if config.Datastore.Metrics.Enabled {
 		datastoreOptions = append(datastoreOptions, sqlcommon.WithMetrics())
 	}
 
