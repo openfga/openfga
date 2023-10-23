@@ -223,21 +223,13 @@ func (q *ListObjectsQuery) evaluate(
 		go func() {
 			defer wg.Done()
 
-			err := reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
+			reverseExpandQuery.Execute(cancelCtx, &reverseexpand.ReverseExpandRequest{
 				StoreID:          req.GetStoreId(),
 				ObjectType:       targetObjectType,
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
 			}, reverseExpandResultsChan, resolutionMetadata)
-			if err != nil {
-				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
-					resultsChan <- ListObjectsResult{Err: serverErrors.AuthorizationModelResolutionTooComplex}
-					return
-				}
-
-				resultsChan <- ListObjectsResult{Err: err}
-			}
 		}()
 
 		checkResolver := graph.NewLocalChecker(
@@ -249,11 +241,18 @@ func (q *ListObjectsQuery) evaluate(
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
 		for res := range reverseExpandResultsChan {
-			if objectsFound.Load() >= maxResults {
+			if res.Err != nil {
+				err := res.Err
+
+				if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
+					err = serverErrors.AuthorizationModelResolutionTooComplex
+				}
+
+				resultsChan <- ListObjectsResult{Err: err}
 				break
 			}
 
-			if res.Err != nil {
+			if objectsFound.Load() >= maxResults {
 				break
 			}
 

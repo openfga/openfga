@@ -1247,7 +1247,7 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			go func() {
-				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+				reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 			}()
 
 			var results []*reverseexpand.ReverseExpandResult
