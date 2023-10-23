@@ -208,7 +208,7 @@ func (q *ListObjectsQuery) evaluate(
 		}
 
 		reverseExpandResultsChan := make(chan *reverseexpand.ReverseExpandResult, 1)
-		var objectsFound = new(uint32)
+		objectsFound := atomic.Uint32{}
 
 		reverseExpandQuery := reverseexpand.NewReverseExpandQuery(q.datastore, typesys,
 			reverseexpand.WithResolveNodeLimit(q.resolveNodeLimit),
@@ -247,13 +247,13 @@ func (q *ListObjectsQuery) evaluate(
 		concurrencyLimiterCh := make(chan struct{}, q.resolveNodeBreadthLimit)
 
 		for res := range reverseExpandResultsChan {
-			if atomic.LoadUint32(objectsFound) >= maxResults {
+			if !(maxResults == 0) && objectsFound.Load() >= maxResults {
 				break
 			}
 
 			if res.ResultStatus == reverseexpand.NoFurtherEvalStatus {
 				noFurtherEvalRequiredCounter.Inc()
-				trySendObject(res.Object, objectsFound, maxResults, resultsChan)
+				trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
 				continue
 			}
 
@@ -289,7 +289,7 @@ func (q *ListObjectsQuery) evaluate(
 				atomic.AddUint32(resolutionMetadata.QueryCount, resp.GetResolutionMetadata().DatastoreQueryCount)
 
 				if resp.Allowed {
-					trySendObject(res.Object, objectsFound, maxResults, resultsChan)
+					trySendObject(res.Object, &objectsFound, maxResults, resultsChan)
 				}
 			}(res)
 		}
@@ -303,9 +303,11 @@ func (q *ListObjectsQuery) evaluate(
 	return nil
 }
 
-func trySendObject(object string, objectsFound *uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
-	if objectsFound != nil && atomic.AddUint32(objectsFound, 1) > maxResults {
-		return
+func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
+	if !(maxResults == 0) {
+		if objectsFound.Add(1) > maxResults {
+			return
+		}
 	}
 	resultsChan <- ListObjectsResult{ObjectID: object}
 }
