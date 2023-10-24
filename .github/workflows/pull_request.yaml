@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
       - name: Set up Go
         uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
         with:
@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
       - name: Set up Go
         uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
         with:
@@ -59,7 +59,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
       - name: Run govulncheck
         uses: golang/govulncheck-action@7da72f730e37eeaad891fcff0a532d27ed737cd4 # v1.0.1
         with:
@@ -70,7 +70,7 @@ jobs:
       timeout-minutes: 15
       steps:
         - name: Checkout code
-          uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+          uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
         - name: Set up Go
           uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
           with:
@@ -104,7 +104,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
         with:
           fetch-depth: 0 # to be able to retrieve the last commit in main
 
