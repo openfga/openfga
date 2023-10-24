@@ -127,12 +127,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
 			schema: typesystem.SchemaVersion1_1,
 			model: `
- 			type user
- 			type org
- 			  relations
- 				define blocked: [user] as self
- 				define admin: [user] as self but not blocked
- 			`,
+			type user
+			type org
+			  relations
+				define blocked: [user] as self
+				define admin: [user] as self but not blocked
+			`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:2", "blocked", "user:charlie"),
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
