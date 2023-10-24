@@ -5,32 +5,20 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 var (
 	cmpOpts = []cmp.Option{
-		cmpopts.IgnoreUnexported(
-			openfgav1.AuthorizationModel{},
-			openfgav1.TypeDefinition{},
-			openfgav1.Userset{},
-			openfgav1.Userset_This{},
-			openfgav1.DirectUserset{},
-			openfgav1.CheckRequestTupleKey{},
-			openfgav1.ExpandRequestTupleKey{},
-			openfgav1.ReadRequestTupleKey{},
-			openfgav1.TupleKey{},
-			openfgav1.Tuple{},
-			openfgav1.TupleChange{},
-			openfgav1.Assertion{},
-		),
-		cmpopts.IgnoreFields(openfgav1.Tuple{}, "Timestamp"),
-		cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
 		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
 	}
 )
 
