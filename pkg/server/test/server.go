@@ -62,10 +62,5 @@ func RunCommandTests(t *testing.T, ds storage.OpenFGADatastore) {
 }
 
 func RunAllBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	RunListObjectsBenchmarks(b, ds)
-}
-
-func RunListObjectsBenchmarks(b *testing.B, ds storage.OpenFGADatastore) {
-	b.Run("BenchmarkListObjectsWithReverseExpand", func(b *testing.B) { BenchmarkListObjectsWithReverseExpand(b, ds) })
-	b.Run("BenchmarkListObjectsWithConcurrentChecks", func(b *testing.B) { BenchmarkListObjectsWithConcurrentChecks(b, ds) })
+	b.Run("BenchmarkListObjects", func(b *testing.B) { BenchmarkListObjects(b, ds) })
 }
