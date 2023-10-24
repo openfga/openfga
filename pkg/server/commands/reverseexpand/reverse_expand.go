@@ -184,7 +184,12 @@ func (c *ReverseExpandQuery) Execute(
 ) {
 	err := c.execute(ctx, req, resultChan, nil, resolutionMetadata)
 	if err != nil {
-		resultChan <- &ReverseExpandResult{Err: err}
+		select {
+		case <-ctx.Done():
+			return
+		case resultChan <- &ReverseExpandResult{Err: err}:
+		}
+
 		return
 	}
 
