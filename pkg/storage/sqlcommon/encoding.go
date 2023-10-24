@@ -7,14 +7,14 @@ import (
 
 func marshalRelationshipCondition(
 	rel *openfgav1.RelationshipCondition,
-) (string, *[]byte, error) {
+) (string, []byte, error) {
 	if rel != nil {
 		context, err := proto.Marshal(rel.Context)
 		if err != nil {
 			return "", nil, err
 		}
 
-		return rel.Name, &context, err
+		return rel.Name, context, err
 	}
 
 	return "", nil, nil
