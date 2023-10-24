@@ -2,6 +2,8 @@ package reverseexpand
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -10,6 +12,8 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 )
@@ -23,20 +27,30 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 				type user
 				type document
 				  relations
-				    define allowed: [user] as self
-				    define viewer: [user] as self and allowed
+				    define viewer: [user] as self
 				`),
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
+	var tuples []*openfgav1.Tuple
+	for i := 0; i < 100; i++ {
+		obj := fmt.Sprintf("document:%s", strconv.Itoa(i))
+		tuples = append(tuples, &openfgav1.Tuple{Key: tuple.NewTupleKey(obj, "viewer", "user:maria")})
+	}
+
 	mockDatastore := mocks.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, gomock.Any()).
-		Times(0)
+		Times(1).
+		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
+			// simulate many goroutines trying to write to the results channel
+			return storage.NewStaticTupleIterator(tuples), nil
+		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
-	cancelFunc()
 
 	resultChan := make(chan *ReverseExpandResult)
+
+	done := make(chan struct{})
 
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
@@ -53,13 +67,21 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
+		done <- struct{}{}
+	}()
+	go func() {
+		// simulate max_results=1
+		res := <-resultChan
+		cancelFunc()
+		require.NotNil(t, res.Object)
+		require.Nil(t, res.Err)
 	}()
 
-	res, open := <-resultChan
-	if open && res.Err != nil {
-		require.ErrorIs(t, res.Err, context.Canceled)
-	} else {
-		t.Errorf("expected an error but got none")
+	select {
+	case <-done:
+	// OK!
+	case <-time.After(10 * time.Millisecond):
+		require.FailNow(t, "timed out")
 	}
 }
 
@@ -86,6 +108,8 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	timeoutCtx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 	resultChan := make(chan *ReverseExpandResult)
+	done := make(chan struct{})
+
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
 		reverseExpandQuery.Execute(timeoutCtx, &ReverseExpandRequest{
@@ -100,11 +124,16 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
+		done <- struct{}{}
 	}()
-	res, open := <-resultChan
-	if open && res.Err != nil {
-		require.ErrorIs(t, res.Err, context.DeadlineExceeded)
-	} else {
-		t.Errorf("expected an error but got none")
+	select {
+	case res, open := <-resultChan:
+		if open {
+			require.NotNil(t, res.Err)
+		} else {
+			require.Nil(t, res)
+		}
+	case <-done:
+		// OK!
 	}
 }

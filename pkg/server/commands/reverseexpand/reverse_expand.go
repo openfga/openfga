@@ -173,9 +173,11 @@ func NewResolutionMetadata() *ResolutionMetadata {
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
 // and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
 //
-// If an error is encountered before resolving all objects the provided channel will not be closed and Execute will send
-// the error on the channel promptly and return. Otherwise, Execute will yield all of the objects on the provided channel
-// and then close the channel to signal that it is done.
+// If an error is encountered before resolving all objects: the provided channel will NOT be closed and
+// - if the error is context cancellation or deadline: Execute may send the error through the channel
+// - otherwise: Execute will send the error through the channel
+// If no errors, Execute will yield all of the objects on the provided channel and then close the channel
+// to signal that it is done.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
@@ -188,9 +190,8 @@ func (c *ReverseExpandQuery) Execute(
 		case <-ctx.Done():
 			return
 		case resultChan <- &ReverseExpandResult{Err: err}:
+			return
 		}
-
-		return
 	}
 
 	close(resultChan)
