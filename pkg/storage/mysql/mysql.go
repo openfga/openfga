@@ -18,6 +18,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -41,7 +43,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse mysql connection dsn: %w", err)
+			return nil, fmt.Errorf("parse mysql connection dsn: %w", err)
 		}
 
 		if cfg.Username != "" {
@@ -56,7 +58,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -88,7 +90,13 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	if cfg.ExportMetrics {
+		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &MySQL{
