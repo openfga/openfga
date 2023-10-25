@@ -14,10 +14,6 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-const (
-	IndirectWriteErrorReason = "Attempting to write directly to an indirect only relationship"
-)
-
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
 	logger    logger.Logger
@@ -78,26 +74,6 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
-			}
-
-			objectType, _ := tupleUtils.SplitObject(tk.GetObject())
-
-			relation, err := typesys.GetRelation(objectType, tk.GetRelation())
-			if err != nil {
-				if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-					return serverErrors.TypeNotFound(objectType)
-				}
-
-				if errors.Is(err, typesystem.ErrRelationUndefined) {
-					return serverErrors.RelationNotFound(tk.GetRelation(), objectType, tk)
-				}
-
-				return serverErrors.HandleError("", err)
-			}
-
-			// Validate that we are not trying to write to an indirect-only relationship
-			if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
-				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
 			}
 		}
 	}
