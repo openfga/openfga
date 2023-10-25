@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -270,7 +271,8 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			Relation: "viewer",
 			User:     "user:anne",
 			Condition: &openfgav1.RelationshipCondition{
-				Name: "condition",
+				Name:    "condition",
+				Context: &structpb.Struct{},
 			},
 		}
 
@@ -790,7 +792,8 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 				Relation: "viewer",
 				User:     "user:anne",
 				Condition: &openfgav1.RelationshipCondition{
-					Name: "condition",
+					Name:    "condition",
+					Context: &structpb.Struct{},
 				},
 			},
 		}

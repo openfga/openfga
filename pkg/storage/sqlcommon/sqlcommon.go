@@ -19,7 +19,6 @@ import (
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Config struct {
@@ -119,38 +118,6 @@ func NewConfig(opts ...DatastoreOption) *Config {
 	}
 
 	return cfg
-}
-
-type TupleRecord struct {
-	Store            string
-	ObjectType       string
-	ObjectID         string
-	Relation         string
-	User             string
-	ConditionName    string
-	ConditionContext *structpb.Struct
-	Ulid             string
-	InsertedAt       time.Time
-}
-
-func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
-	tk := &openfgav1.TupleKey{
-		Object:   tupleUtils.BuildObject(t.ObjectType, t.ObjectID),
-		Relation: t.Relation,
-		User:     t.User,
-	}
-
-	if t.ConditionName != "" {
-		tk.Condition = &openfgav1.RelationshipCondition{
-			Name:    t.ConditionName,
-			Context: t.ConditionContext,
-		}
-	}
-
-	return &openfgav1.Tuple{
-		Key:       tk,
-		Timestamp: timestamppb.New(t.InsertedAt),
-	}
 }
 
 type ContToken struct {

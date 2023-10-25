@@ -15,6 +15,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -24,28 +25,6 @@ type staticIterator struct {
 	tuples            []*openfgav1.Tuple
 	continuationToken []byte
 	mu                sync.Mutex
-}
-
-func match(key *openfgav1.TupleKey, target *openfgav1.TupleKey) bool {
-	if key.Object != "" {
-		td, objectid := tupleUtils.SplitObject(key.Object)
-		if objectid == "" {
-			if td != tupleUtils.GetType(target.Object) {
-				return false
-			}
-		} else {
-			if key.Object != target.Object {
-				return false
-			}
-		}
-	}
-	if key.Relation != "" && key.Relation != target.Relation {
-		return false
-	}
-	if key.User != "" && key.User != target.User {
-		return false
-	}
-	return true
 }
 
 func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
@@ -59,10 +38,32 @@ func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
 	next, rest := s.tuples[0], s.tuples[1:]
 	s.tuples = rest
 
+	tk := next.GetKey()
+	if condition := tk.GetCondition(); condition != nil {
+		// normalize nil context to empty context
+		if condition.Context == nil {
+			condition.Context = &structpb.Struct{}
+		}
+	}
+
 	return next, nil
 }
 
 func (s *staticIterator) Stop() {}
+
+func (s *staticIterator) ToArray() ([]*openfgav1.Tuple, []byte, error) {
+	var res []*openfgav1.Tuple
+	for range s.tuples {
+		t, err := s.Next()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		res = append(res, t)
+	}
+
+	return res, s.continuationToken, nil
+}
 
 type StorageOption func(ds *MemoryBackend)
 
@@ -153,7 +154,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 		return nil, nil, err
 	}
 
-	return it.tuples, it.continuationToken, nil
+	return it.ToArray()
 }
 
 func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
@@ -312,6 +313,28 @@ func validateTuples(tuples []*openfgav1.Tuple, deletes, writes []*openfgav1.Tupl
 		}
 	}
 	return nil
+}
+
+func match(key *openfgav1.TupleKey, target *openfgav1.TupleKey) bool {
+	if key.Object != "" {
+		td, objectid := tupleUtils.SplitObject(key.Object)
+		if objectid == "" {
+			if td != tupleUtils.GetType(target.Object) {
+				return false
+			}
+		} else {
+			if key.Object != target.Object {
+				return false
+			}
+		}
+	}
+	if key.Relation != "" && key.Relation != target.Relation {
+		return false
+	}
+	if key.User != "" && key.User != target.User {
+		return false
+	}
+	return true
 }
 
 func find(tuples []*openfgav1.Tuple, tupleKey *openfgav1.TupleKey) bool {
