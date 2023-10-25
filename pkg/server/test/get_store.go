@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -13,6 +12,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
@@ -31,8 +32,7 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
+	ignoreStoreFields := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.GetStoreResponse{}), "created_at", "updated_at", "id")
 
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
@@ -47,7 +47,7 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.Nil(t, resp)
 			} else {
 				require.NoError(t, err)
-				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+				if diff := cmp.Diff(test.expectedResponse, resp, ignoreStoreFields, protocmp.Transform()); diff != "" {
 					t.Errorf("store mismatch (-want +got):\n%s", diff)
 				}
 			}
@@ -74,10 +74,8 @@ func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 		Name: store,
 	}
 
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.GetStoreResponse{})
-	ignoreStoreFields := cmpopts.IgnoreFields(openfgav1.GetStoreResponse{}, "CreatedAt", "UpdatedAt", "Id")
-
-	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStateOpts, ignoreStoreFields, cmpopts.EquateEmpty()); diff != "" {
+	ignoreStoreFields := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.GetStoreResponse{}), "created_at", "updated_at", "id")
+	if diff := cmp.Diff(expectedResponse, actualResponse, ignoreStoreFields, protocmp.Transform()); diff != "" {
 		t.Errorf("mismatch (-want +got):\n%s", diff)
 	}
 }

@@ -86,7 +86,3 @@ functional-test: ## Run functional tests (needs build-functional-test-image)
 .PHONY: bench
 bench: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
 	go test ./... -bench . -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem
-
-.PHONY: bench-cicd
-bench-cicd: go-generate ## Run benchmark test. See https://pkg.go.dev/cmd/go#hdr-Testing_flags
-	go test ./... -bench="BenchmarkOpenFGAServer/BenchmarkMemoryDatastore|BenchmarkCheckMemory" -benchtime 5s -timeout 0 -run=XXX -cpu 1 -benchmem

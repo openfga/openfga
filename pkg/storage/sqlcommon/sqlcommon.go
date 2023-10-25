@@ -36,6 +36,8 @@ type Config struct {
 	MaxIdleConns    int
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
+
+	ExportMetrics bool
 }
 
 type DatastoreOption func(*Config)
@@ -91,6 +93,12 @@ func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxLifetime = d
+	}
+}
+
+func WithMetrics() DatastoreOption {
+	return func(cfg *Config) {
+		cfg.ExportMetrics = true
 	}
 }
 
