@@ -1246,16 +1246,24 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
-			reverseExpandErrCh := make(chan error, 1)
 			go func() {
-				err := reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
-				reverseExpandErrCh <- err
+				reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
 			}()
 
 			var results []*reverseexpand.ReverseExpandResult
-			for result := range resultChan {
-				results = append(results, result)
-			}
+			reverseExpandErrCh := make(chan error)
+			go func() {
+				for result := range resultChan {
+					if result.Err != nil {
+						reverseExpandErrCh <- result.Err
+						return
+					}
+
+					results = append(results, result)
+				}
+
+				reverseExpandErrCh <- nil
+			}()
 
 			select {
 			case <-timeoutCtx.Done():
