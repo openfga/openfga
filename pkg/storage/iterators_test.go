@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
 )
 
 func TestStaticTupleKeyIterator(t *testing.T) {
@@ -61,8 +61,8 @@ func TestCombinedIterator(t *testing.T) {
 	}
 
 	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(openfgav1.TupleKey{}),
 		testutils.TupleKeyCmpTransformer,
+		protocmp.Transform(),
 	}
 
 	if diff := cmp.Diff(expected, actual, cmpOpts...); diff != "" {
