@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -42,7 +41,6 @@ import (
 
 const (
 	baseFunctionalTestImage = "openfga/openfga:functionaltest"
-	defaultIPAddressInLinux = "172.17.0.1" // https://stackoverflow.com/q/65497331
 )
 
 type OpenFGATester interface {
@@ -538,9 +536,7 @@ func MigrateDatastoreToVersion5Test(t *testing.T, engine string) {
 		require.NoError(t, err)
 
 		t.Logf("start openfga 1.3.3 and wait for it to be ready")
-		// this is a hack to have the networking work in GitHub Actions
-		datastoreConnectionURI := strings.Replace(uri, "localhost", defaultIPAddressInLinux, -1)
-		tester := newOpenFGATester(t, "openfga/openfga:v1.3.3", "--datastore-engine", engine, "--datastore-uri", datastoreConnectionURI)
+		tester := newOpenFGATester(t, "openfga/openfga:v1.3.3", "--datastore-engine", engine, "--datastore-uri", uri)
 		defer tester.Cleanup()
 
 		t.Logf("create a client of openfga")
