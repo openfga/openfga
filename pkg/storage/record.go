@@ -1,4 +1,4 @@
-package sqlcommon
+package storage
 
 import (
 	"time"

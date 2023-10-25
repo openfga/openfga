@@ -197,7 +197,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
 	var conditionContext []byte
-	var record sqlcommon.TupleRecord
+	var record storage.TupleRecord
 	err := m.stbl.
 		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
 		From("tuple").

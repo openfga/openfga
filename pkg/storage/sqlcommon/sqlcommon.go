@@ -142,7 +142,7 @@ func UnmarshallContToken(from string) (*ContToken, error) {
 
 type SQLTupleIterator struct {
 	rows     *sql.Rows
-	resultCh chan *TupleRecord
+	resultCh chan *storage.TupleRecord
 	errCh    chan error
 }
 
@@ -152,12 +152,12 @@ var _ storage.TupleIterator = (*SQLTupleIterator)(nil)
 func NewSQLTupleIterator(rows *sql.Rows) *SQLTupleIterator {
 	return &SQLTupleIterator{
 		rows:     rows,
-		resultCh: make(chan *TupleRecord, 1),
+		resultCh: make(chan *storage.TupleRecord, 1),
 		errCh:    make(chan error, 1),
 	}
 }
 
-func (t *SQLTupleIterator) next() (*TupleRecord, error) {
+func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	if !t.rows.Next() {
 		if err := t.rows.Err(); err != nil {
 			return nil, err
@@ -166,7 +166,7 @@ func (t *SQLTupleIterator) next() (*TupleRecord, error) {
 	}
 
 	var conditionContext []byte
-	var record TupleRecord
+	var record storage.TupleRecord
 	err := t.rows.Scan(
 		&record.Store,
 		&record.ObjectType,

@@ -211,7 +211,7 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
 	var conditionContext []byte
-	var record sqlcommon.TupleRecord
+	var record storage.TupleRecord
 	err := p.stbl.
 		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
 		From("tuple").
