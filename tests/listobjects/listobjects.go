@@ -143,7 +143,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						Writes:               tuple.ConvertTupleKeysToWriteRequestTupleKeys(writeChunk),
 					})
 					require.NoError(t, err)
 				}

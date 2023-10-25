@@ -6,6 +6,28 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+type TupleWithCondition interface {
+	GetUser() string
+	GetObject() string
+	GetRelation() string
+	GetCondition() *openfgav1.RelationshipCondition
+}
+
+// InvalidConditionalTupleError is returned if the tuple's condition is invalid
+type InvalidConditionalTupleError struct {
+	Cause    error
+	TupleKey TupleWithCondition
+}
+
+func (i *InvalidConditionalTupleError) Error() string {
+	return fmt.Sprintf("Invalid tuple '%s'. Reason: %s", TupleKeyWithConditionToString(i.TupleKey), i.Cause)
+}
+
+func (i *InvalidConditionalTupleError) Is(target error) bool {
+	_, ok := target.(*InvalidConditionalTupleError)
+	return ok
+}
+
 // InvalidTupleError is returned if the tuple is invalid
 type InvalidTupleError struct {
 	Cause    error

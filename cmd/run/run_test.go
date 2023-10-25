@@ -780,11 +780,11 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: &openfgav1.TupleKeys{
-			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:2", "editor", "user:jon"),
-				tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+		Writes: &openfgav1.WriteRequestTupleKeys{
+			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
+				{Object: "document:2", Relation: "editor", User: "user:jon"},
+				{Object: "document:2", Relation: "allowed", User: "user:jon"},
 			},
 		},
 	})

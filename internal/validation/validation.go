@@ -55,6 +55,10 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 		if err != nil {
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 		}
+
+		if err := validateCondition(typesys, tk); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -164,6 +168,76 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	}
 
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
+}
+
+// validateCondition enforces conditions on a relationship tuple
+func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	objectType := tuple.GetType(tk.Object)
+	userType := tuple.GetType(tk.User)
+	userRelation := tuple.GetRelation(tk.User)
+
+	typeRestrictions, err := typesys.GetDirectlyRelatedUserTypes(objectType, tk.Relation)
+	if err != nil {
+		return err
+	}
+
+	if tk.Condition == nil {
+		for _, directlyRelatedType := range typeRestrictions {
+			if directlyRelatedType.Condition != "" {
+				continue
+			}
+
+			if directlyRelatedType.Type != userType {
+				continue
+			}
+
+			if directlyRelatedType.GetRelationOrWildcard() != nil {
+				if directlyRelatedType.GetRelation() != "" && directlyRelatedType.GetRelation() != userRelation {
+					continue
+				}
+
+				if directlyRelatedType.GetWildcard() != nil && !tuple.IsTypedWildcard(tk.User) {
+					continue
+				}
+			}
+
+			return nil
+		}
+
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("condition is missing"), TupleKey: tk,
+		}
+	}
+
+	condition, ok := typesys.GetConditions()[tk.Condition.Name]
+	if !ok {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("undefined condition"), TupleKey: tk,
+		}
+	}
+
+	validCondition := false
+	for _, directlyRelatedType := range typeRestrictions {
+		if directlyRelatedType.Type == userType && directlyRelatedType.Condition == tk.Condition.Name {
+			validCondition = true
+			break
+		}
+	}
+
+	if !validCondition {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: fmt.Errorf("invalid condition for type restriction"), TupleKey: tk,
+		}
+	}
+
+	_, err = condition.CastContextToTypedParameters(tk.Condition.Context.AsMap())
+	if err != nil {
+		return &tuple.InvalidConditionalTupleError{
+			Cause: err, TupleKey: tk,
+		}
+	}
+
+	return nil
 }
 
 // FilterInvalidTuples implements the TupleFilterFunc signature and can be used to provide

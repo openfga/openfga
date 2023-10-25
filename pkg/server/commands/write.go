@@ -18,7 +18,8 @@ const (
 	IndirectWriteErrorReason = "Attempting to write directly to an indirect only relationship"
 )
 
-// WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
+// WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple
+// goroutines.
 type WriteCommand struct {
 	logger    logger.Logger
 	datastore storage.OpenFGADatastore
@@ -38,7 +39,12 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, err
 	}
 
-	err := c.datastore.Write(ctx, req.GetStoreId(), req.GetDeletes().GetTupleKeys(), req.GetWrites().GetTupleKeys())
+	err := c.datastore.Write(
+		ctx,
+		req.GetStoreId(),
+		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes()),
+		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites()),
+	)
 	if err != nil {
 		return nil, handleError(err)
 	}
@@ -52,10 +58,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
-	deletes := req.GetDeletes().GetTupleKeys()
-	writes := req.GetWrites().GetTupleKeys()
+	deletes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes())
+	writes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites())
 
-	if deletes == nil && writes == nil {
+	if len(deletes) == 0 && len(writes) == 0 {
 		return serverErrors.InvalidWriteInput
 	}
 
@@ -97,7 +103,9 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 			// Validate that we are not trying to write to an indirect-only relationship
 			if !typesystem.RewriteContainsSelf(relation.GetRewrite()) {
-				return serverErrors.HandleTupleValidateError(&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk})
+				return serverErrors.HandleTupleValidateError(
+					&tupleUtils.IndirectWriteError{Reason: IndirectWriteErrorReason, TupleKey: tk},
+				)
 			}
 		}
 	}

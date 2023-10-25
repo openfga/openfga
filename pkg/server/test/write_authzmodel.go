@@ -484,7 +484,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -521,7 +524,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "invalid_condition_name"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
 									},
 								},
 							},
@@ -559,7 +565,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -597,7 +606,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -635,7 +647,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -673,7 +688,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -720,7 +738,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -754,7 +775,10 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 							Relations: map[string]*openfgav1.RelationMetadata{
 								"viewer": {
 									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(typesystem.WildcardRelationReference("user"), "condition1"),
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
 									},
 								},
 							},
@@ -770,6 +794,259 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
 							},
 						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+
+		// conditions
+		{
+			name: "condition_fails_undefined",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"invalid_condition_name",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_syntax_error",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_parameter_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_invalid_output_type",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_key_condition_name_mismatch",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+					"condition2": {
+						Name:       "condition3",
+						Expression: "param1 == 'ok'",
+						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+							"param1": {
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
+		},
+		{
+			name: "condition_fails_missing_parameter",
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
 					},
 				},
 			},

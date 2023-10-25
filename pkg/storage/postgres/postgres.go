@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -151,7 +152,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	defer span.End()
 
 	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -209,9 +210,10 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var record sqlcommon.TupleRecord
+	var conditionContext []byte
+	var record storage.TupleRecord
 	err := p.stbl.
-		Select("object_type", "object_id", "relation", "_user").
+		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -222,9 +224,17 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.ConditionName, &conditionContext)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
 	}
 
 	return record.AsTuple(), nil
@@ -234,7 +244,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -283,7 +293,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	}
 
 	rows, err := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,

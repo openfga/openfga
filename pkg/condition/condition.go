@@ -75,6 +75,52 @@ func (c *EvaluableCondition) Compile() error {
 	return nil
 }
 
+// CastContextToTypedParameters converts the provided context to typed condition
+// parameters and returns an error if any additional context fields are provided
+// that are not defined by the evaluable condition.
+func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]any) (map[string]any, error) {
+	if len(contextMap) == 0 {
+		return nil, nil
+	}
+
+	parameterTypes := c.GetParameters()
+
+	if len(parameterTypes) == 0 {
+		return nil, fmt.Errorf("no parameters defined for the condition")
+	}
+
+	converted := make(map[string]any, len(contextMap))
+
+	for key, value := range contextMap {
+		paramTypeRef, ok := parameterTypes[key]
+		if !ok {
+			continue
+		}
+
+		varType, err := types.DecodeParameterType(paramTypeRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.TypeName, err)
+		}
+
+		convertedParam, err := varType.ConvertValue(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert context parameter '%s': %w", key, err)
+		}
+
+		converted[key] = convertedParam
+	}
+
+	// validate against extraneous parameters
+	for key := range contextMap {
+		_, ok := converted[key]
+		if !ok {
+			return nil, fmt.Errorf("found invalid context parameter: %s", key)
+		}
+	}
+
+	return converted, nil
+}
+
 // Evaluate evalutes the provided CEL condition expression with a CEL environment
 // constructed from the condition's parameter type definitions and using the
 // context provided. If more than one source of context is provided, and if the
@@ -94,9 +140,9 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		maps.Copy(clonedMap, contextMap)
 	}
 
-	typedParams, err := castContextToTypedParameters(clonedMap, c.GetParameters())
+	typedParams, err := c.CastContextToTypedParameters(clonedMap)
 	if err != nil {
-		return emptyEvaluationResult, fmt.Errorf("failed to convert context to typed parameter values: %v", err)
+		return emptyEvaluationResult, err
 	}
 
 	out, _, err := c.program.Eval(typedParams)

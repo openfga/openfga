@@ -216,7 +216,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	tests := []struct {
 		name            string
 		typeDefinitions []*openfgav1.TypeDefinition
-		tuples          []*openfgav1.TupleKey
+		tuples          []*openfgav1.WriteRequestTupleKey
 		assertions      []checktest.Assertion
 	}{
 		{
@@ -234,11 +234,11 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 				define approved_timeslot: [timeslot] as self
 				define hourly_employee: [fga_user] as self
 			`),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("commerce_store:0", "hourly_employee", "fga_user:anne"),
-				tuple.NewTupleKey("commerce_store:1", "hourly_employee", "fga_user:anne"),
-				tuple.NewTupleKey("commerce_store:0", "approved_timeslot", "timeslot:11_12"),
-				tuple.NewTupleKey("commerce_store:1", "approved_timeslot", "timeslot:12_13"),
+			tuples: []*openfgav1.WriteRequestTupleKey{
+				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:0", Relation: "approved_timeslot", User: "timeslot:11_12"},
+				{Object: "commerce_store:1", Relation: "approved_timeslot", User: "timeslot:12_13"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -274,8 +274,8 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			    define restricted: [user] as self
 			    define viewer: [user] as self but not restricted
 			`),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			tuples: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -330,9 +330,9 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			  relations
 			    define viewer: [group#member] as self
 			`),
-			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("group:eng", "member", "user:jon"),
+			tuples: []*openfgav1.WriteRequestTupleKey{
+				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
+				{Object: "group:eng", Relation: "member", User: "user:jon"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -377,7 +377,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes: &openfgav1.TupleKeys{
+					Writes: &openfgav1.WriteRequestTupleKeys{
 						TupleKeys: test.tuples,
 					},
 				})
@@ -696,7 +696,7 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgav1.TupleKey
+		tuples []*openfgav1.WriteRequestTupleKey
 		model  *openfgav1.AuthorizationModel
 	}
 
@@ -806,7 +806,9 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+					Writes: &openfgav1.WriteRequestTupleKeys{
+						TupleKeys: test.testData.tuples,
+					},
 				})
 				require.NoError(t, err)
 			}
@@ -827,7 +829,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgav1.TupleKey
+		tuples []*openfgav1.WriteRequestTupleKey
 		model  string
 	}
 
@@ -878,9 +880,9 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				},
 			},
 			testData: &testData{
-				tuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-					tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+				tuples: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
+					{Object: "document:1", Relation: "allowed", User: "user:jon"},
 				},
 				model: `
 				type user
@@ -919,7 +921,9 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+						Writes: &openfgav1.WriteRequestTupleKeys{
+							TupleKeys: test.testData.tuples,
+						},
 					})
 					require.NoError(t, err)
 				}
@@ -1004,9 +1008,9 @@ func TestCheckWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
 				},
 			},
 		})
@@ -1128,10 +1132,10 @@ func TestExpandWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
-				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
 				},
 			},
 		})

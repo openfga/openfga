@@ -2,10 +2,12 @@ package condition_test
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/condition"
+	"github.com/openfga/openfga/pkg/condition/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -126,7 +128,37 @@ func TestEvaluate(t *testing.T) {
 			err:     nil,
 		},
 		{
-			name: "fail_no_such_attribute",
+			name: "fail_no_such_attribute_nil_context",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: nil,
+			result:  condition.EvaluationResult{ConditionMet: false},
+			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+		},
+		{
+			name: "fail_no_such_attribute_empty_context",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"param1": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{},
+			result:  condition.EvaluationResult{ConditionMet: false},
+			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+		},
+		{
+			name: "fail_found_invalid_context_parameter",
 			condition: &openfgav1.Condition{
 				Name:       "condition1",
 				Expression: "param1 == 'ok'",
@@ -140,7 +172,7 @@ func TestEvaluate(t *testing.T) {
 				"param2": "ok",
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+			err:    fmt.Errorf("found invalid context parameter: param2"),
 		},
 		{
 			name: "fail_unexpected_type",
@@ -157,7 +189,7 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context to typed parameter values: failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
+			err:    fmt.Errorf("failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
 		},
 	}
 
@@ -170,10 +202,97 @@ func TestEvaluate(t *testing.T) {
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
-				require.Equal(t, test.err, err)
+				require.EqualError(t, err, test.err.Error())
 			} else {
 				require.NoError(t, err)
 			}
 		})
 	}
+}
+
+func TestCastContextToTypedParameters(t *testing.T) {
+	tests := []struct {
+		name                    string
+		contextMap              map[string]any
+		conditionParameterTypes map[string]*openfgav1.ConditionParamTypeRef
+		expectedParams          map[string]any
+		expectedError           error
+	}{
+		{
+			name: "valid",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {
+					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+				},
+			},
+			expectedParams: map[string]any{
+				"param1": mustConvertValue(types.StringParamType, "ok"),
+			},
+			expectedError: nil,
+		},
+		{
+			name:                    "empty_context_map",
+			contextMap:              map[string]any{},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
+			expectedParams:          nil,
+			expectedError:           nil,
+		},
+		{
+			name: "empty_parameter_types",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
+			expectedParams:          nil,
+			expectedError:           fmt.Errorf("no parameters defined for the condition"),
+		},
+		{
+			name: "failed_to_decode_condition_parameter_type",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {
+					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
+				},
+			},
+			expectedParams: nil,
+			expectedError:  fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := condition.NewUncompiled(&openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: test.conditionParameterTypes,
+			})
+
+			typedParams, err := c.CastContextToTypedParameters(test.contextMap)
+
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.EqualError(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
+
+			if !reflect.DeepEqual(typedParams, test.expectedParams) {
+				t.Errorf("expected %v, got %v", test.expectedParams, typedParams)
+			}
+		})
+	}
+}
+
+func mustConvertValue(varType types.ParameterType, value any) any {
+	convertedParam, err := varType.ConvertValue(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return convertedParam
 }
