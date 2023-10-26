@@ -621,7 +621,7 @@ func (m *MySQL) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
