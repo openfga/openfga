@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/internal/graph"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -53,12 +53,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_equal_0_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -77,12 +77,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_equal_2_with_simple_model",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -101,13 +101,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_with_model_that_uses_exclusion",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type org
-			  relations
-				define blocked: [user] as self
-				define admin: [user] as self but not blocked
-			`,
+			model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define blocked: [user]
+	define admin: [user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
 				tuple.NewTupleKey("org:2", "admin", "user:charlie"),
@@ -126,13 +126,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "max_results_with_model_that_uses_exclusion_and_one_object_is_a_false_candidate",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type org
-			  relations
-				define blocked: [user] as self
-				define admin: [user] as self but not blocked
-			`,
+			model: `model
+	schema 1.1
+type user
+type org
+  relations
+	define blocked: [user]
+	define admin: [user] but not blocked`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("org:2", "blocked", "user:charlie"),
 				tuple.NewTupleKey("org:1", "admin", "user:charlie"),
@@ -151,13 +151,13 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "respects_when_schema_1_1_and_maxresults_is_higher_than_actual_result_length",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			`,
+type team
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("team:1", "admin", "user:bob"),
 			},
@@ -172,12 +172,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "respects_max_results_when_deadline_timeout_and_returns_no_error_and_no_results",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -196,12 +196,12 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 		{
 			name:   "list_object_use_check_cache",
 			schema: typesystem.SchemaVersion1_1,
-			model: `
-			type user
-			type repo
-			  relations
-				define admin: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+	define admin: [user]`,
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:1", "admin", "user:alice"),
 				tuple.NewTupleKey("repo:2", "admin", "user:alice"),
@@ -231,7 +231,7 @@ func TestListObjectsRespectsMaxResults(t *testing.T, ds storage.OpenFGADatastore
 			model := &openfgav1.AuthorizationModel{
 				Id:              ulid.Make().String(),
 				SchemaVersion:   test.schema,
-				TypeDefinitions: parser.MustParse(test.model),
+				TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
 			}
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
@@ -341,13 +341,13 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	model := &openfgav1.AuthorizationModel{
 		Id:            modelID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-	type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type document
-	  relations
-	    define viewer: [user] as self
-	`),
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions,
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
 	require.NoError(b, err)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -29,14 +29,14 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: store,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-		type repo
-		  relations
-		    define reader: [user] as self
-		    define can_read as reader
-		`),
+type repo
+  relations
+	define reader: [user]
+	define can_read: reader`).TypeDefinitions,
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 

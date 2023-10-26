@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/logger"
@@ -38,16 +38,16 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_0,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.0
+type user
 
-				type team
+type team
 
-				type repo
-				  relations
-				    define owner: [team] as self
-				    define admin: [user] as self
-				`),
+type repo
+  relations
+	define owner: [team]
+	define admin: [user]`).TypeDefinitions,
 			},
 			tuples: []*openfgav1.TupleKey{
 				{
@@ -88,14 +88,14 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			model: &openfgav1.AuthorizationModel{
 				Id:            ulid.Make().String(),
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-				type repo
-				  relations
-				    define admin: [user] as self
-				    define owner: [user] as self
-				`),
+type repo
+  relations
+	define admin: [user]
+	define owner: [user]`).TypeDefinitions,
 			},
 			tuples: []*openfgav1.TupleKey{
 				tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|jose"),

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -149,13 +149,14 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type repo
-	  relations
-	    define reader: [user] as self
-	`)
+type repo
+  relations
+	define reader: [user]
+`).TypeDefinitions
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:anne")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -221,13 +222,13 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustParse(`
-		type user
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-		type document
-		  relations
-		    define editor: [user] as self
-		`),
+type document
+  relations
+	define editor: [user]`).TypeDefinitions,
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
@@ -276,16 +277,16 @@ func TestOperationsWithInvalidModel(t *testing.T) {
 	modelID := ulid.Make().String()
 
 	// The model is invalid
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type repo
-	  relations
-        define admin: [user] as self
-	    define r1: [user] as self and r2 and r3
-	    define r2: [user] as self and r1 and r3
-	    define r3: [user] as self and r1 and r2
-	`)
+type repo
+  relations
+	define admin: [user]
+	define r1: [user] and r2 and r3
+	define r2: [user] and r1 and r3
+	define r3: [user] and r1 and r2`).TypeDefinitions
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "r1", "user:anne")
 	mockController := gomock.NewController(t)
@@ -359,13 +360,13 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-	type repo
-	  relations
-	    define reader: [user:*] as self
-	`)
+type repo
+  relations
+	define reader: [user:*]`).TypeDefinitions
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:*")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -430,13 +431,13 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	storeID := ulid.Make().String()
 	modelID := ulid.Make().String()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-	type repo
-	  relations
-	    define reader: [user] as self
-	`)
+type repo
+  relations
+	define reader: [user]`).TypeDefinitions
 
 	tk := tuple.NewCheckRequestTupleKey("repo:openfga", "reader", "user:mike")
 	returnedTuple := &openfgav1.Tuple{Key: tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)}
@@ -579,14 +580,14 @@ func BenchmarkListObjectsNoRaceCondition(b *testing.B) {
 	mockController := gomock.NewController(b)
 	defer mockController.Finish()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-	type repo
-	  relations
-	    define allowed: [user] as self
-	    define viewer: [user] as self and allowed
-    `)
+type repo
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`).TypeDefinitions
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 
@@ -642,13 +643,13 @@ func TestListObjects_ErrorCases(t *testing.T) {
 
 		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), store, modelID).AnyTimes().Return(&openfgav1.AuthorizationModel{
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustParse(`
-			type user
+			TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-			type document
-			  relations
-				define viewer: [user, user:*] as self
-			`),
+type document
+  relations
+	define viewer: [user, user:*]`).TypeDefinitions,
 		}, nil)
 
 		mockDatastore.EXPECT().ReadStartingWithUser(gomock.Any(), store, storage.ReadStartingWithUserFilter{
@@ -694,17 +695,17 @@ func TestListObjects_ErrorCases(t *testing.T) {
 		writeModelResp, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       store,
 			SchemaVersion: typesystem.SchemaVersion1_1,
-			TypeDefinitions: parser.MustParse(`
-			type user
+			TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
+type group
+  relations
+	define member: [user, group#member]
 
-			type document
-			  relations
-				define viewer: [group#member] as self
-			`),
+type document
+  relations
+	define viewer: [group#member]`).TypeDefinitions,
 		})
 		require.NoError(t, err)
 
@@ -844,9 +845,12 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
-			StoreId:         store,
-			SchemaVersion:   typesystem.SchemaVersion1_0,
-			TypeDefinitions: parser.MustParse(`type repo`),
+			StoreId:       store,
+			SchemaVersion: typesystem.SchemaVersion1_0,
+			TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type repo
+`).TypeDefinitions,
 		})
 		require.Error(t, err)
 		e, ok := status.FromError(err)
