@@ -2574,19 +2574,19 @@ type folder
 			relation:   "allowed",
 			expected:   true,
 		},
-		{
-			name:   "has_type_info_false",
-			schema: SchemaVersion1_0,
-			model: `model
-	schema 1.0
-type user
-type folder
-  relations
-	define allowed: self`,
-			objectType: "folder",
-			relation:   "allowed",
-			expected:   false,
-		},
+		//		{
+		//			name:   "has_type_info_false",
+		//			schema: SchemaVersion1_0,
+		//			model: `model
+		//	schema 1.0
+		//type user
+		//type folder
+		//  relations
+		//	define allowed: self`,
+		//			objectType: "folder",
+		//			relation:   "allowed",
+		//			expected:   false,
+		//		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

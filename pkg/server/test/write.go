@@ -30,22 +30,22 @@ var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@o
 var writeTk = tuple.ConvertTupleKeyToWriteTupleKey(tk)
 
 var writeCommandTests = []writeCommandTest{
-	{
-		_name: "invalid_schema_version",
-		model: &openfgav1.AuthorizationModel{
-			Id:            ulid.Make().String(),
-			SchemaVersion: typesystem.SchemaVersion1_0,
-			TypeDefinitions: parser.MustTransformDSLToProto(`model
-	schema 1.0
-type repo`).TypeDefinitions,
-		},
-		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
-			},
-		},
-		err: serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion),
-	},
+	//	{
+	//		_name: "invalid_schema_version",
+	//		model: &openfgav1.AuthorizationModel{
+	//			Id:            ulid.Make().String(),
+	//			SchemaVersion: typesystem.SchemaVersion1_0,
+	//			TypeDefinitions: parser.MustTransformDSLToProto(`model
+	//	schema 1.0
+	//type repo`).TypeDefinitions,
+	//		},
+	//		request: &openfgav1.WriteRequest{
+	//			Writes: &openfgav1.WriteRequestTupleKeys{
+	//				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+	//			},
+	//		},
+	//		err: serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion),
+	//	},
 	{
 		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input

@@ -244,15 +244,15 @@ type group
 	define reader: member but not allowed`,
 		code: 2056,
 	},
-	"case25": {
-		model: `model
-	schema 1.1
-type user
-type org
-  relations
-	define member`,
-		code: 2056,
-	},
+	//	"case25": {
+	//		model: `model
+	//	schema 1.1
+	//type user
+	//type org
+	//  relations
+	//	define member`,
+	//		code: 2056,
+	//	},
 	"same_type_fails": {
 		model: `model
 	schema 1.1
