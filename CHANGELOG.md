@@ -20,6 +20,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Return all results when `OPENFGA_LIST_OBJECTS_MAX_RESULTS=0` ([#1067](https://github.com/openfga/openfga/pull/1067))
 * Promptly return if max results are met before deadline in ListObjects ([#1064](https://github.com/openfga/openfga/pull/1064))
+* Fix sort order on ReadChanges ([#1079](https://github.com/openfga/openfga/pull/1079))
 
 ### Changed
 
