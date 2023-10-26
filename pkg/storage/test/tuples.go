@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -127,6 +128,49 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
 			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("read_changes_returns_deterministic_ordering_and_no_duplicates", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		var tuples []*openfgav1.TupleKey
+		for i := 0; i < 100; i++ {
+			object := fmt.Sprintf("document:%d", i)
+			tuples = append(tuples, tuple.NewTupleKey(object, "viewer", "user:jon"))
+		}
+
+		err := datastore.Write(context.Background(), storeID, nil, tuples)
+		require.NoError(t, err)
+
+		seenObjects := map[string]struct{}{}
+
+		var changes []*openfgav1.TupleChange
+		var continuationToken []byte
+		for {
+			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.PaginationOptions{
+				PageSize: 10,
+				From:     string(continuationToken),
+			}, 1*time.Millisecond)
+			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					break
+				}
+			}
+			require.NoError(t, err)
+			require.NotNil(t, continuationToken)
+
+			for _, change := range changes {
+				if _, ok := seenObjects[change.TupleKey.Object]; ok {
+					require.FailNowf(t, "duplicate changelog entry encountered", change.TupleKey.Object)
+				}
+
+				seenObjects[change.TupleKey.Object] = struct{}{}
+			}
+
+			if string(continuationToken) == "" {
+				break
+			}
 		}
 	})
 }
