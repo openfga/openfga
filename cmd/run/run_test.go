@@ -786,6 +786,16 @@ func TestServerMetricsReporting(t *testing.T) {
 								{Type: "user"},
 							},
 						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
 					},
 				},
 			},
