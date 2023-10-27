@@ -18,7 +18,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -41,7 +42,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse mysql connection dsn: %w", err)
+			return nil, fmt.Errorf("parse mysql connection dsn: %w", err)
 		}
 
 		if cfg.Username != "" {
@@ -56,7 +57,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -88,7 +89,13 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	if cfg.ExportMetrics {
+		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &MySQL{
@@ -285,63 +292,7 @@ func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelI
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
-	rows, err := m.stbl.
-		Select("schema_version", "type", "type_definition").
-		From("authorization_model").
-		Where(sq.Eq{
-			"store":                  store,
-			"authorization_model_id": modelID,
-		}).QueryContext(ctx)
-	if err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-	defer rows.Close()
-
-	var schemaVersion string
-	var typeDefs []*openfgav1.TypeDefinition
-	for rows.Next() {
-		var typeName string
-		var marshalledTypeDef []byte
-		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef)
-		if err != nil {
-			return nil, sqlcommon.HandleSQLError(err)
-		}
-
-		var typeDef openfgav1.TypeDefinition
-		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
-			return nil, err
-		}
-
-		typeDefs = append(typeDefs, &typeDef)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, sqlcommon.HandleSQLError(err)
-	}
-
-	if len(typeDefs) == 0 {
-		return nil, storage.ErrNotFound
-	}
-
-	// Update the schema version lazily if it is not a valid typesystem.SchemaVersion.
-	if schemaVersion != typesystem.SchemaVersion1_0 && schemaVersion != typesystem.SchemaVersion1_1 {
-		schemaVersion = typesystem.SchemaVersion1_0
-		_, err = m.stbl.
-			Update("authorization_model").
-			Set("schema_version", schemaVersion).
-			Where(sq.Eq{"store": store, "authorization_model_id": modelID}).
-			ExecContext(ctx)
-		if err != nil {
-			// Don't worry if we error, we'll update it lazily next time, but let's log:
-			m.logger.Warn("failed to lazily update schema version", zap.String("store", store), zap.String("authorization_model_id", modelID))
-		}
-	}
-
-	return &openfgav1.AuthorizationModel{
-		SchemaVersion:   schemaVersion,
-		Id:              modelID,
-		TypeDefinitions: typeDefs,
-	}, nil
+	return sqlcommon.ReadAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, modelID)
 }
 
 func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts storage.PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error) {
@@ -440,36 +391,13 @@ func (m *MySQL) WriteAuthorizationModel(ctx context.Context, store string, model
 	ctx, span := tracer.Start(ctx, "mysql.WriteAuthorizationModel")
 	defer span.End()
 
-	schemaVersion := model.GetSchemaVersion()
 	typeDefinitions := model.GetTypeDefinitions()
 
 	if len(typeDefinitions) > m.MaxTypesPerAuthorizationModel() {
 		return storage.ExceededMaxTypeDefinitionsLimitError(m.maxTypesPerModelField)
 	}
 
-	if len(typeDefinitions) < 1 {
-		return nil
-	}
-
-	sb := m.stbl.
-		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition")
-
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
-		if err != nil {
-			return err
-		}
-
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef)
-	}
-
-	_, err := sb.ExecContext(ctx)
-	if err != nil {
-		return sqlcommon.HandleSQLError(err)
-	}
-
-	return nil
+	return sqlcommon.WriteAuthorizationModel(ctx, sqlcommon.NewDBInfo(m.db, m.stbl, "NOW()"), store, model)
 }
 
 // CreateStore is slightly different between Postgres and MySQL
@@ -693,7 +621,7 @@ func (m *MySQL) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
@@ -757,12 +685,5 @@ func (m *MySQL) ReadChanges(
 // IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
 func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := m.db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return sqlcommon.IsReady(ctx, m.db)
 }

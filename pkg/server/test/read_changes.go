@@ -2,10 +2,10 @@ package test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
@@ -15,6 +15,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -59,7 +61,7 @@ func newReadChangesRequest(store, objectType, contToken string, pageSize int32) 
 
 func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, err := setup(store, datastore)
+	ctx, backend, err := writeTuples(store, datastore)
 	require.NoError(t, err)
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -204,9 +206,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 }
 
 func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, readChangesQuery *commands.ReadChangesQuery) {
-	ignoreStateOpts := cmpopts.IgnoreUnexported(openfgav1.Tuple{}, openfgav1.TupleKey{}, openfgav1.TupleChange{})
-	ignoreTimestampOpts := cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp")
-
+	ignoreTimestampOpts := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp")
 	var res *openfgav1.ReadChangesResponse
 	var err error
 	for i, test := range testCasesInOrder {
@@ -225,7 +225,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, res)
-				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreStateOpts, ignoreTimestampOpts, cmpopts.EquateEmpty()); diff != "" {
+				if diff := cmp.Diff(test.expectedChanges, res.Changes, ignoreTimestampOpts, protocmp.Transform()); diff != "" {
 					t.Errorf("tuple change mismatch (-want +got):\n%s", diff)
 				}
 				if test.expectEmptyContinuationToken {
@@ -240,7 +240,7 @@ func runTests(t *testing.T, ctx context.Context, testCasesInOrder []testCase, re
 
 func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
-	ctx, backend, err := setup(store, datastore)
+	ctx, backend, err := writeTuples(store, datastore)
 	require.NoError(t, err)
 
 	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
@@ -254,7 +254,28 @@ func TestReadChangesReturnsSameContTokenWhenNoChanges(t *testing.T, datastore st
 	require.Equal(t, res1.ContinuationToken, res2.ContinuationToken)
 }
 
-func setup(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
+func TestReadChangesAfterConcurrentWritesReturnsUniqueResults(t *testing.T, datastore storage.OpenFGADatastore) {
+	store := testutils.CreateRandomString(10)
+
+	tuplesToWriteOne := []*openfgav1.TupleKey{tkMaria, tkCraig}
+	tuplesToWriteTwo := []*openfgav1.TupleKey{tkYamil}
+	totalTuplesToWrite := len(tuplesToWriteOne) + len(tuplesToWriteTwo)
+	ctx, backend := writeTuplesConcurrently(t, store, datastore, tuplesToWriteOne, tuplesToWriteTwo)
+
+	readChangesQuery := commands.NewReadChangesQuery(backend, logger.NewNoopLogger(), encoder.NewBase64Encoder(), 0)
+
+	// without type
+	res1, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "", "", storage.DefaultPageSize))
+	require.NoError(t, err)
+	require.Len(t, res1.Changes, totalTuplesToWrite)
+
+	// with type
+	res2, err := readChangesQuery.Execute(ctx, newReadChangesRequest(store, "repo", "", storage.DefaultPageSize))
+	require.NoError(t, err)
+	require.Len(t, res2.Changes, totalTuplesToWrite)
+}
+
+func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Context, storage.ChangelogBackend, error) {
 	ctx := context.Background()
 
 	writes := []*openfgav1.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
@@ -264,4 +285,33 @@ func setup(store string, datastore storage.OpenFGADatastore) (context.Context, s
 	}
 
 	return ctx, datastore, nil
+}
+
+// writeTuplesConcurrently writes two groups of tuples concurrently to expose potential race issues when reading changes
+func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenFGADatastore, tupleGroupOne, tupleGroupTwo []*openfgav1.TupleKey) (context.Context, storage.ChangelogBackend) {
+	t.Helper()
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupOne)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupTwo)
+		if err != nil {
+			t.Logf("failed to write tuples: %s", err)
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+
+	return ctx, datastore
 }

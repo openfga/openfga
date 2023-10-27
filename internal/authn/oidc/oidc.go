@@ -12,7 +12,7 @@ import (
 
 	"github.com/MicahParks/keyfunc"
 	"github.com/golang-jwt/jwt/v4"
-	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/hashicorp/go-retryablehttp"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"

@@ -6,7 +6,7 @@ before:
     - go generate ./...
 
 builds:
-  - 
+  -
     main: ./cmd/openfga
     binary: openfga
     env:
@@ -119,11 +119,9 @@ docker_signs:
     - "--yes" # needed on cosign 2.0.0+
 
 brews:
-  - tap:
+  - repository:
       owner: openfga
       name: homebrew-tap
-      pull_request:
-        enabled: true
     homepage: "https://openfga.dev/"
     description: "A high performance and flexible authorization/permission engine built for developers and inspired by Google Zanzibar."
     license: "Apache-2.0"
@@ -147,8 +145,7 @@ brews:
       system "#{bin}/openfga version"
 
 archives:
-  - rlcp: true
-    files:
+  - files:
       - assets
 
 checksum:

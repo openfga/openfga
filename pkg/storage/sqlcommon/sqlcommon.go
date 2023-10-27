@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -31,6 +32,8 @@ type Config struct {
 	MaxIdleConns    int
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
+
+	ExportMetrics bool
 }
 
 type DatastoreOption func(*Config)
@@ -86,6 +89,12 @@ func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxLifetime = d
+	}
+}
+
+func WithMetrics() DatastoreOption {
+	return func(cfg *Config) {
+		cfg.ExportMetrics = true
 	}
 }
 
@@ -350,4 +359,99 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 	}
 
 	return nil
+}
+
+func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, model *openfgav1.AuthorizationModel) error {
+	schemaVersion := model.GetSchemaVersion()
+	typeDefinitions := model.GetTypeDefinitions()
+
+	if len(typeDefinitions) < 1 {
+		return nil
+	}
+
+	pbdata, err := proto.Marshal(model)
+	if err != nil {
+		return err
+	}
+
+	_, err = dbInfo.stbl.
+		Insert("authorization_model").
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		Values(store, model.Id, schemaVersion, "", nil, pbdata).
+		ExecContext(ctx)
+	if err != nil {
+		return HandleSQLError(err)
+	}
+
+	return nil
+}
+
+func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID string) (*openfgav1.AuthorizationModel, error) {
+	rows, err := dbInfo.stbl.
+		Select("schema_version", "type", "type_definition", "serialized_protobuf").
+		From("authorization_model").
+		Where(sq.Eq{
+			"store":                  store,
+			"authorization_model_id": modelID,
+		}).
+		QueryContext(ctx)
+	if err != nil {
+		return nil, HandleSQLError(err)
+	}
+	defer rows.Close()
+
+	var schemaVersion string
+	var typeDefs []*openfgav1.TypeDefinition
+	for rows.Next() {
+		var typeName string
+		var marshalledTypeDef []byte
+		var marshalledModel []byte
+		err = rows.Scan(&schemaVersion, &typeName, &marshalledTypeDef, &marshalledModel)
+		if err != nil {
+			return nil, HandleSQLError(err)
+		}
+
+		if len(marshalledModel) > 0 {
+			// Prefer building an authorization model from the first row that has it available.
+			var model openfgav1.AuthorizationModel
+			if err := proto.Unmarshal(marshalledModel, &model); err != nil {
+				return nil, err
+			}
+
+			return &model, nil
+		}
+
+		var typeDef openfgav1.TypeDefinition
+		if err := proto.Unmarshal(marshalledTypeDef, &typeDef); err != nil {
+			return nil, err
+		}
+
+		typeDefs = append(typeDefs, &typeDef)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, HandleSQLError(err)
+	}
+
+	if len(typeDefs) == 0 {
+		return nil, storage.ErrNotFound
+	}
+
+	return &openfgav1.AuthorizationModel{
+		SchemaVersion:   schemaVersion,
+		Id:              modelID,
+		TypeDefinitions: typeDefs,
+	}, nil
+}
+
+// IsReady returns true if the connection to the datastore is successful
+func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

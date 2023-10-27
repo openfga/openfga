@@ -8,12 +8,78 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [1.3.5] - 2023-10-27
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.4...v1.3.5)
+
+### Added
+
+* Export metrics from MySQL and Postgres ([#1023](https://github.com/openfga/openfga/pull/1023))
+
+### Fixed
+
+* Return all results when `OPENFGA_LIST_OBJECTS_MAX_RESULTS=0` ([#1067](https://github.com/openfga/openfga/pull/1067))
+* Promptly return if max results are met before deadline in ListObjects ([#1064](https://github.com/openfga/openfga/pull/1064))
+* Fix sort order on ReadChanges ([#1079](https://github.com/openfga/openfga/pull/1079))
+
+### Changed
+
+* Write Authorization Models in a single database row ([#1030](https://github.com/openfga/openfga/pull/1030))
+
+  :warning: In order to avoid downtime, we recommend upgrading to at least v1.3.3 _before_ upgrading to v1.3.5.
+
+  This is the second of a series of releases that will progressively introduce changes via code and database migrations that will allow authorization models to be stored in a single database row.
+
+  See [here for more details](https://github.com/openfga/openfga/issues/1025).
+
+## [1.3.4] - 2023-10-17
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.3...v1.3.4)
+
+### Fixed
+
+* Incorrect string in model validation error message ([#1057](https://github.com/openfga/openfga/pull/1057))
+* Incorrect results can be returned by Check API when passing in contextual tuples and the `check-query-cache` experimental flag is turned on ([#1059](https://github.com/openfga/openfga/pull/1059))
+
+### Changed
+
+* Bumped up to Go 1.21.3 ([#1060](https://github.com/openfga/openfga/pull/1060))
+
+### Security
+
+* Patches [CVE-2023-45810](https://github.com/openfga/openfga/security/advisories/GHSA-hr4f-6jh8-f2vq). See the CVE for more details
+
+## [1.3.3] - 2023-10-04
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.2...v1.3.3)
+
+### Added
+
+* Configurable size limit for Authorization Models ([#1032](https://github.com/openfga/openfga/pull/1032))
+
+  We've introduced a new size limit for authorization models, provided a consistent behavior across datastores, which defaults to `256KB`. This can be configured by using the `--max-authorization-model-size-in-bytes` flag.
+
+### Fixed
+
+* Reduce use of GOB in encoded cache key ([#1029](https://github.com/openfga/openfga/pull/1029))
+
+### Changed
+
+* Move standalone server config defaults ([#1036](https://github.com/openfga/openfga/pull/1036))
+
+* Persist Authorization Models serialized protobuf in the database ([#1028](https://github.com/openfga/openfga/pull/1028))
+
+  In the next series of releases will progressively introduce changes via code and database migrations that will allow authorization models to be stored in a single database row.
+
+  See [here for more details](https://github.com/openfga/openfga/issues/1025).
+
+
 ## [1.3.2] - 2023-08-25
 ### Added
 * Support TLS for OTLP trace endpoint ([#885](https://github.com/openfga/openfga/pull/885)) - thanks @matoous
 * Configurable limits to database reads per ListObjects query ([#967](https://github.com/openfga/openfga/pull/967))
 * Datastore query count labels to traces and query latency histogram in ListObjects ([#959](https://github.com/openfga/openfga/pull/959))
-* Github workflow to check markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
+* GitHub workflow to check Markdown links ([#1016](https://github.com/openfga/openfga/pull/1016)) - thanks @sanketrai1
 
 ### Fixed
 * Change response code to internal error for concurrency conflicts ([#1011](https://github.com/openfga/openfga/pull/1011))
@@ -90,7 +156,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * [BREAKING] Imports for OpenFGA protobuf API dependencies ([#898](https://github.com/openfga/openfga/pull/898))
   * **Problem** - Previously we depended on [Buf remote generated packages](https://buf.build/docs/bsr/remote-packages/overview), but they recently deprecated protobuf imports served from the `go.buf.build` domain (see [Migrate from remote generation alpha](https://buf.build/docs/migration-guides/migrate-remote-generation-alpha)). OpenFGA builds are currently broken as a result of this.
   * **Change** - We switched our protobuf API dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. So we no longer use Buf remote generated packages in favor of packages we managed in the [`openfga/api`](https://github.com/openfga/api) repository. This fixes existing build issues.
-  * **Impact** - Developers using the OpenFGA as a library or the gRPC API must change their protobuf dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. A global find/replace and package depedency update should fix it. Here's a diff demonstrating the changes for a Go app, for example:
+  * **Impact** - Developers using the OpenFGA as a library or the gRPC API must change their protobuf dependency from `go.buf.build/openfga/go/openfga/api/openfga/v1` to `github.com/openfga/api/proto/openfga/v1`. A global find/replace and package dependency update should fix it. Here's a diff demonstrating the changes for a Go app, for example:
 
     ```go
     import (
@@ -182,7 +248,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 [Full changelog](https://github.com/openfga/openfga/compare/v0.4.3...v1.0.0)
 
-## Ready for Production with Postgres 
+## Ready for Production with Postgres
 OpenFGA with Postgres is now considered stable and ready for production usage.
 
 ## Fixed
@@ -195,7 +261,7 @@ OpenFGA with Postgres is now considered stable and ready for production usage.
 ## Added
 * Release artifacts are now signed and include a Software Bill of Materials (SBOM) ([#683](https://github.com/openfga/openfga/pull/683))
 
-  The SBOM (Software Bill of Materials) is included in each Github release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
+  The SBOM (Software Bill of Materials) is included in each GitHub release using [Syft](https://github.com/anchore/syft) and is exported in [SPDX](https://spdx.dev) format.
 
   Developers will be able to verify the signature of the release artifacts with the following workflow(s):
 
@@ -336,7 +402,7 @@ Re-release of `v0.3.5` because the go module proxy cached a prior commit of the 
 ### Fixed
 * Undefined computed relations on tuplesets now behave properly ([#532](https://github.com/openfga/openfga/pull/532))
 
-  If you had a model involing two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
+  If you had a model involving two different computed relations on the same tupleset, then it's possible you may have received an internal server error if one of the computed relations was undefined. For example,
   ```
   type document
     relations
@@ -620,7 +686,7 @@ no tuple key instead.
 ### Changed
 * Env variables have a new mappings.
 
-  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are   mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`). 
+  Please refer to the [`.config-schema.json`](https://github.com/openfga/openfga/blob/main/.config-schema.json) file for a description of the new configurations or `openfga run -h` for the CLI flags. Env variables are mapped by prefixing `OPENFGA` and converting dot notation into underscores (e.g. `datastore.uri` becomes `OPENFGA_DATASTORE_URI`).
 
 ### Fixed
 * goroutine leaks in Check resolution. ([#113](https://github.com/openfga/openfga/pull/113))
@@ -648,7 +714,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/openfga/openfga/releases/tag/v1.3.5
+[1.3.4]: https://github.com/openfga/openfga/releases/tag/v1.3.4
+[1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
 [1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2
 [1.3.1]: https://github.com/openfga/openfga/releases/tag/v1.3.1
 [1.3.0]: https://github.com/openfga/openfga/releases/tag/v1.3.0

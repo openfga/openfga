@@ -6,7 +6,6 @@ import (
 
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
@@ -19,6 +18,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/protoadapt"
+	"google.golang.org/protobuf/testing/protocmp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -597,9 +598,9 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	}
 
 	cmpOpts := []cmp.Option{
-		cmpopts.IgnoreUnexported(openfgav1.TupleKey{}, openfgav1.Tuple{}, openfgav1.TupleChange{}, openfgav1.Assertion{}),
-		cmpopts.IgnoreFields(openfgav1.Tuple{}, "Timestamp"),
-		cmpopts.IgnoreFields(openfgav1.TupleChange{}, "Timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.Tuple{}), "timestamp"),
+		protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.TupleChange{}), "timestamp"),
+		protocmp.Transform(),
 		testutils.TupleKeyCmpTransformer,
 	}
 

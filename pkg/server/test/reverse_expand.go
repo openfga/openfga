@@ -1240,16 +1240,6 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			reverseExpandQuery := reverseexpand.NewReverseExpandQuery(ds, typesystem.New(model), opts...)
 
 			resultChan := make(chan *reverseexpand.ReverseExpandResult, 100)
-			done := make(chan struct{})
-
-			var results []*reverseexpand.ReverseExpandResult
-			go func() {
-				for result := range resultChan {
-					results = append(results, result)
-				}
-
-				done <- struct{}{}
-			}()
 
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -1257,15 +1247,29 @@ func TestReverseExpand(t *testing.T, ds storage.OpenFGADatastore) {
 			resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
 			go func() {
-				err = reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
-				require.ErrorIs(err, test.expectedError)
-				close(resultChan)
+				reverseExpandQuery.Execute(timeoutCtx, test.request, resultChan, resolutionMetadata)
+			}()
+
+			var results []*reverseexpand.ReverseExpandResult
+			reverseExpandErrCh := make(chan error)
+			go func() {
+				for result := range resultChan {
+					if result.Err != nil {
+						reverseExpandErrCh <- result.Err
+						return
+					}
+
+					results = append(results, result)
+				}
+
+				reverseExpandErrCh <- nil
 			}()
 
 			select {
 			case <-timeoutCtx.Done():
 				require.FailNow("timed out waiting for response")
-			case <-done:
+			case err := <-reverseExpandErrCh:
+				require.ErrorIs(err, test.expectedError)
 			}
 
 			if test.expectedError == nil {

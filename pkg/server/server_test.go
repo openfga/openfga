@@ -16,6 +16,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -23,6 +24,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/mysql"
 	"github.com/openfga/openfga/pkg/storage/postgres"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -197,6 +199,75 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, true, checkResponse.Allowed)
+}
+
+func TestListObjectsReleasesConnections(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := postgres.New(uri, sqlcommon.NewConfig(
+		sqlcommon.WithMaxOpenConns(1),
+		sqlcommon.WithMaxTuplesPerWrite(2000),
+	))
+	require.NoError(t, err)
+	defer ds.Close()
+
+	s := MustNewServerWithOpts(
+		WithDatastore(storagewrappers.NewContextWrapper(ds)),
+		WithMaxConcurrentReadsForListObjects(1),
+	)
+
+	storeID := ulid.Make().String()
+
+	writeAuthzModelResp, err := s.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type document
+		  relations
+		    define editor: [user] as self
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+
+	modelID := writeAuthzModelResp.GetAuthorizationModelId()
+
+	numTuples := 2000
+	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
+	for i := 0; i < numTuples; i++ {
+		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
+
+		tuples = append(tuples, tk)
+	}
+
+	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Writes: &openfgav1.TupleKeys{
+			TupleKeys: tuples,
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = s.ListObjects(context.Background(), &openfgav1.ListObjectsRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		Type:                 "document",
+		Relation:             "editor",
+		User:                 "user:jon",
+	})
+	require.NoError(t, err)
+
+	timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer timeoutCancel()
+
+	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
+	// If ListObjects is closing up its connections effectively then this will not fail.
+	ready, err := ds.IsReady(timeoutCtx)
+	require.NoError(t, err)
+	require.True(t, ready)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
@@ -573,7 +644,7 @@ func TestListObjects_ErrorCases(t *testing.T) {
 			SchemaVersion: typesystem.SchemaVersion1_1,
 			TypeDefinitions: parser.MustParse(`
 			type user
-	
+
 			type document
 			  relations
 				define viewer: [user, user:*] as self
@@ -810,8 +881,9 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 }
 
 func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
-	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForCheck)
-	require.EqualValues(t, math.MaxUint32, defaultMaxConcurrentReadsForListObjects)
+	cfg := serverconfig.DefaultConfig()
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForCheck)
+	require.EqualValues(t, math.MaxUint32, cfg.MaxConcurrentReadsForListObjects)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(memory.New()),
