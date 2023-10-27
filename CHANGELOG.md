@@ -16,6 +16,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Export metrics from MySQL and Postgres ([#1023](https://github.com/openfga/openfga/pull/1023))
 
+  To export datastore metrics, set `OPENFGA_METRICS_ENABLED=true` and `OPENFGA_DATASTORE_METRICS_ENABLED=true`.
+
 ### Fixed
 
 * Return all results when `OPENFGA_LIST_OBJECTS_MAX_RESULTS=0` ([#1067](https://github.com/openfga/openfga/pull/1067))

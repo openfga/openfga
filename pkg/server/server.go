@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -44,9 +43,8 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
-	authorizationModelIDKey                             = "authorization_model_id"
-	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
+	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	authorizationModelIDKey    = "authorization_model_id"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -279,7 +277,7 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		graph.WithMaxConcurrentReads(s.maxConcurrentReadsForCheck),
 	}
 
-	if slices.Contains(s.experimentals, ExperimentalCheckQueryCache) && s.checkQueryCacheEnabled {
+	if s.checkQueryCacheEnabled {
 		s.logger.Info("Check query cache is enabled and may lead to stale query results up to the configured query cache TTL",
 			zap.Duration("CheckQueryCacheTTL", s.checkQueryCacheTTL),
 			zap.Uint32("CheckQueryCacheLimit", s.checkQueryCacheLimit))
