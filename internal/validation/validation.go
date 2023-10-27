@@ -11,8 +11,8 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// ValidateUserObjectRelation checks whether a tuple is well formed
-func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// ValidateTupleForQuery returns nil if the tuple is well-formed and valid according to the provided model
+func ValidateTupleForQuery(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
 	}
@@ -28,9 +28,10 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 	return nil
 }
 
-// ValidateTuple checks whether a tuple is well formed and valid according to the provided model.
-func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
-	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
+// ValidateTupleForEvaluation returns nil if a tuple is well formed and valid according to the provided model
+// It is a superset of ValidateTupleForQuery; it also validates TTU relations and type restrictions
+func ValidateTupleForEvaluation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	if err := ValidateTupleForQuery(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
 
@@ -172,7 +173,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 // tuples that were introduced due to another authorization model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
-		err := ValidateTuple(typesys, tupleKey)
+		err := ValidateTupleForEvaluation(typesys, tupleKey)
 		return err == nil
 	}
 }

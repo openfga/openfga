@@ -519,7 +519,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			// filter out invalid tuples yielded by the database query
-			err = validation.ValidateTuple(typesys, tk)
+			err = validation.ValidateTupleForEvaluation(typesys, tk)
 
 			if t != nil && err == nil {
 				span.SetAttributes(attribute.Bool("allowed", true))
