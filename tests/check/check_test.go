@@ -254,6 +254,8 @@ func benchmarkAll(b *testing.B, engine string) {
 }
 
 const githubModel = `
+model
+  schema 1.1
 type user
 type team
   relations
@@ -272,8 +274,7 @@ type organization
     define owner: [user]
     define repo_admin: [user,organization#member]
     define repo_reader: [user,organization#member]
-    define repo_writer: [user,organization#member]
-`
+    define repo_writer: [user,organization#member]`
 
 func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, openfgav1.OpenFGAServiceClient) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
