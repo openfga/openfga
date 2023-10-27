@@ -127,7 +127,9 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
 func (p *Postgres) Close() {
-	prometheus.Unregister(p.dbStatsCollector)
+	if p.dbStatsCollector != nil {
+		prometheus.Unregister(p.dbStatsCollector)
+	}
 	p.db.Close()
 }
 

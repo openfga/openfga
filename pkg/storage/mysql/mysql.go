@@ -113,7 +113,9 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close() {
-	prometheus.Unregister(m.dbStatsCollector)
+	if m.dbStatsCollector != nil {
+		prometheus.Unregister(m.dbStatsCollector)
+	}
 	m.db.Close()
 }
 
