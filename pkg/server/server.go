@@ -45,7 +45,6 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader                          = "openfga-authorization-model-id"
 	authorizationModelIDKey                             = "authorization_model_id"
-	ExperimentalCheckQueryCache ExperimentalFeatureFlag = "check-query-cache"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
