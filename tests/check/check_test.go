@@ -253,8 +253,7 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
 }
 
-const githubModel = `
-model
+const githubModel = `model
   schema 1.1
 type user
 type team
