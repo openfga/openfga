@@ -1276,15 +1276,44 @@ type document
 		},
 		{
 			name: "basic_relation_with_intersection_3",
-			model: `model
-	schema 1.1
-type user
-
-type document
-  relations
-	define allowed: [user]
-	define editor: [user]
-	define viewer: [user] and allowed`,
+			authModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"allowed": typesystem.This(),
+							"editor":  typesystem.This(),
+							"viewer": typesystem.Intersection(
+								typesystem.ComputedUserset("allowed"),
+								typesystem.This(),
+							),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"allowed": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
