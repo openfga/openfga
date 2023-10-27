@@ -79,7 +79,7 @@ build-functional-test-image: ## Build Docker image needed to run functional test
 functional-test: ## Run functional tests (needs build-functional-test-image)
 	go test -race \
 			-count=1 \
-			-timeout=5m \
+			-v \
 			-tags=functional \
 			./cmd/openfga/...
 

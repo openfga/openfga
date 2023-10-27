@@ -17,9 +17,13 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/pressly/goose/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// TODO everytime we add a migration we have to update this. Is there a better way?
+const latestDBVersion = 5
 
 type Config struct {
 	Username               string
@@ -293,7 +297,7 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 
 	changelogBuilder := dbInfo.stbl.
 		Insert("changelog").
-		Columns("store", "object_type", "object_id", "relation", "_user", "operation", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_object_type", "user_object_id", "user_relation", "operation", "ulid", "inserted_at")
 
 	deleteBuilder := dbInfo.stbl.Delete("tuple")
 
@@ -325,26 +329,29 @@ func Write(ctx context.Context, dbInfo *DBInfo, store string, deletes storage.De
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
+
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, id, dbInfo.sqlTime)
 	}
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "ulid", "inserted_at")
+		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "user_object_type", "user_object_id", "user_relation", "ulid", "inserted_at")
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
+		userObjectType, userObjectID, userRelation := tupleUtils.ToUserParts(tk.GetUser())
 
 		_, err = insertBuilder.
-			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), id, dbInfo.sqlTime).
+			Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), tupleUtils.GetUserTypeFromUser(tk.GetUser()), userObjectType, userObjectID, userRelation, id, dbInfo.sqlTime).
 			RunWith(txn). // Part of a txn
 			ExecContext(ctx)
 		if err != nil {
 			return HandleSQLError(err, tk)
 		}
 
-		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
+		changelogBuilder = changelogBuilder.Values(store, objectType, objectID, tk.GetRelation(), tk.GetUser(), userObjectType, userObjectID, userRelation, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, id, dbInfo.sqlTime)
 	}
 
 	if len(writes) > 0 || len(deletes) > 0 {
@@ -444,13 +451,22 @@ func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID 
 	}, nil
 }
 
-// IsReady returns true if the connection to the datastore is successful
+// IsReady returns true if the connection to the datastore is successful and the latest migration available has run
 func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
 		return false, err
+	}
+
+	currentVersion, err := goose.GetDBVersion(db)
+	if err != nil {
+		return false, err
+	}
+
+	if currentVersion != latestDBVersion {
+		return false, fmt.Errorf("database version is %d but expected latest %d", currentVersion, latestDBVersion)
 	}
 
 	return true, nil
