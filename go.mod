@@ -13,7 +13,7 @@ require (
 	github.com/go-sql-driver/mysql v1.7.1
 	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/golang/mock v1.6.0
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.3.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.1
@@ -21,10 +21,10 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.4
 	github.com/jackc/pgx/v5 v5.4.3
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
-	github.com/karlseguin/ccache/v3 v3.0.3
+	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20230801154117-db20ad164368
-	github.com/pressly/goose/v3 v3.15.0
+	github.com/pressly/goose/v3 v3.15.1
 	github.com/rs/cors v1.10.1
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
@@ -39,7 +39,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.19.0
 	go.uber.org/zap v1.26.0
 	golang.org/x/sync v0.4.0
-	google.golang.org/grpc v1.58.2
+	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -79,14 +79,14 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.0-rc4 // indirect
+	github.com/opencontainers/image-spec v1.1.0-rc5 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.17.0
 	github.com/prometheus/client_model v0.4.1-0.20230718164431-9a2bf3000d16 // indirect
 	github.com/prometheus/common v0.44.0 // indirect
-	github.com/prometheus/procfs v0.11.1 // indirect
+	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/spf13/afero v1.10.0 // indirect
 	github.com/spf13/cast v1.5.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
