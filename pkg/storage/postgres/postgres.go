@@ -612,7 +612,7 @@ func (p *Postgres) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
