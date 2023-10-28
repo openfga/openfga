@@ -547,12 +547,12 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	if err := validation.ValidateTupleForQuery(typesys, tk); err != nil {
+	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
-		if err := validation.ValidateTupleForEvaluation(typesys, ctxTuple); err != nil {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
 			return nil, serverErrors.HandleTupleValidateError(err)
 		}
 	}

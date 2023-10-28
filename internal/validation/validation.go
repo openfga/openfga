@@ -11,8 +11,10 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// ValidateTupleForQuery returns nil if the tuple is well-formed and valid according to the provided model
-func ValidateTupleForQuery(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// ValidateUserObjectRelation returns nil if the tuple is well-formed and valid according to the provided model.
+//
+// Do NOT use this when reading or writing tuples to storage. Use ValidateTuple instead, because it's stricter.
+func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
 	}
@@ -28,10 +30,12 @@ func ValidateTupleForQuery(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKe
 	return nil
 }
 
-// ValidateTupleForEvaluation returns nil if a tuple is well formed and valid according to the provided model
-// It is a superset of ValidateTupleForQuery; it also validates TTU relations and type restrictions
-func ValidateTupleForEvaluation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
-	if err := ValidateTupleForQuery(typesys, tk); err != nil {
+// ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
+// It is a superset of ValidateUserObjectRelation; it also validates TTU relations and type restrictions.
+//
+// Do NOT use this when validating a tuple that is an input to a Check or WriteAssertions request.
+func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 	}
 
@@ -173,7 +177,7 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 // tuples that were introduced due to another authorization model.
 func FilterInvalidTuples(typesys *typesystem.TypeSystem) storage.TupleKeyFilterFunc {
 	return func(tupleKey *openfgav1.TupleKey) bool {
-		err := ValidateTupleForEvaluation(typesys, tupleKey)
+		err := ValidateTuple(typesys, tupleKey)
 		return err == nil
 	}
 }

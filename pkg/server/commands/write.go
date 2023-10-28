@@ -71,7 +71,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 		typesys := typesystem.New(authModel)
 
 		for _, tk := range writes {
-			err := validation.ValidateTupleForEvaluation(typesys, tk)
+			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
 			}
