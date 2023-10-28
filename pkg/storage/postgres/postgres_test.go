@@ -26,6 +26,18 @@ func TestPostgresDatastore(t *testing.T) {
 	test.RunAllTests(t, ds)
 }
 
+func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	ds.Close()
+	ready, err := ds.IsReady(context.Background())
+	require.Error(t, err)
+	require.False(t, ready)
+}
+
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
 func TestReadEnsureNoOrder(t *testing.T) {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")

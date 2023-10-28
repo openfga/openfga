@@ -11,6 +11,7 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/assets"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -41,15 +42,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.TupleKey
-	CheckAssertions []*assertion `yaml:"checkAssertions"`
-}
-
-type assertion struct {
-	Tuple            *openfgav1.TupleKey
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
-	Expectation      bool
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
-	Trace            string
+	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests
@@ -165,7 +158,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				typedefs = v1parser.MustParse(stage.Model)
 			}
 
-			_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
@@ -180,8 +173,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
 					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
-						StoreId: storeID,
-						Writes:  &openfgav1.TupleKeys{TupleKeys: writeChunk},
+						StoreId:              storeID,
+						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+						Writes:               &openfgav1.TupleKeys{TupleKeys: writeChunk},
 					})
 					require.NoError(t, err)
 				}
@@ -196,8 +190,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
-					StoreId:  storeID,
-					TupleKey: assertion.Tuple,
+					StoreId:              storeID,
+					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
+					TupleKey:             assertion.Tuple,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},

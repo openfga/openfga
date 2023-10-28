@@ -27,6 +27,11 @@ const (
 	DefaultCheckQueryCacheEnable = false
 )
 
+type DatastoreMetricsConfig struct {
+	// Enabled enables export of the Datastore metrics.
+	Enabled bool
+}
+
 // DatastoreConfig defines OpenFGA server configurations for datastore specific settings.
 type DatastoreConfig struct {
 	// Engine is the datastore engine to use (e.g. 'memory', 'postgres', 'mysql')
@@ -53,6 +58,9 @@ type DatastoreConfig struct {
 
 	// ConnMaxLifetime is the maximum amount of time a connection to the datastore may be reused.
 	ConnMaxLifetime time.Duration
+
+	// Metrics is configuration for the Datastore metrics.
+	Metrics DatastoreMetricsConfig
 }
 
 // GRPCConfig defines OpenFGA server configurations for grpc server specific settings.
@@ -88,8 +96,8 @@ type AuthnConfig struct {
 	// Method is the authentication method that should be enforced (e.g. 'none', 'preshared',
 	// 'oidc')
 	Method                   string
-	*AuthnOIDCConfig         `       mapstructure:"oidc"`
-	*AuthnPresharedKeyConfig `       mapstructure:"preshared"`
+	*AuthnOIDCConfig         `mapstructure:"oidc"`
+	*AuthnPresharedKeyConfig `mapstructure:"preshared"`
 }
 
 // AuthnOIDCConfig defines configurations for the 'oidc' method of authentication.

@@ -15,6 +15,7 @@ jobs:
       contents: write
       packages: write # publish a new github release
       id-token: write # needed for keyless signing
+      security-events: write # needed for uploading results to GitHub Code Scanning
     steps:
       - name: Extract Version from Tag
         id: tag_name
@@ -23,7 +24,7 @@ jobs:
         shell: bash
 
       - name: Checkout
-        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v3.5.2
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
         with:
           fetch-depth: 0
 
@@ -59,3 +60,17 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: openfga/openfga
           short-description: ${{ github.event.repository.description }}
+
+      - name: Run Snyk to check Docker image for vulnerabilities
+        continue-on-error: true
+        uses: snyk/actions/docker@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: openfga/openfga
+          args: --file=Dockerfile
+
+      - name: Upload result to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: snyk.sarif

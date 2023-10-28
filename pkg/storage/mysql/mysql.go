@@ -18,6 +18,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -40,7 +42,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse mysql connection dsn: %w", err)
+			return nil, fmt.Errorf("parse mysql connection dsn: %w", err)
 		}
 
 		if cfg.Username != "" {
@@ -55,7 +57,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -87,7 +89,13 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	if cfg.ExportMetrics {
+		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &MySQL{
@@ -613,7 +621,7 @@ func (m *MySQL) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
@@ -677,12 +685,5 @@ func (m *MySQL) ReadChanges(
 // IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
 func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	if err := m.db.PingContext(ctx); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return sqlcommon.IsReady(ctx, m.db)
 }

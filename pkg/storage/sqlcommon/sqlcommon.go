@@ -32,6 +32,8 @@ type Config struct {
 	MaxIdleConns    int
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
+
+	ExportMetrics bool
 }
 
 type DatastoreOption func(*Config)
@@ -87,6 +89,12 @@ func WithConnMaxIdleTime(d time.Duration) DatastoreOption {
 func WithConnMaxLifetime(d time.Duration) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.ConnMaxLifetime = d
+	}
+}
+
+func WithMetrics() DatastoreOption {
+	return func(cfg *Config) {
+		cfg.ExportMetrics = true
 	}
 }
 
@@ -366,20 +374,11 @@ func WriteAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store string, 
 		return err
 	}
 
-	sb := dbInfo.stbl.
+	_, err = dbInfo.stbl.
 		Insert("authorization_model").
-		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf")
-
-	for _, td := range typeDefinitions {
-		marshalledTypeDef, err := proto.Marshal(td)
-		if err != nil {
-			return err
-		}
-
-		sb = sb.Values(store, model.Id, schemaVersion, td.GetType(), marshalledTypeDef, pbdata)
-	}
-
-	_, err = sb.ExecContext(ctx)
+		Columns("store", "authorization_model_id", "schema_version", "type", "type_definition", "serialized_protobuf").
+		Values(store, model.Id, schemaVersion, "", nil, pbdata).
+		ExecContext(ctx)
 	if err != nil {
 		return HandleSQLError(err)
 	}
@@ -443,4 +442,16 @@ func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID 
 		Id:              modelID,
 		TypeDefinitions: typeDefs,
 	}, nil
+}
+
+// IsReady returns true if the connection to the datastore is successful
+func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

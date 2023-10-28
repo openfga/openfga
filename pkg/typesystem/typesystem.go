@@ -1178,7 +1178,7 @@ func AssignableRelationError(objectType, relation string) error {
 }
 
 func NonAssignableRelationError(objectType, relation string) error {
-	return fmt.Errorf("the non-assignable relation '%s' in object type '%s' should not contain a relation type", objectType, relation)
+	return fmt.Errorf("the non-assignable relation '%s' in object type '%s' should not contain a relation type", relation, objectType)
 }
 
 func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRelation string) error {

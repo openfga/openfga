@@ -10,13 +10,13 @@ linters:
     - gofmt
     - goimports
     - stylecheck
-
     - importas
     - errcheck
     - gosimple
     - govet
     - ineffassign
     - staticcheck
+    - tagalign
     - typecheck
     - unused
     - unconvert

@@ -15,10 +15,10 @@ import (
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/sourcegraph/conc/pool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -148,6 +148,7 @@ const (
 )
 
 type ReverseExpandResult struct {
+	Err          error
 	Object       string
 	ResultStatus ConditionalResultStatus
 }
@@ -164,13 +165,29 @@ func NewResolutionMetadata() *ResolutionMetadata {
 
 // Execute yields all the objects of the provided objectType that the given user has, possibly, a specific relation with
 // and sends those objects to resultChan. It MUST guarantee no duplicate objects sent.
+//
+// If an error is encountered before resolving all objects: the provided channel will NOT be closed and
+// - if the error is context cancellation or deadline: Execute may send the error through the channel
+// - otherwise: Execute will send the error through the channel
+// If no errors, Execute will yield all of the objects on the provided channel and then close the channel
+// to signal that it is done.
 func (c *ReverseExpandQuery) Execute(
 	ctx context.Context,
 	req *ReverseExpandRequest,
 	resultChan chan<- *ReverseExpandResult,
 	resolutionMetadata *ResolutionMetadata,
-) error {
-	return c.execute(ctx, req, resultChan, false, resolutionMetadata)
+) {
+	err := c.execute(ctx, req, resultChan, false, resolutionMetadata)
+	if err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		case resultChan <- &ReverseExpandResult{Err: err}:
+			return
+		}
+	}
+
+	close(resultChan)
 }
 
 func (c *ReverseExpandQuery) execute(
@@ -180,6 +197,10 @@ func (c *ReverseExpandQuery) execute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "reverseExpand.Execute", trace.WithAttributes(
 		attribute.String("target_type", req.ObjectType),
 		attribute.String("target_relation", req.Relation),
@@ -233,7 +254,9 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
-				c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan)
+				if err := c.trySendCandidate(ctx, intersectionOrExclusionInPreviousEdges, sourceUserObj, resultChan); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -247,13 +270,16 @@ func (c *ReverseExpandQuery) execute(
 		return err
 	}
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithFirstError()
+	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for _, edge := range edges {
 		innerLoopEdge := edge
 		intersectionOrExclusionInPreviousEdges := intersectionOrExclusionInPreviousEdges || innerLoopEdge.TargetReferenceInvolvesIntersectionOrExclusion
-		subg.Go(func() error {
+
+		pool.Go(func(ctx context.Context) error {
 			r := &ReverseExpandRequest{
 				StoreID:          req.StoreID,
 				ObjectType:       req.ObjectType,
@@ -265,7 +291,7 @@ func (c *ReverseExpandQuery) execute(
 
 			switch innerLoopEdge.Type {
 			case graph.DirectEdge, graph.TupleToUsersetEdge:
-				return c.readTuplesAndExecute(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.readTuplesAndExecute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
 				// follow the computed_userset edge
 				r.User = &UserRefObjectRelation{
@@ -274,14 +300,14 @@ func (c *ReverseExpandQuery) execute(
 						Relation: innerLoopEdge.TargetReference.GetRelation(),
 					},
 				}
-				return c.execute(subgctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+				return c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
 		})
 	}
 
-	return subg.Wait()
+	return pool.Wait()
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
@@ -291,6 +317,10 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	intersectionOrExclusionInPreviousEdges bool,
 	resolutionMetadata *ResolutionMetadata,
 ) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "readTuplesAndExecute", trace.WithAttributes(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
@@ -365,8 +395,10 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	}
 	defer iter.Stop()
 
-	subg, subgctx := errgroup.WithContext(ctx)
-	subg.SetLimit(int(c.resolveNodeBreadthLimit))
+	pool := pool.New().WithContext(ctx)
+	pool.WithCancelOnError()
+	pool.WithFirstError()
+	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for {
 		t, err := iter.Next()
@@ -392,8 +424,8 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			return fmt.Errorf("unsupported edge type")
 		}
 
-		subg.Go(func() error {
-			return c.execute(subgctx, &ReverseExpandRequest{
+		pool.Go(func(ctx context.Context) error {
+			return c.execute(ctx, &ReverseExpandRequest{
 				StoreID:    req.StoreID,
 				ObjectType: req.ObjectType,
 				Relation:   req.Relation,
@@ -409,25 +441,33 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		})
 	}
 
-	return subg.Wait()
+	return pool.Wait()
 }
 
-func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) {
+func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, intersectionOrExclusionInPreviousEdges bool, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
 	_, span := tracer.Start(ctx, "trySendCandidate", trace.WithAttributes(
 		attribute.String("object", candidateObject),
 		attribute.Bool("sent", false),
 	))
 	defer span.End()
+
 	if _, ok := c.candidateObjectsMap.LoadOrStore(candidateObject, struct{}{}); !ok {
 		resultStatus := NoFurtherEvalStatus
 		if intersectionOrExclusionInPreviousEdges {
 			span.SetAttributes(attribute.Bool("requires_further_eval", true))
 			resultStatus = RequiresFurtherEvalStatus
 		}
-		candidateChan <- &ReverseExpandResult{
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case candidateChan <- &ReverseExpandResult{
 			Object:       candidateObject,
 			ResultStatus: resultStatus,
+		}:
+			span.SetAttributes(attribute.Bool("sent", true))
 		}
-		span.SetAttributes(attribute.Bool("sent", true))
 	}
+
+	return nil
 }

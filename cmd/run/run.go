@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	grpcauth "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	grpc_prometheus "github.com/jon-whit/go-grpc-prometheus"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -135,6 +135,8 @@ func NewRunCommand() *cobra.Command {
 	flags.Duration("datastore-conn-max-idle-time", defaultConfig.Datastore.ConnMaxIdleTime, "the maximum amount of time a connection to the datastore may be idle")
 
 	flags.Duration("datastore-conn-max-lifetime", defaultConfig.Datastore.ConnMaxLifetime, "the maximum amount of time a connection to the datastore may be reused")
+
+	flags.Bool("datastore-metrics-enabled", defaultConfig.Datastore.Metrics.Enabled, "enable/disable sql metrics")
 
 	flags.Bool("playground-enabled", defaultConfig.Playground.Enabled, "enable/disable the OpenFGA Playground")
 
@@ -317,7 +319,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
 	}
 
-	dsCfg := sqlcommon.NewConfig(
+	datastoreOptions := []sqlcommon.DatastoreOption{
 		sqlcommon.WithUsername(config.Datastore.Username),
 		sqlcommon.WithPassword(config.Datastore.Password),
 		sqlcommon.WithLogger(s.Logger),
@@ -327,7 +329,13 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		sqlcommon.WithMaxIdleConns(config.Datastore.MaxIdleConns),
 		sqlcommon.WithConnMaxIdleTime(config.Datastore.ConnMaxIdleTime),
 		sqlcommon.WithConnMaxLifetime(config.Datastore.ConnMaxLifetime),
-	)
+	}
+
+	if config.Datastore.Metrics.Enabled {
+		datastoreOptions = append(datastoreOptions, sqlcommon.WithMetrics())
+	}
+
+	dsCfg := sqlcommon.NewConfig(datastoreOptions...)
 
 	var datastore storage.OpenFGADatastore
 	var err error
@@ -341,12 +349,12 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	case "mysql":
 		datastore, err = mysql.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("failed to initialize mysql datastore: %w", err)
+			return fmt.Errorf("initialize mysql datastore: %w", err)
 		}
 	case "postgres":
 		datastore, err = postgres.New(config.Datastore.URI, dsCfg)
 		if err != nil {
-			return fmt.Errorf("failed to initialize postgres datastore: %w", err)
+			return fmt.Errorf("initialize postgres datastore: %w", err)
 		}
 	default:
 		return fmt.Errorf("storage engine '%s' is unsupported", config.Datastore.Engine)
@@ -402,11 +410,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(s.Logger),
-		grpc_auth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
 	)
 
 	streamingInterceptors = append(streamingInterceptors,
-		grpc_auth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),

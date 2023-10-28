@@ -4933,11 +4933,21 @@ tests:
               define a24 as a25
               define a25 as a26
               define a26: [user] as self
+        tuples:
+          - object: resource:1
+            relation: a26
+            user: user:jon
         checkAssertions:
           - tuple:
               object: resource:abc
               relation: a1
               user: user:maria
+            errorCode: 2002
+        listObjectsAssertions:
+          - request:
+              type: resource
+              relation: a1
+              user: user:jon
             errorCode: 2002
   - name: race_condition_same_user_same_object_diff_relation
     stages:
@@ -5012,3 +5022,72 @@ tests:
               type: repo
               relation: admin
             expectation: [ ]
+  - name: list_objects_with_subcheck_encounters_cycle
+    stages:
+      - model: |
+          type user
+
+          type document
+            relations
+              define allowed: [user, document#viewer] as self
+              define viewer: [user, document#allowed] as self and allowed
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+          - user: document:1#viewer
+            relation: allowed
+            object: document:1
+          - user: document:1#allowed
+            relation: viewer
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2002
+  - name: list_objects_with_subcheck_resolution_depth_exceeded
+    stages:
+      - model: |
+          type user
+
+          type document
+            relations
+              define a1 as a2
+              define a2 as a3
+              define a3 as a4
+              define a4 as a5
+              define a5 as a6
+              define a6 as a7
+              define a7 as a8
+              define a8 as a9
+              define a9 as a10
+              define a10 as a11
+              define a11 as a12
+              define a12 as a13
+              define a13 as a14
+              define a14 as a15
+              define a15 as a16
+              define a16 as a17
+              define a17 as a18
+              define a18 as a19
+              define a19 as a20
+              define a20 as a21
+              define a21 as a22
+              define a22 as a23
+              define a23 as a24
+              define a24 as a25
+              define a25 as a26
+              define a26: [user] as self
+              define viewer: [user] as self and a1
+        tuples:
+          - user: user:jon
+            relation: viewer
+            object: document:1
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            errorCode: 2002
