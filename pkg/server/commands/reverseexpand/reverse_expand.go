@@ -290,8 +290,8 @@ func (c *ReverseExpandQuery) execute(
 			}
 
 			switch innerLoopEdge.Type {
-			case graph.DirectEdge, graph.TupleToUsersetEdge:
-				return c.readTuplesAndExecute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			case graph.DirectEdge:
+				return c.reverseExpandDirect(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			case graph.ComputedUsersetEdge:
 				// follow the computed_userset edge
 				r.User = &UserRefObjectRelation{
@@ -301,6 +301,8 @@ func (c *ReverseExpandQuery) execute(
 					},
 				}
 				return c.execute(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+			case graph.TupleToUsersetEdge:
+				return c.reverseExpandTupleToUserset(ctx, r, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 			default:
 				return fmt.Errorf("unsupported edge type")
 			}
@@ -308,6 +310,38 @@ func (c *ReverseExpandQuery) execute(
 	}
 
 	return pool.Wait()
+}
+
+func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandTupleToUserset", trace.WithAttributes(
+		attribute.String("edge", req.edge.String()),
+		attribute.String("source.user", req.User.String()),
+	))
+	defer span.End()
+
+	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+}
+
+func (c *ReverseExpandQuery) reverseExpandDirect(
+	ctx context.Context,
+	req *ReverseExpandRequest,
+	resultChan chan<- *ReverseExpandResult,
+	intersectionOrExclusionInPreviousEdges bool,
+	resolutionMetadata *ResolutionMetadata,
+) error {
+	ctx, span := tracer.Start(ctx, "reverseExpandDirect", trace.WithAttributes(
+		attribute.String("edge", req.edge.String()),
+		attribute.String("source.user", req.User.String()),
+	))
+	defer span.End()
+
+	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
@@ -320,12 +354,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-
-	ctx, span := tracer.Start(ctx, "readTuplesAndExecute", trace.WithAttributes(
-		attribute.String("edge", req.edge.String()),
-		attribute.String("source.user", req.User.String()),
-	))
-	defer span.End()
 
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
