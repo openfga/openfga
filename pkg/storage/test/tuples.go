@@ -135,19 +135,18 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("read_changes_returns_deterministic_ordering_and_no_duplicates", func(t *testing.T) {
 		storeID := ulid.Make().String()
 
-		var tuples []*openfgav1.TupleKey
 		for i := 0; i < 100; i++ {
 			object := fmt.Sprintf("document:%d", i)
-			tuples = append(tuples, tuple.NewTupleKey(object, "viewer", "user:jon"))
+			tuple := []*openfgav1.TupleKey{tuple.NewTupleKey(object, "viewer", "user:jon")}
+			err := datastore.Write(context.Background(), storeID, nil, tuple)
+			require.NoError(t, err)
 		}
-
-		err := datastore.Write(context.Background(), storeID, nil, tuples)
-		require.NoError(t, err)
 
 		seenObjects := map[string]struct{}{}
 
 		var changes []*openfgav1.TupleChange
 		var continuationToken []byte
+		var err error
 		for {
 			changes, continuationToken, err = datastore.ReadChanges(context.Background(), storeID, "", storage.PaginationOptions{
 				PageSize: 10,

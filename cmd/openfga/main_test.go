@@ -205,7 +205,7 @@ func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 }
 
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	tester := newOpenFGATester(t, "--experimentals=check-query-cache", "--check-query-cache-enabled=true")
+	tester := newOpenFGATester(t, "--check-query-cache-enabled=true")
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
