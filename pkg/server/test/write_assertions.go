@@ -20,11 +20,10 @@ import (
 	"google.golang.org/protobuf/testing/protocmp"
 )
 
-func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
+func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 	type writeAssertionsTestSettings struct {
 		_name      string
 		assertions []*openfgav1.Assertion
-		err        error
 	}
 
 	store := testutils.CreateRandomString(10)
@@ -99,22 +98,6 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 			_name:      "writing_empty_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{},
 		},
-		{
-			_name: "writing_assertion_with_invalid_relation_fails",
-			assertions: []*openfgav1.Assertion{
-				{
-					TupleKey: tuple.NewTupleKey(
-						"repo:test",
-						"invalidrelation",
-						"user:elbuo",
-					),
-					Expectation: false,
-				},
-			},
-			err: serverErrors.ValidationError(
-				fmt.Errorf("relation 'repo#invalidrelation' not found"),
-			),
-		},
 	}
 
 	ctx := context.Background()
@@ -138,20 +121,98 @@ func TestWriteAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
 
 			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore, logger)
 			_, err = writeAssertionCmd.Execute(ctx, request)
-			require.ErrorIs(t, test.err, err)
-			if err == nil {
-				query := commands.NewReadAssertionsQuery(datastore, logger)
-				actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
-				require.NoError(t, actualError)
+			require.NoError(t, err)
+			query := commands.NewReadAssertionsQuery(datastore, logger)
+			actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
+			require.NoError(t, actualError)
 
-				expectedResponse := &openfgav1.ReadAssertionsResponse{
-					AuthorizationModelId: modelID.AuthorizationModelId,
-					Assertions:           test.assertions,
-				}
-				if diff := cmp.Diff(expectedResponse, actualResponse, protocmp.Transform()); diff != "" {
-					t.Errorf("store mismatch (-want +got):\n%s", diff)
-				}
+			expectedResponse := &openfgav1.ReadAssertionsResponse{
+				AuthorizationModelId: modelID.AuthorizationModelId,
+				Assertions:           test.assertions,
 			}
+			if diff := cmp.Diff(expectedResponse, actualResponse, protocmp.Transform()); diff != "" {
+				t.Errorf("store mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore) {
+	type writeAssertionsTestSettings struct {
+		_name      string
+		assertions []*openfgav1.Assertion
+		modelID    string
+		err        error
+	}
+
+	store := testutils.CreateRandomString(10)
+
+	githubModelReq := &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: store,
+		TypeDefinitions: parser.MustParse(`
+		type user
+
+		type repo
+		  relations
+		    define reader: [user] as self
+		    define can_read as reader
+		`),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	}
+	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+
+	writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
+		datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+	)
+	modelID, err := writeAuthzModelCmd.Execute(ctx, githubModelReq)
+	require.NoError(t, err)
+
+	var tests = []writeAssertionsTestSettings{
+		{
+			_name: "writing_assertion_with_invalid_relation_fails",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey: tuple.NewTupleKey(
+						"repo:test",
+						"invalidrelation",
+						"user:elbuo",
+					),
+					Expectation: false,
+				},
+			},
+			modelID: modelID.AuthorizationModelId,
+			err: serverErrors.ValidationError(
+				fmt.Errorf("relation 'repo#invalidrelation' not found"),
+			),
+		},
+		{
+			_name: "writing_assertion_with_not_found_id",
+			assertions: []*openfgav1.Assertion{
+				{
+					TupleKey:    tuple.NewTupleKey("repo:test", "can_read", "user:elbuo"),
+					Expectation: false,
+				},
+			},
+			modelID: "not_valid_id",
+			err: serverErrors.AuthorizationModelNotFound(
+				"not_valid_id",
+			),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test._name, func(t *testing.T) {
+
+			request := &openfgav1.WriteAssertionsRequest{
+				StoreId:              store,
+				Assertions:           test.assertions,
+				AuthorizationModelId: test.modelID,
+			}
+
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			_, err = writeAssertionCmd.Execute(ctx, request)
+			require.ErrorIs(t, test.err, err)
 		})
 	}
 }
