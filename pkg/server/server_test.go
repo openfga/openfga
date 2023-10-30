@@ -488,7 +488,7 @@ func TestCheckWithCachedResolution(t *testing.T) {
 	require.True(t, checkResponse.Allowed)
 }
 
-func TestWriteAndReadAssertionModelDSError(t *testing.T) {
+func TestWriteAssertionModelDSError(t *testing.T) {
 	ctx := context.Background()
 
 	storeID := ulid.Make().String()
@@ -568,7 +568,6 @@ func TestWriteAndReadAssertionModelDSError(t *testing.T) {
 	}
 
 	for _, curTest := range tests {
-		curTest := curTest
 		t.Run(curTest.name, func(t *testing.T) {
 			request := &openfgav1.WriteAssertionsRequest{
 				StoreId:              storeID,
@@ -582,7 +581,6 @@ func TestWriteAndReadAssertionModelDSError(t *testing.T) {
 			require.ErrorIs(t, curTest.expectedError, err)
 		})
 	}
-
 }
 
 func TestReadAssertionModelDSError(t *testing.T) {

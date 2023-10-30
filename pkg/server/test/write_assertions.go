@@ -203,7 +203,6 @@ func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-
 			request := &openfgav1.WriteAssertionsRequest{
 				StoreId:              store,
 				Assertions:           test.assertions,
