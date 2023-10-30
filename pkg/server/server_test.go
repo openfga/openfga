@@ -464,7 +464,6 @@ func TestCheckWithCachedResolution(t *testing.T) {
 		WithCheckQueryCacheEnabled(true),
 		WithCheckQueryCacheLimit(10),
 		WithCheckQueryCacheTTL(1*time.Minute),
-		WithExperimentals(ExperimentalCheckQueryCache),
 	)
 
 	checkResponse, err := s.Check(ctx, &openfgav1.CheckRequest{
