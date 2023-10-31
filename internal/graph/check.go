@@ -457,7 +457,7 @@ func (c *LocalChecker) ResolveCheck(
 				Allowed: true,
 				ResolutionMetadata: &ResolutionMetadata{
 					Depth:               req.GetResolutionMetadata().Depth,
-					DatastoreQueryCount: 0,
+					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
 			}, nil
 		}
