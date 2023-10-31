@@ -10,9 +10,11 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
@@ -46,7 +48,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	    define allowed: [user] as self
 	    define viewer: [group#member] as self or editor
 	    define editor: [group#member] as self and allowed
-	    
+
 	`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
@@ -417,4 +419,95 @@ func TestCheckWithUnexpectedCycle(t *testing.T) {
 			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
 		}
 	}
+}
+
+func TestCheckConditions(t *testing.T) {
+	ds := memory.New()
+
+	storeID := ulid.Make().String()
+
+	tkConditionContext, err := structpb.NewStruct(map[string]interface{}{
+		"param1": "ok",
+	})
+	require.NoError(t, err)
+
+	model := testutils.MustTransformDSLToProto(`model
+  schema 1.1
+
+type user
+
+type folder
+  relations
+    define viewer: [user]
+
+type group
+  relations
+    define member: [user, group#member with condition1]
+
+type document
+  relations
+    define parent: [folder with condition1]
+	define viewer: [group#member] or viewer from parent
+
+condition condition1(param1: string) {
+  param1 == "ok"
+}`)
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKeyWithCondition("document:x", "parent", "folder:x", "condition1", tkConditionContext),
+		tuple.NewTupleKeyWithCondition("document:x", "parent", "folder:y", "condition1", nil),
+		tuple.NewTupleKey("folder:y", "viewer", "user:bob"),
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+		tuple.NewTupleKeyWithCondition("group:eng", "member", "group:fga#member", "condition1", nil),
+		tuple.NewTupleKey("group:fga", "member", "user:jon"),
+	}
+
+	err = ds.Write(context.Background(), storeID, nil, tuples)
+	require.NoError(t, err)
+
+	checker := NewLocalChecker(ds)
+
+	typesys, err := typesystem.NewAndValidate(
+		context.Background(),
+		model,
+	)
+	require.NoError(t, err)
+
+	ctx := typesystem.ContextWithTypesystem(context.Background(), typesys)
+
+	conditionContext, err := structpb.NewStruct(map[string]interface{}{
+		"param1": "notok",
+	})
+	require.NoError(t, err)
+
+	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:x", "parent", "folder:x"),
+		ResolutionMetadata:   &ResolutionMetadata{Depth: 1},
+		Context:              conditionContext,
+	})
+	require.NoError(t, err)
+	require.True(t, resp.Allowed)
+
+	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		Context:              conditionContext,
+	})
+	require.NoError(t, err)
+	require.False(t, resp.Allowed)
+
+	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: model.GetId(),
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:bob"),
+		ResolutionMetadata:   &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+		Context:              conditionContext,
+	})
+	require.NoError(t, err)
+	require.False(t, resp.Allowed)
 }

@@ -49,7 +49,6 @@ type assertion struct {
 	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
-	Trace            string
 }
 
 // ClientInterface defines client interface for running check tests
