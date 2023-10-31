@@ -9,9 +9,9 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -120,10 +120,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		for _, stage := range test.Stages {
 			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
+			model, err := parser.TransformDSLToProto(stage.Model)
+			if err != nil {
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = model.TypeDefinitions
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{

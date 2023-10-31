@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
@@ -84,13 +84,13 @@ func TestCheckLogs(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type document
-	  relations
-	    define viewer: [user] as self
-	`)
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -253,27 +253,27 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
 }
 
-const githubModel = `
+const githubModel = `model
+  schema 1.1
 type user
 type team
   relations
-    define member: [user,team#member] as self
+    define member: [user,team#member]
 type repo
   relations
-    define admin: [user,team#member] as self or repo_admin from owner
-    define maintainer: [user,team#member] as self or admin
-    define owner: [organization] as self
-    define reader: [user,team#member] as self or triager or repo_reader from owner
-    define triager: [user,team#member] as self or writer
-    define writer: [user,team#member] as self or maintainer or repo_writer from owner
+    define admin: [user,team#member] or repo_admin from owner
+    define maintainer: [user,team#member] or admin
+    define owner: [organization]
+    define reader: [user,team#member] or triager or repo_reader from owner
+    define triager: [user,team#member] or writer
+    define writer: [user,team#member] or maintainer or repo_writer from owner
 type organization
   relations
-    define member: [user] as self or owner
-    define owner: [user] as self
-    define repo_admin: [user,organization#member] as self
-    define repo_reader: [user,organization#member] as self
-    define repo_writer: [user,organization#member] as self
-`
+    define member: [user] or owner
+    define owner: [user]
+    define repo_admin: [user,organization#member]
+    define repo_reader: [user,organization#member]
+    define repo_writer: [user,organization#member]`
 
 func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, openfgav1.OpenFGAServiceClient) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
@@ -305,7 +305,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -341,7 +341,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
@@ -378,7 +378,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -446,7 +446,7 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -479,13 +479,15 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`type user
-          type group
-            relations
-              define member: [user] as self
-          type document
-            relations
-              define viewer: [user:*, group#member] as self`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define viewer: [user:*, group#member]`).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -519,14 +521,16 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`type user
-          type user2
-          type group
-            relations
-              define member: [user2] as self
-          type document
-            relations
-              define viewer: [user:*, group#member] as self`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type user2
+type group
+  relations
+    define member: [user2]
+type document
+  relations
+    define viewer: [user:*, group#member]`).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
