@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -19,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server/commands/reverse_expand")
@@ -29,6 +31,7 @@ type ReverseExpandRequest struct {
 	Relation         string
 	User             IsUserRef
 	ContextualTuples []*openfgav1.TupleKey
+	Context          *structpb.Struct
 }
 
 // TODO combine with above?
@@ -38,6 +41,7 @@ type reverseExpandRequest struct {
 	targetObjectRef  *openfgav1.RelationReference
 	sourceUserRef    IsUserRef
 	contextualTuples []*openfgav1.TupleKey
+	context          *structpb.Struct
 }
 
 type IsUserRef interface {
@@ -80,6 +84,7 @@ func (u *UserRefTypedWildcard) String() string {
 
 type UserRefObjectRelation struct {
 	ObjectRelation *openfgav1.ObjectRelation
+	Condition      *openfgav1.RelationshipCondition
 }
 
 func (*UserRefObjectRelation) isUserRef() {}
@@ -253,7 +258,6 @@ func (c *ReverseExpandQuery) execute(
 		sourceUserType = tuple.GetType(val.ObjectRelation.GetObject())
 		sourceUserObj = val.ObjectRelation.Object
 		sourceUserRef = typesystem.DirectRelationReference(sourceUserType, val.ObjectRelation.GetRelation())
-		sourceUserRel := val.ObjectRelation.GetRelation()
 
 		if currentEdge != nil {
 			key := fmt.Sprintf("%s#%s", sourceUserObj, currentEdge.String())
@@ -261,6 +265,8 @@ func (c *ReverseExpandQuery) execute(
 				// we've already visited this userset through this edge, exit to avoid an infinite cycle
 				return nil
 			}
+
+			sourceUserRel := val.ObjectRelation.GetRelation()
 
 			if sourceUserType == req.ObjectType && sourceUserRel == req.Relation {
 				if err := c.trySendCandidate(ctx, currentEdge, sourceUserObj, resultChan); err != nil {
@@ -298,6 +304,7 @@ func (c *ReverseExpandQuery) execute(
 				targetObjectRef:  targetObjRef,
 				sourceUserRef:    req.User,
 				contextualTuples: req.ContextualTuples,
+				context:          req.Context,
 			}
 
 			switch innerLoopEdge.Type {
@@ -316,6 +323,7 @@ func (c *ReverseExpandQuery) execute(
 						},
 					},
 					ContextualTuples: r.contextualTuples,
+					Context:          r.context,
 				}, resultChan, innerLoopEdge, resolutionMetadata)
 			case graph.TupleToUsersetEdge:
 				return c.reverseExpandTupleToUserset(ctx, r, resultChan, resolutionMetadata)
@@ -392,13 +400,23 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 		tk := t.GetKey()
 
-		foundObject := tk.GetObject()
+		conditionMet, err := eval.TupleConditionMet(tk, c.typesystem, req.context.AsMap())
+		if err != nil {
+			return err
+		}
+
+		if !conditionMet {
+			// todo: expose partial eval info conditionEvalResult.MissingParameters
+
+			continue
+		}
 
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   foundObject,
+				Object:   tk.GetObject(),
 				Relation: req.edge.TargetReference.GetRelation(),
 			},
+			Condition: tk.GetCondition(),
 		}
 
 		pool.Go(func(ctx context.Context) error {
@@ -408,6 +426,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
+				Context:          req.context,
 			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}
@@ -503,13 +522,23 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 		tk := t.GetKey()
 
-		foundObject := tk.GetObject()
+		conditionMet, err := eval.TupleConditionMet(tk, c.typesystem, req.context.AsMap())
+		if err != nil {
+			return err
+		}
+
+		if !conditionMet {
+			// todo: expose partial eval info conditionEvalResult.MissingParameters
+
+			continue
+		}
 
 		sourceUserRef := &UserRefObjectRelation{
 			ObjectRelation: &openfgav1.ObjectRelation{
-				Object:   foundObject,
+				Object:   tk.GetObject(),
 				Relation: tk.GetRelation(),
 			},
+			Condition: tk.GetCondition(),
 		}
 
 		pool.Go(func(ctx context.Context) error {
@@ -519,6 +548,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 				Relation:         targetObjectRel,
 				User:             sourceUserRef,
 				ContextualTuples: req.contextualTuples,
+				Context:          req.context,
 			}, resultChan, req.edge, resolutionMetadata)
 		})
 	}

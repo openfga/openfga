@@ -9,6 +9,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -17,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -30,6 +32,7 @@ type ResolveCheckRequest struct {
 	AuthorizationModelID string
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
 	ResolutionMetadata   *ResolutionMetadata
 	VisitedPaths         map[string]struct{}
 }
@@ -92,6 +95,13 @@ func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
 		return r.ResolutionMetadata
 	}
 
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
+	if r != nil {
+		return r.Context
+	}
 	return nil
 }
 
@@ -491,15 +501,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		defer span.End()
 
 		storeID := req.GetStoreID()
-		tk := req.GetTupleKey()
-		objectType := tuple.GetType(tk.GetObject())
-		relation := tk.GetRelation()
+		reqTupleKey := req.GetTupleKey()
+		objectType := tuple.GetType(reqTupleKey.GetObject())
+		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
+			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
 			defer span.End()
 
 			response := &ResolveCheckResponse{
@@ -509,7 +519,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			t, err := c.ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -519,9 +529,19 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			// filter out invalid tuples yielded by the database query
-			err = validation.ValidateTuple(typesys, tk)
+			tupleKey := t.GetKey()
+			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
+				conditionMet, err := eval.TupleConditionMet(tupleKey, typesys, req.GetContext().AsMap())
+				if err != nil {
+					return nil, err
+				}
+
+				if !conditionMet {
+					return response, nil
+				}
+
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
@@ -530,7 +550,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.Object, reqTupleKey.Relation))))
 			defer span.End()
 
 			response := &ResolveCheckResponse{
@@ -541,8 +561,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      tk.Object,
-				Relation:                    tk.Relation,
+				Object:                      reqTupleKey.Object,
+				Relation:                    reqTupleKey.Relation,
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
@@ -568,21 +588,23 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-				// for 1.0 models, if the user is '*' then we're done searching
-				if usersetObject == tuple.Wildcard && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
+				conditionMet, err := eval.TupleConditionMet(t, typesys, req.GetContext().AsMap())
+				if err != nil {
+					return response, err
 				}
 
-				// for 1.1 models, if the user value is a typed wildcard and the type of the wildcard
+				if !conditionMet {
+					continue
+				}
+
+				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+
+				// if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
 				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 					wildcardType := tuple.GetType(usersetObject)
 
-					if tuple.GetType(tk.GetUser()) == wildcardType {
+					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
 						response.Allowed = true
 						return response, nil
@@ -592,7 +614,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if usersetRelation != "" {
-					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser())
+					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
 
 					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
 						return nil, ErrCycleDetected
@@ -610,6 +632,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
 							},
 							VisitedPaths: maps.Clone(req.VisitedPaths),
+							Context:      req.GetContext(),
 						}))
 				}
 			}
@@ -624,8 +647,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		var checkFuncs []CheckHandlerFunc
 
 		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                         // target
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), // source
+			typesystem.DirectRelationReference(objectType, relation),                                                           // target
+			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
 		)
 
 		if shouldCheckDirectTuple {
@@ -668,6 +691,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
 				VisitedPaths: maps.Clone(req.VisitedPaths),
+				Context:      req.GetContext(),
 			})(ctx)
 	}
 }
@@ -729,6 +753,15 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				return response, err
 			}
 
+			conditionMet, err := eval.TupleConditionMet(t, typesys, req.GetContext().AsMap())
+			if err != nil {
+				return response, err
+			}
+
+			if !conditionMet {
+				continue
+			}
+
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
 
 			tupleKey := &openfgav1.TupleKey{
@@ -759,6 +792,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
 					},
 					VisitedPaths: maps.Clone(req.VisitedPaths),
+					Context:      req.GetContext(),
 				}))
 		}
 

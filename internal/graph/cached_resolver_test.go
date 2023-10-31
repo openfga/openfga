@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestResolveCheckFromCache(t *testing.T) {
@@ -200,10 +201,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			// Ideally we will have the same order. However, having different order
-			// will not be catastrophic - just result in a cache miss and potentially
-			// duplicate entry
-			name: "different_order_contextual_tuples_does_not_return_results_from_cache",
+			name: "different_order_contextual_tuples_results_in_cache_hit",
 			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -242,7 +240,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(ctx, request).Times(0)
 			},
 		},
 		{
@@ -516,6 +514,147 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 }
 
+func TestCheckCacheKeyDoNotOverlap(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+	})
+	require.NoError(t, err)
+
+	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		ContextualTuples: []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		},
+	})
+	require.NoError(t, err)
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"key1": true,
+	})
+	require.NoError(t, err)
+
+	key3, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		Context:              contextStruct,
+	})
+	require.NoError(t, err)
+
+	// two Check request cache keys should not overlap if contextual tuples are
+	// provided in one and not the other and/or if context is provided in one
+	// and not the other
+	require.NotEqual(t, key1, key2)
+	require.NotEqual(t, key2, key3)
+	require.NotEqual(t, key1, key3)
+}
+
+func TestCheckCacheKey_ContextualTuplesOrdering(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	tuples1 := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+	}
+
+	tuples2 := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+		tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+	}
+
+	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		ContextualTuples:     tuples1,
+	})
+	require.NoError(t, err)
+
+	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:x", "viewer", "user:jon"),
+		ContextualTuples:     tuples2,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, key1, key2)
+}
+
+func TestCheckCacheKeyWithContext(t *testing.T) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	struct1, err := structpb.NewStruct(map[string]interface{}{
+		"key1": "foo",
+		"key2": "bar",
+	})
+	require.NoError(t, err)
+
+	struct2, err := structpb.NewStruct(map[string]interface{}{
+		"key2": "bar",
+		"key1": "foo",
+	})
+	require.NoError(t, err)
+
+	struct3, err := structpb.NewStruct(map[string]interface{}{
+		"key2": "x",
+		"key1": "foo",
+	})
+	require.NoError(t, err)
+
+	struct4, err := structpb.NewStruct(map[string]interface{}{
+		"key2": "x",
+		"key1": true,
+	})
+	require.NoError(t, err)
+
+	key1, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		Context:              struct1,
+	})
+	require.NoError(t, err)
+
+	key2, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		Context:              struct2,
+	})
+	require.NoError(t, err)
+
+	key3, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		Context:              struct3,
+	})
+	require.NoError(t, err)
+
+	key4, err := checkRequestCacheKey(&ResolveCheckRequest{
+		StoreID:              storeID,
+		AuthorizationModelID: modelID,
+		TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		Context:              struct4,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, key1, key2)
+	require.NotEqual(t, key1, key3)
+	require.NotEqual(t, key1, key4)
+	require.NotEqual(t, key3, key4)
+}
+
 var checkCacheKey string
 
 func BenchmarkCheckRequestCacheKey(b *testing.B) {
@@ -552,6 +691,35 @@ func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
 			AuthorizationModelID: modelID,
 			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
 			ContextualTuples:     tuples,
+		})
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkCheckRequestCacheKeyWithContext(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"boolKey":   true,
+		"stringKey": "hello",
+		"numberKey": 1.2,
+		"nullKey":   nil,
+		"structKey": map[string]interface{}{
+			"key1": "value1",
+		},
+		"listKey": []interface{}{"item1", "item2"},
+	})
+	require.NoError(b, err)
+
+	for n := 0; n < b.N; n++ {
+		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			Context:              contextStruct,
 		})
 		require.NoError(b, err)
 	}

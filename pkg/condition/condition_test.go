@@ -139,8 +139,10 @@ func TestEvaluate(t *testing.T) {
 				},
 			},
 			context: nil,
-			result:  condition.EvaluationResult{ConditionMet: false},
-			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+			result: condition.EvaluationResult{
+				ConditionMet:      false,
+				MissingParameters: []string{"param1"},
+			},
 		},
 		{
 			name: "fail_no_such_attribute_empty_context",
@@ -154,8 +156,10 @@ func TestEvaluate(t *testing.T) {
 				},
 			},
 			context: map[string]interface{}{},
-			result:  condition.EvaluationResult{ConditionMet: false},
-			err:     fmt.Errorf("failed to evaluate condition expression: no such attribute(s): param1"),
+			result: condition.EvaluationResult{
+				ConditionMet:      false,
+				MissingParameters: []string{"param1"},
+			},
 		},
 		{
 			name: "fail_found_invalid_context_parameter",
@@ -171,8 +175,10 @@ func TestEvaluate(t *testing.T) {
 			context: map[string]interface{}{
 				"param2": "ok",
 			},
-			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("found invalid context parameter: param2"),
+			result: condition.EvaluationResult{
+				ConditionMet:      false,
+				MissingParameters: []string{"param1"},
+			},
 		},
 		{
 			name: "fail_unexpected_type",

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type UserType string
@@ -46,6 +47,25 @@ func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
 		Object:   object,
 		Relation: relation,
 		User:     user,
+	}
+}
+
+func NewTupleKeyWithCondition(
+	object, relation, user, conditionName string,
+	context *structpb.Struct,
+) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:    object,
+		Relation:  relation,
+		User:      user,
+		Condition: NewRelationshipCondition(conditionName, context),
+	}
+}
+
+func NewRelationshipCondition(name string, context *structpb.Struct) *openfgav1.RelationshipCondition {
+	return &openfgav1.RelationshipCondition{
+		Name:    name,
+		Context: context,
 	}
 }
 
