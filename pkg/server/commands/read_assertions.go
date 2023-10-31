@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
@@ -25,9 +24,6 @@ func NewReadAssertionsQuery(backend storage.AssertionsBackend, logger logger.Log
 func (q *ReadAssertionsQuery) Execute(ctx context.Context, store, authorizationModelID string) (*openfgav1.ReadAssertionsResponse, error) {
 	assertions, err := q.backend.ReadAssertions(ctx, store, authorizationModelID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, serverErrors.AssertionsNotForAuthorizationModelFound(authorizationModelID)
-		}
 		return nil, serverErrors.HandleError("", err)
 	}
 	return &openfgav1.ReadAssertionsResponse{
