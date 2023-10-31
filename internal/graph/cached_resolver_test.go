@@ -515,3 +515,44 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
 }
+
+var checkCacheKey string
+
+func BenchmarkCheckRequestCacheKey(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+
+	for n := 0; n < b.N; n++ {
+		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		})
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:x", "viewer", "user:x"),
+		tuple.NewTupleKey("document:y", "viewer", "user:y"),
+		tuple.NewTupleKey("document:z", "viewer", "user:z"),
+	}
+
+	for n := 0; n < b.N; n++ {
+		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			ContextualTuples:     tuples,
+		})
+		require.NoError(b, err)
+	}
+}
