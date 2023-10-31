@@ -7,7 +7,7 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
@@ -161,7 +161,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			var typedefs []*openfgav1.TypeDefinition
 			model, err := parser.TransformDSLToProto(stage.Model)
 			if err != nil {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
 				typedefs = model.TypeDefinitions
 			}
