@@ -3,9 +3,11 @@ package condition
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
+	celtypes "github.com/google/cel-go/common/types"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/condition/types"
 	"golang.org/x/exp/maps"
@@ -14,7 +16,8 @@ import (
 var emptyEvaluationResult = EvaluationResult{}
 
 type EvaluationResult struct {
-	ConditionMet bool
+	ConditionMet      bool
+	MissingParameters []string
 }
 
 // EvaluableCondition represents a condition that can eventually be evaluated
@@ -25,13 +28,28 @@ type EvaluationResult struct {
 type EvaluableCondition struct {
 	*openfgav1.Condition
 
-	program cel.Program
+	celEnv      *cel.Env
+	celProgram  cel.Program
+	compileOnce sync.Once
 }
 
 // Compile compiles a condition expression with a CEL environment
 // constructed from the condition's parameter type definitions into a valid
 // AST that can be evaluated at a later time.
 func (c *EvaluableCondition) Compile() error {
+	var compileErr error
+
+	c.compileOnce.Do(func() {
+		if err := c.compile(); err != nil {
+			compileErr = err
+			return
+		}
+	})
+
+	return compileErr
+}
+
+func (c *EvaluableCondition) compile() error {
 	var envOpts []cel.EnvOption
 	for _, customTypeOpts := range types.CustomParamTypes {
 		envOpts = append(envOpts, customTypeOpts...)
@@ -62,7 +80,11 @@ func (c *EvaluableCondition) Compile() error {
 		return &CompilationError{Expression: c.Expression, Cause: issues.Err()}
 	}
 
-	prg, err := env.Program(ast)
+	prgopts := []cel.ProgramOption{
+		cel.EvalOptions(cel.OptPartialEval),
+	}
+
+	prg, err := env.Program(ast, prgopts...)
 	if err != nil {
 		return fmt.Errorf("condition expression construction error: %s", err)
 	}
@@ -71,7 +93,8 @@ func (c *EvaluableCondition) Compile() error {
 		return fmt.Errorf("expected a bool condition expression output, but got '%s'", ast.OutputType())
 	}
 
-	c.program = prg
+	c.celEnv = env
+	c.celProgram = prg
 	return nil
 }
 
@@ -110,14 +133,6 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 		converted[key] = convertedParam
 	}
 
-	// validate against extraneous parameters
-	for key := range contextMap {
-		_, ok := converted[key]
-		if !ok {
-			return nil, fmt.Errorf("found invalid context parameter: %s", key)
-		}
-	}
-
 	return converted, nil
 }
 
@@ -127,10 +142,8 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
 func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (EvaluationResult, error) {
-	if c.program == nil {
-		if err := c.Compile(); err != nil {
-			return emptyEvaluationResult, err
-		}
+	if err := c.Compile(); err != nil {
+		return emptyEvaluationResult, err
 	}
 
 	// merge context maps
@@ -145,9 +158,33 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		return emptyEvaluationResult, err
 	}
 
-	out, _, err := c.program.Eval(typedParams)
+	activation, err := c.celEnv.PartialVars(typedParams)
+	if err != nil {
+		return emptyEvaluationResult, fmt.Errorf("failed to construct condition partial vars: %v", err)
+	}
+
+	out, _, err := c.celProgram.Eval(activation)
 	if err != nil {
 		return emptyEvaluationResult, fmt.Errorf("failed to evaluate condition expression: %v", err)
+	}
+
+	if celtypes.IsUnknown(out) {
+		unknownCELVal := out.(*celtypes.Unknown)
+		missingParameters := make([]string, 0, len(unknownCELVal.IDs()))
+
+		for _, id := range unknownCELVal.IDs() {
+			trails, ok := unknownCELVal.GetAttributeTrails(id)
+			if ok {
+				for _, attributeTrail := range trails {
+					missingParameters = append(missingParameters, attributeTrail.String())
+				}
+			}
+		}
+
+		return EvaluationResult{
+			ConditionMet:      false,
+			MissingParameters: missingParameters,
+		}, nil
 	}
 
 	conditionMetVal, err := out.ConvertToNative(reflect.TypeOf(false))

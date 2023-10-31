@@ -17,6 +17,8 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
 	"github.com/openfga/openfga/pkg/storage"
@@ -485,6 +487,125 @@ type repo
 
 	require.NoError(t, err)
 	require.True(t, checkResponse.Allowed)
+}
+
+func TestWriteAssertionModelDSError(t *testing.T) {
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type repo
+  relations
+	define reader: [user]`).TypeDefinitions
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDSOldSchema := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDSOldSchema.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_0,
+			TypeDefinitions: typedefs,
+		}, nil)
+
+	mockDSBadReadAuthModel := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	mockDSBadReadAuthModel.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(nil, fmt.Errorf("unable to read"))
+
+	mockDSBadWriteAssertions := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDSBadWriteAssertions.EXPECT().
+		ReadAuthorizationModel(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(&openfgav1.AuthorizationModel{
+			SchemaVersion:   typesystem.SchemaVersion1_1,
+			TypeDefinitions: typedefs,
+		}, nil)
+	mockDSBadWriteAssertions.EXPECT().
+		WriteAssertions(gomock.Any(), storeID, modelID, gomock.Any()).
+		AnyTimes().
+		Return(fmt.Errorf("unable to write"))
+
+	tests := []struct {
+		name          string
+		assertions    []*openfgav1.Assertion
+		mockDatastore *mockstorage.MockOpenFGADatastore
+		expectedError error
+	}{
+		{
+			name:          "unsupported_schema",
+			assertions:    []*openfgav1.Assertion{},
+			mockDatastore: mockDSOldSchema,
+			expectedError: serverErrors.ValidationError(
+				fmt.Errorf("invalid schema version"),
+			),
+		},
+		{
+			name:          "failed_to_read",
+			assertions:    []*openfgav1.Assertion{},
+			mockDatastore: mockDSBadReadAuthModel,
+			expectedError: serverErrors.NewInternalError(
+				"", fmt.Errorf("unable to read"),
+			),
+		},
+		{
+			name:          "failed_to_write",
+			assertions:    []*openfgav1.Assertion{},
+			mockDatastore: mockDSBadWriteAssertions,
+			expectedError: serverErrors.NewInternalError(
+				"", fmt.Errorf("unable to write"),
+			),
+		},
+	}
+
+	for _, curTest := range tests {
+		t.Run(curTest.name, func(t *testing.T) {
+			request := &openfgav1.WriteAssertionsRequest{
+				StoreId:              storeID,
+				Assertions:           curTest.assertions,
+				AuthorizationModelId: modelID,
+			}
+			logger := logger.NewNoopLogger()
+
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore, logger)
+			_, err := writeAssertionCmd.Execute(ctx, request)
+			require.ErrorIs(t, curTest.expectedError, err)
+		})
+	}
+}
+
+func TestReadAssertionModelDSError(t *testing.T) {
+	ctx := context.Background()
+
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDSBadReadAssertions := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDSBadReadAssertions.EXPECT().
+		ReadAssertions(gomock.Any(), storeID, modelID).
+		AnyTimes().
+		Return(nil, fmt.Errorf("unable to read"))
+	logger := logger.NewNoopLogger()
+
+	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions, logger)
+	_, err := readAssertionQuery.Execute(ctx, storeID, modelID)
+	expectedError := serverErrors.NewInternalError(
+		"", fmt.Errorf("unable to read"),
+	)
+	require.ErrorIs(t, expectedError, err)
 }
 
 func TestResolveAuthorizationModel(t *testing.T) {
