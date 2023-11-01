@@ -5422,3 +5422,73 @@ tests:
             context:
               ts: "2023-10-11T10:00:00.000Z"
             expectation:
+  - name: nested_indirect_relation_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user, group#member with ipaddr_in_range]
+
+          type document
+            relations
+              define viewer: [group#member]
+
+          condition ipaddr_in_range(user_ip: ipaddress, cidr: string) {
+            user_ip.in_cidr(cidr)
+          }
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+          - user: group:fga#member
+            relation: member
+            object: group:eng
+            condition:
+              name: ipaddr_in_range
+              context:
+                cidr: "192.168.0.0/24"
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              user_ip: "192.168.0.1"
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              user_ip: "192.168.1.0"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              user_ip: "192.168.0.1"
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              user_ip: "192.168.1.0"
+            expectation:
