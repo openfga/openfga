@@ -5354,3 +5354,71 @@ tests:
             context:
               x: 101
             expectation:
+  - name: indirect_relation_with_condition
+    stages:
+      - model: |
+          model
+            schema 1.1
+          type user
+
+          type group
+            relations
+              define member: [user]
+
+          type document
+            relations
+              define viewer: [group#member with ts_less_than]
+
+          condition ts_less_than(ts: timestamp) {
+            ts < timestamp("2023-10-11T10:00:00.000Z")
+          }
+        tuples:
+          - user: group:eng#member
+            relation: viewer
+            object: document:1
+            condition:
+              name: ts_less_than
+          - user: user:jon
+            relation: member
+            object: group:eng
+        checkAssertions:
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            expectation: false
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T09:00:00.000Z"
+            expectation: true
+          - tuple:
+              user: user:jon
+              relation: viewer
+              object: document:1
+            context:
+              ts: "2023-10-11T10:00:00.000Z"
+            expectation: false
+        listObjectsAssertions:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            expectation:
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              ts: "2023-10-11T09:00:00.000Z"
+            expectation:
+              - document:1
+          - request:
+              user: user:jon
+              type: document
+              relation: viewer
+            context:
+              ts: "2023-10-11T10:00:00.000Z"
+            expectation:
