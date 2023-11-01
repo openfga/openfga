@@ -39,24 +39,6 @@ condition correct_ip(ip: string) {
 			expectedErr:  "failed to evaluate relationship condition: condition 'unknown' was not found",
 		},
 		{
-			name:     "missing_context",
-			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
-			model: parser.MustTransformDSLToProto(`model
-	schema 1.1
-type user
-
-type document
-  relations
-    define can_view: [user with correct_ip]
-
-condition correct_ip(ip1: string, ip2: string) {
-	ip1 == "192.168.0.1" && ip2 == "192.168.0.2"
-}`),
-			context:      map[string]interface{}{"ip1": "192.168.0.1"},
-			conditionMet: false,
-			expectedErr:  "failed to evaluate relationship condition: missing value for parameter 'ip2' in condition 'correct_ip'",
-		},
-		{
 			name:     "condition_not_met",
 			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "correct_ip", nil),
 			model: parser.MustTransformDSLToProto(`model

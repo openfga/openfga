@@ -8,6 +8,7 @@ import (
 )
 
 // TupleConditionMet returns a bool indicating if the provided tupleKey's condition (if any) was met.
+// If the condition cannot be evaluated or it was not defined in the typesystem, it returns 'false' and an error.
 func TupleConditionMet(
 	tupleKey *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
@@ -20,19 +21,20 @@ func TupleConditionMet(
 		if !ok {
 			return false, fmt.Errorf("failed to evaluate relationship condition: condition '%s' was not found", conditionName)
 		}
-		conditionResult, err := evaluableCondition.Evaluate(
-			context,
-			tupleCondition.GetContext().AsMap(),
-		)
+
+		// merge both contexts
+		contextSlice := []map[string]interface{}{context}
+		tupleContext := tupleCondition.GetContext()
+		if tupleContext != nil {
+			contextSlice = append(contextSlice, tupleContext.AsMap())
+		}
+
+		conditionResult, err := evaluableCondition.Evaluate(contextSlice...)
 		if err != nil {
 			return false, fmt.Errorf("failed to evaluate relationship condition: %v", err)
 		}
 
 		if !conditionResult.ConditionMet {
-			if len(conditionResult.MissingParameters) > 0 {
-				missingParam := conditionResult.MissingParameters[0]
-				return false, fmt.Errorf("failed to evaluate relationship condition: missing value for parameter '%s' in condition '%s'", missingParam, conditionName)
-			}
 			return false, nil
 		}
 	}
