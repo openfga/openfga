@@ -45,7 +45,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "string",
 			expectedError: fmt.Errorf(
-				"for string: unexpected type value '\"int64\"', expected 'string'",
+				"expected type value 'string', but found '\"int64\"'",
 			),
 		},
 		{
@@ -83,7 +83,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "uint",
 			expectedError: fmt.Errorf(
-				"for uint: a uint value is expected, but found numeric value `10.5`",
+				"expected a uint value, but found numeric value '10.5'",
 			),
 		},
 		{
@@ -93,7 +93,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "uint",
 			expectedError: fmt.Errorf(
-				"for uint: a uint value is expected, but found numeric value `-10.5`",
+				"expected a uint value, but found numeric value '-10.5'",
 			),
 		},
 		{
@@ -103,7 +103,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "int",
 			expectedError: fmt.Errorf(
-				"for int: a int value is expected, but found numeric value `10.5`",
+				"expected an int value, but found numeric value '10.5'",
 			),
 		},
 		{
@@ -127,7 +127,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "bool",
 			expectedError: fmt.Errorf(
-				"for bool: unexpected type value '\"string\"', expected 'bool'",
+				"expected type value 'bool', but found '\"string\"'",
 			),
 		},
 		{
@@ -137,7 +137,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "double",
 			expectedError: fmt.Errorf(
-				"for double: a float64 value is expected, but found invalid string value `invalid`",
+				"expected a float64 value, but found invalid string value 'invalid'",
 			),
 		},
 		{
@@ -154,7 +154,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "duration",
 			expectedError: fmt.Errorf(
-				"for duration: failed to parse duration string '2sm': time: unknown unit \"sm\" in duration \"2sm\"",
+				"expected a valid duration string, but found: '2sm'",
 			),
 		},
 		{
@@ -171,7 +171,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "timestamp",
 			expectedError: fmt.Errorf(
-				"for timestamp: could not parse RFC 3339 formatted timestamp string `2023-0914`: parsing time \"2023-0914\" as \"2006-01-02T15:04:05Z07:00\": cannot parse \"14\" as \"-\"",
+				"expected RFC 3339 formatted timestamp string, but found '2023-0914'",
 			),
 		},
 		{
@@ -188,7 +188,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "ipaddress",
 			expectedError: fmt.Errorf(
-				"for ipaddress: could not parse string as an ipaddress `invalid`: ParseAddr(\"invalid\"): unable to parse IP",
+				"expected a well-formed IP address, but found: 'invalid'",
 			),
 		},
 		{
@@ -203,7 +203,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustMapParamType(StringParamType),
 			input:     map[int]any{123: "world"},
 			expectedError: fmt.Errorf(
-				"for TYPE_NAME_MAP<string>: map requires a map, found: map[int]interface {}",
+				"map requires a map, found: map[int]interface {}",
 			),
 			repr: "TYPE_NAME_MAP<string>",
 		},
@@ -212,7 +212,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustMapParamType(StringParamType),
 			input:     map[string]any{"hello": 1},
 			expectedError: fmt.Errorf(
-				"for TYPE_NAME_MAP<string>: found an invalid value for key `hello`: for string: unexpected type value '\"int\"', expected 'string'",
+				"found an invalid value for key 'hello': expected type value 'string', but found '\"int\"'",
 			),
 			repr: "TYPE_NAME_MAP<string>",
 		},
@@ -228,7 +228,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustListParamType(StringParamType),
 			input:     "hello",
 			expectedError: fmt.Errorf(
-				"for TYPE_NAME_LIST<string>: list requires a list, found: string",
+				"list requires a list, found: string",
 			),
 			repr: "TYPE_NAME_LIST<string>",
 		},
@@ -237,7 +237,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustListParamType(StringParamType),
 			input:     []any{"hello", 1},
 			expectedError: fmt.Errorf(
-				"for TYPE_NAME_LIST<string>: found an invalid list item at index `1`: for string: unexpected type value '\"int\"', expected 'string'",
+				"found an invalid list item at index `1`: expected type value 'string', but found '\"int\"'",
 			),
 			repr: "TYPE_NAME_LIST<string>",
 		},

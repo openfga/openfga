@@ -1,8 +1,6 @@
 package eval
 
 import (
-	"fmt"
-
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
@@ -22,7 +20,7 @@ func TupleConditionMet(
 			tupleCondition.GetContext().AsMap(),
 		)
 		if err != nil {
-			return false, fmt.Errorf("failed to evaluate relationship condition: %v", err)
+			return false, err
 		}
 
 		if !conditionResult.ConditionMet {

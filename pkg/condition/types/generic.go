@@ -22,7 +22,7 @@ func mapTypeConverterFunc(genericTypes []ParameterType) ParameterType {
 			for key, item := range v {
 				convertedItem, err := genericTypes[0].ConvertValue(item)
 				if err != nil {
-					return nil, fmt.Errorf("found an invalid value for key `%s`: %w", key, err)
+					return nil, fmt.Errorf("found an invalid value for key '%s': %w", key, err)
 				}
 
 				converted[key] = convertedItem

@@ -55,8 +55,7 @@ func TestNewCompiled(t *testing.T) {
 				},
 			},
 			err: &condition.CompilationError{
-				Expression: "invalid",
-				Cause:      fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+				Cause: fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
 			},
 		},
 		{
@@ -70,7 +69,9 @@ func TestNewCompiled(t *testing.T) {
 					},
 				},
 			},
-			err: fmt.Errorf("expected a bool condition expression output, but got 'string'"),
+			err: &condition.CompilationError{
+				Cause: fmt.Errorf("expected a bool condition expression output, but got 'string'"),
+			},
 		},
 	}
 
@@ -195,7 +196,7 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
+			err:    fmt.Errorf("failed to evaluate relationship condition: failed to convert context parameter 'param1': expected type value 'string', but found '\"bool\"'"),
 		},
 	}
 
