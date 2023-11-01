@@ -16,7 +16,10 @@ func TupleConditionMet(
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
 	if conditionName != "" {
-		evaluableCondition := typesys.GetCondition(conditionName)
+		evaluableCondition, ok := typesys.GetCondition(conditionName)
+		if !ok {
+			return false, fmt.Errorf("failed to evaluate relationship condition: condition '%s' was not found", conditionName)
+		}
 		conditionResult, err := evaluableCondition.Evaluate(
 			context,
 			tupleCondition.GetContext().AsMap(),
@@ -26,6 +29,10 @@ func TupleConditionMet(
 		}
 
 		if !conditionResult.ConditionMet {
+			if len(conditionResult.MissingParameters) > 0 {
+				missingParam := conditionResult.MissingParameters[0]
+				return false, fmt.Errorf("failed to evaluate relationship condition: missing value for parameter '%s' in condition '%s'", missingParam, conditionName)
+			}
 			return false, nil
 		}
 	}
