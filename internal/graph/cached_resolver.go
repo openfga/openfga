@@ -31,6 +31,11 @@ var (
 		Name: "check_cache_hit_count",
 		Help: "The total number of cache hits for ResolveCheck.",
 	})
+
+	checkCacheExpiredCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "check_cache_expired_count",
+		Help: "The total number of cache misses for ResolveCheck due to entry expired.",
+	})
 )
 
 // CachedResolveCheckResponse is very similar to ResolveCheckResponse except we
@@ -158,6 +163,8 @@ func (c *CachedCheckResolver) ResolveCheck(
 	if cachedResp != nil && !cachedResp.Expired() {
 		checkCacheHitCounter.Inc()
 		return cachedResp.Value().convertToResolveCheckResponse(), nil
+	} else if cachedResp != nil && cachedResp.Expired() {
+		checkCacheExpiredCounter.Inc()
 	}
 
 	resp, err := c.delegate.ResolveCheck(ctx, req)
