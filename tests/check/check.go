@@ -12,6 +12,7 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -46,7 +47,8 @@ type stage struct {
 
 type assertion struct {
 	Tuple            *openfgav1.CheckRequestTupleKey
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
+	ContextualTuples []*openfgav1.TupleKey  `yaml:"contextualTuples"`
+	Context          map[string]interface{} `yaml:"context"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
 }
@@ -170,6 +172,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
+				Conditions:      model.GetConditions(),
 			})
 			require.NoError(t, err)
 
@@ -210,7 +213,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
-					Trace: true,
+					Context: testutils.MustNewStruct(t, assertion.Context),
+					Trace:   true,
 				})
 
 				if assertion.ErrorCode == 0 {
