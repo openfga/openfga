@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -18,6 +17,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -221,19 +221,20 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	}{
 		{
 			name: "issue_1058",
-			typeDefinitions: parser.MustParse(`
-			type fga_user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type fga_user
 
-			type timeslot
-			  relations
-				define user: [fga_user] as self
+type timeslot
+  relations
+	define user: [fga_user]
 
-			type commerce_store
-			  relations
-				define approved_hourly_access as user from approved_timeslot and hourly_employee
-				define approved_timeslot: [timeslot] as self
-				define hourly_employee: [fga_user] as self
-			`),
+type commerce_store
+  relations
+	define approved_hourly_access: user from approved_timeslot and hourly_employee
+	define approved_timeslot: [timeslot]
+	define hourly_employee: [fga_user]
+`).TypeDefinitions,
 			tuples: []*openfgav1.WriteRequestTupleKey{
 				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
@@ -266,14 +267,15 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cache_computed_userset_subproblem_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define restricted: [user] as self
-			    define viewer: [user] as self but not restricted
-			`),
+type document
+  relations
+	define restricted: [user]
+	define viewer: [user] but not restricted
+`).TypeDefinitions,
 			tuples: []*openfgav1.WriteRequestTupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
@@ -294,13 +296,14 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cached_direct_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user] as self
-			`),
+type document
+  relations
+	define viewer: [user]
+`).TypeDefinitions,
 			assertions: []checktest.Assertion{
 				{
 					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -318,18 +321,19 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cached_direct_userset_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define restricted: [user] as self
-			    define member: [user] as self but not restricted
+type group
+  relations
+	define restricted: [user]
+	define member: [user] but not restricted
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`),
+type document
+  relations
+	define viewer: [group#member]
+`).TypeDefinitions,
 			tuples: []*openfgav1.WriteRequestTupleKey{
 				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
 				{Object: "group:eng", Relation: "member", User: "user:jon"},
@@ -857,13 +861,13 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				errorCode: codes.Code(openfgav1.ErrorCode_authorization_model_not_found),
 			},
 			testData: &testData{
-				model: `
-				type user
+				model: `model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [user] as self
-				`,
+type document
+  relations
+	define viewer: [user]`,
 			},
 		},
 		{
@@ -884,14 +888,14 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 					{Object: "document:1", Relation: "viewer", User: "user:jon"},
 					{Object: "document:1", Relation: "allowed", User: "user:jon"},
 				},
-				model: `
-				type user
+				model: `model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define allowed: [user] as self
-				    define viewer: [user] as self and allowed
-				`,
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`,
 			},
 		},
 	}
@@ -903,7 +907,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustParse(test.testData.model)
+			typedefs := parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions
 
 			storeID := test.input.StoreId
 

@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
@@ -765,15 +764,42 @@ func TestServerMetricsReporting(t *testing.T) {
 
 	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustParse(`
-		type user
-
-		type document
-		  relations
-		    define allowed: [user] as self
-			define editor: [user] as self
-		    define viewer: [user] as self or (editor and allowed)
-		`),
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"allowed": typesystem.This(),
+					"editor":  typesystem.This(),
+					"viewer": typesystem.Union(
+						typesystem.This(),
+						typesystem.Intersection(
+							typesystem.ComputedUserset("editor"),
+							typesystem.ComputedUserset("allowed"))),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"allowed": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)

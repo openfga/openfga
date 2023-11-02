@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/pkg/typesystem"
@@ -48,11 +48,12 @@ func TestValidationResult(t *testing.T) {
 					Id:            modelID,
 					SchemaVersion: typesystem.SchemaVersion1_1,
 					// invalid
-					TypeDefinitions: parser.MustParse(`
-									type document
-									  relations
-										define viewer:[user] as self
-									`),
+					TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type document
+  relations
+	define viewer:[user]
+`).TypeDefinitions,
 				})
 				require.NoError(t, err)
 				t.Logf("added model %s for store %s\n", modelID, storeID)

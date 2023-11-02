@@ -6,7 +6,6 @@ require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/cenkalti/backoff/v4 v4.2.1
-	github.com/craigpastro/openfga-dsl-parser v1.0.1-0.20230801160350-9bde4712fb6c
 	github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1
 	github.com/docker/docker v24.0.7+incompatible
 	github.com/docker/go-connections v0.4.0
@@ -25,7 +24,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20231013152440-fb9e0a84ee12
-	github.com/openfga/language/pkg/go v0.0.0-20231026200902-6e91eb1b9497
+	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
 	github.com/pressly/goose/v3 v3.15.1
 	github.com/rs/cors v1.10.1
 	github.com/sourcegraph/conc v0.3.0

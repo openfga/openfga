@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -53,13 +52,4 @@ func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
-}
-
-func MustTransformDSLToProto(dsl string) *openfgav1.AuthorizationModel {
-	model, err := transformer.TransformDSLToJSON(dsl)
-	if err != nil {
-		panic(err)
-	}
-
-	return model
 }

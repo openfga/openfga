@@ -69,6 +69,8 @@ func (c *EvaluableCondition) compile() error {
 		envOpts = append(envOpts, cel.Variable(paramName, paramType.CelType()))
 	}
 
+	envOpts = append(envOpts, types.IPAddressEnvOption())
+
 	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
 		return &CompilationError{

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -192,13 +192,13 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 		Return(
 			&openfgav1.AuthorizationModel{
 				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: parser.MustParse(`
-				type user
+				TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [user] as self
-				`),
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions,
 			}, nil)
 
 	mockDatastore.EXPECT().

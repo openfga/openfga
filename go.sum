@@ -73,8 +73,6 @@ github.com/cncf/udpa/go v0.0.0-20201120205902-5459f2c99403/go.mod h1:WmhPx2Nbnht
 github.com/cncf/xds/go v0.0.0-20230607035331-e9ce68804cb4 h1:/inchEIKaYC1Akx+H+gqO04wryn5h75LSazbRlnya1k=
 github.com/cncf/xds/go v0.0.0-20230607035331-e9ce68804cb4/go.mod h1:eXthEFrGJvWHgFFCl3hGmgk+/aYT6PnTQLykKQRLhEs=
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
-github.com/craigpastro/openfga-dsl-parser v1.0.1-0.20230801160350-9bde4712fb6c h1:UuAXenm4Nx8eSRtoYINqYaGo+G0pVgxmMn8W9xlDs+M=
-github.com/craigpastro/openfga-dsl-parser v1.0.1-0.20230801160350-9bde4712fb6c/go.mod h1:2HtqKSrstTl9oP2A/eYP+LdxSSvIccZFQOwfNJ0ATUA=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1 h1:dfepk6+cW9yQFmG/cy/TUoS99lDeKdG0N4JvSvcomtI=
 github.com/craigpastro/openfga-dsl-parser/v2 v2.0.1/go.mod h1:GG/ijmrM59umGaKjAao5bcx5XeK2WAvwM+21j0Ep/wY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -268,8 +266,8 @@ github.com/opencontainers/image-spec v1.1.0-rc5 h1:Ygwkfw9bpDvs+c9E34SdgGOj41dX/
 github.com/opencontainers/image-spec v1.1.0-rc5/go.mod h1:X4pATf0uXsnn3g5aiGIsVnJBR4mxhKzfwmvK/B2NTm8=
 github.com/openfga/api/proto v0.0.0-20231013152440-fb9e0a84ee12 h1:wYOH1WVhFR8VA6WwJnEB1uEY8JVN6dOM0PQ/XfGJjO8=
 github.com/openfga/api/proto v0.0.0-20231013152440-fb9e0a84ee12/go.mod h1:jiL2FBwXhWDlpPiXe4myQt88pKpprl1RLLc0TuN3w2g=
-github.com/openfga/language/pkg/go v0.0.0-20231026200902-6e91eb1b9497 h1:AWb+aVV5ME68uJcBNPJIcSKyDf5IdRJsIQTHcPZry8c=
-github.com/openfga/language/pkg/go v0.0.0-20231026200902-6e91eb1b9497/go.mod h1:j8EagVXkHCGWv9X/JAg+UqonctuXHHf5THv8s5Jtw7U=
+github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3 h1:yGO/ln+XyPKSJ4rtTFnlvySy855N43GQUn/kmz47Uls=
+github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3/go.mod h1:j8EagVXkHCGWv9X/JAg+UqonctuXHHf5THv8s5Jtw7U=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pborman/getopt v0.0.0-20170112200414-7148bc3a4c30/go.mod h1:85jBQOZwpVEaDAr341tbn15RS4fCAsIst0qp7i8ex1o=
 github.com/pelletier/go-toml/v2 v2.1.0 h1:FnwAJ4oYMvbT/34k9zzHuZNrhlz48GB3/s6at6/MHO4=

@@ -7,11 +7,12 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
@@ -46,7 +47,8 @@ type stage struct {
 
 type assertion struct {
 	Tuple            *openfgav1.CheckRequestTupleKey
-	ContextualTuples []*openfgav1.TupleKey `yaml:"contextualTuples"`
+	ContextualTuples []*openfgav1.TupleKey  `yaml:"contextualTuples"`
+	Context          map[string]interface{} `yaml:"context"`
 	Expectation      bool
 	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
 }
@@ -84,18 +86,18 @@ func testBadAuthModelID(t *testing.T, client ClientInterface) {
 	require.NoError(t, err)
 
 	storeID := resp.GetId()
-	model := `
-	type user
+	model := `model
+	schema 1.1
+type user
 
-	type doc
-	  relations
-	    define viewer: [user] as self
-	    define can_view as viewer
-	`
+type doc
+  relations
+	define viewer: [user]
+	define can_view: viewer`
 	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(model),
+		TypeDefinitions: parser.MustTransformDSLToProto(model).TypeDefinitions,
 	})
 	require.NoError(t, err)
 	const badModelID = "01GS89AJC3R3PFQ9BNY5ZF6Q97"
@@ -157,17 +159,20 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		storeID := resp.GetId()
 
 		for _, stage := range test.Stages {
+			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
+			model, err := parser.TransformDSLToProto(stage.Model)
+			if err != nil {
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = model.TypeDefinitions
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
+				Conditions:      model.GetConditions(),
 			})
 			require.NoError(t, err)
 
@@ -208,7 +213,8 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
-					Trace: true,
+					Context: testutils.MustNewStruct(t, assertion.Context),
+					Trace:   true,
 				})
 
 				if assertion.ErrorCode == 0 {

@@ -5,10 +5,10 @@ import (
 	"sort"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 )
@@ -96,14 +96,14 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 	}{
 		{
 			name: "basic_intersection",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define allowed: [user] as self
-			    define viewer: [user] as self and allowed
-			`,
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -116,19 +116,19 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_intersection_through_ttu_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define allowed: [user] as self
-			    define viewer: [user] as self and allowed
+type folder
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -141,24 +141,24 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_intersection_through_ttu_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type organization
-			  relations
-			    define allowed: [user] as self
-			    define viewer: [user] as self and allowed
+type organization
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed
 
-			type folder
-			  relations
-			    define parent: [organization] as self
-			    define viewer as viewer from parent
+type folder
+  relations
+	define parent: [organization]
+	define viewer: viewer from parent
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
 			expected: []*RelationshipEdge{
@@ -172,20 +172,20 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_exclusion_through_ttu_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define writer: [user] as self
-			    define editor: [user] as self
-			    define viewer as writer but not editor
+type folder
+  relations
+	define writer: [user]
+	define editor: [user]
+	define viewer: writer but not editor
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -198,20 +198,20 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_exclusion_through_ttu_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define writer: [user] as self
-			    define editor: [user] as self
-			    define viewer as writer but not editor
+type folder
+  relations
+	define writer: [user]
+	define editor: [user]
+	define viewer: writer but not editor
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
 			expected: []*RelationshipEdge{
@@ -225,20 +225,18 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "ttu_with_indirect",
-			model: `
-			  type user
-	
-			  type repo
-				relations
-				  define admin: [user] as self or repo_admin from owner
-				  define owner: [organization] as self
-	
-			  type organization
-				relations
-				  define member: [user] as self or owner
-				  define owner: [user] as self
-				  define repo_admin: [user, organization#member] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type repo
+  relations
+    define admin: [user] or repo_admin from owner
+	define owner: [organization]
+type organization
+  relations
+    define member: [user] or owner
+	define owner: [user]
+	define repo_admin: [user, organization#member]`,
 			target: typesystem.DirectRelationReference("repo", "admin"),
 			source: typesystem.DirectRelationReference("organization", "member"),
 			expected: []*RelationshipEdge{
@@ -253,7 +251,7 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustParse(test.model)
+			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
 			typesys := typesystem.New(&openfgav1.AuthorizationModel{
 				SchemaVersion:   typesystem.SchemaVersion1_1,
 				TypeDefinitions: typedefs,
@@ -277,26 +275,27 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 
 func TestRelationshipEdges(t *testing.T) {
 	tests := []struct {
-		name     string
-		model    string
-		target   *openfgav1.RelationReference
-		source   *openfgav1.RelationReference
-		expected []*RelationshipEdge
+		name      string
+		model     string
+		authModel *openfgav1.AuthorizationModel
+		target    *openfgav1.RelationReference
+		source    *openfgav1.RelationReference
+		expected  []*RelationshipEdge
 	}{
 		{
 			name: "direct_edge_through_ComputedUserset_with_multiple_type_restrictions",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
+type group
+  relations
+	define member: [user, group#member]
 
-			type document
-			  relations
-			    define editor: [user, group#member] as self
-			    define viewer as editor
-			`,
+type document
+  relations
+	define editor: [user, group#member]
+	define viewer: editor`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -314,14 +313,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "direct_edge_through_ComputedUserset",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define editor: [user] as self
-			    define viewer as editor
-			`,
+type document
+  relations
+	define editor: [user]
+	define viewer: editor`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -334,22 +333,22 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "direct_edge_through_TupleToUserset_with_multiple_type_restrictions",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type folder
-			  relations
-			    define viewer: [user, group#member] as self
+type folder
+  relations
+	define viewer: [user, group#member]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer: [user] as self or viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: [user] or viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -372,18 +371,18 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "direct_edge_with_union_involving_self_and_computed_userset",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
+type group
+  relations
+	define member: [user, group#member]
 
-			type document
-			  relations
-			    define editor: [user, group#member] as self
-			    define viewer: [user] as self or editor
-			`,
+type document
+  relations
+	define editor: [user, group#member]
+	define viewer: [user] or editor`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -406,17 +405,17 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "circular_reference",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define member: [group#member] as self
+type team
+  relations
+	define member: [group#member]
 
-			type group
-			  relations
-			    define member: [user, team#member] as self
-			`,
+type group
+  relations
+	define member: [user, team#member]`,
 			target: typesystem.DirectRelationReference("team", "member"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -429,14 +428,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "cyclical_parent/child_definition",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define parent: [folder] as self
-			    define viewer: [user] as self or viewer from parent
-			`,
+type folder
+  relations
+	define parent: [folder]
+	define viewer: [user] or viewer from parent`,
 			target: typesystem.DirectRelationReference("folder", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -449,35 +448,35 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "no_graph_relationship_connectivity",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define member: [team#member] as self
-			`,
+type team
+  relations
+	define member: [team#member]`,
 			target:   typesystem.DirectRelationReference("team", "member"),
 			source:   typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{},
 		},
 		{
 			name: "test1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type folder
-			  relations
-			    define viewer: [user, group#member] as self
+type folder
+  relations
+	define viewer: [user, group#member]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -495,22 +494,22 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "test2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type folder
-			  relations
-			    define viewer: [user, group#member] as self
+type folder
+  relations
+	define viewer: [user, group#member]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("group", "member"),
 			expected: []*RelationshipEdge{
@@ -523,18 +522,18 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "test3",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-			  relations
-			    define viewer: [user] as self
+type folder
+  relations
+	define viewer: [user]
 
-			type document
-			  relations
-			    define parent: [folder] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
 			expected: []*RelationshipEdge{
@@ -548,19 +547,19 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "undefined_relation_on_one_type_involved_in_a_ttu",
-			model: `
-			type user
-			type organization
+			model: `model
+	schema 1.1
+type user
+type organization
 
-			type folder
-			  relations
-			    define viewer: [user] as self
+type folder
+  relations
+	define viewer: [user]
 
-			type document
-			  relations
-			    define parent: [folder, organization] as self
-			    define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder, organization]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -573,13 +572,13 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "nested_group_membership_returns_only_top-level_edge",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user, group#member] as self
-			`,
+type group
+  relations
+	define member: [user, group#member]`,
 			target: typesystem.DirectRelationReference("group", "member"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -592,17 +591,17 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "edges_for_non-assignable_relation",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define can_view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define can_view: viewer
 
-			type document
-			  relations
-			    define parent: [organization] as self
-			    define view as can_view from parent
-			`,
+type document
+  relations
+	define parent: [organization]
+	define view: can_view from parent`,
 			target: typesystem.DirectRelationReference("document", "view"),
 			source: typesystem.DirectRelationReference("organization", ""),
 			expected: []*RelationshipEdge{
@@ -615,13 +614,13 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "user_is_a_subset_of_user_*",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user:*] as self
-			`,
+type document
+  relations
+	define viewer: [user:*]`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -634,26 +633,26 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "user_*_is_not_a_subset_of_user",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user] as self
-			`,
+type document
+  relations
+	define viewer: [user]`,
 			target:   typesystem.DirectRelationReference("document", "viewer"),
 			source:   typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipEdge{},
 		},
 		{
 			name: "user_*_is_related_to_user_*",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user:*] as self
-			`,
+type document
+  relations
+	define viewer: [user:*]`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipEdge{
@@ -666,14 +665,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "edges_involving_wildcard_in_types",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define editor: [user:*] as self
-			    define viewer as editor
-			`,
+type document
+  relations
+	define editor: [user:*]
+	define viewer: editor`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -686,32 +685,32 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "edges_involving_wildcard_in_source",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define editor: [user] as self
-			    define viewer as editor
-			`,
+type document
+  relations
+	define editor: [user]
+	define viewer: editor`,
 			target:   typesystem.DirectRelationReference("document", "viewer"),
 			source:   typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipEdge{},
 		},
 		{
 			name: "edges_involving_wildcards_1",
-			model: `
-			type user
-			type employee
-			type group
+			model: `model
+	schema 1.1
+type user
+type employee
+type group
 
-			type document
-			  relations
-			    define relation1: [user:*] as self or relation2 or relation3 or relation4
-			    define relation2: [group:*] as self
-			    define relation3: [employee:*] as self
-			    define relation4: [user] as self
-			`,
+type document
+  relations
+	define relation1: [user:*] or relation2 or relation3 or relation4
+	define relation2: [group:*]
+	define relation3: [employee:*]
+	define relation4: [user]`,
 			target: typesystem.DirectRelationReference("document", "relation1"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -729,14 +728,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "edges_involving_wildcards_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define relation1: [user] as self or relation2
-			    define relation2: [user:*] as self
-			`,
+type document
+  relations
+	define relation1: [user] or relation2
+	define relation2: [user:*]`,
 			target: typesystem.DirectRelationReference("document", "relation1"),
 			source: typesystem.WildcardRelationReference("user"),
 			expected: []*RelationshipEdge{
@@ -749,17 +748,17 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_typed_wildcard",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define member: [user:*] as self
+type group
+  relations
+	define member: [user:*]
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+type document
+  relations
+	define viewer: [group#member]`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -772,21 +771,21 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_multiple_levels_deep",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define member: [user] as self
+type team
+  relations
+	define member: [user]
 
-			type group
-			  relations
-			    define member: [user, team#member] as self
+type group
+  relations
+	define member: [user, team#member]
 
-			type document
-			  relations
-			    define viewer: [user:*, group#member] as self
-			`,
+type document
+  relations
+	define viewer: [user:*, group#member]`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -809,39 +808,39 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_multiple_levels_deep_no_connectivity",
-			model: `
-			type user
-			type employee
+			model: `model
+	schema 1.1
+type user
+type employee
 
-			type team
-			  relations
-			    define member: [employee] as self
+type team
+  relations
+	define member: [employee]
 
-			type group
-			  relations
-			    define member: [team#member] as self
+type group
+  relations
+	define member: [team#member]
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+type document
+  relations
+	define viewer: [group#member]`,
 			target:   typesystem.DirectRelationReference("document", "viewer"),
 			source:   typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{},
 		},
 		{
 			name: "edge_through_ttu_on_non-assignable_relation",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define can_view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define can_view: viewer
 
-			type document
-			  relations
-			    define parent: [organization] as self
-			    define view as can_view from parent
-			`,
+type document
+  relations
+	define parent: [organization]
+	define view: can_view from parent`,
 			target: typesystem.DirectRelationReference("document", "view"),
 			source: typesystem.DirectRelationReference("organization", "can_view"),
 			expected: []*RelationshipEdge{
@@ -855,17 +854,17 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relation_through_ttu_on_non-assignable_relation",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define can_view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define can_view: viewer
 
-			type document
-			  relations
-			    define parent: [organization] as self
-			    define view as can_view from parent
-			`,
+type document
+  relations
+	define parent: [organization]
+	define view: can_view from parent`,
 			target: typesystem.DirectRelationReference("document", "view"),
 			source: typesystem.DirectRelationReference("organization", "viewer"),
 			expected: []*RelationshipEdge{
@@ -878,17 +877,17 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "ttu_on_non-assignable_relation",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define can_view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define can_view: viewer
 
-			type document
-			  relations
-			    define parent: [organization] as self
-			    define view as can_view from parent
-			`,
+type document
+  relations
+	define parent: [organization]
+	define view: can_view from parent`,
 			target: typesystem.DirectRelationReference("document", "view"),
 			source: typesystem.DirectRelationReference("organization", "can_view"),
 			expected: []*RelationshipEdge{
@@ -902,24 +901,24 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "multiple_indirect_non-assignable_relations_through_ttu",
-			model: `
-			type organization
-			  relations
-			    define viewer: [organization] as self
-			    define view as viewer
+			model: `model
+	schema 1.1
+type organization
+  relations
+	define viewer: [organization]
+	define view: viewer
 
-			type folder
-			  relations
-			    define parent: [organization] as self
-			    define view as view from parent
+type folder
+  relations
+	define parent: [organization]
+	define view: view from parent
 
-			type other
+type other
 
-			type document
-			  relations
-			    define parent: [folder, other] as self
-			    define view as view from parent
-			`,
+type document
+  relations
+	define parent: [folder, other]
+	define view: view from parent`,
 			target: typesystem.DirectRelationReference("document", "view"),
 			source: typesystem.DirectRelationReference("organization", ""),
 			expected: []*RelationshipEdge{
@@ -932,20 +931,20 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "multiple_directly_assignable_relationships_through_unions",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			    define member: [user, team#member] as self or admin
+type team
+  relations
+	define admin: [user]
+	define member: [user, team#member] or admin
 
-			type trial
-			  relations
-			    define editor: [user, team#member] as self or owner
-			    define owner: [user] as self
-			    define viewer: [user, team#member] as self or editor
-			`,
+type trial
+  relations
+	define editor: [user, team#member] or owner
+	define owner: [user]
+	define viewer: [user, team#member] or editor`,
 			target: typesystem.DirectRelationReference("trial", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -978,20 +977,20 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "multiple_assignable_and_non-assignable_computed_usersets",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			    define member: [user, team#member] as self or admin
+type team
+  relations
+	define admin: [user]
+	define member: [user, team#member] or admin
 
-			type trial
-			  relations
-			    define editor: [user, team#member] as self or owner
-			    define owner: [user] as self
-			    define viewer: [user, team#member] as self or editor
-			`,
+type trial
+  relations
+	define editor: [user, team#member] or owner
+	define owner: [user]
+	define viewer: [user, team#member] or editor`,
 			target: typesystem.DirectRelationReference("trial", "viewer"),
 			source: typesystem.DirectRelationReference("team", "admin"),
 			expected: []*RelationshipEdge{
@@ -1004,14 +1003,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_through_assignable_computed_userset",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type team
-			  relations
-			    define admin: [user] as self
-			    define member: [team#member] as self or admin
-			`,
+type team
+  relations
+	define admin: [user]
+	define member: [team#member] or admin`,
 			target: typesystem.DirectRelationReference("team", "member"),
 			source: typesystem.DirectRelationReference("team", "admin"),
 			expected: []*RelationshipEdge{
@@ -1024,18 +1023,18 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_through_non-assignable_computed_userset",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type group
-			  relations
-			    define manager: [user] as self
-			    define member as manager
+type group
+  relations
+	define manager: [user]
+	define member: manager
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`,
+type document
+  relations
+	define viewer: [group#member]`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("group", "manager"),
 			expected: []*RelationshipEdge{
@@ -1048,22 +1047,22 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_through_non-assignable_ttu_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type org
-			  relations
-			    define dept: [group] as self
-			    define dept_member as member from dept
+type org
+  relations
+	define dept: [group]
+	define dept_member: member from dept
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type resource
-			  relations
-			    define writer: [org#dept_member] as self
-			`,
+type resource
+  relations
+	define writer: [org#dept_member]`,
 			target: typesystem.DirectRelationReference("resource", "writer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1076,22 +1075,22 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_through_non-assignable_ttu_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type org
-			  relations
-			    define dept: [group] as self
-			    define dept_member as member from dept
+type org
+  relations
+	define dept: [group]
+	define dept_member: member from dept
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type resource
-			  relations
-			    define writer: [org#dept_member] as self
-			`,
+type resource
+  relations
+	define writer: [org#dept_member]`,
 			target: typesystem.DirectRelationReference("resource", "writer"),
 			source: typesystem.DirectRelationReference("group", "member"),
 			expected: []*RelationshipEdge{
@@ -1105,22 +1104,22 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "indirect_relationship_through_non-assignable_ttu_3",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type org
-			  relations
-			    define dept: [group] as self
-			    define dept_member as member from dept
+type org
+  relations
+	define dept: [group]
+	define dept_member: member from dept
 
-			type group
-			  relations
-			    define member: [user] as self
+type group
+  relations
+	define member: [user]
 
-			type resource
-			  relations
-			    define writer: [org#dept_member] as self
-			`,
+type resource
+  relations
+	define writer: [org#dept_member]`,
 			target: typesystem.DirectRelationReference("resource", "writer"),
 			source: typesystem.DirectRelationReference("org", "dept_member"),
 			expected: []*RelationshipEdge{
@@ -1133,34 +1132,34 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "unrelated_source_and_target_relationship_involving_ttu",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type folder
-				relations
-					define viewer: [user] as self
+type folder
+	relations
+		define viewer: [user]
 
-			type document
-				relations
-					define can_read as viewer from parent
-					define parent: [document,folder] as self
-					define viewer: [user] as self
-			`,
+type document
+	relations
+		define can_read: viewer from parent
+		define parent: [document,folder]
+		define viewer: [user]`,
 			target:   typesystem.DirectRelationReference("document", "can_read"),
 			source:   typesystem.DirectRelationReference("document", ""),
 			expected: []*RelationshipEdge{},
 		},
 		{
 			name: "simple_computeduserset_indirect_ref",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define parent: [document] as self
-			    define viewer: [user] as self or viewer from parent
-				define can_view as viewer
-			`,
+type document
+  relations
+	define parent: [document]
+	define viewer: [user] or viewer from parent
+	define can_view: viewer`,
 			target: typesystem.DirectRelationReference("document", "can_view"),
 			source: typesystem.DirectRelationReference("document", "viewer"),
 			expected: []*RelationshipEdge{
@@ -1179,18 +1178,18 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "follow_computed_relation_of_ttu_to_computed_userset",
-			model: `
-			type user
-			type folder
-			  relations
-				define owner: [user] as self
-				define viewer: [user] as self or owner
-			type document
-			  relations
-				define can_read as viewer from parent
-				define parent: [document, folder] as self
-				define viewer: [user] as self
-			`,
+			model: `model
+	schema 1.1
+type user
+type folder
+  relations
+	define owner: [user]
+	define viewer: [user] or owner
+type document
+  relations
+	define can_read: viewer from parent
+	define parent: [document, folder]
+	define viewer: [user]`,
 			target: typesystem.DirectRelationReference("document", "can_read"),
 			source: typesystem.DirectRelationReference("folder", "owner"),
 			expected: []*RelationshipEdge{
@@ -1203,16 +1202,16 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "computed_target_of_ttu_related_to_same_type",
-			model: `
-			type folder
-			  relations
-				define viewer: [folder] as self
+			model: `model
+	schema 1.1
+type folder
+  relations
+	define viewer: [folder]
 
-			type document
-			  relations
-				define parent: [folder] as self
-				define viewer as viewer from parent
-			`,
+type document
+  relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
 			expected: []*RelationshipEdge{
@@ -1226,14 +1225,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_intersection_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-				define allowed: [user] as self
-				define viewer: [user] as self and allowed
-			`,
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1251,15 +1250,15 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_intersection_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-				define allowed: [user] as self
-				define editor: [user] as self
-				define viewer as editor and allowed
-			`,
+type document
+  relations
+	define allowed: [user]
+	define editor: [user]
+	define viewer: editor and allowed`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1277,15 +1276,44 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_intersection_3",
-			model: `
-			type user
-
-			type document
-			  relations
-				define allowed: [user] as self
-				define editor: [user] as self
-				define viewer: [user] as allowed and self
-			`,
+			authModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"allowed": typesystem.This(),
+							"editor":  typesystem.This(),
+							"viewer": typesystem.Intersection(
+								typesystem.ComputedUserset("allowed"),
+								typesystem.This(),
+							),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"allowed": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+								"editor": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1303,14 +1331,14 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_exclusion_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-				define restricted: [user] as self
-				define viewer: [user] as self but not restricted
-			`,
+type document
+  relations
+	define restricted: [user]
+	define viewer: [user] but not restricted`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1328,15 +1356,15 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_exclusion_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type document
-			  relations
-				define restricted: [user] as self
-				define editor: [user] as self
-				define viewer as editor but not restricted
-			`,
+type document
+  relations
+	define restricted: [user]
+	define editor: [user]
+	define viewer: editor but not restricted`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1354,14 +1382,37 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "basic_relation_with_exclusion_3",
-			model: `
-			type user
-
-			type document
-			  relations
-				define allowed: [user] as self
-				define viewer: [user] as allowed but not self
-			`,
+			authModel: &openfgav1.AuthorizationModel{
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"allowed": typesystem.This(),
+							"viewer": typesystem.Difference(
+								typesystem.ComputedUserset("allowed"),
+								typesystem.This()),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"allowed": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										{Type: "user"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("user", ""),
 			expected: []*RelationshipEdge{
@@ -1379,16 +1430,16 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "ttu_through_direct_rewrite_1",
-			model: `
-			type folder
-				relations
-				define viewer: [folder] as self
-		
-			type document
-				relations
-				define parent: [folder] as self
-				define viewer as viewer from parent
-			`,
+			model: `model
+	schema 1.1
+type folder
+	relations
+	define viewer: [folder]
+
+type document
+	relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", "viewer"),
 			expected: []*RelationshipEdge{
@@ -1402,16 +1453,16 @@ func TestRelationshipEdges(t *testing.T) {
 		},
 		{
 			name: "ttu_through_direct_rewrite_2",
-			model: `
-			type folder
-				relations
-				define viewer: [folder] as self
-		
-			type document
-				relations
-				define parent: [folder] as self
-				define viewer as viewer from parent
-			`,
+			model: `model
+	schema 1.1
+type folder
+	relations
+	define viewer: [folder]
+
+type document
+	relations
+	define parent: [folder]
+	define viewer: viewer from parent`,
 			target: typesystem.DirectRelationReference("document", "viewer"),
 			source: typesystem.DirectRelationReference("folder", ""),
 			expected: []*RelationshipEdge{
@@ -1426,11 +1477,15 @@ func TestRelationshipEdges(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustParse(test.model)
-			typesys := typesystem.New(&openfgav1.AuthorizationModel{
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-				TypeDefinitions: typedefs,
-			})
+			var typesys *typesystem.TypeSystem
+			if test.model == "" {
+				typesys = typesystem.New(test.authModel)
+			} else {
+				typesys = typesystem.New(&openfgav1.AuthorizationModel{
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+					TypeDefinitions: parser.MustTransformDSLToProto(test.model).TypeDefinitions,
+				})
+			}
 
 			g := New(typesys)
 

@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/karlseguin/ccache/v3"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -411,27 +411,27 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type org
-      relations
-		define member: [user] as self
+type org
+  relations
+	define member: [user]
 
-	type document
-	  relations
-		define a: [user] as self
-		define b: [user] as self
-		define union as a or b
-		define union_rewrite as union
-		define intersection as a and b
-		define difference as a but not b
-		define ttu as member from parent
-        define union_and_ttu as union and ttu
-		define union_or_ttu as union or ttu or union_rewrite
-		define intersection_of_ttus as union_or_ttu and union_and_ttu
-		define parent: [org] as self
-	`)
+type document
+  relations
+	define a: [user]
+	define b: [user]
+	define union: a or b
+	define union_rewrite: union
+	define intersection: a and b
+	define difference: a but not b
+	define ttu: member from parent
+	define union_and_ttu: union and ttu
+	define union_or_ttu: union or ttu or union_rewrite
+	define intersection_of_ttus: union_or_ttu and union_and_ttu
+	define parent: [org]`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{

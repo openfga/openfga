@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/pkg/storage/memory"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -36,20 +35,19 @@ func TestResolveCheckDeterministic(t *testing.T) {
 
 	checker := NewLocalChecker(ds)
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type group
-	  relations
-	    define member: [user, group#member] as self
+type group
+  relations
+	define member: [user, group#member]
 
-	type document
-	  relations
-	    define allowed: [user] as self
-	    define viewer: [group#member] as self or editor
-	    define editor: [group#member] as self and allowed
-
-	`)
+type document
+  relations
+	define allowed: [user]
+	define viewer: [group#member] or editor
+	define editor: [group#member] and allowed`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -96,15 +94,15 @@ func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {
 
 	checker := NewLocalChecker(ds, WithResolveNodeBreadthLimit(concurrencyLimit))
 
-	typedefs := parser.MustParse(`
-	type user
-	type group
-	  relations
-		define member: [user, group#member] as self
-	type document
-	  relations
-		define viewer: [group#member] as self
-	`)
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type group
+  relations
+	define member: [user, group#member]
+type document
+  relations
+	define viewer: [group#member]`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -138,27 +136,28 @@ func TestCheckDatastoreQueryCount(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type org
-      relations
-		define member: [user] as self
+type org
+  relations
+	define member: [user]
 
-	type document
-	  relations
-		define a: [user] as self
-		define b: [user] as self
-		define union as a or b
-		define union_rewrite as union
-		define intersection as a and b
-		define difference as a but not b
-		define ttu as member from parent
-        define union_and_ttu as union and ttu
-		define union_or_ttu as union or ttu or union_rewrite
-		define intersection_of_ttus as union_or_ttu and union_and_ttu
-		define parent: [org] as self
-	`)
+type document
+  relations
+	define a: [user]
+	define b: [user]
+	define union: a or b
+	define union_rewrite: union
+	define intersection: a and b
+	define difference: a but not b
+	define ttu: member from parent
+	define union_and_ttu: union and ttu
+	define union_or_ttu: union or ttu or union_rewrite
+	define intersection_of_ttus: union_or_ttu and union_and_ttu
+	define parent: [org]
+`).TypeDefinitions
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 		&openfgav1.AuthorizationModel{
@@ -344,48 +343,48 @@ func TestCheckWithUnexpectedCycle(t *testing.T) {
 	}{
 		{
 			name: "test_1",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type resource
-			  relations
-				define x: [user] as self but not y
-				define y: [user] as self but not z
-				define z: [user] as self or x
-			`,
+type resource
+  relations
+	define x: [user] but not y
+	define y: [user] but not z
+	define z: [user] or x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
 		},
 		{
 			name: "test_2",
-			model: `
-			type user
+			model: `model
+	schema 1.1
+type user
 
-			type resource
-			  relations
-				define x: [user] as self and y
-				define y: [user] as self and z
-				define z: [user] as self or x
-			`,
+type resource
+  relations
+	define x: [user] and y
+	define y: [user] and z
+	define z: [user] or x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
 		},
 		{
 			name: "test_3",
-			model: `
-			type resource
-			  relations
-				define x as y
-				define y as x
-			`,
+			model: `model
+	schema 1.1
+type resource
+  relations
+	define x: y
+	define y: x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
 		},
 		{
 			name: "test_4",
-			model: `
-			type resource
-			  relations
-			    define parent: [resource] as self
-				define x: [user] as self or x from parent
-			`,
+			model: `model
+	schema 1.1
+type resource
+  relations
+	define parent: [resource]
+	define x: [user] or x from parent`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
 		},
 	}
@@ -393,7 +392,7 @@ func TestCheckWithUnexpectedCycle(t *testing.T) {
 	checker := NewLocalChecker(ds)
 
 	for _, test := range tests {
-		typedefs := parser.MustParse(test.model)
+		typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
 
 		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
 			&openfgav1.AuthorizationModel{
@@ -431,7 +430,7 @@ func TestCheckConditions(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	model := testutils.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
   schema 1.1
 
 type user

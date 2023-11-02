@@ -9,11 +9,12 @@ import (
 	"math"
 	"testing"
 
-	v1parser "github.com/craigpastro/openfga-dsl-parser"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	oldparser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
@@ -120,16 +121,18 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 		for _, stage := range test.Stages {
 			// arrange: write model
 			var typedefs []*openfgav1.TypeDefinition
-			if schemaVersion == typesystem.SchemaVersion1_1 {
-				typedefs = parser.MustParse(stage.Model)
+			model, err := parser.TransformDSLToProto(stage.Model)
+			if err != nil {
+				typedefs = oldparser.MustParse(stage.Model)
 			} else {
-				typedefs = v1parser.MustParse(stage.Model)
+				typedefs = model.TypeDefinitions
 			}
 
 			writeModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 				StoreId:         storeID,
 				SchemaVersion:   schemaVersion,
 				TypeDefinitions: typedefs,
+				Conditions:      model.GetConditions(),
 			})
 			require.NoError(t, err)
 
@@ -167,6 +170,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
+					Context: testutils.MustNewStruct(t, assertion.Context),
 				})
 
 				if assertion.ErrorCode == 0 {
@@ -192,6 +196,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
+					Context: testutils.MustNewStruct(t, assertion.Context),
 				}, []grpc.CallOption{}...)
 				require.NoError(t, err)
 
@@ -233,6 +238,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
+							Context: testutils.MustNewStruct(t, assertion.Context),
 						})
 						require.NoError(t, err, detailedInfo)
 						require.True(t, checkResp.Allowed, detailedInfo)
