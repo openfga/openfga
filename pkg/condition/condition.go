@@ -29,7 +29,6 @@ type EvaluableCondition struct {
 	*openfgav1.Condition
 
 	celEnv      *cel.Env
-	celAst      *cel.Ast
 	celProgram  cel.Program
 	compileOnce sync.Once
 }
@@ -83,7 +82,6 @@ func (c *EvaluableCondition) compile() error {
 
 	prgopts := []cel.ProgramOption{
 		cel.EvalOptions(cel.OptPartialEval),
-		cel.EvalOptions(cel.OptExhaustiveEval),
 	}
 
 	prg, err := env.Program(ast, prgopts...)
@@ -96,7 +94,6 @@ func (c *EvaluableCondition) compile() error {
 	}
 
 	c.celEnv = env
-	c.celAst = ast
 	c.celProgram = prg
 	return nil
 }
@@ -181,18 +178,6 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 	}
 
 	if celtypes.IsUnknown(out) {
-		unknownCELVal := out.(*celtypes.Unknown)
-		missingParameters := make([]string, 0, len(unknownCELVal.IDs()))
-
-		for _, id := range unknownCELVal.IDs() {
-			trails, ok := unknownCELVal.GetAttributeTrails(id)
-			if ok {
-				for _, attributeTrail := range trails {
-					missingParameters = append(missingParameters, attributeTrail.String())
-				}
-			}
-		}
-
 		return EvaluationResult{
 			ConditionMet:      false,
 			MissingParameters: missingParameters,
