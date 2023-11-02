@@ -158,7 +158,7 @@ func (pt ParameterType) String() string {
 func (pt ParameterType) ConvertValue(value any) (any, error) {
 	converted, err := pt.typedParamConverter(value)
 	if err != nil {
-		return nil, fmt.Errorf("for %s: %w", pt.String(), err)
+		return nil, err
 	}
 
 	return converted, nil
