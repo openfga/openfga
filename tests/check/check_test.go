@@ -248,12 +248,12 @@ func BenchmarkCheckMySQL(b *testing.B) {
 }
 
 func benchmarkAll(b *testing.B, engine string) {
-	//b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
-	//b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
-	//b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
-	//b.Run("BenchmarkCheckWithBypassDirectRead", func(b *testing.B) { benchmarkCheckWithBypassDirectRead(b, engine) })
-	//b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
-	//b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
+	b.Run("BenchmarkCheckWithoutTrace", func(b *testing.B) { benchmarkCheckWithoutTrace(b, engine) })
+	b.Run("BenchmarkCheckWithTrace", func(b *testing.B) { benchmarkCheckWithTrace(b, engine) })
+	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
+	b.Run("BenchmarkCheckWithBypassDirectRead", func(b *testing.B) { benchmarkCheckWithBypassDirectRead(b, engine) })
+	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
+	b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
 	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
