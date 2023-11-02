@@ -15,7 +15,7 @@ func TestNewCompiled(t *testing.T) {
 	var tests = []struct {
 		name      string
 		condition *openfgav1.Condition
-		err       error
+		err       *condition.CompilationError
 	}{
 		{
 			name: "valid",
@@ -41,7 +41,10 @@ func TestNewCompiled(t *testing.T) {
 					},
 				},
 			},
-			err: fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			err: &condition.CompilationError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("failed to decode parameter type for parameter 'param1': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			},
 		},
 		{
 			name: "invalid_expression",
@@ -55,8 +58,8 @@ func TestNewCompiled(t *testing.T) {
 				},
 			},
 			err: &condition.CompilationError{
-				Expression: "invalid",
-				Cause:      fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
+				Condition: "condition1",
+				Cause:     fmt.Errorf("ERROR: condition1:1:1: undeclared reference to 'invalid' (in container '')\n | invalid\n | ^"),
 			},
 		},
 		{
@@ -70,7 +73,10 @@ func TestNewCompiled(t *testing.T) {
 					},
 				},
 			},
-			err: fmt.Errorf("expected a bool condition expression output, but got 'string'"),
+			err: &condition.CompilationError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("expected a bool condition expression output, but got 'string'"),
+			},
 		},
 		{
 			name: "ipaddress_literal_malformed_bool",
@@ -80,8 +86,8 @@ func TestNewCompiled(t *testing.T) {
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
 			},
 			err: &condition.CompilationError{
-				Expression: `ipaddress(true).in_cidr("192.168.0.0/24")`,
-				Cause:      fmt.Errorf("ERROR: condition1:1:10: found no matching overload for 'ipaddress' applied to '(bool)'\n | ipaddress(true).in_cidr(\"192.168.0.0/24\")\n | .........^"),
+				Condition: "condition1",
+				Cause:     fmt.Errorf("ERROR: condition1:1:10: found no matching overload for 'ipaddress' applied to '(bool)'\n | ipaddress(true).in_cidr(\"192.168.0.0/24\")\n | .........^"),
 			},
 		},
 	}
@@ -91,7 +97,7 @@ func TestNewCompiled(t *testing.T) {
 			_, err := condition.NewCompiled(test.condition)
 
 			if test.err != nil {
-				require.Equal(t, err, test.err)
+				require.EqualError(t, err, test.err.Error())
 			} else {
 				require.NoError(t, err)
 			}
@@ -105,7 +111,7 @@ func TestEvaluate(t *testing.T) {
 		condition *openfgav1.Condition
 		context   map[string]interface{}
 		result    condition.EvaluationResult
-		err       error
+		err       *condition.EvaluationError
 	}{
 		{
 			name: "success_condition_met",
@@ -122,7 +128,6 @@ func TestEvaluate(t *testing.T) {
 				"param1": "ok",
 			},
 			result: condition.EvaluationResult{ConditionMet: true},
-			err:    nil,
 		},
 		{
 			name: "success_condition_unmet",
@@ -137,7 +142,6 @@ func TestEvaluate(t *testing.T) {
 			},
 			context: map[string]interface{}{"param1": "notok"},
 			result:  condition.EvaluationResult{ConditionMet: false},
-			err:     nil,
 		},
 		{
 			name: "fail_no_such_attribute_nil_context",
@@ -207,7 +211,13 @@ func TestEvaluate(t *testing.T) {
 				"param1": true,
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
-			err:    fmt.Errorf("failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
+			err: &condition.EvaluationError{
+				Condition: "condition1",
+				Cause: &condition.ParameterTypeError{
+					Condition: "condition1",
+					Cause:     fmt.Errorf("failed to convert context parameter 'param1': expected type value 'string', but found 'bool'"),
+				},
+			},
 		},
 		{
 			name: "ipaddress_literal",
@@ -228,7 +238,10 @@ func TestEvaluate(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			result:  condition.EvaluationResult{ConditionMet: false},
-			err:     fmt.Errorf("failed to evaluate condition expression: ParseAddr(\"192.168.0\"): IPv4 address too short"),
+			err: &condition.EvaluationError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("failed to evaluate condition expression: ParseAddr(\"192.168.0\"): IPv4 address too short"),
+			},
 		},
 	}
 
@@ -255,7 +268,7 @@ func TestCastContextToTypedParameters(t *testing.T) {
 		contextMap              map[string]any
 		conditionParameterTypes map[string]*openfgav1.ConditionParamTypeRef
 		expectedParams          map[string]any
-		expectedError           error
+		expectedError           *condition.ParameterTypeError
 	}{
 		{
 			name: "valid",
@@ -270,14 +283,12 @@ func TestCastContextToTypedParameters(t *testing.T) {
 			expectedParams: map[string]any{
 				"param1": mustConvertValue(types.StringParamType, "ok"),
 			},
-			expectedError: nil,
 		},
 		{
 			name:                    "empty_context_map",
 			contextMap:              map[string]any{},
 			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
 			expectedParams:          nil,
-			expectedError:           nil,
 		},
 		{
 			name: "empty_parameter_types",
@@ -286,7 +297,10 @@ func TestCastContextToTypedParameters(t *testing.T) {
 			},
 			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
 			expectedParams:          nil,
-			expectedError:           fmt.Errorf("no parameters defined for the condition"),
+			expectedError: &condition.ParameterTypeError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("no parameters defined for the condition"),
+			},
 		},
 		{
 			name: "failed_to_decode_condition_parameter_type",
@@ -299,7 +313,10 @@ func TestCastContextToTypedParameters(t *testing.T) {
 				},
 			},
 			expectedParams: nil,
-			expectedError:  fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			expectedError: &condition.ParameterTypeError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			},
 		},
 	}
 

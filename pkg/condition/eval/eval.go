@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
@@ -19,7 +20,10 @@ func TupleConditionMet(
 	if conditionName != "" {
 		evaluableCondition, ok := typesys.GetCondition(conditionName)
 		if !ok {
-			return false, fmt.Errorf("failed to evaluate relationship condition: condition '%s' was not found", conditionName)
+			return false, &condition.EvaluationError{
+				Condition: conditionName,
+				Cause:     fmt.Errorf("condition was not found"),
+			}
 		}
 
 		// merge both contexts
@@ -31,7 +35,7 @@ func TupleConditionMet(
 
 		conditionResult, err := evaluableCondition.Evaluate(contextSlice...)
 		if err != nil {
-			return false, fmt.Errorf("failed to evaluate relationship condition: %v", err)
+			return false, err
 		}
 
 		if !conditionResult.ConditionMet {
