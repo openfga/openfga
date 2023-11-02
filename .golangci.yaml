@@ -29,6 +29,11 @@ linters:
     # - promlinter
 
 linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
   importas:
     # Do not allow unaliased imports of aliased packages.
     no-unaliased: true
