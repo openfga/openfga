@@ -5441,6 +5441,9 @@ tests:
             user_ip.in_cidr(cidr)
           }
         tuples:
+          - user: user:jon
+            relation: member
+            object: group:fga
           - user: group:eng#member
             relation: viewer
             object: document:1

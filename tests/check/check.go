@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
+	checktest "github.com/openfga/openfga/internal/test/check"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -19,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/yaml"
 )
 
 var writeMaxChunkSize = 40 // chunk write requests into a chunks of this max size
@@ -42,15 +43,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.WriteRequestTupleKey
-	CheckAssertions []*assertion `yaml:"checkAssertions"`
-}
-
-type assertion struct {
-	Tuple            *openfgav1.CheckRequestTupleKey
-	ContextualTuples []*openfgav1.TupleKey  `yaml:"contextualTuples"`
-	Context          map[string]interface{} `yaml:"context"`
-	Expectation      bool
-	ErrorCode        int `yaml:"errorCode"` // If ErrorCode is non-zero then we expect that the check call failed.
+	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests
@@ -206,10 +199,18 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ctxTuples = append(ctxTuples, stageTuples...)
 				}
 
+				var tupleKey *openfgav1.CheckRequestTupleKey
+				if assertion.Tuple != nil {
+					tupleKey = &openfgav1.CheckRequestTupleKey{
+						User:     assertion.Tuple.User,
+						Relation: assertion.Tuple.Relation,
+						Object:   assertion.Tuple.Object,
+					}
+				}
 				resp, err := client.Check(ctx, &openfgav1.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: writeModelResponse.AuthorizationModelId,
-					TupleKey:             assertion.Tuple,
+					TupleKey:             tupleKey,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
