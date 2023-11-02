@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/structpb"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,22 +38,10 @@ type testParams struct {
 	client        ClientInterface
 }
 
-type relationshipCondition struct {
-	Name    string
-	Context map[string]interface{}
-}
-
-type writeRequestTupleKey struct {
-	User      string
-	Relation  string
-	Object    string
-	Condition *relationshipCondition
-}
-
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
 	Model           string
-	Tuples          []*writeRequestTupleKey
+	Tuples          []*openfgav1.WriteRequestTupleKey
 	CheckAssertions []*assertion `yaml:"checkAssertions"`
 }
 
@@ -191,31 +178,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 
 			tuples := stage.Tuples
 			tuplesLength := len(tuples)
-
-			var stageTuples []*openfgav1.WriteRequestTupleKey
-			for _, tuple := range tuples {
-				var condition *openfgav1.RelationshipCondition
-				if tuple.Condition != nil {
-					conditionContext, err := structpb.NewStruct(tuple.Condition.Context)
-					require.NoError(t, err)
-					condition = &openfgav1.RelationshipCondition{
-						Name:    tuple.Condition.Name,
-						Context: conditionContext,
-					}
-				}
-				stageTuples = append(stageTuples, &openfgav1.WriteRequestTupleKey{
-					User:      tuple.User,
-					Relation:  tuple.Relation,
-					Object:    tuple.Object,
-					Condition: condition,
-				})
-			}
-
 			// arrange: write tuples
 			if tuplesLength > 0 && !contextTupleTest {
 				for i := 0; i < tuplesLength; i += writeMaxChunkSize {
 					end := int(math.Min(float64(i+writeMaxChunkSize), float64(tuplesLength)))
-					writeChunk := (stageTuples)[i:end]
+					writeChunk := (tuples)[i:end]
 					_, err = client.Write(ctx, &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: writeModelResponse.AuthorizationModelId,
@@ -228,12 +195,12 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 			}
 
 			for _, assertion := range stage.CheckAssertions {
-				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %v. Contextual tuples: %s", assertion.Tuple, stage.Model, stageTuples, assertion.ContextualTuples)
+				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
 				ctxTuples := assertion.ContextualTuples
 				if contextTupleTest {
 					stageTuples := tuple.ConvertWriteRequestsTupleKeysToTupleKeys(
-						&openfgav1.WriteRequestTupleKeys{TupleKeys: stageTuples},
+						&openfgav1.WriteRequestTupleKeys{TupleKeys: stage.Tuples},
 					)
 
 					ctxTuples = append(ctxTuples, stageTuples...)

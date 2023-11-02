@@ -56,7 +56,7 @@ type ClientInterface interface {
 
 // RunAllTests will invoke all list objects tests
 func RunAllTests(t *testing.T, client ClientInterface) {
-	t.Run("RunAllTests", func(t *testing.T) {
+	t.Run("RunAll", func(t *testing.T) {
 		t.Run("ListObjects", func(t *testing.T) {
 			t.Parallel()
 			testListObjects(t, client)
