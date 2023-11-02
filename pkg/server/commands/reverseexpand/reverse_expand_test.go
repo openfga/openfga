@@ -44,7 +44,9 @@ type document
 		Times(1).
 		DoAndReturn(func(_ context.Context, _ string, _ storage.ReadStartingWithUserFilter) (storage.TupleIterator, error) {
 			// simulate many goroutines trying to write to the results channel
-			return storage.NewStaticTupleIterator(tuples), nil
+			iterator := storage.NewStaticTupleIterator(tuples)
+			t.Logf("returning tuple iterator")
+			return iterator, nil
 		})
 	ctx, cancelFunc := context.WithCancel(context.Background())
 
@@ -55,6 +57,7 @@ type document
 	// process query in one goroutine, but it will be cancelled almost right away
 	go func() {
 		reverseExpandQuery := NewReverseExpandQuery(mockDatastore, typeSystem)
+		t.Logf("before execute reverse expand")
 		reverseExpandQuery.Execute(ctx, &ReverseExpandRequest{
 			StoreID:    store,
 			ObjectType: "document",
@@ -67,19 +70,24 @@ type document
 			},
 			ContextualTuples: []*openfgav1.TupleKey{},
 		}, resultChan, NewResolutionMetadata())
+		t.Logf("after execute reverse expand")
 		done <- struct{}{}
 	}()
 	go func() {
 		// simulate max_results=1
+		t.Logf("before receive one result")
 		res := <-resultChan
+		t.Logf("after receive one result")
 		cancelFunc()
+		t.Logf("after send cancellation")
 		require.NotNil(t, res.Object)
 		require.Nil(t, res.Err)
 	}()
 
 	select {
 	case <-done:
-	// OK!
+		t.Log("OK!")
+		return
 	case <-time.After(10 * time.Millisecond):
 		require.FailNow(t, "timed out")
 	}

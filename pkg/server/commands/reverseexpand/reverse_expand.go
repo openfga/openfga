@@ -471,10 +471,6 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		})
 	}
 
-	sourceRelationRef := &openfgav1.RelationReference{
-		Type: req.sourceUserRef.GetObjectType(),
-	}
-
 	// e.g. 'user:bob'
 	if val, ok := req.sourceUserRef.(*UserRefObject); ok {
 		userFilter = append(userFilter, &openfgav1.ObjectRelation{
@@ -484,10 +480,6 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 	// e.g. 'group:eng#member'
 	if val, ok := req.sourceUserRef.(*UserRefObjectRelation); ok {
-		sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
-			Relation: val.ObjectRelation.Relation,
-		}
-
 		userFilter = append(userFilter, val.ObjectRelation)
 	}
 
