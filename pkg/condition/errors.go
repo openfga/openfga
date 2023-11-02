@@ -2,14 +2,17 @@ package condition
 
 import (
 	"fmt"
+
+	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type CompilationError struct {
-	Cause error
+	Condition *openfgav1.Condition
+	Cause     error
 }
 
 func (e *CompilationError) Error() string {
-	return fmt.Sprintf("failed to compile condition expression: %v", e.Cause)
+	return fmt.Sprintf("failed to compile expression on condition '%s': %v", e.Condition.Name, e.Cause)
 }
 
 func (e *CompilationError) Unwrap() error {
@@ -17,11 +20,12 @@ func (e *CompilationError) Unwrap() error {
 }
 
 type EvaluationError struct {
-	Cause error
+	Condition *openfgav1.Condition
+	Cause     error
 }
 
 func (e *EvaluationError) Error() string {
-	return fmt.Sprintf("failed to evaluate relationship condition: %v", e.Cause)
+	return fmt.Sprintf("failed to evaluate relationship condition '%s': %v", e.Condition.Name, e.Cause)
 }
 
 func (e *EvaluationError) Unwrap() error {
@@ -29,11 +33,12 @@ func (e *EvaluationError) Unwrap() error {
 }
 
 type ParameterTypeError struct {
-	Cause error
+	Condition *openfgav1.Condition
+	Cause     error
 }
 
 func (e *ParameterTypeError) Error() string {
-	return e.Cause.Error()
+	return fmt.Sprintf("parameter type error on condition '%s': %v", e.Condition.Name, e.Cause)
 }
 
 func (e *ParameterTypeError) Unwrap() error {

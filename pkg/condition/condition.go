@@ -59,7 +59,10 @@ func (c *EvaluableCondition) compile() error {
 	for paramName, paramTypeRef := range c.GetParameters() {
 		paramType, err := types.DecodeParameterType(paramTypeRef)
 		if err != nil {
-			return fmt.Errorf("failed to decode parameter type for parameter '%s': %v", paramName, err)
+			return &CompilationError{
+				Condition: c.Condition,
+				Cause:     fmt.Errorf("failed to decode parameter type for parameter '%s': %v", paramName, err),
+			}
 		}
 
 		conditionParamTypes[paramName] = paramType
@@ -74,7 +77,8 @@ func (c *EvaluableCondition) compile() error {
 	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
 		return &CompilationError{
-			Cause: err,
+			Condition: c.Condition,
+			Cause:     err,
 		}
 	}
 
@@ -83,7 +87,8 @@ func (c *EvaluableCondition) compile() error {
 	if issues != nil {
 		if err := issues.Err(); err != nil {
 			return &CompilationError{
-				Cause: err,
+				Condition: c.Condition,
+				Cause:     err,
 			}
 		}
 	}
@@ -95,13 +100,15 @@ func (c *EvaluableCondition) compile() error {
 	prg, err := env.Program(ast, prgopts...)
 	if err != nil {
 		return &CompilationError{
-			Cause: fmt.Errorf("condition expression construction: %w", err),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("condition expression construction: %w", err),
 		}
 	}
 
 	if !reflect.DeepEqual(ast.OutputType(), cel.BoolType) {
 		return &CompilationError{
-			Cause: fmt.Errorf("expected a bool condition expression output, but got '%s'", ast.OutputType()),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("expected a bool condition expression output, but got '%s'", ast.OutputType()),
 		}
 	}
 
@@ -122,7 +129,8 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 
 	if len(parameterTypes) == 0 {
 		return nil, &ParameterTypeError{
-			Cause: fmt.Errorf("no parameters defined for the condition"),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("no parameters defined for the condition"),
 		}
 	}
 
@@ -137,14 +145,16 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 		varType, err := types.DecodeParameterType(paramTypeRef)
 		if err != nil {
 			return nil, &ParameterTypeError{
-				Cause: fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.TypeName, err),
+				Condition: c.Condition,
+				Cause:     fmt.Errorf("failed to decode condition parameter type '%s': %v", paramTypeRef.TypeName, err),
 			}
 		}
 
 		convertedParam, err := varType.ConvertValue(value)
 		if err != nil {
 			return nil, &ParameterTypeError{
-				Cause: fmt.Errorf("failed to convert context parameter '%s': %w", key, err),
+				Condition: c.Condition,
+				Cause:     fmt.Errorf("failed to convert context parameter '%s': %w", key, err),
 			}
 		}
 
@@ -161,7 +171,10 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // for the last most context wins.
 func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (EvaluationResult, error) {
 	if err := c.Compile(); err != nil {
-		return emptyEvaluationResult, &EvaluationError{Cause: err}
+		return emptyEvaluationResult, &EvaluationError{
+			Condition: c.Condition,
+			Cause:     err,
+		}
 	}
 
 	// merge context maps
@@ -173,20 +186,25 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	typedParams, err := c.CastContextToTypedParameters(clonedMap)
 	if err != nil {
-		return emptyEvaluationResult, &EvaluationError{Cause: err}
+		return emptyEvaluationResult, &EvaluationError{
+			Condition: c.Condition,
+			Cause:     err,
+		}
 	}
 
 	activation, err := c.celEnv.PartialVars(typedParams)
 	if err != nil {
 		return emptyEvaluationResult, &EvaluationError{
-			Cause: fmt.Errorf("failed to construct condition partial vars: %v", err),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("failed to construct condition partial vars: %v", err),
 		}
 	}
 
 	out, _, err := c.celProgram.Eval(activation)
 	if err != nil {
 		return emptyEvaluationResult, &EvaluationError{
-			Cause: fmt.Errorf("failed to evaluate condition expression: %v", err),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("failed to evaluate condition expression: %v", err),
 		}
 	}
 
@@ -212,14 +230,16 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 	conditionMetVal, err := out.ConvertToNative(reflect.TypeOf(false))
 	if err != nil {
 		return emptyEvaluationResult, &EvaluationError{
-			Cause: fmt.Errorf("failed to convert condition output to bool: %v", err),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("failed to convert condition output to bool: %v", err),
 		}
 	}
 
 	conditionMet, ok := conditionMetVal.(bool)
 	if !ok {
 		return emptyEvaluationResult, &EvaluationError{
-			Cause: fmt.Errorf("expected CEL type conversion to return native Go bool"),
+			Condition: c.Condition,
+			Cause:     fmt.Errorf("expected CEL type conversion to return native Go bool"),
 		}
 	}
 

@@ -45,7 +45,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "string",
 			expectedError: fmt.Errorf(
-				"expected type value 'string', but found '\"int64\"'",
+				"expected type value 'string', but found 'int64'",
 			),
 		},
 		{
@@ -127,7 +127,7 @@ func TestPrimitives(t *testing.T) {
 			output:    nil,
 			repr:      "bool",
 			expectedError: fmt.Errorf(
-				"expected type value 'bool', but found '\"string\"'",
+				"expected type value 'bool', but found 'string'",
 			),
 		},
 		{
@@ -212,7 +212,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustMapParamType(StringParamType),
 			input:     map[string]any{"hello": 1},
 			expectedError: fmt.Errorf(
-				"found an invalid value for key 'hello': expected type value 'string', but found '\"int\"'",
+				"found an invalid value for key 'hello': expected type value 'string', but found 'int'",
 			),
 			repr: "TYPE_NAME_MAP<string>",
 		},
@@ -237,7 +237,7 @@ func TestPrimitives(t *testing.T) {
 			paramType: mustListParamType(StringParamType),
 			input:     []any{"hello", 1},
 			expectedError: fmt.Errorf(
-				"found an invalid list item at index `1`: expected type value 'string', but found '\"int\"'",
+				"found an invalid list item at index `1`: expected type value 'string', but found 'int'",
 			),
 			repr: "TYPE_NAME_LIST<string>",
 		},
