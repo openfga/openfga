@@ -14,7 +14,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/assets"
 	listobjectstest "github.com/openfga/openfga/internal/test/listobjects"
-	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests/check"
@@ -170,7 +169,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
-					Context: testutils.MustNewStruct(t, assertion.Context),
+					Context: assertion.Context,
 				})
 
 				if assertion.ErrorCode == 0 {
@@ -196,7 +195,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: ctxTuples,
 					},
-					Context: testutils.MustNewStruct(t, assertion.Context),
+					Context: assertion.Context,
 				}, []grpc.CallOption{}...)
 				require.NoError(t, err)
 
@@ -238,7 +237,7 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 							ContextualTuples: &openfgav1.ContextualTupleKeys{
 								TupleKeys: ctxTuples,
 							},
-							Context: testutils.MustNewStruct(t, assertion.Context),
+							Context: assertion.Context,
 						})
 						require.NoError(t, err, detailedInfo)
 						require.True(t, checkResp.Allowed, detailedInfo)
