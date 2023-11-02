@@ -29,6 +29,7 @@ type EvaluableCondition struct {
 	*openfgav1.Condition
 
 	celEnv      *cel.Env
+	celAst      *cel.Ast
 	celProgram  cel.Program
 	compileOnce sync.Once
 }
@@ -82,6 +83,7 @@ func (c *EvaluableCondition) compile() error {
 
 	prgopts := []cel.ProgramOption{
 		cel.EvalOptions(cel.OptPartialEval),
+		cel.EvalOptions(cel.OptExhaustiveEval),
 	}
 
 	prg, err := env.Program(ast, prgopts...)
@@ -94,6 +96,7 @@ func (c *EvaluableCondition) compile() error {
 	}
 
 	c.celEnv = env
+	c.celAst = ast
 	c.celProgram = prg
 	return nil
 }
@@ -163,6 +166,15 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		return emptyEvaluationResult, fmt.Errorf("failed to construct condition partial vars: %v", err)
 	}
 
+	var missingParameters []string
+	for key := range c.GetParameters() {
+		if _, ok := activation.ResolveName(key); ok {
+			continue
+		}
+
+		missingParameters = append(missingParameters, key)
+	}
+
 	out, _, err := c.celProgram.Eval(activation)
 	if err != nil {
 		return emptyEvaluationResult, fmt.Errorf("failed to evaluate condition expression: %v", err)
@@ -197,7 +209,10 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		return emptyEvaluationResult, fmt.Errorf("expected CEL type conversion to return native Go bool")
 	}
 
-	return EvaluationResult{ConditionMet: conditionMet}, nil
+	return EvaluationResult{
+		ConditionMet:      conditionMet,
+		MissingParameters: missingParameters,
+	}, nil
 }
 
 // NewUncompiled returns a new EvaluableCondition that has not

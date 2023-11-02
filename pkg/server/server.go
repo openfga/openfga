@@ -18,6 +18,7 @@ import (
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	httpmiddleware "github.com/openfga/openfga/pkg/middleware/http"
@@ -368,6 +369,10 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		},
 	)
 	if err != nil {
+		if errors.Is(err, eval.ErrEvaluatingCondition) {
+			return nil, serverErrors.ValidationError(err)
+		}
+
 		return nil, err
 	}
 	queryCount := float64(*result.ResolutionMetadata.QueryCount)
@@ -581,6 +586,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+
+		if errors.Is(err, eval.ErrEvaluatingCondition) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		return nil, serverErrors.HandleError("", err)

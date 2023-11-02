@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -388,6 +389,7 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
+	var errs error
 	for {
 		t, err := iter.Next()
 		if err != nil {
@@ -400,13 +402,16 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 
 		tk := t.GetKey()
 
-		conditionMet, err := eval.TupleConditionMet(tk, c.typesystem, req.context.AsMap())
+		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.context.AsMap())
 		if err != nil {
-			return err
+			errs = multierror.Append(errs, err)
+			continue
 		}
 
-		if !conditionMet {
-			// todo: expose partial eval info conditionEvalResult.MissingParameters
+		if !condEvalResult.ConditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, fmt.Errorf("some error"))
+			}
 
 			continue
 		}
@@ -510,6 +515,7 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 	pool.WithFirstError()
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
+	var errs *multierror.Error
 	for {
 		t, err := iter.Next()
 		if err != nil {
@@ -522,13 +528,22 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 
 		tk := t.GetKey()
 
-		conditionMet, err := eval.TupleConditionMet(tk, c.typesystem, req.context.AsMap())
+		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.context.AsMap())
 		if err != nil {
-			return err
+			errs = multierror.Append(errs, err)
+			continue
 		}
 
-		if !conditionMet {
-			// todo: expose partial eval info conditionEvalResult.MissingParameters
+		if !condEvalResult.ConditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, fmt.Errorf(
+					"%w: evaluation of condition '%s' on '%s' failed, context is missing parameters '%v'",
+					eval.ErrEvaluatingCondition,
+					tk.GetCondition().GetName(),
+					tuple.TupleKeyToString(tk),
+					condEvalResult.MissingParameters,
+				))
+			}
 
 			continue
 		}
@@ -553,7 +568,12 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		})
 	}
 
-	return pool.Wait()
+	errs = multierror.Append(errs, pool.Wait())
+	if errs.ErrorOrNil() != nil {
+		return errs
+	}
+
+	return nil
 }
 
 func (c *ReverseExpandQuery) trySendCandidate(ctx context.Context, edge *graph.RelationshipEdge, candidateObject string, candidateChan chan<- *ReverseExpandResult) error {
