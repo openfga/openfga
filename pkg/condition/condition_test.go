@@ -81,8 +81,7 @@ func TestNewCompiled(t *testing.T) {
 				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
 			},
 			err: &condition.CompilationError{
-				Expression: `ipaddress(true).in_cidr("192.168.0.0/24")`,
-				Cause:      fmt.Errorf("ERROR: condition1:1:10: found no matching overload for 'ipaddress' applied to '(bool)'\n | ipaddress(true).in_cidr(\"192.168.0.0/24\")\n | .........^"),
+				Cause: fmt.Errorf("ERROR: condition1:1:10: found no matching overload for 'ipaddress' applied to '(bool)'\n | ipaddress(true).in_cidr(\"192.168.0.0/24\")\n | .........^"),
 			},
 		},
 	}
@@ -229,7 +228,9 @@ func TestEvaluate(t *testing.T) {
 			},
 			context: map[string]interface{}{},
 			result:  condition.EvaluationResult{ConditionMet: false},
-			err:     fmt.Errorf("failed to evaluate condition expression: ParseAddr(\"192.168.0\"): IPv4 address too short"),
+			err: &condition.EvaluationError{
+				Cause: fmt.Errorf("failed to evaluate condition expression: ParseAddr(\"192.168.0\"): IPv4 address too short"),
+			},
 		},
 	}
 
