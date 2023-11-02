@@ -12,6 +12,30 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
+var ipaddrLibraryDecls = map[string][]cel.FunctionOpt{
+	"ipaddress": {
+		cel.Overload("string_to_ipaddress", []*cel.Type{cel.StringType}, ipaddrCelType,
+			cel.UnaryBinding(stringToIPAddress))},
+}
+
+var ipaddrLib = &IPAddress{}
+
+func IPAddressEnvOption() cel.EnvOption {
+	return cel.Lib(ipaddrLib)
+}
+
+func (ip *IPAddress) CompileOptions() []cel.EnvOption {
+	options := []cel.EnvOption{}
+	for name, overloads := range ipaddrLibraryDecls {
+		options = append(options, cel.Function(name, overloads...))
+	}
+	return options
+}
+
+func (ip *IPAddress) ProgramOptions() []cel.ProgramOption {
+	return []cel.ProgramOption{}
+}
+
 // IPAddressType defines a ParameterType that is used to represent IP addresses in CEL expressions.
 var IPAddressType = registerCustomParamType(
 	openfgav1.ConditionParamTypeRef_TYPE_NAME_IPADDRESS,
@@ -123,4 +147,18 @@ func ipaddressCELBinaryBinding(lhs, rhs ref.Val) ref.Val {
 	}
 
 	return types.Bool(network.Contains(ipaddr.addr))
+}
+
+func stringToIPAddress(arg ref.Val) ref.Val {
+	ipStr, ok := arg.Value().(string)
+	if !ok {
+		return types.MaybeNoSuchOverloadErr(arg)
+	}
+
+	ipaddr, err := ParseIPAddress(ipStr)
+	if err != nil {
+		return types.NewErr(err.Error())
+	}
+
+	return ipaddr
 }

@@ -72,6 +72,18 @@ func TestNewCompiled(t *testing.T) {
 			},
 			err: fmt.Errorf("expected a bool condition expression output, but got 'string'"),
 		},
+		{
+			name: "ipaddress_literal_malformed_bool",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: `ipaddress(true).in_cidr("192.168.0.0/24")`,
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
+			},
+			err: &condition.CompilationError{
+				Expression: `ipaddress(true).in_cidr("192.168.0.0/24")`,
+				Cause:      fmt.Errorf("ERROR: condition1:1:10: found no matching overload for 'ipaddress' applied to '(bool)'\n | ipaddress(true).in_cidr(\"192.168.0.0/24\")\n | .........^"),
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -196,6 +208,27 @@ func TestEvaluate(t *testing.T) {
 			},
 			result: condition.EvaluationResult{ConditionMet: false},
 			err:    fmt.Errorf("failed to convert context parameter 'param1': for string: unexpected type value '\"bool\"', expected 'string'"),
+		},
+		{
+			name: "ipaddress_literal",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: `ipaddress("192.168.0.1").in_cidr("192.168.0.0/24")`,
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
+			},
+			context: map[string]interface{}{},
+			result:  condition.EvaluationResult{ConditionMet: true},
+		},
+		{
+			name: "ipaddress_literal_malformed_addr",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: `ipaddress("192.168.0").in_cidr("192.168.0.0/24")`,
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{},
+			},
+			context: map[string]interface{}{},
+			result:  condition.EvaluationResult{ConditionMet: false},
+			err:     fmt.Errorf("failed to evaluate condition expression: ParseAddr(\"192.168.0\"): IPv4 address too short"),
 		},
 	}
 
