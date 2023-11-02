@@ -36,7 +36,7 @@ condition correct_ip(ip: string) {
 }`),
 			context:      map[string]interface{}{"ip": "192.168.0.1"},
 			conditionMet: false,
-			expectedErr:  "failed to evaluate relationship condition: condition 'unknown' was not found",
+			expectedErr:  "failed to evaluate relationship condition 'unknown': condition was not found",
 		},
 		{
 			name:     "condition_not_met",
