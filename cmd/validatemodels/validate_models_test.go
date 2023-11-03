@@ -61,7 +61,7 @@ func TestValidationResult(t *testing.T) {
 			t.Run("validate returns success", func(t *testing.T) {
 				validationResults, err := ValidateAllAuthorizationModels(ctx, ds)
 				require.NoError(t, err)
-				require.Equal(t, totalModelsForOneStore, len(validationResults))
+				require.Len(t, validationResults, totalModelsForOneStore)
 				require.Contains(t, "the relation type 'user' on 'viewer' in object type 'document' is not valid", validationResults[0].Error)
 				require.True(t, validationResults[0].IsLatestModel)
 
@@ -107,7 +107,7 @@ func TestValidateModelsCommandNoConfigDefaultValues(t *testing.T) {
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCommand)
 	cmd.SetArgs([]string{"validate-models"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestValidateModelsCommandConfigFileValuesAreParsed(t *testing.T) {
@@ -127,7 +127,7 @@ func TestValidateModelsCommandConfigFileValuesAreParsed(t *testing.T) {
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCmd)
 	cmd.SetArgs([]string{"validate-models"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestValidateModelsCommandConfigIsMerged(t *testing.T) {
@@ -148,5 +148,5 @@ func TestValidateModelsCommandConfigIsMerged(t *testing.T) {
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(validateCmd)
 	cmd.SetArgs([]string{"validate-models"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }

@@ -81,7 +81,7 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 		cancelFunc()
 		t.Logf("after send cancellation")
 		require.NotNil(t, res.Object)
-		require.Nil(t, res.Err)
+		require.NoError(t, res.Err)
 	}()
 
 	select {

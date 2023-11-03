@@ -85,5 +85,5 @@ func PrepareTempConfigFile(t *testing.T, config string) {
 	require.NoError(t, err)
 	_, err = confFile.WriteString(config)
 	require.NoError(t, err)
-	require.Nil(t, confFile.Close())
+	require.NoError(t, confFile.Close())
 }
