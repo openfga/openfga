@@ -9,21 +9,17 @@ import (
 )
 
 // TupleConditionMet returns a bool indicating if the provided tupleKey's condition (if any) was met.
-// If the condition cannot be evaluated or it was not defined in the typesystem, it returns 'false' and an error.
-func TupleConditionMet(
+func EvaluateTupleCondition(
 	tupleKey *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
 	context map[string]interface{},
-) (bool, error) {
+) (*condition.EvaluationResult, error) {
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
 	if conditionName != "" {
 		evaluableCondition, ok := typesys.GetCondition(conditionName)
 		if !ok {
-			return false, &condition.EvaluationError{
-				Condition: conditionName,
-				Cause:     fmt.Errorf("condition was not found"),
-			}
+			return nil, condition.NewEvaluationError(conditionName, fmt.Errorf("condition was not found"))
 		}
 
 		// merge both contexts
@@ -35,13 +31,13 @@ func TupleConditionMet(
 
 		conditionResult, err := evaluableCondition.Evaluate(contextSlice...)
 		if err != nil {
-			return false, err
+			return nil, err
 		}
 
-		if !conditionResult.ConditionMet {
-			return false, nil
-		}
+		return &conditionResult, nil
 	}
 
-	return true, nil
+	return &condition.EvaluationResult{
+		ConditionMet: true,
+	}, nil
 }

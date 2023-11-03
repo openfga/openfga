@@ -9,10 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -350,6 +352,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
+	var errs *multierror.Error
 	for {
 		select {
 		case <-timeoutCtx.Done():
@@ -367,14 +370,23 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				if !(errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded)) {
-					return nil, serverErrors.HandleError("", result.Err)
+				if _, ok := result.Err.(*condition.EvaluationError); ok {
+					errs = multierror.Append(errs, result.Err)
+					continue
 				}
 
-				continue
+				if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+					continue
+				}
+
+				return nil, serverErrors.HandleError("", result.Err)
 			}
 
 			if !channelOpen {
+				if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+					return nil, errs
+				}
+
 				return &ListObjectsResponse{
 					Objects:            objects,
 					ResolutionMetadata: *resolutionMetadata,

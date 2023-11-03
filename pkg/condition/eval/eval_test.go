@@ -80,12 +80,12 @@ condition correct_ip(ip: string) {
 			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 
-			actualConditionMet, err := TupleConditionMet(test.tupleKey, ts, test.context)
-			require.Equal(t, test.conditionMet, actualConditionMet)
+			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, test.context)
 			if err != nil {
 				require.EqualError(t, err, test.expectedErr)
 			} else {
 				require.Empty(t, test.expectedErr)
+				require.Equal(t, test.conditionMet, condEvalResult.ConditionMet)
 			}
 		})
 	}

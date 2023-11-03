@@ -2,7 +2,11 @@ package condition
 
 import (
 	"fmt"
+
+	"github.com/openfga/openfga/internal/errors"
 )
+
+var ErrEvaluationFailed = fmt.Errorf("failed to evaluate relationship condition")
 
 type CompilationError struct {
 	Condition string
@@ -22,12 +26,19 @@ type EvaluationError struct {
 	Cause     error
 }
 
+func NewEvaluationError(condition string, cause error) error {
+	return errors.With(&EvaluationError{
+		Condition: condition,
+		Cause:     cause,
+	}, ErrEvaluationFailed)
+}
+
 func (e *EvaluationError) Error() string {
 	if _, ok := e.Cause.(*ParameterTypeError); ok {
 		return e.Unwrap().Error()
 	}
 
-	return fmt.Sprintf("failed to evaluate relationship condition '%s': %v", e.Condition, e.Cause)
+	return fmt.Sprintf("%s '%s': %v", ErrEvaluationFailed.Error(), e.Condition, e.Cause)
 }
 
 func (e *EvaluationError) Unwrap() error {

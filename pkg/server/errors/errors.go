@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/grpc/codes"
@@ -121,13 +120,6 @@ func HandleError(public string, err error) error {
 		return MismatchObjectType
 	} else if errors.Is(err, storage.ErrCancelled) {
 		return RequestCancelled
-	}
-
-	switch t := err.(type) {
-	case *condition.CompilationError,
-		*condition.EvaluationError,
-		*condition.ParameterTypeError:
-		return status.Error(codes.InvalidArgument, t.Error())
 	}
 
 	return NewInternalError(public, err)

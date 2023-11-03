@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -457,8 +459,9 @@ func (c *LocalChecker) ResolveCheck(
 		panic("typesystem missing in context")
 	}
 
-	object := req.GetTupleKey().GetObject()
-	relation := req.GetTupleKey().GetRelation()
+	tupleKey := req.GetTupleKey()
+	object := tupleKey.GetObject()
+	relation := tupleKey.GetRelation()
 
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
@@ -533,12 +536,19 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
-				conditionMet, err := eval.TupleConditionMet(tupleKey, typesys, req.GetContext().AsMap())
+				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext().AsMap())
 				if err != nil {
 					return nil, err
 				}
 
-				if !conditionMet {
+				if len(condEvalResult.MissingParameters) > 0 {
+					return nil, condition.NewEvaluationError(
+						tupleKey.GetCondition().GetName(),
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					)
+				}
+
+				if !condEvalResult.ConditionMet {
 					return response, nil
 				}
 
@@ -577,6 +587,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
+			var errs error
 			var handlers []CheckHandlerFunc
 			for {
 				t, err := filteredIter.Next()
@@ -588,12 +599,22 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				conditionMet, err := eval.TupleConditionMet(t, typesys, req.GetContext().AsMap())
+				condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext().AsMap())
 				if err != nil {
-					return response, err
+					errs = multierror.Append(errs, err)
+					continue
 				}
 
-				if !conditionMet {
+				if len(condEvalResult.MissingParameters) > 0 {
+					errs = multierror.Append(errs, condition.NewEvaluationError(
+						t.GetCondition().GetName(),
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					))
+
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
 					continue
 				}
 
@@ -637,11 +658,16 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
-			if len(handlers) == 0 {
-				return response, nil
+			if len(handlers) == 0 && errs != nil {
+				return nil, errs
 			}
 
-			return union(ctx, c.concurrencyLimit, handlers...)
+			resp, err := union(ctx, c.concurrencyLimit, handlers...)
+			if err != nil {
+				return nil, multierror.Append(errs, err)
+			}
+
+			return resp, nil
 		}
 
 		var checkFuncs []CheckHandlerFunc
@@ -742,6 +768,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
+		var errs error
 		var handlers []CheckHandlerFunc
 		for {
 			t, err := filteredIter.Next()
@@ -753,12 +780,23 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				return response, err
 			}
 
-			conditionMet, err := eval.TupleConditionMet(t, typesys, req.GetContext().AsMap())
+			condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext().AsMap())
 			if err != nil {
-				return response, err
+				errs = multierror.Append(errs, err)
+
+				continue
 			}
 
-			if !conditionMet {
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+				))
+
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
 				continue
 			}
 
@@ -796,20 +834,21 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}))
 		}
 
-		if len(handlers) == 0 {
-			return response, nil
+		if len(handlers) == 0 && errs != nil {
+			return nil, errs
 		}
 
 		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
-
-		if err == nil {
-			// if we had 3 dispatched requests, and the final result is "allowed = false",
-			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
-			// if final result is "allowed = true", we want final reads to be N1 + 1
-			unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+		if err != nil {
+			return nil, multierror.Append(errs, err)
 		}
 
-		return unionResponse, err
+		// if we had 3 dispatched requests, and the final result is "allowed = false",
+		// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
+		// if final result is "allowed = true", we want final reads to be N1 + 1
+		unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+
+		return unionResponse, nil
 	}
 }
 
