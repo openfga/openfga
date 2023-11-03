@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/condition"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 

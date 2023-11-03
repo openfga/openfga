@@ -8,10 +8,10 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/condition"
-	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
