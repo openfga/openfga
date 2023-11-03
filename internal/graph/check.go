@@ -663,8 +663,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 			}
 
-			if len(handlers) == 0 {
-				return response, nil
+			if len(handlers) == 0 && errs != nil {
+				return nil, errs
 			}
 
 			resp, err := union(ctx, c.concurrencyLimit, handlers...)

@@ -63,6 +63,16 @@ func NewTupleKeyWithCondition(
 }
 
 func NewRelationshipCondition(name string, context *structpb.Struct) *openfgav1.RelationshipCondition {
+	if context == nil {
+		emptyContext, err := structpb.NewStruct(map[string]interface{}{})
+		if err != nil {
+			panic(err)
+		}
+		return &openfgav1.RelationshipCondition{
+			Name:    name,
+			Context: emptyContext,
+		}
+	}
 	return &openfgav1.RelationshipCondition{
 		Name:    name,
 		Context: context,

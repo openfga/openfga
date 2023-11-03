@@ -22,12 +22,13 @@ func EvaluateTupleCondition(
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
 	if conditionName != "" {
-		evaluableCondition := typesys.GetCondition(conditionName)
-
-		contextSlice := []map[string]interface{}{
-			context,
+		evaluableCondition, ok := typesys.GetCondition(conditionName)
+		if !ok {
+			return nil, fmt.Errorf("failed to evaluate relationship condition: condition '%s' was not found", conditionName)
 		}
 
+		// merge both contexts
+		contextSlice := []map[string]interface{}{context}
 		tupleContext := tupleCondition.GetContext()
 		if tupleContext != nil {
 			contextSlice = append(contextSlice, tupleContext.AsMap())

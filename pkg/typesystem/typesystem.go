@@ -254,8 +254,11 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relati
 	return r, nil
 }
 
-func (t *TypeSystem) GetCondition(name string) *condition.EvaluableCondition {
-	return t.conditions[name]
+func (t *TypeSystem) GetCondition(name string) (*condition.EvaluableCondition, bool) {
+	if _, ok := t.conditions[name]; !ok {
+		return nil, false
+	}
+	return t.conditions[name], true
 }
 
 // GetRelationReferenceAsString returns team#member, or team:*, or an empty string if the input is nil.
