@@ -59,7 +59,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 			resp, err := query.Execute(ctx, &openfgav1.ReadAuthorizationModelsRequest{StoreId: store})
 			require.NoError(err)
 
-			require.Equal(test.expectedNumModelsReturned, len(resp.GetAuthorizationModels()))
+			require.Len(resp.GetAuthorizationModels(), test.expectedNumModelsReturned)
 			require.Empty(resp.ContinuationToken, "expected an empty continuation token")
 		})
 	}
