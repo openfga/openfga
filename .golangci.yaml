@@ -17,6 +17,7 @@ linters:
     - ineffassign
     - staticcheck
     - tagalign
+    - testifylint
     - typecheck
     - unused
     - unconvert

@@ -124,7 +124,7 @@ func TestReadPageEnsureOrder(t *testing.T) {
 		storage.NewPaginationOptions(0, ""))
 	require.NoError(t, err)
 
-	require.Equal(t, 2, len(tuples))
+	require.Len(t, tuples, 2)
 	// we expect that objectID2 will return first because it has a smaller ulid
 	require.Equal(t, secondTuple, tuples[0].Key)
 	require.Equal(t, firstTuple, tuples[1].Key)
