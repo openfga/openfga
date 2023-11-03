@@ -1,16 +1,11 @@
 package eval
 
 import (
-	"errors"
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/typesystem"
-)
-
-var (
-	ErrEvaluatingCondition = errors.New("condition evaluation failed")
 )
 
 // TupleConditionMet returns a bool indicating if the provided tupleKey's condition (if any) was met.
@@ -24,10 +19,7 @@ func EvaluateTupleCondition(
 	if conditionName != "" {
 		evaluableCondition, ok := typesys.GetCondition(conditionName)
 		if !ok {
-			return nil, &condition.EvaluationError{
-				Condition: conditionName,
-				Cause:     fmt.Errorf("condition was not found"),
-			}
+			return nil, condition.NewEvaluationError(conditionName, fmt.Errorf("condition was not found"))
 		}
 
 		// merge both contexts

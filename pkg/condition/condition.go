@@ -9,6 +9,7 @@ import (
 	"github.com/google/cel-go/common"
 	celtypes "github.com/google/cel-go/common/types"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/errors"
 	"github.com/openfga/openfga/pkg/condition/types"
 	"golang.org/x/exp/maps"
 )
@@ -171,10 +172,10 @@ func (c *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // for the last most context wins.
 func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (EvaluationResult, error) {
 	if err := c.Compile(); err != nil {
-		return emptyEvaluationResult, &EvaluationError{
+		return emptyEvaluationResult, errors.With(&EvaluationError{
 			Condition: c.Name,
 			Cause:     err,
-		}
+		}, ErrEvaluationFailed)
 	}
 
 	// merge context maps
@@ -186,18 +187,18 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	typedParams, err := c.CastContextToTypedParameters(clonedMap)
 	if err != nil {
-		return emptyEvaluationResult, &EvaluationError{
+		return emptyEvaluationResult, errors.With(&EvaluationError{
 			Condition: c.Name,
 			Cause:     err,
-		}
+		}, ErrEvaluationFailed)
 	}
 
 	activation, err := c.celEnv.PartialVars(typedParams)
 	if err != nil {
-		return emptyEvaluationResult, &EvaluationError{
+		return emptyEvaluationResult, errors.With(&EvaluationError{
 			Condition: c.Name,
 			Cause:     fmt.Errorf("failed to construct condition partial vars: %v", err),
-		}
+		}, ErrEvaluationFailed)
 	}
 
 	var missingParameters []string
@@ -211,10 +212,10 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	out, _, err := c.celProgram.Eval(activation)
 	if err != nil {
-		return emptyEvaluationResult, &EvaluationError{
-			Condition: c.Name,
-			Cause:     fmt.Errorf("failed to evaluate condition expression: %v", err),
-		}
+		return emptyEvaluationResult, NewEvaluationError(
+			c.Name,
+			fmt.Errorf("failed to evaluate condition expression: %v", err),
+		)
 	}
 
 	if celtypes.IsUnknown(out) {
@@ -226,18 +227,18 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	conditionMetVal, err := out.ConvertToNative(reflect.TypeOf(false))
 	if err != nil {
-		return emptyEvaluationResult, &EvaluationError{
-			Condition: c.Name,
-			Cause:     fmt.Errorf("failed to convert condition output to bool: %v", err),
-		}
+		return emptyEvaluationResult, NewEvaluationError(
+			c.Name,
+			fmt.Errorf("failed to convert condition output to bool: %v", err),
+		)
 	}
 
 	conditionMet, ok := conditionMetVal.(bool)
 	if !ok {
-		return emptyEvaluationResult, &EvaluationError{
-			Condition: c.Name,
-			Cause:     fmt.Errorf("expected CEL type conversion to return native Go bool"),
-		}
+		return emptyEvaluationResult, NewEvaluationError(
+			c.Name,
+			fmt.Errorf("expected CEL type conversion to return native Go bool"),
+		)
 	}
 
 	return EvaluationResult{

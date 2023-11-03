@@ -127,7 +127,7 @@ func HandleError(public string, err error) error {
 	case *condition.CompilationError,
 		*condition.EvaluationError,
 		*condition.ParameterTypeError:
-		return status.Error(codes.InvalidArgument, t.Error())
+		return ValidationError(t)
 	}
 
 	return NewInternalError(public, err)

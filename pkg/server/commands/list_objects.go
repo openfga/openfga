@@ -14,7 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
-	"github.com/openfga/openfga/pkg/condition/eval"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands/reverseexpand"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -370,7 +370,7 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				if errors.Is(result.Err, eval.ErrEvaluatingCondition) {
+				if _, ok := result.Err.(*condition.EvaluationError); ok {
 					errs = multierror.Append(errs, result.Err)
 					continue
 				}
@@ -436,10 +436,6 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 					return nil, result.Err
-				}
-
-				if errors.Is(result.Err, eval.ErrEvaluatingCondition) {
-					return nil, serverErrors.ValidationError(result.Err)
 				}
 
 				return nil, serverErrors.HandleError("", result.Err)

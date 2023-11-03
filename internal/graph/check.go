@@ -10,6 +10,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/condition"
 	"github.com/openfga/openfga/pkg/condition/eval"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
@@ -537,16 +538,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if t != nil && err == nil {
 				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext().AsMap())
 				if err != nil {
-					return nil, fmt.Errorf("%w: %v", eval.ErrEvaluatingCondition, err)
+					return nil, err
 				}
 
 				if len(condEvalResult.MissingParameters) > 0 {
-					return nil, fmt.Errorf(
-						"%w: evaluation of condition '%s' on '%s' failed, context is missing parameters '%v'",
-						eval.ErrEvaluatingCondition,
+					return nil, condition.NewEvaluationError(
 						tupleKey.GetCondition().GetName(),
-						tuple.TupleKeyToString(tupleKey),
-						condEvalResult.MissingParameters,
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 					)
 				}
 
@@ -608,12 +606,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if len(condEvalResult.MissingParameters) > 0 {
-					errs = multierror.Append(errs, fmt.Errorf(
-						"%w: evaluation of condition '%s' on '%s' failed, context is missing parameters '%v'",
-						eval.ErrEvaluatingCondition,
+					errs = multierror.Append(errs, condition.NewEvaluationError(
 						t.GetCondition().GetName(),
-						tuple.TupleKeyToString(t),
-						condEvalResult.MissingParameters,
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 					))
 
 					continue
@@ -793,12 +788,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			}
 
 			if len(condEvalResult.MissingParameters) > 0 {
-				errs = multierror.Append(errs, fmt.Errorf(
-					"%w: evaluation of condition '%s' on '%s' failed, context is missing parameters '%v'",
-					eval.ErrEvaluatingCondition,
+				errs = multierror.Append(errs, condition.NewEvaluationError(
 					t.GetCondition().GetName(),
-					tuple.TupleKeyToString(t),
-					condEvalResult.MissingParameters,
+					fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 				))
 
 				continue
