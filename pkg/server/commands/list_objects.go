@@ -438,6 +438,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 					return nil, result.Err
 				}
 
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(result.Err)
+				}
+
 				return nil, serverErrors.HandleError("", result.Err)
 			}
 
