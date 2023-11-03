@@ -582,7 +582,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
 			if test.output.errorCode == codes.OK {
-				require.True(t, response.Name == test.input.Name)
+				require.Equal(t, test.input.Name, response.Name)
 				_, err = ulid.Parse(response.Id)
 				require.NoError(t, err)
 			}

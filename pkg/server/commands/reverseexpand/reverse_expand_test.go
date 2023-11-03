@@ -81,7 +81,7 @@ type document
 		cancelFunc()
 		t.Logf("after send cancellation")
 		require.NotNil(t, res.Object)
-		require.Nil(t, res.Err)
+		require.NoError(t, res.Err)
 	}()
 
 	select {
@@ -137,7 +137,7 @@ type document
 	select {
 	case res, open := <-resultChan:
 		if open {
-			require.NotNil(t, res.Err)
+			require.Error(t, res.Err)
 		} else {
 			require.Nil(t, res)
 		}
