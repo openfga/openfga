@@ -75,19 +75,30 @@ func runSchema1_1ListObjectsTests(t *testing.T, client ClientInterface) {
 }
 
 func runTests(t *testing.T, params testParams) {
-	var b []byte
-	var err error
-	schemaVersion := params.schemaVersion
-	if schemaVersion == typesystem.SchemaVersion1_1 {
-		b, err = assets.EmbedTests.ReadFile("tests/consolidated_1_1_tests.yaml")
+	files := []string{
+		"tests/consolidated_1_1_tests.yaml",
+		"tests/abac_tests.yaml",
 	}
-	require.NoError(t, err)
 
-	var testCases listObjectTests
-	err = yaml.Unmarshal(b, &testCases)
-	require.NoError(t, err)
+	var allTestCases []individualTest
 
-	for _, test := range testCases.Tests {
+	for _, file := range files {
+		var b []byte
+		var err error
+		schemaVersion := params.schemaVersion
+		if schemaVersion == typesystem.SchemaVersion1_1 {
+			b, err = assets.EmbedTests.ReadFile(file)
+		}
+		require.NoError(t, err)
+
+		var testCases listObjectTests
+		err = yaml.Unmarshal(b, &testCases)
+		require.NoError(t, err)
+
+		allTestCases = append(allTestCases, testCases.Tests...)
+	}
+
+	for _, test := range allTestCases {
 		test := test
 		runTest(t, test, params, false)
 		runTest(t, test, params, true)
