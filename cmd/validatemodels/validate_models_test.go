@@ -63,10 +63,10 @@ func TestValidationResult(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, totalModelsForOneStore, len(validationResults))
 				require.Contains(t, "the relation type 'user' on 'viewer' in object type 'document' is not valid", validationResults[0].Error)
-				require.Equal(t, true, validationResults[0].IsLatestModel)
+				require.True(t, validationResults[0].IsLatestModel)
 
 				require.Contains(t, "the relation type 'user' on 'viewer' in object type 'document' is not valid", validationResults[1].Error)
-				require.Equal(t, false, validationResults[1].IsLatestModel)
+				require.False(t, validationResults[1].IsLatestModel)
 			})
 		})
 	}

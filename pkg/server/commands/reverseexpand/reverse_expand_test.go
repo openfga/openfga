@@ -137,7 +137,7 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	select {
 	case res, open := <-resultChan:
 		if open {
-			require.NotNil(t, res.Err)
+			require.Error(t, res.Err)
 		} else {
 			require.Nil(t, res)
 		}

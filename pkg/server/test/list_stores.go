@@ -39,7 +39,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	// ensure there are actually no stores
 	listStoresResponse, actualError := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{})
 	require.NoError(t, actualError)
-	require.Equal(t, 0, len(listStoresResponse.Stores))
+	require.Empty(t, listStoresResponse.Stores)
 
 	// create two stores
 	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
@@ -56,7 +56,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 		ContinuationToken: "",
 	})
 	require.NoError(t, actualError)
-	require.Equal(t, 1, len(listStoresResponse.Stores))
+	require.Len(t, listStoresResponse.Stores, 1)
 	require.Equal(t, firstStoreName, listStoresResponse.Stores[0].Name)
 	require.NotEmpty(t, listStoresResponse.ContinuationToken)
 
@@ -66,7 +66,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 		ContinuationToken: listStoresResponse.ContinuationToken,
 	})
 	require.NoError(t, actualError)
-	require.Equal(t, 1, len(secondListStoresResponse.Stores))
+	require.Len(t, secondListStoresResponse.Stores, 1)
 	require.Equal(t, secondStoreName, secondListStoresResponse.Stores[0].Name)
 	// no token <=> no more results
 	require.Empty(t, secondListStoresResponse.ContinuationToken)
