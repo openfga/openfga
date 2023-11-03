@@ -370,7 +370,7 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				if _, ok := result.Err.(*condition.EvaluationError); ok {
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
 					errs = multierror.Append(errs, result.Err)
 					continue
 				}
@@ -436,6 +436,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 					return nil, result.Err
+				}
+
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(result.Err)
 				}
 
 				return nil, serverErrors.HandleError("", result.Err)
