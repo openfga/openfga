@@ -108,7 +108,6 @@ func runSchema1_1CheckTests(t *testing.T, client ClientInterface) {
 }
 
 func runTests(t *testing.T, params testParams) {
-
 	files := []string{
 		"tests/consolidated_1_1_tests.yaml",
 		"tests/abac_tests.yaml",
