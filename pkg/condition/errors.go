@@ -23,6 +23,10 @@ type EvaluationError struct {
 }
 
 func (e *EvaluationError) Error() string {
+	if _, ok := e.Cause.(*ParameterTypeError); ok {
+		return e.Unwrap().Error()
+	}
+
 	return fmt.Sprintf("failed to evaluate relationship condition '%s': %v", e.Condition, e.Cause)
 }
 
