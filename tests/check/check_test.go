@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/cmd/run"
@@ -22,6 +23,7 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tuples = []*openfgav1.TupleKey{
@@ -251,6 +253,8 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
 	b.Run("BenchmarkCheckWithBypassDirectRead", func(b *testing.B) { benchmarkCheckWithBypassDirectRead(b, engine) })
 	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
+	b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
+	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
 const githubModel = `model
@@ -547,5 +551,112 @@ type document
 
 		require.False(b, check.Allowed)
 		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	storeID := ulid.Make().String()
+	model := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type doc
+  relations
+    define viewer: [user with password]
+condition password(p: string) {
+  p == "secret"
+}`)
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		Writes: tuple.ConvertTupleKeysToWriteRequestTupleKeys([]*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
+		}),
+	})
+	require.NoError(b, err)
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"p": "secret",
+	})
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
+			Context:              contextStruct,
+		})
+		require.NoError(b, err)
+		require.True(b, resp.Allowed)
+	}
+}
+
+func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	storeID := ulid.Make().String()
+	model := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type doc
+  relations
+    define viewer: [user with complex]
+condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
+  b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
+}`)
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		Writes: tuple.ConvertTupleKeysToWriteRequestTupleKeys([]*openfgav1.TupleKey{
+			tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
+		}),
+	})
+	require.NoError(b, err)
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"b":  true,
+		"s":  "s",
+		"i":  1,
+		"u":  1,
+		"d":  0.1,
+		"du": "1h",
+		"t":  "1972-01-01T10:00:20.021Z",
+		"ip": "127.0.0.1",
+	})
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
+			Context:              contextStruct,
+		})
+		require.NoError(b, err)
+		require.True(b, resp.Allowed)
 	}
 }

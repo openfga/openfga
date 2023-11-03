@@ -24,7 +24,10 @@ func EvaluateTupleCondition(
 	if conditionName != "" {
 		evaluableCondition, ok := typesys.GetCondition(conditionName)
 		if !ok {
-			return nil, fmt.Errorf("failed to evaluate relationship condition: condition '%s' was not found", conditionName)
+			return nil, &condition.EvaluationError{
+				Condition: conditionName,
+				Cause:     fmt.Errorf("condition was not found"),
+			}
 		}
 
 		// merge both contexts
@@ -36,7 +39,7 @@ func EvaluateTupleCondition(
 
 		conditionResult, err := evaluableCondition.Evaluate(contextSlice...)
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate relationship condition: %v", err)
+			return nil, err
 		}
 
 		return &conditionResult, nil
