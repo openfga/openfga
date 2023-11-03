@@ -608,7 +608,9 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				if len(condEvalResult.MissingParameters) > 0 {
 					errs = multierror.Append(errs, condition.NewEvaluationError(
 						t.GetCondition().GetName(),
-						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+							tuple.TupleKeyToString(t),
+							condEvalResult.MissingParameters),
 					))
 
 					continue
@@ -790,7 +792,9 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 			if len(condEvalResult.MissingParameters) > 0 {
 				errs = multierror.Append(errs, condition.NewEvaluationError(
 					t.GetCondition().GetName(),
-					fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
 				))
 
 				continue

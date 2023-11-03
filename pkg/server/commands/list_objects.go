@@ -370,7 +370,7 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				if _, ok := result.Err.(*condition.EvaluationError); ok {
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
 					errs = multierror.Append(errs, result.Err)
 					continue
 				}

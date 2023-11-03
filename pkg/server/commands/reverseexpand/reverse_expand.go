@@ -413,7 +413,9 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 			if len(condEvalResult.MissingParameters) > 0 {
 				errs = multierror.Append(errs, condition.NewEvaluationError(
 					tk.GetCondition().GetName(),
-					fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(tk),
+						condEvalResult.MissingParameters),
 				))
 			}
 
@@ -534,7 +536,9 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 			if len(condEvalResult.MissingParameters) > 0 {
 				errs = multierror.Append(errs, condition.NewEvaluationError(
 					tk.GetCondition().GetName(),
-					fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(tk),
+						condEvalResult.MissingParameters),
 				))
 			}
 
