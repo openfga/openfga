@@ -332,67 +332,6 @@ tests:
             context:
               "x": 101
             expectation:
-  - name: direct_relation_with_condition
-    stages:
-      - model: |
-          model
-            schema 1.1
-          type user
-
-          type document
-            relations
-              define viewer: [user with x_less_than]
-
-          condition x_less_than(x: int) {
-            x < 100
-          }
-        tuples:
-          - user: user:jon
-            relation: viewer
-            object: document:1
-            condition:
-              name: x_less_than
-        checkAssertions:
-          - tuple:
-              user: user:jon
-              relation: viewer
-              object: document:1
-            errorCode: 2000
-          - tuple:
-              user: user:jon
-              relation: viewer
-              object: document:1
-            context:
-              "x": 10
-            expectation: true
-          - tuple:
-              user: user:jon
-              relation: viewer
-              object: document:1
-            context:
-              "x": 101
-            expectation: false
-        listObjectsAssertions:
-          - request:
-              user: user:jon
-              type: document
-              relation: viewer
-            errorCode: 2000
-          - request:
-              user: user:jon
-              type: document
-              relation: viewer
-            context:
-              "x": 10
-            expectation:
-              - document:1
-          - request:
-              user: user:jon
-              type: document
-              relation: viewer
-            context:
-              "x": 101
-            expectation:
   - name: direct_relations_with_condition_through_intersection
     stages:
       - model: |
@@ -530,7 +469,7 @@ tests:
                 relation: viewer
                 user: user:jon
             expectation: true
-  - name: direct_relations_with_condition
+  - name: direct_relation_with_condition_containing_two_params
     stages:
       - model: |
           model
