@@ -107,7 +107,7 @@ Database credentials can be provided as a parameter to the OpenFGA server, via e
 
 **CLI/API Clients**
 
-The CLI/API clients are used to make API requests to the OpenFGA server. This includes functionality such as creating and querying relationship tuples, and updating the authorization model.
+The CLI/API clients are used to make API requests to the OpenFGA server. This includes functionality such as creating and querying relationship tuples, updating the authorization model and running authorization queries such as checking for access or listing objects a user has access to.
 
 They authenticate using any of the mechanisms supported by the server (no authentication, shared key, OAuth client credentials).
 
