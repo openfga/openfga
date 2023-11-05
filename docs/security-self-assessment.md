@@ -103,7 +103,7 @@ The server can be configured without authentication, with a shared key, or using
 
 The database server stores relationship tuples, authorization models and a changelog. OpenFGA currently supports Postgres and MySQL, and it can be extended to support other databases.
 
-Database credentials can be provided as a parameter to the OpenFGA server, via environment variables, or a configuration file.
+Database credentials can be provided as a parameter to the OpenFGA server, via environment variables or a configuration file.
 
 **CLI/API Clients**
 
