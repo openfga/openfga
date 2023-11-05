@@ -22,12 +22,9 @@
 |   |  |
 | -- | -- |
 | Software | https://github.com/openfga |
-| Security Provider | Yes. OpenFGA is used to decide if a subject (user, application) user can perform a specific action on a resource or not.
-   |
-| Languages | Go, Java, Javascript, Python, C#
- |
-| SBOM | It's generated as part of every release, for example https://github.com/openfga/openfga/releases/download/v1.3.4/openfga_1.3.4_linux_386.tar.gz.sbom  |
-| | |
+| Security Provider | Yes. OpenFGA is used to decide if a subject (user, application) user can perform a specific action on a resource or not.|
+| Languages | Go, Java, Javascript, Python, C# |
+| SBOM | It's generated as part of every release, for example in [v.1.3.4](https://github.com/openfga/openfga/releases/download/v1.3.4/openfga_1.3.4_linux_386.tar.gz.sbom)|   |
 
 ### Security Links
 
@@ -80,12 +77,15 @@ Relationship tuples look like:
 | folder:root | viewer | group#engineering:member |
 | user:bob  | viewer | group#engineering:member |
 
-With this information, you can query OpenFGA in different ways:
+With this information, OpenFGA can be queried in different ways:
 
-- You can use the Check endpoint to ask questions like "Is `user:alice` a `viewer` for `document:readme`?". With the data provided above, OpenFGA will return `{allowed : "true"}`, as Alice is a member of the engineering team, which has viewer access on the 'readme' document's parent folder.
-- You can use the ListObjects endpoint to ask questions like "What are all the documents for which `user:alice` is a `viewer`. With the data provided above, OpenFGA will return `{object_ids { "document:readme" }`
+When the  and 
 
-OpenFGA was accepted as a CNCF sandbox project in June 20212. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as Canonical or Okta are building products and integrations on top of the OpenFGA, while others, like Wolt or Read.ai are using OpenFGA to implement authorization for their products.
+- Using the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) endpoint to ask questions like "Is `user:alice` a `viewer` for `document:readme`?". With the data provided above, OpenFGA will return `{allowed : "true"}`, as Alice is a member of the engineering team, which has viewer access on the 'readme' document's parent folder.
+
+- Using the [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoint to ask questions like "What are all the documents for which `user:alice` is a `viewer`. With the data provided above, OpenFGA will return `{object_ids { "document:readme" }`
+
+OpenFGA was accepted as a CNCF sandbox project in June 20212. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as [Canonical](https://canonical.com) or [Okta](https://fga.dev) are building products and integrations on top of the OpenFGA, while others, like [Wolt](https://wolt.com) or [Read.ai](https://www.read.ai/) are using OpenFGA to implement authorization for their products.
 
 OpenFGA has an active community, with 500+ Discord members, 40 unique contributors, and an average of [850 commits per month](https://openfga.devstats.cncf.io/d/2/commits-repository-groups?orgId=1&var-period=m&var-repogroups=All&from=now-1y%2Fy&to=now-1y%2Fy). 
 
@@ -101,7 +101,7 @@ The server can be configured without authentication, with a shared key, or using
 
 **Database Server**
 
-The database server stores relationship tuples. OpenFGA currently supports Postgres and MySQL, and it can be extended to support other databases.
+The database server stores relationship tuples, authorization models and a changelog. OpenFGA currently supports Postgres and MySQL, and it can be extended to support other databases.
 
 Database credentials can be provided as a parameter to the OpenFGA server, via environment variables, or a configuration file.
 
@@ -142,7 +142,7 @@ When a model is written a new version is created. The application needs to be co
 
 **Calling the Authorization Query endpoints**
 
-When the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) and [/list-objects[(https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoints are called, OpenFGA needs to traverse the graph defined by the model and instated by the tuples. The graph can be very wide and deep. To protect the service from a DoSS, OpenFGA needs to bound the number of simultaneous paths it explores.
+When the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) and [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoints are called, OpenFGA needs to traverse the graph defined by the model and instated by the tuples. The graph can be very wide and deep. To protect the service from a DoSS, OpenFGA needs to bound the number of simultaneous paths it explores.
 
 **Upgrading OpenFGA Database Schema**
 
@@ -190,7 +190,7 @@ When using OpenFGA you need to store relationship tuples like `{user: user: alic
 
 The OpenFGA project follows established CNCF and OSS best practices for code development and delivery. OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374), has an [OpenSSF scorecard of](https://api.securityscorecards.dev/projects/github.com/openfga/openfga) 9 and a [CLO Monitor score of 99%](https://clomonitor.io/projects/openfga).
 
-OpenFGA's code coverage is 83%, and it has a A+ Go rating.
+OpenFGA's code coverage is 83%, and it has a [A+ Go rating](https://goreportcard.com/report/github.com/openfga/openfga).
 
 ### Ecosystem
 
