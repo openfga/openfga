@@ -95,7 +95,7 @@ OpenFGA has an active community, with 500+ Discord members, 40 unique contributo
 
 The OpenFGA server is responsible for storing and querying relationship tuples and authorization models.
 
-Given it's going to be used to know if a user can perform an action on a resource, any potential bug in the OpenFGA server logic can have security implications. 
+Given that it's going to be used to know if a user can perform an action on a resource, any potential bug in the OpenFGA server logic can have security implications. 
 
 The server can be configured without authentication, with a shared key, or using the OAuth client credentials flow.
 
