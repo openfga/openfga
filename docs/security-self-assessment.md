@@ -79,8 +79,6 @@ Relationship tuples look like:
 
 With this information, OpenFGA can be queried in different ways:
 
-When the  and 
-
 - Using the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) endpoint to ask questions like "Is `user:alice` a `viewer` for `document:readme`?". With the data provided above, OpenFGA will return `{allowed : "true"}`, as Alice is a member of the engineering team, which has viewer access on the 'readme' document's parent folder.
 
 - Using the [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoint to ask questions like "What are all the documents for which `user:alice` is a `viewer`. With the data provided above, OpenFGA will return `{object_ids { "document:readme" }`
@@ -130,13 +128,16 @@ Every time a server endpoint is invoked, OpenFGA validates that:
 
   - The credentials provided in the API call match the ones configured in the server.
 
+  - Ensures that the input is a semantically valid, e.g. that a tuple is valid according to the authorization model or that the model does not have disallowed cyclical or problematic definitions
+
   - The payload of the API call:
+  
     - Matches the Protobuf API definitions.
     - Validates the parameters have the proper structure, e.g. users need to be written this way 'user:<userid>'
   
 **Writing an Authorization Model**
 
-OpenFGA Authorization Models should be Directed Acyclic Graphs. OpenFGA validates that the model does not have cycles.
+OpenFGA validates that the Authorization Models are semantically valid from the server standpoint, as in they do not have cyclical or problematic definitions, or other disallowed criteria.
 
 When a model is written a new version is created. The application needs to be configured to use the new version when needed.
 
