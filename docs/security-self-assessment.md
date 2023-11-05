@@ -85,7 +85,7 @@ When the  and
 
 - Using the [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoint to ask questions like "What are all the documents for which `user:alice` is a `viewer`. With the data provided above, OpenFGA will return `{object_ids { "document:readme" }`
 
-OpenFGA was accepted as a CNCF sandbox project in June 20212. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as [Canonical](https://canonical.com) or [Okta](https://fga.dev) are building products and integrations on top of the OpenFGA, while others, like [Wolt](https://wolt.com) or [Read.ai](https://www.read.ai/) are using OpenFGA to implement authorization for their products.
+OpenFGA was accepted as a CNCF sandbox project in June 2022. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as [Canonical](https://canonical.com) or [Okta](https://fga.dev) are building products and integrations on top of the OpenFGA, while others, like [Wolt](https://wolt.com) or [Read.ai](https://www.read.ai/) are using OpenFGA to implement authorization for their products.
 
 OpenFGA has an active community, with 500+ Discord members, 40 unique contributors, and an average of [850 commits per month](https://openfga.devstats.cncf.io/d/2/commits-repository-groups?orgId=1&var-period=m&var-repogroups=All&from=now-1y%2Fy&to=now-1y%2Fy). 
 
