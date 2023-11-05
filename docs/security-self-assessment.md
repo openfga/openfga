@@ -146,7 +146,7 @@ When the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check)
 
 **Upgrading OpenFGA Database Schema**
 
-When new version of OpenFGA are installed, it might imply to run a database migration in the target system. To avoid downtime, migrations need to be carefully written and planned.
+When new version of OpenFGA are installed, it might imply running a database migration in the target system. To avoid downtime, migrations need to be carefully written and planned.
 
 ### Goals
 
