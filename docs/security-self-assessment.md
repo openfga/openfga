@@ -74,7 +74,7 @@ Relationship tuples look like:
 | --- | --- | --- |
 | user:alice | member | group:engineering |
 | folder:root | parent | document:readme |
-| folder:root | viewer | group#engineering:member |
+| group#engineering:member | viewer | folder:root |
 | user:bob  | viewer | group#engineering:member |
 
 With this information, OpenFGA can be queried in different ways:
