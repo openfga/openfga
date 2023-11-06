@@ -106,6 +106,4 @@ security-artifacts:
   threat-model:
     threat-model-created: false
   self-assessment:
-    self-assessment-created: true
-    evidence-url:
-    - https://github.com/openfga/openfga/docs/security-self-assessment.md
+    self-assessment-created: false
