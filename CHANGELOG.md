@@ -8,6 +8,17 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.6] - 2023-11-06
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.5...v1.3.6)
+
+### Added
+* Provenance manifests generation (`openfga.intoto.jsonl``) for verification of release artifacts with SLSA attestations.
+
+### Changed
+* Removed the experimental flag `check-query-cache`. If you wish to enable the Check query cache you no longer need the experimental flag.
+
+
 ## [1.3.5] - 2023-10-27
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.4...v1.3.5)
