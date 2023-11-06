@@ -15,11 +15,9 @@ jobs:
       contents: write
       packages: write # publish a new github release
       id-token: write # needed for keyless signing
-      security-events: write # needed for uploading results to GitHub Code Scanning
     outputs:
-      hashes: ${{ steps.binary.outputs.hashes }}
-      image: ${{ steps.image.outputs.name }}
       digest: ${{ steps.image.outputs.digest }}
+      subjects-as-file: ${{ steps.hashes.outputs.handle }}
     steps:
       - name: Extract Version from Tag
         id: tag_name
@@ -73,9 +71,13 @@ jobs:
           ARTIFACTS: "${{ steps.goreleaser.outputs.artifacts }}"
         run: |
           set -euo pipefail
+          hashes=$(echo $ARTIFACTS | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
+          echo $hashes > digests.txt
 
-          checksum_file=$(echo "$ARTIFACTS" | jq -r '.[] | select (.type=="Checksum") | .path')
-          echo "hashes=$(cat $checksum_file | base64 -w0)" >> "$GITHUB_OUTPUT"
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@v1.9.0
+        id: hashes
+        with:
+          path: digests.txt
 
       - name: Image digest
         id: image
@@ -83,9 +85,9 @@ jobs:
           ARTIFACTS: "${{ steps.goreleaser.outputs.artifacts }}"
         run: |
           set -euo pipefail
-          image_and_digest=$(echo "$ARTIFACTS" | jq -r '.[] | select (.type=="Docker Manifest") | .path')
-          image=$(echo "${image_and_digest}" | cut -d'@' -f1 | cut -d':' -f1)
-          digest=$(echo "${image_and_digest}" | cut -d'@' -f2)
+          artifact=$(echo "$ARTIFACTS" | jq -r '[.[] | select (.type=="Docker Manifest")][0]')
+          image=$(echo "$artifact" | jq -r '.path' | cut -d':' -f1)
+          digest=$(echo "$artifact" | jq -r '.extra.Digest')
           echo "name=$image" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
@@ -119,9 +121,9 @@ jobs:
 
     # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.9.0
-
     with:
-      base64-subjects: "${{ needs.goreleaser.outputs.hashes }}"
+      base64-subjects-as-file: "${{ needs.goreleaser.outputs.subjects-as-file }}"
+      provenance-name: "openfga.intoto.jsonl"
       upload-assets: true # upload to a new release
 
   image-provenance:
@@ -133,48 +135,12 @@ jobs:
 
     # Note: this _must_ be referenced by tag. See: https://github.com/slsa-framework/slsa-verifier/issues/12
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v1.9.0
-
     with:
-      image: ${{ needs.goreleaser.outputs.image }}
+      image: openfga/openfga
       digest: ${{ needs.goreleaser.outputs.digest }}
-      registry-username: ${{ github.actor }}
     secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
-
-  verification-with-slsa-verifier:
-    needs: [ goreleaser, binary-provenance ]
-    runs-on: ubuntu-latest
-    permissions: read-all
-    steps:
-      - name: Install the verifier
-        uses: slsa-framework/slsa-verifier/actions/installer@73d1bcba982de0f644baec83df839399d13f472e # pin@v2.4.0
-
-      - name: Download assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
-        run: |
-          set -euo pipefail
-          gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" -p "*.tar.gz"
-          gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" -p "*.zip"
-          gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" -p "$PROVENANCE"
-
-      - name: Verify assets
-        env:
-          CHECKSUMS: ${{ needs.goreleaser.outputs.hashes }}
-          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
-        run: |
-          set -euo pipefail
-          checksums=$(echo "$CHECKSUMS" | base64 -d)
-          while read -r line; do
-            fn=$(echo $line | cut -d ' ' -f2)
-            echo "Verifying $fn"
-            slsa-verifier verify-artifact \
-              --provenance-path "$PROVENANCE" \
-              --source-uri "github.com/$GITHUB_REPOSITORY" \
-              --source-tag "$GITHUB_REF_NAME" \
-              "$fn"
-          done <<<"$checksums"
+      registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
+      registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]
@@ -192,7 +158,7 @@ jobs:
 
       - name: Verify image
         env:
-          IMAGE: ${{ needs.goreleaser.outputs.image }}
+          IMAGE: openfga/openfga
           DIGEST: ${{ needs.goreleaser.outputs.digest }}
         run: |
           cosign verify-attestation \
