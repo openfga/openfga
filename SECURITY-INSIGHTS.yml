@@ -101,11 +101,11 @@ dependencies:
     sbom-format: SPDX
     sbom-url: https://github.com/openfga/openfga/releases
   env-dependencies-policy:
-    policy-url: https://github.com/openfga/openfga/docs/security-self-assessment.md
+    policy-url: https://github.com/openfga/openfga/blob/main/docs/dependencies-policy.md
 security-artifacts:
   threat-model:
     threat-model-created: false
   self-assessment:
     self-assessment-created: true
     evidence-url: 
-      - https://github.com/openfga/openfga/blob/docs/security-self-assessment.md
+      - https://github.com/openfga/openfga/blob/main/docs/security-self-assessment.md
