@@ -41,7 +41,7 @@ func StoreTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		gotStores, ct, err := datastore.ListStores(ctx, storage.PaginationOptions{PageSize: 1})
 		require.NoError(t, err)
 
-		require.Equal(t, 1, len(gotStores))
+		require.Len(t, gotStores, 1)
 		require.NotEmpty(t, len(ct))
 
 		_, ct, err = datastore.ListStores(ctx, storage.PaginationOptions{PageSize: 100, From: string(ct)})
