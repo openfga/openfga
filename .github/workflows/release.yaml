@@ -97,6 +97,9 @@ jobs:
       contents: read
       security-events: write # needed for uploading results to GitHub Code Scanning
     steps:
+      - name: Checkout code
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
+
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
         uses: snyk/actions/docker@39091e69b560da335383b404e50d65b408f4f812 # pin@master
