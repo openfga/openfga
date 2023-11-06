@@ -542,6 +542,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		}
 
+		if config.Trace.Enabled {
+			dialOpts = append(dialOpts, grpc.WithUnaryInterceptor(telemetry.GRPCUnaryTraceMetadataInjector))
+			dialOpts = append(dialOpts, grpc.WithStreamInterceptor(telemetry.GRPCStreamTraceMetadataInjector))
+		}
+
 		timeoutCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
@@ -565,9 +570,16 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			runtime.WithHealthzEndpoint(healthv1pb.NewHealthClient(conn)),
 			runtime.WithOutgoingHeaderMatcher(func(s string) (string, bool) { return s, true }),
 		}
+
 		mux := runtime.NewServeMux(muxOpts...)
 		if err := openfgav1.RegisterOpenFGAServiceHandler(ctx, mux, conn); err != nil {
 			return err
+		}
+
+		handler := http.Handler(mux)
+
+		if config.Trace.Enabled {
+			handler = telemetry.HTTPServerTraceExtractor(handler)
 		}
 
 		httpServer = &http.Server{
@@ -578,7 +590,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				AllowedHeaders:   config.HTTP.CORSAllowedHeaders,
 				AllowedMethods: []string{http.MethodGet, http.MethodPost,
 					http.MethodHead, http.MethodPatch, http.MethodDelete, http.MethodPut},
-			}).Handler(mux),
+			}).Handler(handler),
 		}
 
 		go func() {
