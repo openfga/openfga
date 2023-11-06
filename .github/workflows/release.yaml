@@ -88,7 +88,6 @@ jobs:
           artifact=$(echo "$ARTIFACTS" | jq -r '[.[] | select (.type=="Docker Manifest")][0]')
           image=$(echo "$artifact" | jq -r '.path' | cut -d':' -f1)
           digest=$(echo "$artifact" | jq -r '.extra.Digest')
-          echo "name=$image" >> "$GITHUB_OUTPUT"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
   snyk:
