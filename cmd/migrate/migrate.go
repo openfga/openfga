@@ -86,20 +86,20 @@ func runMigration(_ *cobra.Command, _ []string) error {
 	}
 
 	// Parse the database uri with url.Parse() and update username/password, if set via flags
-	dbUrl, err := url.Parse(uri)
+	dbURI, err := url.Parse(uri)
 	if err != nil {
 		log.Fatalf("invalid database uri: %v\n", err)
 	}
-	if username == "" && dbUrl.User != nil {
-		username = dbUrl.User.Username()
+	if username == "" && dbURI.User != nil {
+		username = dbURI.User.Username()
 	}
-	if password == "" && dbUrl.User != nil {
-		password, _ = dbUrl.User.Password()
+	if password == "" && dbURI.User != nil {
+		password, _ = dbURI.User.Password()
 	}
-	dbUrl.User = url.UserPassword(username, password)
+	dbURI.User = url.UserPassword(username, password)
 
 	// Replace CLI uri with the one we just updated.
-	uri = dbUrl.String()
+	uri = dbURI.String()
 
 	db, err := sql.Open(driver, uri)
 	if err != nil {
