@@ -8,6 +8,13 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.7] - 2023-11-06
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.6...v1.3.7)
+
+### Security
+* Bumped up the `grpc-health-probe` dependency to the latest release which fixed some vulnerabilities.
+
 ## [v1.3.6] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.5...v1.3.6)
@@ -727,7 +734,9 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
+[1.3.6]: https://github.com/openfga/openfga/releases/tag/v1.3.6
 [1.3.5]: https://github.com/openfga/openfga/releases/tag/v1.3.5
 [1.3.4]: https://github.com/openfga/openfga/releases/tag/v1.3.4
 [1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
