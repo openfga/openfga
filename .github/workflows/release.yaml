@@ -144,6 +144,33 @@ jobs:
       registry-username: ${{ secrets.DOCKERHUB_USERNAME }}
       registry-password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+  verification-with-slsa-verifier:
+    needs: [ goreleaser, binary-provenance ]
+    runs-on: ubuntu-latest
+    permissions: read-all
+    steps:
+      - name: Install the verifier
+        uses: slsa-framework/slsa-verifier/actions/installer@73d1bcba982de0f644baec83df839399d13f472e # pin@v2.4.0
+
+      - name: Download assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
+        run: |
+          set -euo pipefail
+          gh -R "$GITHUB_REPOSITORY" release download "$GITHUB_REF_NAME" \
+            -p "$PROVENANCE" -p "*.tar.gz" -p "*.tar.gz.sbom" -p
+
+      - name: Verify assets
+        env:
+          PROVENANCE: "${{ needs.binary-provenance.outputs.provenance-name }}"
+        run: |
+          slsa-verifier verify-artifact \
+            --provenance-path "$PROVENANCE" \
+            --source-uri "github.com/$GITHUB_REPOSITORY" \
+            --source-tag "$GITHUB_REF_NAME" \
+            *.tar.gz *.tar.gz.sbom
+
   verification-with-cosign:
     needs: [ goreleaser, image-provenance ]
     runs-on: ubuntu-latest
