@@ -25,9 +25,9 @@ func bindRunFlagsFunc(flags *pflag.FlagSet) func(*cobra.Command, []string) {
 		util.MustBindPFlag(versionFlag, flags.Lookup(versionFlag))
 
 		util.MustBindPFlag(timeoutFlag, flags.Lookup(timeoutFlag))
-		util.MustBindEnv(timeoutFlag, "OPENFGA_MIGRATE_TIMEOUT")
+		util.MustBindEnv(timeoutFlag, "OPENFGA_TIMEOUT")
 
 		util.MustBindPFlag(verboseMigrationFlag, flags.Lookup(verboseMigrationFlag))
-		util.MustBindEnv(verboseMigrationFlag, "OPENFGA_MIGRATE_VERBOSE")
+		util.MustBindEnv(verboseMigrationFlag, "OPENFGA_VERBOSE")
 	}
 }
