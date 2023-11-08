@@ -74,7 +74,7 @@ jobs:
           hashes=$(echo $ARTIFACTS | jq --raw-output '[.[] | {name, "digest": (.extra.Digest // .extra.Checksum)}] | unique | .[] | select(.digest) | {digest} + {name} | join("  ") | sub("^sha256:";"")' | base64 -w0)
           echo $hashes > digests.txt
 
-      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@v1.9.0
+      - uses: slsa-framework/slsa-github-generator/actions/generator/generic/create-base64-subjects-from-file@07e64b653f10a80b6510f4568f685f8b7b9ea830 # v1.9.0
         id: hashes
         with:
           path: digests.txt
