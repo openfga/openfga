@@ -24,6 +24,8 @@ const (
 	SchemaVersion1_1 string = "1.1"
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
+
+	defaultMaxEvaluationCost = 100
 )
 
 var (
@@ -190,7 +192,9 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 
 	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
 	for name, cond := range model.GetConditions() {
-		uncompiledConditions[name] = condition.NewUncompiled(cond)
+		uncompiledConditions[name] = condition.NewUncompiled(cond).
+			WithMaxEvaluationCost(defaultMaxEvaluationCost).
+			WithTrackEvaluationCost()
 	}
 
 	return &TypeSystem{

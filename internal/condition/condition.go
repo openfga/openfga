@@ -17,6 +17,7 @@ import (
 var emptyEvaluationResult = EvaluationResult{}
 
 type EvaluationResult struct {
+	Cost              uint64
 	ConditionMet      bool
 	MissingParameters []string
 }
@@ -29,9 +30,10 @@ type EvaluationResult struct {
 type EvaluableCondition struct {
 	*openfgav1.Condition
 
-	celEnv      *cel.Env
-	celProgram  cel.Program
-	compileOnce sync.Once
+	celProgramOpts []cel.ProgramOption
+	celEnv         *cel.Env
+	celProgram     cel.Program
+	compileOnce    sync.Once
 }
 
 // Compile compiles a condition expression with a CEL environment
@@ -74,6 +76,7 @@ func (c *EvaluableCondition) compile() error {
 	}
 
 	envOpts = append(envOpts, types.IPAddressEnvOption())
+	envOpts = append(envOpts, cel.EagerlyValidateDeclarations(true), cel.DefaultUTCTimeZone(true))
 
 	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
@@ -94,11 +97,9 @@ func (c *EvaluableCondition) compile() error {
 		}
 	}
 
-	prgopts := []cel.ProgramOption{
-		cel.EvalOptions(cel.OptPartialEval),
-	}
+	c.celProgramOpts = append(c.celProgramOpts, cel.EvalOptions(cel.OptPartialEval))
 
-	prg, err := env.Program(ast, prgopts...)
+	prg, err := env.Program(ast, c.celProgramOpts...)
 	if err != nil {
 		return &CompilationError{
 			Condition: c.Name,
@@ -210,7 +211,7 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		missingParameters = append(missingParameters, key)
 	}
 
-	out, _, err := c.celProgram.Eval(activation)
+	out, details, err := c.celProgram.Eval(activation)
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			c.Name,
@@ -218,10 +219,19 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 		)
 	}
 
+	var evaluationCost uint64
+	if details != nil {
+		cost := details.ActualCost()
+		if cost != nil {
+			evaluationCost = *cost
+		}
+	}
+
 	if celtypes.IsUnknown(out) {
 		return EvaluationResult{
 			ConditionMet:      false,
 			MissingParameters: missingParameters,
+			Cost:              evaluationCost,
 		}, nil
 	}
 
@@ -244,7 +254,26 @@ func (c *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 	return EvaluationResult{
 		ConditionMet:      conditionMet,
 		MissingParameters: missingParameters,
+		Cost:              evaluationCost,
 	}, nil
+}
+
+// WithTrackEvaluationCost enables CEL evaluation cost on the EvaluableCondition and returns the
+// mutated EvaluableCondition. The expectation is that this is called on the Uncompiled condition
+// because it modifies the behavior of the CEL program that is constructed after Compile.
+func (e *EvaluableCondition) WithTrackEvaluationCost() *EvaluableCondition {
+	e.celProgramOpts = append(e.celProgramOpts, cel.EvalOptions(cel.OptOptimize, cel.OptTrackCost))
+
+	return e
+}
+
+// WithMaxEvaluationCost enables CEL evaluation cost enforcement on the EvaluableCondition and
+// returns the mutated EvaluableCondition. The expectation is that this is called on the Uncompiled
+// condition because it modifies the behavior of the CEL program that is constructed after Compile.
+func (e *EvaluableCondition) WithMaxEvaluationCost(cost uint64) *EvaluableCondition {
+	e.celProgramOpts = append(e.celProgramOpts, cel.CostLimit(cost))
+
+	return e
 }
 
 // NewUncompiled returns a new EvaluableCondition that has not
