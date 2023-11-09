@@ -67,7 +67,7 @@ unit-test: go-generate ## Run unit tests
 			-coverprofile=coverageunit.tmp.out \
 			-covermode=atomic \
 			-count=1 \
-			-timeout 0 \
+			-timeout=10m \
 			./...
 	@cat coverageunit.tmp.out | grep -v "mocks" > coverageunit.out
 	@rm coverageunit.tmp.out
