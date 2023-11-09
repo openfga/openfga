@@ -26,7 +26,7 @@ services:
       - "2113:2113" #prometheus metrics exporter
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.49
     container_name: jaeger
     command: [ "--query.max-clock-skew-adjustment", "500ms" ]
     environment:
