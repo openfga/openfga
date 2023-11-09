@@ -262,6 +262,102 @@ func TestEvaluate(t *testing.T) {
 	}
 }
 
+func TestEvaluateWithMaxCost(t *testing.T) {
+	var tests = []struct {
+		name      string
+		condition *openfgav1.Condition
+		context   map[string]any
+		maxCost   uint64
+		result    condition.EvaluationResult
+		err       error
+	}{
+		{
+			name: "cost_exceeded_int",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "x < y",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+					"y": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"x": int64(1),
+				"y": int64(2),
+			},
+			maxCost: 2,
+			err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
+		},
+		{
+			name: "cost_not_exceeded_int",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "x < y",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+					"y": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"x": int64(1),
+				"y": int64(2),
+			},
+			maxCost: 3,
+			result: condition.EvaluationResult{
+				Cost:         3,
+				ConditionMet: true,
+			},
+		},
+		{
+			name: "cost_exceeded_str",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "x == y",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"x": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+					"y": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"x": "ab",
+				"y": "ab",
+			},
+			maxCost: 2,
+			err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			condition := condition.NewUncompiled(test.condition).WithMaxEvaluationCost(test.maxCost)
+
+			err := condition.Compile()
+			require.NoError(t, err)
+
+			result, err := condition.Evaluate(test.context)
+
+			require.Equal(t, test.result, result)
+			if test.err != nil {
+				require.ErrorContains(t, err, test.err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestCastContextToTypedParameters(t *testing.T) {
 	tests := []struct {
 		name                    string
