@@ -356,7 +356,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
-			require.Nil(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -386,14 +386,14 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	actualResult, err := dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	// subsequent call would have cache timeout and result in new ResolveCheck
 	time.Sleep(5 * time.Microsecond)
 
 	actualResult, err = dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
-	require.Nil(t, err)
+	require.NoError(t, err)
 }
 
 func TestCachedCheckDatastoreQueryCount(t *testing.T) {

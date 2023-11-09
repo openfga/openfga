@@ -1059,7 +1059,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }
 
 func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
@@ -1079,7 +1079,7 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }
 
 func TestParseConfig(t *testing.T) {
@@ -1098,7 +1098,7 @@ requestDurationDatastoreQueryCountBuckets: [33,44]
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
@@ -1137,5 +1137,5 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }

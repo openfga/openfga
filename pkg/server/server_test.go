@@ -200,7 +200,7 @@ func TestCheckDoesNotThrowBecauseDirectTupleWasFound(t *testing.T) {
 		AuthorizationModelId: modelID,
 	})
 	require.NoError(t, err)
-	require.Equal(t, true, checkResponse.Allowed)
+	require.True(t, checkResponse.Allowed)
 }
 
 func TestListObjectsReleasesConnections(t *testing.T) {
@@ -421,9 +421,9 @@ func TestShortestPathToSolutionWins(t *testing.T) {
 	end := time.Since(start)
 
 	// we expect the Check call to be short-circuited after ReadUsersetTuples runs
-	require.Truef(t, end < 200*time.Millisecond, fmt.Sprintf("end was %s", end))
+	require.Lessf(t, end, 200*time.Millisecond, fmt.Sprintf("end was %s", end))
 	require.NoError(t, err)
-	require.Equal(t, true, checkResponse.Allowed)
+	require.True(t, checkResponse.Allowed)
 }
 
 func TestCheckWithCachedResolution(t *testing.T) {
