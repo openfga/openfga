@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/otel/trace/noop"
 	"html/template"
 	"net"
 	"net/http"
@@ -51,10 +53,8 @@ import (
 	"github.com/rs/cors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -291,7 +291,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	otel.SetTracerProvider(trace.NewNoopTracerProvider())
+	otel.SetTracerProvider(noop.NewTracerProvider())
 
 	var tracerProviderCloser func()
 
@@ -410,11 +410,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 	}
 
-	if config.Trace.Enabled {
-		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor())
-		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor())
-	}
-
 	unaryInterceptors = append(unaryInterceptors,
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(s.Logger),
@@ -432,6 +427,10 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	opts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamingInterceptors...),
+	}
+
+	if config.Trace.Enabled {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 
 	if config.GRPC.TLS.Enabled {
