@@ -8,7 +8,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -19,8 +18,6 @@ import (
 
 func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
-	logger := logger.NewNoopLogger()
-	encoder := encoder.NewBase64Encoder()
 	ctx := context.Background()
 	store := ulid.Make().String()
 
@@ -55,10 +52,7 @@ func TestReadAuthorizationModelsWithoutPaging(t *testing.T, datastore storage.Op
 				require.NoError(err)
 			}
 
-			query := commands.NewReadAuthorizationModelsQuery(datastore,
-				commands.WithReadAuthModelsQueryLogger(logger),
-				commands.WithReadAuthModelsQueryEncoder(encoder),
-			)
+			query := commands.NewReadAuthorizationModelsQuery(datastore)
 			resp, err := query.Execute(ctx, &openfgav1.ReadAuthorizationModelsRequest{StoreId: store})
 			require.NoError(err)
 
