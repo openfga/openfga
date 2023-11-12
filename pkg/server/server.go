@@ -792,7 +792,11 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		Method:  "ReadChanges",
 	})
 
-	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore,
+		commands.WithReadChangesQueryLogger(s.logger),
+		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
+	)
 	return q.Execute(ctx, req)
 }
 
