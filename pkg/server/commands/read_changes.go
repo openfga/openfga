@@ -19,6 +19,12 @@ type ReadChangesQuery struct {
 	horizonOffset time.Duration
 }
 
+// type ReadChangesQueryOption func(*ReadChangesQuery)
+
+// func WithReadChangesQueryLogger(l logger.Logger) ReadChangesQueryOption {
+// 	return func(*ReadChangesQueryOption)
+// }
+
 // NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
 func NewReadChangesQuery(backend storage.ChangelogBackend, logger logger.Logger, encoder encoder.Encoder, horizonOffset int) *ReadChangesQuery {
 	return &ReadChangesQuery{

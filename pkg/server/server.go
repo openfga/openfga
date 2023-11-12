@@ -474,7 +474,10 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  "Read",
 	})
 
-	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore,
+		commands.WithReadQueryLogger(s.logger),
+		commands.WithReadQueryEncoder(s.encoder),
+	)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
 		TupleKey:          tk,
@@ -678,7 +681,10 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
+		commands.WithWriteAuthModelLogger(s.logger),
+		commands.WithWriteAuthModelMaxSize(s.maxAuthorizationModelSizeInBytes),
+	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -730,7 +736,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
+	c := commands.NewWriteAssertionsCommand(s.datastore, commands.WithWriteAssertCmdLogger(s.logger))
 	res, err := c.Execute(ctx, &openfgav1.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id

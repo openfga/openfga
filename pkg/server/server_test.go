@@ -574,9 +574,8 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 				Assertions:           curTest.assertions,
 				AuthorizationModelId: modelID,
 			}
-			logger := logger.NewNoopLogger()
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore, logger)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
 			_, err := writeAssertionCmd.Execute(ctx, request)
 			require.ErrorIs(t, curTest.expectedError, err)
 		})
