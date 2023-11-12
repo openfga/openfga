@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/encoder"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
@@ -19,7 +18,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	logger := logger.NewNoopLogger()
 
 	// clean up all stores from other tests
-	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
+	getStoresQuery := commands.NewListStoresQuery(datastore)
 	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {

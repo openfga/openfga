@@ -710,7 +710,10 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		Method:  "ReadAuthorizationModels",
 	})
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
+		commands.WithReadAuthModelsQueryLogger(s.logger),
+		commands.WithReadAuthModelsQueryEncoder(s.encoder),
+	)
 	return c.Execute(ctx, req)
 }
 
@@ -886,7 +889,10 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		Method:  "ListStores",
 	})
 
-	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
+	q := commands.NewListStoresQuery(s.datastore,
+		commands.WithListStoresQueryLogger(s.logger),
+		commands.WithListStoresQueryEncoder(s.encoder),
+	)
 	return q.Execute(ctx, req)
 }
 
