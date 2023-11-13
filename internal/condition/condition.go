@@ -14,6 +14,24 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+var celBaseEnv *cel.Env
+
+func init() {
+	var envOpts []cel.EnvOption
+	for _, customTypeOpts := range types.CustomParamTypes {
+		envOpts = append(envOpts, customTypeOpts...)
+	}
+
+	envOpts = append(envOpts, types.IPAddressEnvOption(), cel.EagerlyValidateDeclarations(true))
+
+	env, err := cel.NewEnv(envOpts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to construct CEL base env: %v", err))
+	}
+
+	celBaseEnv = env
+}
+
 var emptyEvaluationResult = EvaluationResult{}
 
 type EvaluationResult struct {
@@ -52,10 +70,6 @@ func (c *EvaluableCondition) Compile() error {
 
 func (c *EvaluableCondition) compile() error {
 	var envOpts []cel.EnvOption
-	for _, customTypeOpts := range types.CustomParamTypes {
-		envOpts = append(envOpts, customTypeOpts...)
-	}
-
 	conditionParamTypes := map[string]*types.ParameterType{}
 	for paramName, paramTypeRef := range c.GetParameters() {
 		paramType, err := types.DecodeParameterType(paramTypeRef)
@@ -73,9 +87,7 @@ func (c *EvaluableCondition) compile() error {
 		envOpts = append(envOpts, cel.Variable(paramName, paramType.CelType()))
 	}
 
-	envOpts = append(envOpts, types.IPAddressEnvOption())
-
-	env, err := cel.NewEnv(envOpts...)
+	env, err := celBaseEnv.Extend(envOpts...)
 	if err != nil {
 		return &CompilationError{
 			Condition: c.Name,
