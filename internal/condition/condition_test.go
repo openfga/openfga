@@ -337,6 +337,92 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 			maxCost: 2,
 			err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
 		},
+		{
+			name: "cost_exceeded_list",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "'a' in strlist",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"strlist": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"strlist": []interface{}{"c", "b", "a"},
+			},
+			maxCost: 3,
+			err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
+		},
+		{
+			name: "cost_not_exceeded_list",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "'d' in strlist",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"strlist": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+							},
+						},
+					},
+				},
+			},
+			context: map[string]interface{}{
+				"strlist": []interface{}{"a", "b", "c"},
+			},
+			maxCost: 4,
+			result: condition.EvaluationResult{
+				Cost:         4,
+				ConditionMet: false,
+			},
+		},
+		// {
+		// 	name: "cost_exceeded_map",
+		// 	condition: &openfgav1.Condition{
+		// 		Name:       "condition1",
+		// 		Expression: "m1 == m2",
+		// 		Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+		// 			"m1": {
+		// 				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP,
+		// 				GenericTypes: []*openfgav1.ConditionParamTypeRef{
+		// 					{
+		// 						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+		// 					},
+		// 				},
+		// 			},
+		// 			"m2": {
+		// 				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP,
+		// 				GenericTypes: []*openfgav1.ConditionParamTypeRef{
+		// 					{
+		// 						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+		// 					},
+		// 				},
+		// 			},
+		// 		},
+		// 	},
+		// 	context: map[string]interface{}{
+		// 		"m1": map[string]interface{}{
+		// 			"a":  "1",
+		// 			"b":  "2",
+		// 			"cd": "2",
+		// 		},
+		// 		"m2": map[string]interface{}{
+		// 			"a":  "1",
+		// 			"b":  "2",
+		// 			"cd": "3",
+		// 		},
+		// 	},
+		// 	maxCost: 5,
+		// 	//err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
+		// },
 	}
 
 	for _, test := range tests {

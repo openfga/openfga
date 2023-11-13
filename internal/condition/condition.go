@@ -14,6 +14,25 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+var baseCelEnv *cel.Env
+
+func init() {
+	var envOpts []cel.EnvOption
+	for _, customTypeOpts := range types.CustomParamTypes {
+		envOpts = append(envOpts, customTypeOpts...)
+	}
+
+	envOpts = append(envOpts, types.IPAddressEnvOption())
+	envOpts = append(envOpts, cel.EagerlyValidateDeclarations(true), cel.DefaultUTCTimeZone(true))
+
+	env, err := cel.NewEnv(envOpts...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to construct base CEL env: %v", err))
+	}
+
+	baseCelEnv = env
+}
+
 var emptyEvaluationResult = EvaluationResult{}
 
 type EvaluationResult struct {
@@ -54,10 +73,6 @@ func (e *EvaluableCondition) Compile() error {
 
 func (e *EvaluableCondition) compile() error {
 	var envOpts []cel.EnvOption
-	for _, customTypeOpts := range types.CustomParamTypes {
-		envOpts = append(envOpts, customTypeOpts...)
-	}
-
 	conditionParamTypes := map[string]*types.ParameterType{}
 	for paramName, paramTypeRef := range e.GetParameters() {
 		paramType, err := types.DecodeParameterType(paramTypeRef)
@@ -75,10 +90,7 @@ func (e *EvaluableCondition) compile() error {
 		envOpts = append(envOpts, cel.Variable(paramName, paramType.CelType()))
 	}
 
-	envOpts = append(envOpts, types.IPAddressEnvOption())
-	envOpts = append(envOpts, cel.EagerlyValidateDeclarations(true), cel.DefaultUTCTimeZone(true))
-
-	env, err := cel.NewEnv(envOpts...)
+	env, err := baseCelEnv.Extend(envOpts...)
 	if err != nil {
 		return &CompilationError{
 			Condition: e.Name,
