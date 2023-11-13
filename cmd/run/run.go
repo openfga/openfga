@@ -389,54 +389,54 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		requestid.NewUnaryInterceptor(),
-		validator.UnaryServerInterceptor(),
-		grpc_ctxtags.UnaryServerInterceptor(),
-	}
+	var serverOpts []grpc.ServerOption
 
-	streamingInterceptors := []grpc.StreamServerInterceptor{
-		requestid.NewStreamingInterceptor(),
-		validator.StreamServerInterceptor(),
-		grpc_ctxtags.StreamServerInterceptor(),
-	}
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
+		[]grpc.UnaryServerInterceptor{
+			requestid.NewUnaryInterceptor(),
+			validator.UnaryServerInterceptor(),
+			grpc_ctxtags.UnaryServerInterceptor(),
+		}...,
+	))
+
+	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
+		[]grpc.StreamServerInterceptor{
+			requestid.NewStreamingInterceptor(),
+			validator.StreamServerInterceptor(),
+			grpc_ctxtags.StreamServerInterceptor(),
+		}...,
+	))
 
 	if config.Metrics.Enabled {
-		unaryInterceptors = append(unaryInterceptors, grpc_prometheus.UnaryServerInterceptor)
-		streamingInterceptors = append(streamingInterceptors, grpc_prometheus.StreamServerInterceptor)
+		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor))
+		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
 
 		if config.Metrics.EnableRPCHistograms {
 			grpc_prometheus.EnableHandlingTimeHistogram()
 		}
 	}
 
-	opts := []grpc.ServerOption{
-		grpc.ChainUnaryInterceptor(unaryInterceptors...),
-		grpc.ChainStreamInterceptor(streamingInterceptors...),
-	}
-
 	if config.Trace.Enabled {
-		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
+		serverOpts = append(serverOpts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	}
 
-	unaryInterceptors = []grpc.UnaryServerInterceptor{
-		storeid.NewUnaryInterceptor(),
-		logging.NewLoggingInterceptor(s.Logger),
-		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
-	}
+	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
+		[]grpc.UnaryServerInterceptor{
+			storeid.NewUnaryInterceptor(),
+			logging.NewLoggingInterceptor(s.Logger),
+			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
+		}...,
+	))
 
-	streamingInterceptors = []grpc.StreamServerInterceptor{
-		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
-		// The following interceptors wrap the server stream with our own
-		// wrapper and must come last.
-		storeid.NewStreamingInterceptor(),
-		logging.NewStreamingLoggingInterceptor(s.Logger),
-	}
-
-	opts = append(opts,
-		grpc.ChainUnaryInterceptor(unaryInterceptors...),
-		grpc.ChainStreamInterceptor(streamingInterceptors...),
-	)
+	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
+		[]grpc.StreamServerInterceptor{
+			grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+			// The following interceptors wrap the server stream with our own
+			// wrapper and must come last.
+			storeid.NewStreamingInterceptor(),
+			logging.NewStreamingLoggingInterceptor(s.Logger),
+		}...,
+	))
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
@@ -447,7 +447,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			return err
 		}
 
-		opts = append(opts, grpc.Creds(creds))
+		serverOpts = append(serverOpts, grpc.Creds(creds))
 
 		s.Logger.Info("grpc TLS is enabled, serving connections using the provided certificate")
 	} else {
@@ -515,7 +515,7 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	)
 
 	// nosemgrep: grpc-server-insecure-connection
-	grpcServer := grpc.NewServer(opts...)
+	grpcServer := grpc.NewServer(serverOpts...)
 	openfgav1.RegisterOpenFGAServiceServer(grpcServer, svr)
 	healthServer := &health.Checker{TargetService: svr, TargetServiceName: openfgav1.OpenFGAService_ServiceDesc.ServiceName}
 	healthv1pb.RegisterHealthServer(grpcServer, healthServer)
