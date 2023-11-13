@@ -54,7 +54,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -291,7 +291,7 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	otel.SetTracerProvider(trace.NewNoopTracerProvider())
+	otel.SetTracerProvider(noop.NewTracerProvider())
 
 	var tracerProviderCloser func()
 
@@ -410,29 +410,33 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		}
 	}
 
-	if config.Trace.Enabled {
-		unaryInterceptors = append(unaryInterceptors, otelgrpc.UnaryServerInterceptor())
-		streamingInterceptors = append(streamingInterceptors, otelgrpc.StreamServerInterceptor())
+	opts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(unaryInterceptors...),
+		grpc.ChainStreamInterceptor(streamingInterceptors...),
 	}
 
-	unaryInterceptors = append(unaryInterceptors,
+	if config.Trace.Enabled {
+		opts = append(opts, grpc.StatsHandler(otelgrpc.NewServerHandler()))
+	}
+
+	unaryInterceptors = []grpc.UnaryServerInterceptor{
 		storeid.NewUnaryInterceptor(),
 		logging.NewLoggingInterceptor(s.Logger),
 		grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
-	)
+	}
 
-	streamingInterceptors = append(streamingInterceptors,
+	streamingInterceptors = []grpc.StreamServerInterceptor{
 		grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
 		// The following interceptors wrap the server stream with our own
 		// wrapper and must come last.
 		storeid.NewStreamingInterceptor(),
 		logging.NewStreamingLoggingInterceptor(s.Logger),
-	)
+	}
 
-	opts := []grpc.ServerOption{
+	opts = append(opts,
 		grpc.ChainUnaryInterceptor(unaryInterceptors...),
 		grpc.ChainStreamInterceptor(streamingInterceptors...),
-	}
+	)
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
