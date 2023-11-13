@@ -140,14 +140,14 @@ func TestCheckLogs(t *testing.T) {
 		},
 		{
 			_name: "check_http_success",
-			httpReqBody: bytes.NewBuffer([]byte(`{
+			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
     "relation": "viewer",
     "object": "document:1"
   },
   "authorization_model_id": "` + authorizationModelID + `"
-}`)),
+}`),
 			expectedContext: map[string]interface{}{
 				"grpc_service":           "openfga.v1.OpenFGAService",
 				"grpc_method":            "Check",
