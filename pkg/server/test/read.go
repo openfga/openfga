@@ -359,6 +359,9 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	encoder := encoder.NewBase64Encoder()
+
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := ulid.Make().String()
@@ -371,7 +374,10 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			}
 
 			test.request.StoreId = store
-			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
+			resp, err := commands.NewReadQuery(datastore,
+				commands.WithReadQueryLogger(logger),
+				commands.WithReadQueryEncoder(encoder),
+			).Execute(ctx, test.request)
 			require.NoError(err)
 
 			if test.response.Tuples != nil {
@@ -545,6 +551,8 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
+	logger := logger.NewNoopLogger()
+	encoder := encoder.NewBase64Encoder()
 	store := ulid.Make().String()
 
 	writes := []*openfgav1.TupleKey{
@@ -567,7 +575,10 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	err := datastore.Write(ctx, store, nil, writes)
 	require.NoError(t, err)
 
-	cmd := commands.NewReadQuery(datastore)
+	cmd := commands.NewReadQuery(datastore,
+		commands.WithReadQueryLogger(logger),
+		commands.WithReadQueryEncoder(encoder),
+	)
 
 	firstRequest := &openfgav1.ReadRequest{
 		StoreId:           store,
@@ -610,6 +621,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
+	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
 
 	encrypter, err := encrypter.NewGCMEncrypter("key")
@@ -631,6 +643,7 @@ func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.O
 	require.NoError(t, err)
 
 	_, err = commands.NewReadQuery(datastore,
+		commands.WithReadQueryLogger(logger),
 		commands.WithReadQueryEncoder(encoder),
 	).Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           store,

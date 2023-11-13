@@ -106,7 +106,9 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
+			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore,
+				commands.WithWriteAuthModelLogger(logger),
+			)
 
 			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
 			require.NoError(t, err)
@@ -116,7 +118,9 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				AuthorizationModelId: modelID.AuthorizationModelId,
 			}
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore,
+				commands.WithWriteAssertCmdLogger(logger),
+			)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.NoError(t, err)
 			query := commands.NewReadAssertionsQuery(datastore, logger)
