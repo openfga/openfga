@@ -384,45 +384,6 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 				ConditionMet: false,
 			},
 		},
-		// {
-		// 	name: "cost_exceeded_map",
-		// 	condition: &openfgav1.Condition{
-		// 		Name:       "condition1",
-		// 		Expression: "m1 == m2",
-		// 		Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-		// 			"m1": {
-		// 				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP,
-		// 				GenericTypes: []*openfgav1.ConditionParamTypeRef{
-		// 					{
-		// 						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-		// 					},
-		// 				},
-		// 			},
-		// 			"m2": {
-		// 				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_MAP,
-		// 				GenericTypes: []*openfgav1.ConditionParamTypeRef{
-		// 					{
-		// 						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-		// 					},
-		// 				},
-		// 			},
-		// 		},
-		// 	},
-		// 	context: map[string]interface{}{
-		// 		"m1": map[string]interface{}{
-		// 			"a":  "1",
-		// 			"b":  "2",
-		// 			"cd": "2",
-		// 		},
-		// 		"m2": map[string]interface{}{
-		// 			"a":  "1",
-		// 			"b":  "2",
-		// 			"cd": "3",
-		// 		},
-		// 	},
-		// 	maxCost: 5,
-		// 	//err:     fmt.Errorf("operation cancelled: actual cost limit exceeded"),
-		// },
 	}
 
 	for _, test := range tests {
