@@ -23,6 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -36,6 +37,7 @@ type Postgres struct {
 	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
+	maxConcurrency         int
 }
 
 var _ storage.OpenFGADatastore = (*Postgres)(nil)
@@ -121,6 +123,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
+		maxConcurrency:         cfg.MaxConcurrency,
 	}, nil
 }
 
@@ -369,16 +372,25 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 		}
 	}
 
-	// TODO: make this concurrent with a maximum of 5 goroutines. This may be helpful:
-	// https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-	models := make([]*openfgav1.AuthorizationModel, 0, numModelIDs)
+	g, gctx := errgroup.WithContext(ctx)
+	concurrencyControl := make(chan struct{}, p.maxConcurrency)
+	models := make([]*openfgav1.AuthorizationModel, numModelIDs)
 	// We use numModelIDs here to avoid retrieving possibly one extra model.
 	for i := 0; i < numModelIDs; i++ {
-		model, err := p.ReadAuthorizationModel(ctx, store, modelIDs[i])
-		if err != nil {
-			return nil, nil, err
-		}
-		models = append(models, model)
+		concurrencyControl <- struct{}{}
+		i := i // This line is not needed if using Go 1.22+.
+		g.Go(func() error {
+			defer func() { <-concurrencyControl }()
+			model, err := p.ReadAuthorizationModel(gctx, store, modelIDs[i])
+			if err != nil {
+				return err
+			}
+			models[i] = model
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
 	}
 
 	return models, token, nil

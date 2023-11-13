@@ -28,6 +28,7 @@ type Config struct {
 	MaxTuplesPerWriteField int
 	MaxTypesPerModelField  int
 
+	MaxConcurrency  int
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxIdleTime time.Duration
@@ -65,6 +66,12 @@ func WithMaxTuplesPerWrite(maxTuples int) DatastoreOption {
 func WithMaxTypesPerAuthorizationModel(maxTypes int) DatastoreOption {
 	return func(cfg *Config) {
 		cfg.MaxTypesPerModelField = maxTypes
+	}
+}
+
+func WithMaxConcurrency(c int) DatastoreOption {
+	return func(cfg *Config) {
+		cfg.MaxConcurrency = c
 	}
 }
 
@@ -115,6 +122,12 @@ func NewConfig(opts ...DatastoreOption) *Config {
 
 	if cfg.MaxTypesPerModelField == 0 {
 		cfg.MaxTypesPerModelField = storage.DefaultMaxTypesPerAuthorizationModel
+	}
+
+	if cfg.MaxConcurrency < 0 {
+		cfg.MaxConcurrency = 1
+	} else if cfg.MaxConcurrency == 0 {
+		cfg.MaxConcurrency = 5
 	}
 
 	return cfg
