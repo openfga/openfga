@@ -4,6 +4,7 @@ package testutils
 import (
 	"math/rand"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -52,4 +53,23 @@ func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
 	conditionContext, err := structpb.NewStruct(v)
 	require.NoError(t, err)
 	return conditionContext
+}
+
+// MakeSliceWithGenerator generates a slice of length 'n' and populates the contents
+// with values based on the generator provided.
+func MakeSliceWithGenerator[T any](n uint64, generator func(n uint64) any) []T {
+
+	s := make([]T, 0, n)
+
+	for i := uint64(0); i < n; i++ {
+		s = append(s, generator(i).(T))
+	}
+
+	return s
+}
+
+// NumericalStringGenerator generates a string representation of the provided
+// uint value.
+func NumericalStringGenerator(n uint64) any {
+	return strconv.FormatUint(uint64(n), 10)
 }
