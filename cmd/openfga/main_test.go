@@ -205,7 +205,7 @@ func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 }
 
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
-	tester := newOpenFGATester(t, "--experimentals=check-query-cache", "--check-query-cache-enabled=true")
+	tester := newOpenFGATester(t, "--check-query-cache-enabled=true")
 	defer tester.Cleanup()
 
 	conn := connect(t, tester)
@@ -569,7 +569,7 @@ func GRPCCreateStoreTest(t *testing.T, tester OpenFGATester) {
 			require.Equal(t, test.output.errorCode.String(), s.Code().String())
 
 			if test.output.errorCode == codes.OK {
-				require.True(t, response.Name == test.input.Name)
+				require.Equal(t, test.input.Name, response.Name)
 				_, err = ulid.Parse(response.Id)
 				require.NoError(t, err)
 			}

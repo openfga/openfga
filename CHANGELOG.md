@@ -8,6 +8,50 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.7] - 2023-11-06
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.6...v1.3.7)
+
+### Security
+* Bumped up the `grpc-health-probe` dependency to the latest release which fixed some vulnerabilities.
+
+## [v1.3.6] - 2023-11-06
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.5...v1.3.6)
+
+### Added
+* Provenance manifests generation (`openfga.intoto.jsonl``) for verification of release artifacts with SLSA attestations.
+
+### Changed
+* Removed the experimental flag `check-query-cache`. If you wish to enable the Check query cache you no longer need the experimental flag.
+
+
+## [1.3.5] - 2023-10-27
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.4...v1.3.5)
+
+### Added
+
+* Export metrics from MySQL and Postgres ([#1023](https://github.com/openfga/openfga/pull/1023))
+
+  To export datastore metrics, set `OPENFGA_METRICS_ENABLED=true` and `OPENFGA_DATASTORE_METRICS_ENABLED=true`.
+
+### Fixed
+
+* Return all results when `OPENFGA_LIST_OBJECTS_MAX_RESULTS=0` ([#1067](https://github.com/openfga/openfga/pull/1067))
+* Promptly return if max results are met before deadline in ListObjects ([#1064](https://github.com/openfga/openfga/pull/1064))
+* Fix sort order on ReadChanges ([#1079](https://github.com/openfga/openfga/pull/1079))
+
+### Changed
+
+* Write Authorization Models in a single database row ([#1030](https://github.com/openfga/openfga/pull/1030))
+
+  :warning: In order to avoid downtime, we recommend upgrading to at least v1.3.3 _before_ upgrading to v1.3.5.
+
+  This is the second of a series of releases that will progressively introduce changes via code and database migrations that will allow authorization models to be stored in a single database row.
+
+  See [here for more details](https://github.com/openfga/openfga/issues/1025).
+
 ## [1.3.4] - 2023-10-17
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.3...v1.3.4)
@@ -690,7 +734,10 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.3...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.7...HEAD
+[1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
+[1.3.6]: https://github.com/openfga/openfga/releases/tag/v1.3.6
+[1.3.5]: https://github.com/openfga/openfga/releases/tag/v1.3.5
 [1.3.4]: https://github.com/openfga/openfga/releases/tag/v1.3.4
 [1.3.3]: https://github.com/openfga/openfga/releases/tag/v1.3.3
 [1.3.2]: https://github.com/openfga/openfga/releases/tag/v1.3.2

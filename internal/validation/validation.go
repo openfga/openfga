@@ -11,7 +11,9 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// ValidateUserObjectRelation checks whether a tuple is well formed
+// ValidateUserObjectRelation returns nil if the tuple is well-formed and valid according to the provided model.
+//
+// Do NOT use this when reading or writing tuples to storage. Use ValidateTuple instead, because it's stricter.
 func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUser(typesys, tk.GetUser()); err != nil {
 		return err
@@ -28,7 +30,10 @@ func ValidateUserObjectRelation(typesys *typesystem.TypeSystem, tk *openfgav1.Tu
 	return nil
 }
 
-// ValidateTuple checks whether a tuple is well formed and valid according to the provided model.
+// ValidateTuple returns nil if a tuple is well formed and valid according to the provided model.
+// It is a superset of ValidateUserObjectRelation; it also validates TTU relations and type restrictions.
+//
+// Do NOT use this when validating a tuple that is an input to a Check or WriteAssertions request.
 func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	if err := ValidateUserObjectRelation(typesys, tk); err != nil {
 		return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}

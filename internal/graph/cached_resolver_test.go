@@ -356,7 +356,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 
 			actualResult, err := dut2.ResolveCheck(ctx, test.subsequentReq)
 			require.Equal(t, result.Allowed, actualResult.Allowed)
-			require.Nil(t, err)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -386,14 +386,14 @@ func TestResolveCheckExpired(t *testing.T) {
 
 	actualResult, err := dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	// subsequent call would have cache timeout and result in new ResolveCheck
 	time.Sleep(5 * time.Microsecond)
 
 	actualResult, err = dut.ResolveCheck(ctx, req)
 	require.Equal(t, result.Allowed, actualResult.Allowed)
-	require.Nil(t, err)
+	require.NoError(t, err)
 }
 
 func TestCachedCheckDatastoreQueryCount(t *testing.T) {
@@ -514,4 +514,45 @@ func TestCachedCheckDatastoreQueryCount(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, uint32(1), res.GetResolutionMetadata().DatastoreQueryCount)
+}
+
+var checkCacheKey string
+
+func BenchmarkCheckRequestCacheKey(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+
+	for n := 0; n < b.N; n++ {
+		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		})
+		require.NoError(b, err)
+	}
+}
+
+func BenchmarkCheckRequestCacheKeyWithContextualTuples(b *testing.B) {
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	var err error
+
+	tuples := []*openfgav1.TupleKey{
+		tuple.NewTupleKey("document:x", "viewer", "user:x"),
+		tuple.NewTupleKey("document:y", "viewer", "user:y"),
+		tuple.NewTupleKey("document:z", "viewer", "user:z"),
+	}
+
+	for n := 0; n < b.N; n++ {
+		checkCacheKey, err = checkRequestCacheKey(&ResolveCheckRequest{
+			StoreID:              storeID,
+			AuthorizationModelID: modelID,
+			TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			ContextualTuples:     tuples,
+		})
+		require.NoError(b, err)
+	}
 }

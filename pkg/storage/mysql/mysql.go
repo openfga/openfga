@@ -18,6 +18,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -30,6 +32,7 @@ type MySQL struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
+	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
@@ -40,7 +43,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		dsnCfg, err := mysql.ParseDSN(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse mysql connection dsn: %w", err)
+			return nil, fmt.Errorf("parse mysql connection dsn: %w", err)
 		}
 
 		if cfg.Username != "" {
@@ -55,7 +58,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 	db, err := sql.Open("mysql", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("initialize mysql connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -87,13 +90,22 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize mysql connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	var collector prometheus.Collector
+	if cfg.ExportMetrics {
+		collector = collectors.NewDBStatsCollector(db, "openfga")
+		if err := prometheus.Register(collector); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &MySQL{
 		stbl:                   sq.StatementBuilder.RunWith(db),
 		db:                     db,
 		logger:                 cfg.Logger,
+		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 	}, nil
@@ -101,6 +113,9 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close() {
+	if m.dbStatsCollector != nil {
+		prometheus.Unregister(m.dbStatsCollector)
+	}
 	m.db.Close()
 }
 
@@ -613,7 +628,7 @@ func (m *MySQL) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at <= NOW() - INTERVAL %d MICROSECOND", horizonOffset.Microseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})

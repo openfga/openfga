@@ -80,6 +80,6 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		gotAssertions, err := datastore.ReadAssertions(ctx, store, newModelID)
 		require.NoError(t, err)
 
-		require.Len(t, gotAssertions, 0)
+		require.Empty(t, gotAssertions)
 	})
 }

@@ -74,7 +74,7 @@ func PrepareTempConfigDir(t *testing.T) string {
 	t.Setenv("HOME", homedir)
 
 	confdir := filepath.Join(homedir, ".openfga")
-	require.Nil(t, os.Mkdir(confdir, 0750))
+	require.NoError(t, os.Mkdir(confdir, 0750))
 
 	return confdir
 }
@@ -82,8 +82,8 @@ func PrepareTempConfigDir(t *testing.T) string {
 func PrepareTempConfigFile(t *testing.T, config string) {
 	confdir := PrepareTempConfigDir(t)
 	confFile, err := os.Create(filepath.Join(confdir, "config.yaml"))
-	require.Nil(t, err)
+	require.NoError(t, err)
 	_, err = confFile.WriteString(config)
-	require.Nil(t, err)
-	require.Nil(t, confFile.Close())
+	require.NoError(t, err)
+	require.NoError(t, confFile.Close())
 }

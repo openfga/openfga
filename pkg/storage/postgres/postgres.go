@@ -19,6 +19,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
@@ -31,6 +33,7 @@ type Postgres struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
+	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
@@ -41,7 +44,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 	if cfg.Username != "" || cfg.Password != "" {
 		parsed, err := url.Parse(uri)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse postgres connection uri: %w", err)
+			return nil, fmt.Errorf("parse postgres connection uri: %w", err)
 		}
 
 		username := ""
@@ -68,7 +71,7 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 
 	db, err := sql.Open("pgx", uri)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("initialize postgres connection: %w", err)
 	}
 
 	if cfg.MaxOpenConns != 0 {
@@ -100,13 +103,22 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 		return nil
 	}, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize postgres connection: %w", err)
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	var collector prometheus.Collector
+	if cfg.ExportMetrics {
+		collector = collectors.NewDBStatsCollector(db, "openfga")
+		if err := prometheus.Register(collector); err != nil {
+			return nil, fmt.Errorf("initialize metrics: %w", err)
+		}
 	}
 
 	return &Postgres{
 		stbl:                   sq.StatementBuilder.PlaceholderFormat(sq.Dollar).RunWith(db),
 		db:                     db,
 		logger:                 cfg.Logger,
+		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 	}, nil
@@ -115,6 +127,9 @@ func New(uri string, cfg *sqlcommon.Config) (*Postgres, error) {
 // Close closes any open connections and cleans up residual resources
 // used by this storage adapter instance.
 func (p *Postgres) Close() {
+	if p.dbStatsCollector != nil {
+		prometheus.Unregister(p.dbStatsCollector)
+	}
 	p.db.Close()
 }
 
@@ -604,7 +619,7 @@ func (p *Postgres) ReadChanges(
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
-		OrderBy("inserted_at asc")
+		OrderBy("ulid asc")
 
 	if objectTypeFilter != "" {
 		sb = sb.Where(sq.Eq{"object_type": objectTypeFilter})
