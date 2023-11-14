@@ -51,10 +51,10 @@ type RequestIDTestSuite struct {
 
 func (s *RequestIDTestSuite) TestPing() {
 	_, err := s.Client.Ping(s.SimpleCtx(), pingReq)
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 }
 
 func (s *RequestIDTestSuite) TestStreamingPing() {
 	_, err := s.Client.PingStream(s.SimpleCtx())
-	require.NoError(s.T(), err)
+	s.Require().NoError(err)
 }

@@ -375,10 +375,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			})
 		}
 
-		sourceRelationRef := &openfgav1.RelationReference{
-			Type: req.User.GetObjectType(),
-		}
-
 		// e.g. 'user:bob'
 		if val, ok := req.User.(*UserRefObject); ok {
 			userFilter = append(userFilter, &openfgav1.ObjectRelation{
@@ -388,10 +384,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 		// e.g. 'group:eng#member'
 		if val, ok := req.User.(*UserRefObjectRelation); ok {
-			sourceRelationRef.RelationOrWildcard = &openfgav1.RelationReference_Relation{
-				Relation: val.ObjectRelation.Relation,
-			}
-
 			userFilter = append(userFilter, val.ObjectRelation)
 		}
 	case graph.TupleToUsersetEdge:

@@ -97,17 +97,8 @@ func InvalidTuple(reason string, tuple *openfgav1.TupleKey) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tuple.String(), reason))
 }
 
-// InvalidObjectFormat is used when an object does not have a type and id part
-func InvalidObjectFormat(tuple *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_object_format), fmt.Sprintf("Invalid object format for tuple '%s'", tuple.String()))
-}
-
 func DuplicateTupleInWrite(tk *openfgav1.TupleKey) error {
 	return status.Error(codes.Code(openfgav1.ErrorCode_cannot_allow_duplicate_tuples_in_one_request), fmt.Sprintf("duplicate tuple in write: user: '%s', relation: '%s', object: '%s'", tk.GetUser(), tk.GetRelation(), tk.GetObject()))
-}
-
-func WriteToIndirectRelationError(reason string, tk *openfgav1.TupleKey) error {
-	return status.Error(codes.Code(openfgav1.ErrorCode_invalid_tuple), fmt.Sprintf("Invalid tuple '%s'. Reason: %s", tk.String(), reason))
 }
 
 func WriteFailedDueToInvalidInput(err error) error {
@@ -138,14 +129,10 @@ func HandleTupleValidateError(err error) error {
 	switch t := err.(type) {
 	case *tuple.InvalidTupleError:
 		return InvalidTuple(t.Cause.Error(), t.TupleKey)
-	case *tuple.InvalidObjectFormatError:
-		return InvalidObjectFormat(t.TupleKey)
 	case *tuple.TypeNotFoundError:
 		return TypeNotFound(t.TypeName)
 	case *tuple.RelationNotFoundError:
 		return RelationNotFound(t.Relation, t.TypeName, t.TupleKey)
-	case *tuple.IndirectWriteError:
-		return WriteToIndirectRelationError(t.Reason, t.TupleKey)
 	}
 
 	return HandleError("", err)

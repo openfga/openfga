@@ -46,14 +46,14 @@ func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
+		require.False(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestMigrateCommandConfigFileValuesAreParsed(t *testing.T) {
@@ -69,14 +69,14 @@ func TestMigrateCommandConfigFileValuesAreParsed(t *testing.T) {
 		require.Equal(t, "postgres://postgres:password@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, false, viper.GetBool(verboseMigrationFlag))
+		require.False(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }
 
 func TestMigrateCommandConfigIsMerged(t *testing.T) {
@@ -94,12 +94,12 @@ func TestMigrateCommandConfigIsMerged(t *testing.T) {
 		require.Equal(t, "postgres://postgres:PASS2@127.0.0.1:5432/postgres", viper.GetString(datastoreURIFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
-		require.Equal(t, true, viper.GetBool(verboseMigrationFlag))
+		require.True(t, viper.GetBool(verboseMigrationFlag))
 		return nil
 	}
 
 	cmd := cmd.NewRootCommand()
 	cmd.AddCommand(migrateCmd)
 	cmd.SetArgs([]string{"migrate"})
-	require.Nil(t, cmd.Execute())
+	require.NoError(t, cmd.Execute())
 }

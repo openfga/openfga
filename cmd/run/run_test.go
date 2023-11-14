@@ -33,6 +33,7 @@ import (
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
+	storagefixtures "github.com/openfga/openfga/pkg/testfixtures/storage"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/spf13/cobra"
@@ -733,9 +734,28 @@ func TestGRPCServingTLS(t *testing.T) {
 }
 
 func TestServerMetricsReporting(t *testing.T) {
+	t.Run("mysql", func(t *testing.T) {
+		testServerMetricsReporting(t, "mysql")
+	})
+	t.Run("postgres", func(t *testing.T) {
+		testServerMetricsReporting(t, "postgres")
+	})
+}
+
+func testServerMetricsReporting(t *testing.T, engine string) {
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
+
 	cfg := MustDefaultConfigWithRandomPorts()
+	cfg.Datastore.Engine = engine
+	cfg.Datastore.URI = testDatastore.GetConnectionURI(true)
+	cfg.Datastore.Metrics.Enabled = true
 	cfg.Metrics.Enabled = true
 	cfg.Metrics.EnableRPCHistograms = true
+	metricsPort, metricsPortReleaser := TCPRandomPort()
+	metricsPortReleaser()
+
+	cfg.Metrics.Addr = fmt.Sprintf("0.0.0.0:%d", metricsPort)
+
 	cfg.MaxConcurrentReadsForCheck = 30
 	cfg.MaxConcurrentReadsForListObjects = 30
 
@@ -808,7 +828,7 @@ func TestServerMetricsReporting(t *testing.T) {
 	require.Contains(t, listObjectsResp.GetObjects(), "document:1")
 	require.Contains(t, listObjectsResp.GetObjects(), "document:2")
 
-	resp, err := http.Get("http://localhost:2112/metrics")
+	resp, err := retryablehttp.Get(fmt.Sprintf("http://%s/metrics", cfg.Metrics.Addr))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	defer resp.Body.Close()
@@ -823,6 +843,7 @@ func TestServerMetricsReporting(t *testing.T) {
 	require.Contains(t, stringBody, "datastore_bounded_read_delay_ms")
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
 	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
+	require.Contains(t, stringBody, "go_sql_idle_connections")
 }
 
 func TestHTTPServerDisabled(t *testing.T) {
@@ -1038,7 +1059,7 @@ func TestRunCommandNoConfigDefaultValues(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }
 
 func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
@@ -1058,7 +1079,7 @@ func TestRunCommandConfigFileValuesAreParsed(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }
 
 func TestParseConfig(t *testing.T) {
@@ -1077,7 +1098,7 @@ requestDurationDatastoreQueryCountBuckets: [33,44]
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 
 	cfg, err := ReadConfig()
 	require.NoError(t, err)
@@ -1116,5 +1137,5 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	rootCmd := cmd.NewRootCommand()
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
-	require.Nil(t, rootCmd.Execute())
+	require.NoError(t, rootCmd.Execute())
 }
