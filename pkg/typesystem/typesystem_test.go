@@ -2250,7 +2250,6 @@ func TestRewriteContainsExclusion(t *testing.T) {
 }
 
 func TestDefaultMaxCELEValuationCost(t *testing.T) {
-
 	// check to make sure defaultMaxEvaluationCost never drops below an explict 100, because
 	// API compatibility can be impacted otherwise
 	require.GreaterOrEqual(t, defaultMaxEvaluationCost, 100)

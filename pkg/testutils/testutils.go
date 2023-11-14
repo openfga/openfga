@@ -58,7 +58,6 @@ func MustNewStruct(t *testing.T, v map[string]interface{}) *structpb.Struct {
 // MakeSliceWithGenerator generates a slice of length 'n' and populates the contents
 // with values based on the generator provided.
 func MakeSliceWithGenerator[T any](n uint64, generator func(n uint64) any) []T {
-
 	s := make([]T, 0, n)
 
 	for i := uint64(0); i < n; i++ {
@@ -71,11 +70,10 @@ func MakeSliceWithGenerator[T any](n uint64, generator func(n uint64) any) []T {
 // NumericalStringGenerator generates a string representation of the provided
 // uint value.
 func NumericalStringGenerator(n uint64) any {
-	return strconv.FormatUint(uint64(n), 10)
+	return strconv.FormatUint(n, 10)
 }
 
 func MakeStringWithRuneset(n uint64, runeSet []rune) string {
-
 	var s string
 	for i := uint64(0); i < n; i++ {
 		s += string(runeSet[rand.Intn(len(runeSet))])
