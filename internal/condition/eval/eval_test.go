@@ -129,6 +129,29 @@ condition str_cond(s: list<string>) {
 				ConditionMet: true,
 			},
 		},
+		{
+			name: "string_contains",
+			model: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+    define can_view: [user with str_cond]
+
+condition str_cond(s: string) {
+	s.contains("b")
+}`),
+			tupleKey: tuple.NewTupleKeyWithCondition("document:1", "can_view", "user:jon", "str_cond", nil),
+			context: map[string]any{
+				// see https://github.com/google/cel-go/blob/cfbf821f1b458533051306305a39b743db7c4bdb/checker/cost.go#L604-L609
+				"s": testutils.MakeStringWithRuneset(990, []rune{'a'}), // string has cost factor of 0.1, so 990*0.1 < 100
+			},
+			result: &condition.EvaluationResult{
+				Cost:         100,
+				ConditionMet: false,
+			},
+		},
 	}
 
 	for _, test := range tests {

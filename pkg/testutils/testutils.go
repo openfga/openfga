@@ -73,3 +73,13 @@ func MakeSliceWithGenerator[T any](n uint64, generator func(n uint64) any) []T {
 func NumericalStringGenerator(n uint64) any {
 	return strconv.FormatUint(uint64(n), 10)
 }
+
+func MakeStringWithRuneset(n uint64, runeSet []rune) string {
+
+	var s string
+	for i := uint64(0); i < n; i++ {
+		s += string(runeSet[rand.Intn(len(runeSet))])
+	}
+
+	return s
+}
