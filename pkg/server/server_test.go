@@ -45,6 +45,66 @@ func init() {
 	}
 }
 
+func ExampleNewServerWithOpts() {
+	openfga, err := NewServerWithOpts(WithDatastore(memory.New()))
+	if err != nil {
+		panic(err)
+	}
+	store, err := openfga.CreateStore(context.Background(),
+		&openfgav1.CreateStoreRequest{Name: "demo"})
+	if err != nil {
+		panic(err)
+	}
+	authorizationModel, err := openfga.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: store.Id,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"reader": {
+						Userset: &openfgav1.Userset_This{},
+					},
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"reader": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{
+									Type: "user",
+									RelationOrWildcard: &openfgav1.RelationReference_Wildcard{
+										Wildcard: &openfgav1.Wildcard{},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	if err != nil {
+		panic(err)
+	}
+	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              store.Id,
+		AuthorizationModelId: authorizationModel.AuthorizationModelId,
+		TupleKey: &openfgav1.TupleKey{
+			User:     "user:anne",
+			Relation: "reader",
+			Object:   "document:budget",
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(checkResponse.Allowed)
+	// Output: false
+}
+
 func TestServerPanicIfNoDatastore(t *testing.T) {
 	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
 		_ = MustNewServerWithOpts()
