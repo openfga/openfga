@@ -93,6 +93,7 @@ func (p *postgresTestContainer) RunPostgresTestContainer(t testing.TB) Datastore
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/postgresql/data": ""},
 	}
 
 	name := fmt.Sprintf("postgres-%s", ulid.Make().String())
