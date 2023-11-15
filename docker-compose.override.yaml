@@ -6,6 +6,9 @@ services:
   openfga:
     image: !reset null
     build: .
+    depends_on:
+      otel-collector:
+        condition: service_started
     environment:
       - OPENFGA_TRACE_ENABLED=true
       - OPENFGA_TRACE_SAMPLE_RATIO=1
@@ -26,7 +29,7 @@ services:
       - "2113:2113" #prometheus metrics exporter
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.49
     container_name: jaeger
     command: [ "--query.max-clock-skew-adjustment", "500ms" ]
     environment:

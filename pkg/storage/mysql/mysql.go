@@ -33,6 +33,7 @@ type MySQL struct {
 	stbl                   sq.StatementBuilderType
 	db                     *sql.DB
 	logger                 logger.Logger
+	dbStatsCollector       prometheus.Collector
 	maxTuplesPerWriteField int
 	maxTypesPerModelField  int
 }
@@ -93,8 +94,10 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
+	var collector prometheus.Collector
 	if cfg.ExportMetrics {
-		if err := prometheus.Register(collectors.NewDBStatsCollector(db, "openfga")); err != nil {
+		collector = collectors.NewDBStatsCollector(db, "openfga")
+		if err := prometheus.Register(collector); err != nil {
 			return nil, fmt.Errorf("initialize metrics: %w", err)
 		}
 	}
@@ -103,6 +106,7 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 		stbl:                   sq.StatementBuilder.RunWith(db),
 		db:                     db,
 		logger:                 cfg.Logger,
+		dbStatsCollector:       collector,
 		maxTuplesPerWriteField: cfg.MaxTuplesPerWriteField,
 		maxTypesPerModelField:  cfg.MaxTypesPerModelField,
 	}, nil
@@ -110,6 +114,9 @@ func New(uri string, cfg *sqlcommon.Config) (*MySQL, error) {
 
 // Close closes the datastore and cleans up any residual resources.
 func (m *MySQL) Close() {
+	if m.dbStatsCollector != nil {
+		prometheus.Unregister(m.dbStatsCollector)
+	}
 	m.db.Close()
 }
 

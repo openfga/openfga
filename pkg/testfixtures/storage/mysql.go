@@ -91,6 +91,7 @@ func (m *mySQLTestContainer) RunMySQLTestContainer(t testing.TB) DatastoreTestCo
 	hostCfg := container.HostConfig{
 		AutoRemove:      true,
 		PublishAllPorts: true,
+		Tmpfs:           map[string]string{"/var/lib/mysql": ""},
 	}
 
 	name := fmt.Sprintf("mysql-%s", ulid.Make().String())
