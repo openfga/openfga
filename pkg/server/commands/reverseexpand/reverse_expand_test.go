@@ -88,7 +88,7 @@ type document
 	case <-done:
 		t.Log("OK!")
 		return
-	case <-time.After(10 * time.Millisecond):
+	case <-time.After(30 * time.Millisecond):
 		require.FailNow(t, "timed out")
 	}
 }

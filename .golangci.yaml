@@ -15,6 +15,7 @@ linters:
     - gosimple
     - govet
     - ineffassign
+    - mirror
     - staticcheck
     - tagalign
     - testifylint
