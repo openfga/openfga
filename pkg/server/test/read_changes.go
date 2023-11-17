@@ -7,8 +7,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -62,11 +60,6 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 	store := testutils.CreateRandomString(10)
 	ctx, backend, err := writeTuples(store, datastore)
 	require.NoError(t, err)
-
-	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(t, err)
-
-	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
 	t.Run("read_changes_without_type", func(t *testing.T) {
 		testCases := []testCase{
@@ -122,7 +115,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, commands.WithReadChangesQueryEncoder(encoder))
+		readChangesQuery := commands.NewReadChangesQuery(backend)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -182,7 +175,7 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 		}
 
-		readChangesQuery := commands.NewReadChangesQuery(backend, commands.WithReadChangesQueryEncoder(encoder))
+		readChangesQuery := commands.NewReadChangesQuery(backend)
 		runTests(t, ctx, testCases, readChangesQuery)
 	})
 
@@ -200,7 +193,6 @@ func TestReadChanges(t *testing.T, datastore storage.OpenFGADatastore) {
 		}
 
 		readChangesQuery := commands.NewReadChangesQuery(backend,
-			commands.WithReadChangesQueryEncoder(encoder),
 			commands.WithReadChangeQueryHorizonOffset(2),
 		)
 		runTests(t, ctx, testCases, readChangesQuery)

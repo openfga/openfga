@@ -9,7 +9,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -468,12 +467,9 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore,
-				commands.WithWriteAuthModelLogger(logger),
-			)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)
