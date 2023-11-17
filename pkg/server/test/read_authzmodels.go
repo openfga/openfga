@@ -6,6 +6,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/pkg/encoder"
+	"github.com/openfga/openfga/pkg/encrypter"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -89,7 +91,15 @@ func TestReadAuthorizationModelsWithPaging(t *testing.T, datastore storage.OpenF
 	err = datastore.WriteAuthorizationModel(ctx, store, model2)
 	require.NoError(err)
 
-	query := commands.NewReadAuthorizationModelsQuery(datastore)
+	encrypter, err := encrypter.NewGCMEncrypter("key")
+	require.NoError(err)
+
+	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
+
+	query := commands.NewReadAuthorizationModelsQuery(datastore,
+		commands.WithReadAuthModelsQueryEncoder(encoder),
+	)
+
 	firstRequest := &openfgav1.ReadAuthorizationModelsRequest{
 		StoreId:  store,
 		PageSize: wrapperspb.Int32(1),
