@@ -31,7 +31,7 @@ func WithWriteAuthModelLogger(l logger.Logger) WriteAuthModelOption {
 	}
 }
 
-func WithWriteAuthModelMaxSize(size int) WriteAuthModelOption {
+func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	return func(m *WriteAuthorizationModelCommand) {
 		m.maxAuthorizationModelSizeInBytes = size
 	}

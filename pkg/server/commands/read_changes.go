@@ -40,9 +40,8 @@ func WithReadChangeQueryHorizonOffset(horizonOffset int) ReadChangesQueryOption 
 	}
 }
 
-// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend` and `typeDefinitionReadBackend` to use for storage
+// NewReadChangesQuery creates a ReadChangesQuery with specified `ChangelogBackend`
 func NewReadChangesQuery(backend storage.ChangelogBackend, opts ...ReadChangesQueryOption) *ReadChangesQuery {
-	//logger logger.Logger, encoder encoder.Encoder, horizonOffset int
 	rq := &ReadChangesQuery{
 		backend:       backend,
 		logger:        logger.NewNoopLogger(),

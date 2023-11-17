@@ -8,7 +8,6 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -100,15 +99,12 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore,
-				commands.WithWriteAuthModelLogger(logger),
-			)
+			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
 
 			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
 			require.NoError(t, err)
@@ -118,12 +114,10 @@ func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore
 				AuthorizationModelId: modelID.AuthorizationModelId,
 			}
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore,
-				commands.WithWriteAssertCmdLogger(logger),
-			)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.NoError(t, err)
-			query := commands.NewReadAssertionsQuery(datastore, logger)
+			query := commands.NewReadAssertionsQuery(datastore)
 			actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
 			require.NoError(t, actualError)
 
