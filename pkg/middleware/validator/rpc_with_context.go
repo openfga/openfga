@@ -15,10 +15,7 @@ type requestWithContext interface {
 	GetContext() *structpb.Struct
 }
 
-func requestContextWithinLimits(
-	req interface{},
-) error {
-
+func requestContextWithinLimits(req interface{}) error {
 	reqWithContext, ok := req.(requestWithContext)
 	if !ok {
 		return nil
