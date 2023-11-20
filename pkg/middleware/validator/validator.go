@@ -25,10 +25,15 @@ func RequestIsValidatedFromContext(ctx context.Context) bool {
 
 // UnaryServerInterceptor returns a new unary server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	validator := grpcvalidator.UnaryServerInterceptor()
+	requestValidator := grpcvalidator.UnaryServerInterceptor()
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		return validator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+		return requestValidator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+
+			if err := requestContextWithinLimits(req); err != nil {
+				return nil, err
+			}
+
 			return handler(contextWithRequestIsValidated(ctx), req)
 		})
 	}
@@ -36,10 +41,11 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 // StreamServerInterceptor returns a new streaming server interceptor that runs request validations and injects a bool in the context indicating that validation has been run.
 func StreamServerInterceptor() grpc.StreamServerInterceptor {
-	validator := grpcvalidator.StreamServerInterceptor()
+	requestValidator := grpcvalidator.StreamServerInterceptor()
 
 	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-		return validator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
+		return requestValidator(srv, stream, info, func(srv interface{}, ss grpc.ServerStream) error {
+
 			return handler(srv, &recvWrapper{
 				ctx:          contextWithRequestIsValidated(stream.Context()),
 				ServerStream: ss,
@@ -51,6 +57,18 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 type recvWrapper struct {
 	ctx context.Context
 	grpc.ServerStream
+}
+
+func (s *recvWrapper) RecvMsg(m any) error {
+	if err := s.ServerStream.RecvMsg(m); err != nil {
+		return err
+	}
+
+	if err := requestContextWithinLimits(m); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *recvWrapper) Context() context.Context {
