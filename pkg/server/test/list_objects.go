@@ -581,6 +581,10 @@ condition condition1(x: int) {
 				}
 			}
 
+			if model.Id == "" {
+				model.Id = ulid.Make().String()
+			}
+
 			err := ds.WriteAuthorizationModel(ctx, storeID, model)
 			require.NoError(t, err)
 
