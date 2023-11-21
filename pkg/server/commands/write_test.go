@@ -10,7 +10,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -26,8 +25,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		writes        []*openfgav1.TupleKey
 		expectedError error
 	}
-
-	logger := logger.NewNoopLogger()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -45,7 +42,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger)
+	cmd := NewWriteCommand(mockDatastore)
 
 	tests := []test{
 		{
@@ -139,14 +136,12 @@ func TestValidateWriteRequest(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			logger := logger.NewNoopLogger()
-
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger)
+			cmd := NewWriteCommand(mockDatastore)
 
 			if len(test.writes) > 0 {
 				mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), gomock.Any(), gomock.Any()).Return(&openfgav1.AuthorizationModel{
@@ -193,7 +188,7 @@ func TestTransactionalWriteFailedError(t *testing.T) {
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(storage.ErrTransactionalWriteFailed)
 
-	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger())
+	cmd := NewWriteCommand(mockDatastore)
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),

@@ -17,7 +17,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -574,9 +573,8 @@ func TestWriteAssertionModelDSError(t *testing.T) {
 				Assertions:           curTest.assertions,
 				AuthorizationModelId: modelID,
 			}
-			logger := logger.NewNoopLogger()
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore, logger)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
 			_, err := writeAssertionCmd.Execute(ctx, request)
 			require.ErrorIs(t, curTest.expectedError, err)
 		})
@@ -597,9 +595,8 @@ func TestReadAssertionModelDSError(t *testing.T) {
 		ReadAssertions(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(nil, fmt.Errorf("unable to read"))
-	logger := logger.NewNoopLogger()
 
-	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions, logger)
+	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions)
 	_, err := readAssertionQuery.Execute(ctx, storeID, modelID)
 	expectedError := serverErrors.NewInternalError(
 		"", fmt.Errorf("unable to read"),

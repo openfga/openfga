@@ -23,13 +23,32 @@ type ReadQuery struct {
 	encoder   encoder.Encoder
 }
 
-// NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
-func NewReadQuery(datastore storage.OpenFGADatastore, logger logger.Logger, encoder encoder.Encoder) *ReadQuery {
-	return &ReadQuery{
-		datastore: datastore,
-		logger:    logger,
-		encoder:   encoder,
+type ReadQueryOption func(*ReadQuery)
+
+func WithReadQueryLogger(l logger.Logger) ReadQueryOption {
+	return func(rq *ReadQuery) {
+		rq.logger = l
 	}
+}
+
+func WithReadQueryEncoder(e encoder.Encoder) ReadQueryOption {
+	return func(rq *ReadQuery) {
+		rq.encoder = e
+	}
+}
+
+// NewReadQuery creates a ReadQuery using the provided OpenFGA datastore implementation.
+func NewReadQuery(datastore storage.OpenFGADatastore, opts ...ReadQueryOption) *ReadQuery {
+	rq := &ReadQuery{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+		encoder:   encoder.NewBase64Encoder(),
+	}
+
+	for _, opt := range opts {
+		opt(rq)
+	}
+	return rq
 }
 
 // Execute the ReadQuery, returning paginated `openfga.Tuple`(s) that match the tuple. Return all tuples if the tuple is

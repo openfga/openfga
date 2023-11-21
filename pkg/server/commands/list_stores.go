@@ -16,12 +16,31 @@ type ListStoresQuery struct {
 	encoder       encoder.Encoder
 }
 
-func NewListStoresQuery(storesBackend storage.StoresBackend, logger logger.Logger, encoder encoder.Encoder) *ListStoresQuery {
-	return &ListStoresQuery{
-		storesBackend: storesBackend,
-		logger:        logger,
-		encoder:       encoder,
+type ListStoresQueryOption func(*ListStoresQuery)
+
+func WithListStoresQueryLogger(l logger.Logger) ListStoresQueryOption {
+	return func(q *ListStoresQuery) {
+		q.logger = l
 	}
+}
+
+func WithListStoresQueryEncoder(e encoder.Encoder) ListStoresQueryOption {
+	return func(q *ListStoresQuery) {
+		q.encoder = e
+	}
+}
+
+func NewListStoresQuery(storesBackend storage.StoresBackend, opts ...ListStoresQueryOption) *ListStoresQuery {
+	q := &ListStoresQuery{
+		storesBackend: storesBackend,
+		logger:        logger.NewNoopLogger(),
+		encoder:       encoder.NewBase64Encoder(),
+	}
+
+	for _, opt := range opts {
+		opt(q)
+	}
+	return q
 }
 
 func (q *ListStoresQuery) Execute(ctx context.Context, req *openfgav1.ListStoresRequest) (*openfgav1.ListStoresResponse, error) {
