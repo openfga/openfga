@@ -266,9 +266,9 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
 	// If ListObjects is closing up its connections effectively then this will not fail.
-	ready, err := ds.IsReady(timeoutCtx)
+	status, err := ds.IsReady(timeoutCtx)
 	require.NoError(t, err)
-	require.True(t, ready)
+	require.True(t, status.IsReady)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {
