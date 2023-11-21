@@ -48,7 +48,11 @@ func match(key *openfgav1.TupleKey, target *openfgav1.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
+func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
