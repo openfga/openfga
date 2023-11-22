@@ -11,6 +11,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
@@ -171,6 +172,50 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			if string(continuationToken) == "" {
 				break
 			}
+		}
+	})
+
+	t.Run("read_changes_with_conditions", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "folder1"),
+			Relation: "viewer",
+			User:     "bob",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "condition",
+			},
+		}
+		tk2 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("folder", "folder2"),
+			Relation: "viewer",
+			User:     "bill",
+			Condition: &openfgav1.RelationshipCondition{
+				Name:    "condition",
+				Context: testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"}),
+			},
+		}
+
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1, tk2})
+		require.NoError(t, err)
+
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		require.NoError(t, err)
+		require.NotEmpty(t, continuationToken)
+
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk1,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				TupleKey:  tk2,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+		}
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
 }

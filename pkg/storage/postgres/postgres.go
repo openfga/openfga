@@ -625,7 +625,7 @@ func (p *Postgres) ReadChanges(
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "condition_name", "condition_context", "inserted_at").
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
@@ -658,21 +658,49 @@ func (p *Postgres) ReadChanges(
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, user string
+		var objectType, objectID, relation, conditionName, user string
 		var operation int
 		var insertedAt time.Time
+		var conditionContext []byte
 
-		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
+		err = rows.Scan(
+			&ulid,
+			&objectType,
+			&objectID,
+			&relation,
+			&user,
+			&operation,
+			&conditionName,
+			&conditionContext,
+			&insertedAt,
+		)
 		if err != nil {
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
+		tk := &openfgav1.TupleKey{
+			Object:   tupleUtils.BuildObject(objectType, objectID),
+			Relation: relation,
+			User:     user,
+		}
+
+		if conditionName != "" {
+			tk.Condition = &openfgav1.RelationshipCondition{
+				Name: conditionName,
+			}
+
+			if conditionContext != nil {
+				var conditionContextStruct structpb.Struct
+				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+					return nil, nil, err
+				}
+
+				tk.Condition.Context = &conditionContextStruct
+			}
+		}
+
 		changes = append(changes, &openfgav1.TupleChange{
-			TupleKey: &openfgav1.TupleKey{
-				Object:   tupleUtils.BuildObject(objectType, objectID),
-				Relation: relation,
-				User:     user,
-			},
+			TupleKey:  tk,
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
