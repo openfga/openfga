@@ -299,7 +299,7 @@ func DefaultConfig() *Config {
 		ChangelogHorizonOffset:                    DefaultChangelogHorizonOffset,
 		ResolveNodeLimit:                          DefaultResolveNodeLimit,
 		ResolveNodeBreadthLimit:                   DefaultResolveNodeBreadthLimit,
-		Experimentals:                             []string{},
+		Experimentals:                             []string{"reject-conditions"},
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},

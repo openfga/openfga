@@ -36,6 +36,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -45,8 +46,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                           = "openfga-authorization-model-id"
+	authorizationModelIDKey                              = "authorization_model_id"
+	ExperimentalRejectConditions ExperimentalFeatureFlag = "reject-conditions"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -500,6 +502,15 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		}
 	}
 
+	if slices.Contains(s.experimentals, ExperimentalRejectConditions) {
+		tks := req.GetWrites()
+		for _, tk := range tks.TupleKeys {
+			if tk.Condition != nil {
+				return nil, status.Error(codes.Unimplemented, "conditions not supported")
+			}
+		}
+	}
+
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		Method:  "Write",
@@ -681,6 +692,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 	if !validator.RequestIsValidatedFromContext(ctx) {
 		if err := req.Validate(); err != nil {
 			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	if slices.Contains(s.experimentals, ExperimentalRejectConditions) {
+		if req.Conditions != nil {
+			return nil, status.Error(codes.Unimplemented, "conditions not supported")
 		}
 	}
 

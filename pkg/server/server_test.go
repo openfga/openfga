@@ -1006,6 +1006,79 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
+func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalRejectConditions),
+	)
+
+	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+			},
+			Conditions: map[string]*openfgav1.Condition{
+				"condition1": {
+					Name:       "condition1",
+					Expression: "param1 == 'ok'",
+					Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+						"param1": {
+							TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+						},
+					},
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
+}
+
+func TestWriteWithExperimentalRejectConditions(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalRejectConditions),
+	)
+
+	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		_, err := s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					tuple.NewWriteRequestTupleKey("document:1", "editor", "user:jon"),
+					tuple.ConvertTupleKeyToWriteTupleKey(
+						tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
+					),
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
+}
+
 func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
 	testDatastore := storagefixtures.RunDatastoreTestContainer(t, engine)
 

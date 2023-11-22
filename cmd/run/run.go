@@ -223,6 +223,7 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	// Since this is used for tests, turn the following off:
 	config.Playground.Enabled = false
 	config.Metrics.Enabled = false
+	config.Experimentals = []string{}
 
 	httpPort, httpPortReleaser := TCPRandomPort()
 	defer httpPortReleaser()
