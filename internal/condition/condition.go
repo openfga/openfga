@@ -14,7 +14,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-var baseCelEnv *cel.Env
+var celBaseEnv *cel.Env
 
 func init() {
 	var envOpts []cel.EnvOption
@@ -22,15 +22,14 @@ func init() {
 		envOpts = append(envOpts, customTypeOpts...)
 	}
 
-	envOpts = append(envOpts, types.IPAddressEnvOption())
-	envOpts = append(envOpts, cel.EagerlyValidateDeclarations(true), cel.DefaultUTCTimeZone(true))
+	envOpts = append(envOpts, types.IPAddressEnvOption(), cel.EagerlyValidateDeclarations(true))
 
 	env, err := cel.NewEnv(envOpts...)
 	if err != nil {
-		panic(fmt.Sprintf("failed to construct base CEL env: %v", err))
+		panic(fmt.Sprintf("failed to construct CEL base env: %v", err))
 	}
 
-	baseCelEnv = env
+	celBaseEnv = env
 }
 
 var emptyEvaluationResult = EvaluationResult{}
@@ -90,7 +89,7 @@ func (e *EvaluableCondition) compile() error {
 		envOpts = append(envOpts, cel.Variable(paramName, paramType.CelType()))
 	}
 
-	env, err := baseCelEnv.Extend(envOpts...)
+	env, err := celBaseEnv.Extend(envOpts...)
 	if err != nil {
 		return &CompilationError{
 			Condition: e.Name,
