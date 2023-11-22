@@ -474,7 +474,10 @@ func (s *Server) Read(ctx context.Context, req *openfgav1.ReadRequest) (*openfga
 		Method:  "Read",
 	})
 
-	q := commands.NewReadQuery(s.datastore, s.logger, s.encoder)
+	q := commands.NewReadQuery(s.datastore,
+		commands.WithReadQueryLogger(s.logger),
+		commands.WithReadQueryEncoder(s.encoder),
+	)
 	return q.Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           req.GetStoreId(),
 		TupleKey:          tk,
@@ -505,7 +508,7 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger)
+	cmd := commands.NewWriteCommand(s.datastore, commands.WithWriteCmdLogger(s.logger))
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -634,7 +637,7 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 		return nil, err
 	}
 
-	q := commands.NewExpandQuery(s.datastore, s.logger)
+	q := commands.NewExpandQuery(s.datastore, commands.WithExpandQueryLogger(s.logger))
 	return q.Execute(ctx, &openfgav1.ExpandRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -659,7 +662,7 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 		Method:  "ReadAuthorizationModels",
 	})
 
-	q := commands.NewReadAuthorizationModelQuery(s.datastore, s.logger)
+	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
@@ -678,7 +681,10 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
+		commands.WithWriteAuthModelLogger(s.logger),
+		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -704,7 +710,10 @@ func (s *Server) ReadAuthorizationModels(ctx context.Context, req *openfgav1.Rea
 		Method:  "ReadAuthorizationModels",
 	})
 
-	c := commands.NewReadAuthorizationModelsQuery(s.datastore, s.logger, s.encoder)
+	c := commands.NewReadAuthorizationModelsQuery(s.datastore,
+		commands.WithReadAuthModelsQueryLogger(s.logger),
+		commands.WithReadAuthModelsQueryEncoder(s.encoder),
+	)
 	return c.Execute(ctx, req)
 }
 
@@ -730,7 +739,7 @@ func (s *Server) WriteAssertions(ctx context.Context, req *openfgav1.WriteAssert
 		return nil, err
 	}
 
-	c := commands.NewWriteAssertionsCommand(s.datastore, s.logger)
+	c := commands.NewWriteAssertionsCommand(s.datastore, commands.WithWriteAssertCmdLogger(s.logger))
 	res, err := c.Execute(ctx, &openfgav1.WriteAssertionsRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -765,7 +774,7 @@ func (s *Server) ReadAssertions(ctx context.Context, req *openfgav1.ReadAssertio
 		return nil, err
 	}
 
-	q := commands.NewReadAssertionsQuery(s.datastore, s.logger)
+	q := commands.NewReadAssertionsQuery(s.datastore, commands.WithReadAssertionsQueryLogger(s.logger))
 	return q.Execute(ctx, req.GetStoreId(), typesys.GetAuthorizationModelID())
 }
 
@@ -786,7 +795,11 @@ func (s *Server) ReadChanges(ctx context.Context, req *openfgav1.ReadChangesRequ
 		Method:  "ReadChanges",
 	})
 
-	q := commands.NewReadChangesQuery(s.datastore, s.logger, s.encoder, s.changelogHorizonOffset)
+	q := commands.NewReadChangesQuery(s.datastore,
+		commands.WithReadChangesQueryLogger(s.logger),
+		commands.WithReadChangesQueryEncoder(s.encoder),
+		commands.WithReadChangeQueryHorizonOffset(s.changelogHorizonOffset),
+	)
 	return q.Execute(ctx, req)
 }
 
@@ -805,7 +818,7 @@ func (s *Server) CreateStore(ctx context.Context, req *openfgav1.CreateStoreRequ
 		Method:  "CreateStore",
 	})
 
-	c := commands.NewCreateStoreCommand(s.datastore, s.logger)
+	c := commands.NewCreateStoreCommand(s.datastore, commands.WithCreateStoreCmdLogger(s.logger))
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -831,7 +844,7 @@ func (s *Server) DeleteStore(ctx context.Context, req *openfgav1.DeleteStoreRequ
 		Method:  "DeleteStore",
 	})
 
-	cmd := commands.NewDeleteStoreCommand(s.datastore, s.logger)
+	cmd := commands.NewDeleteStoreCommand(s.datastore, commands.WithDeleteStoreCmdLogger(s.logger))
 	res, err := cmd.Execute(ctx, req)
 	if err != nil {
 		return nil, err
@@ -857,7 +870,7 @@ func (s *Server) GetStore(ctx context.Context, req *openfgav1.GetStoreRequest) (
 		Method:  "GetStore",
 	})
 
-	q := commands.NewGetStoreQuery(s.datastore, s.logger)
+	q := commands.NewGetStoreQuery(s.datastore, commands.WithGetStoreQueryLogger(s.logger))
 	return q.Execute(ctx, req)
 }
 
@@ -876,7 +889,10 @@ func (s *Server) ListStores(ctx context.Context, req *openfgav1.ListStoresReques
 		Method:  "ListStores",
 	})
 
-	q := commands.NewListStoresQuery(s.datastore, s.logger, s.encoder)
+	q := commands.NewListStoresQuery(s.datastore,
+		commands.WithListStoresQueryLogger(s.logger),
+		commands.WithListStoresQueryEncoder(s.encoder),
+	)
 	return q.Execute(ctx, req)
 }
 

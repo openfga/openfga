@@ -17,14 +17,25 @@ type WriteAssertionsCommand struct {
 	logger    logger.Logger
 }
 
-func NewWriteAssertionsCommand(
-	datastore storage.OpenFGADatastore,
-	logger logger.Logger,
-) *WriteAssertionsCommand {
-	return &WriteAssertionsCommand{
-		datastore: datastore,
-		logger:    logger,
+type WriteAssertionsCmdOption func(*WriteAssertionsCommand)
+
+func WithWriteAssertCmdLogger(l logger.Logger) WriteAssertionsCmdOption {
+	return func(c *WriteAssertionsCommand) {
+		c.logger = l
 	}
+}
+
+func NewWriteAssertionsCommand(
+	datastore storage.OpenFGADatastore, opts ...WriteAssertionsCmdOption) *WriteAssertionsCommand {
+	cmd := &WriteAssertionsCommand{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.WriteAssertionsRequest) (*openfgav1.WriteAssertionsResponse, error) {

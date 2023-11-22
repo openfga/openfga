@@ -20,9 +20,25 @@ type ExpandQuery struct {
 	datastore storage.OpenFGADatastore
 }
 
+type ExpandQueryOption func(*ExpandQuery)
+
+func WithExpandQueryLogger(l logger.Logger) ExpandQueryOption {
+	return func(eq *ExpandQuery) {
+		eq.logger = l
+	}
+}
+
 // NewExpandQuery creates a new ExpandQuery using the supplied backends for retrieving data.
-func NewExpandQuery(datastore storage.OpenFGADatastore, logger logger.Logger) *ExpandQuery {
-	return &ExpandQuery{logger: logger, datastore: datastore}
+func NewExpandQuery(datastore storage.OpenFGADatastore, opts ...ExpandQueryOption) *ExpandQuery {
+	eq := &ExpandQuery{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(eq)
+	}
+	return eq
 }
 
 func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
