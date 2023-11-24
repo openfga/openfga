@@ -347,6 +347,7 @@ func setupListObjectsBenchmark(b *testing.B, ds storage.OpenFGADatastore, storeI
 	type document
 	  relations
 	    define viewer: [user] as self
+	    define can_view as viewer
 	`),
 	}
 	err := ds.WriteAuthorizationModel(context.Background(), storeID, model)
@@ -382,7 +383,7 @@ func BenchmarkListObjects(b *testing.B, ds storage.OpenFGADatastore) {
 		StoreId:              store,
 		AuthorizationModelId: modelID,
 		Type:                 "document",
-		Relation:             "viewer",
+		Relation:             "can_view",
 		User:                 "user:maria",
 	}
 
