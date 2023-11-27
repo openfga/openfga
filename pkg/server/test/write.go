@@ -1333,6 +1333,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
 	logger := logger.NewNoopLogger()
+	rejectConditions := false
 
 	for _, test := range writeCommandTests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1346,7 +1347,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, logger)
+			cmd := commands.NewWriteCommand(datastore, logger, rejectConditions)
 			test.request.StoreId = store
 			if test.request.AuthorizationModelId == "" {
 				test.request.AuthorizationModelId = test.model.Id

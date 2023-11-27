@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
@@ -20,17 +21,20 @@ type WriteAuthorizationModelCommand struct {
 	backend                          storage.TypeDefinitionWriteBackend
 	logger                           logger.Logger
 	maxAuthorizationModelSizeInBytes int
+	rejectConditions                 bool
 }
 
 func NewWriteAuthorizationModelCommand(
 	backend storage.TypeDefinitionWriteBackend,
 	logger logger.Logger,
 	maxAuthorizationModelSizeInBytes int,
+	rejectConditions bool,
 ) *WriteAuthorizationModelCommand {
 	return &WriteAuthorizationModelCommand{
 		backend:                          backend,
 		logger:                           logger,
 		maxAuthorizationModelSizeInBytes: maxAuthorizationModelSizeInBytes,
+		rejectConditions:                 rejectConditions,
 	}
 }
 
@@ -53,6 +57,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Conditions:      req.GetConditions(),
 	}
 
+	if w.rejectConditions && model.Conditions != nil {
+		return nil, status.Error(codes.Unimplemented, "conditions not supported")
+	}
+
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
 	if modelSize > w.maxAuthorizationModelSizeInBytes {
@@ -64,6 +72,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
+		if w.rejectConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
+			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+		}
+
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 

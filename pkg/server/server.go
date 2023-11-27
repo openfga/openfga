@@ -502,15 +502,6 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		}
 	}
 
-	if slices.Contains(s.experimentals, ExperimentalRejectConditions) {
-		tks := req.GetWrites()
-		for _, tk := range tks.TupleKeys {
-			if tk.Condition != nil {
-				return nil, status.Error(codes.Unimplemented, "conditions not supported")
-			}
-		}
-	}
-
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		Method:  "Write",
@@ -523,7 +514,9 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, s.logger)
+	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+
+	cmd := commands.NewWriteCommand(s.datastore, s.logger, rejectConditions)
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -695,18 +688,14 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		}
 	}
 
-	if slices.Contains(s.experimentals, ExperimentalRejectConditions) {
-		if req.Conditions != nil {
-			return nil, status.Error(codes.Unimplemented, "conditions not supported")
-		}
-	}
-
 	ctx = telemetry.ContextWithRPCInfo(ctx, telemetry.RPCInfo{
 		Service: openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		Method:  "WriteAuthorizationModel",
 	})
 
-	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes)
+	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+
+	c := commands.NewWriteAuthorizationModelCommand(s.datastore, s.logger, s.maxAuthorizationModelSizeInBytes, rejectConditions)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
 		return nil, err

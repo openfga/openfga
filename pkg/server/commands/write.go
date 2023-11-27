@@ -12,19 +12,23 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger           logger.Logger
+	datastore        storage.OpenFGADatastore
+	rejectConditions bool
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
+func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger, rejectConditions bool) *WriteCommand {
 	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+		logger:           logger,
+		datastore:        datastore,
+		rejectConditions: rejectConditions,
 	}
 }
 
@@ -32,6 +36,15 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
+	}
+
+	if c.rejectConditions {
+		tks := req.GetWrites()
+		for _, tk := range tks.TupleKeys {
+			if tk.Condition != nil {
+				return nil, status.Error(codes.Unimplemented, "conditions not supported")
+			}
+		}
 	}
 
 	err := c.datastore.Write(

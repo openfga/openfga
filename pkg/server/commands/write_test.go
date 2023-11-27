@@ -21,6 +21,8 @@ import (
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
+	rejectConditions := false
+
 	type test struct {
 		name          string
 		deletes       []*openfgav1.TupleKey
@@ -46,7 +48,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger)
+	cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
 
 	tests := []test{
 		{
@@ -94,6 +96,8 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 }
 
 func TestValidateWriteRequest(t *testing.T) {
+	rejectConditions := false
+
 	type test struct {
 		name          string
 		deletes       *openfgav1.WriteRequestTupleKeys
@@ -156,7 +160,7 @@ func TestValidateWriteRequest(t *testing.T) {
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger)
+			cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
 
 			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
 				mockDatastore.EXPECT().
@@ -180,6 +184,8 @@ func TestValidateWriteRequest(t *testing.T) {
 }
 
 func TestTransactionalWriteFailedError(t *testing.T) {
+	rejectConditions := false
+
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -205,7 +211,7 @@ type document
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(storage.ErrTransactionalWriteFailed)
 
-	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger())
+	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger(), rejectConditions)
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),
@@ -231,6 +237,8 @@ type document
 }
 
 func TestValidateConditionsInTuples(t *testing.T) {
+	rejectConditions := false
+
 	type test struct {
 		name          string
 		tuple         *openfgav1.TupleKey
@@ -310,7 +318,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		AnyTimes().
 		Return(model, nil)
 
-	cmd := NewWriteCommand(mockDatastore, logger)
+	cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
 
 	tests := []test{
 		{

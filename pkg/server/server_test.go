@@ -1014,6 +1014,7 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),

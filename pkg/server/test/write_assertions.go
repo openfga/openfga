@@ -21,6 +21,8 @@ import (
 )
 
 func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
+	rejectConditions := false
+
 	type writeAssertionsTestSettings struct {
 		_name      string
 		assertions []*openfgav1.Assertion
@@ -108,7 +110,7 @@ type repo
 			model := githubModelReq
 
 			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
-				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
 			)
 
 			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
@@ -138,6 +140,8 @@ type repo
 }
 
 func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore) {
+	rejectConditions := false
+
 	type writeAssertionsTestSettings struct {
 		_name      string
 		assertions []*openfgav1.Assertion
@@ -163,7 +167,7 @@ type repo
 	logger := logger.NewNoopLogger()
 
 	writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
-		datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
 	)
 	modelID, err := writeAuthzModelCmd.Execute(ctx, githubModelReq)
 	require.NoError(t, err)

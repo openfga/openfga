@@ -20,6 +20,7 @@ import (
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
+	rejectConditions := false
 	storeID := ulid.Make().String()
 
 	items := make([]*openfgav1.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
@@ -1060,7 +1061,7 @@ type other
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			cmd := commands.NewWriteAuthorizationModelCommand(
-				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
 			)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)

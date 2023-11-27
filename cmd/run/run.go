@@ -223,7 +223,17 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	// Since this is used for tests, turn the following off:
 	config.Playground.Enabled = false
 	config.Metrics.Enabled = false
-	config.Experimentals = []string{}
+
+	var experimentals []string
+	for _, experimental := range config.Experimentals {
+		// Remove the `reject-conditions` default experimental flag to allow
+		// explicit control of tests around the behavior introduced when the flag
+		// is set or unset.
+		if experimental != "reject-conditions" {
+			experimentals = append(experimentals, experimental)
+		}
+	}
+	config.Experimentals = experimentals
 
 	httpPort, httpPortReleaser := TCPRandomPort()
 	defer httpPortReleaser()
