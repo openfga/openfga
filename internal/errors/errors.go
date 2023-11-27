@@ -5,7 +5,13 @@ import (
 	reflectlite "reflect"
 )
 
-// With returns an error that represents top wrapped on top of the base error.
+// With returns an error that represents the top error wrapped on top of the base error.
+//
+// It should be used to return a rich error (e.g. non-sentinel) with specific details but
+// where you want to check for sentinel error equality, which the Go stdlib error wrapping
+// directives do not allow because of iterative unwrapping. See union#Is below for more info.
+//
+// This was inspired by the work of https://github.com/natefinch/wrap but varies slightly.
 func With(base, top error) error {
 	if base == nil && top == nil {
 		return nil
