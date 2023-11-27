@@ -9,7 +9,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -20,7 +19,6 @@ import (
 )
 
 func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
-	rejectConditions := false
 	storeID := ulid.Make().String()
 
 	items := make([]*openfgav1.TypeDefinition, datastore.MaxTypesPerAuthorizationModel()+1)
@@ -1056,13 +1054,9 @@ type other
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(
-				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
-			)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore)
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)

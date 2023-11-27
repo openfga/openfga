@@ -44,6 +44,8 @@ func TestMigrateCommandNoConfigDefaultValues(t *testing.T) {
 	migrateCmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		require.Equal(t, "", viper.GetString(datastoreEngineFlag))
 		require.Equal(t, "", viper.GetString(datastoreURIFlag))
+		require.Equal(t, "", viper.GetString(datastoreUsernameFlag))
+		require.Equal(t, "", viper.GetString(datastorePasswordFlag))
 		require.Equal(t, uint(0), viper.GetUint(versionFlag))
 		require.Equal(t, defaultDuration, viper.GetDuration(timeoutFlag))
 		require.False(t, viper.GetBool(verboseMigrationFlag))

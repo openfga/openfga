@@ -8,8 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -21,8 +19,6 @@ import (
 )
 
 func TestWriteAndReadAssertions(t *testing.T, datastore storage.OpenFGADatastore) {
-	rejectConditions := false
-
 	type writeAssertionsTestSettings struct {
 		_name      string
 		assertions []*openfgav1.Assertion
@@ -103,15 +99,12 @@ type repo
 	}
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			model := githubModelReq
 
-			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
-				datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
-			)
+			writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
 
 			modelID, err := writeAuthzModelCmd.Execute(ctx, model)
 			require.NoError(t, err)
@@ -121,10 +114,10 @@ type repo
 				AuthorizationModelId: modelID.AuthorizationModelId,
 			}
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.NoError(t, err)
-			query := commands.NewReadAssertionsQuery(datastore, logger)
+			query := commands.NewReadAssertionsQuery(datastore)
 			actualResponse, actualError := query.Execute(ctx, store, modelID.AuthorizationModelId)
 			require.NoError(t, actualError)
 
@@ -140,8 +133,6 @@ type repo
 }
 
 func TestWriteAssertionsFailure(t *testing.T, datastore storage.OpenFGADatastore) {
-	rejectConditions := false
-
 	type writeAssertionsTestSettings struct {
 		_name      string
 		assertions []*openfgav1.Assertion
@@ -164,11 +155,8 @@ type repo
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	}
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
-	writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(
-		datastore, logger, serverconfig.DefaultMaxAuthorizationModelSizeInBytes, rejectConditions,
-	)
+	writeAuthzModelCmd := commands.NewWriteAuthorizationModelCommand(datastore)
 	modelID, err := writeAuthzModelCmd.Execute(ctx, githubModelReq)
 	require.NoError(t, err)
 
@@ -213,7 +201,7 @@ type repo
 				AuthorizationModelId: test.modelID,
 			}
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore, logger)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(datastore)
 			_, err = writeAssertionCmd.Execute(ctx, request)
 			require.ErrorIs(t, test.err, err)
 		})

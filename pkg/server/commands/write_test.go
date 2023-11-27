@@ -10,7 +10,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -21,16 +20,12 @@ import (
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
-	rejectConditions := false
-
 	type test struct {
 		name          string
 		deletes       []*openfgav1.TupleKey
 		writes        []*openfgav1.TupleKey
 		expectedError error
 	}
-
-	logger := logger.NewNoopLogger()
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -48,7 +43,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
+	cmd := NewWriteCommand(mockDatastore)
 
 	tests := []test{
 		{
@@ -96,8 +91,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 }
 
 func TestValidateWriteRequest(t *testing.T) {
-	rejectConditions := false
-
 	type test struct {
 		name          string
 		deletes       *openfgav1.WriteRequestTupleKeys
@@ -153,14 +146,12 @@ func TestValidateWriteRequest(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			logger := logger.NewNoopLogger()
-
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
+			cmd := NewWriteCommand(mockDatastore)
 
 			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
 				mockDatastore.EXPECT().
@@ -184,8 +175,6 @@ func TestValidateWriteRequest(t *testing.T) {
 }
 
 func TestTransactionalWriteFailedError(t *testing.T) {
-	rejectConditions := false
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -211,7 +200,7 @@ type document
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(storage.ErrTransactionalWriteFailed)
 
-	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger(), rejectConditions)
+	cmd := NewWriteCommand(mockDatastore)
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),
@@ -237,8 +226,6 @@ type document
 }
 
 func TestValidateConditionsInTuples(t *testing.T) {
-	rejectConditions := false
-
 	type test struct {
 		name          string
 		tuple         *openfgav1.TupleKey
@@ -306,8 +293,6 @@ func TestValidateConditionsInTuples(t *testing.T) {
 	contextStructBad, err := structpb.NewStruct(map[string]interface{}{"param1": "ok", "param2": 1})
 	require.NoError(t, err)
 
-	logger := logger.NewNoopLogger()
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -318,7 +303,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		AnyTimes().
 		Return(model, nil)
 
-	cmd := NewWriteCommand(mockDatastore, logger, rejectConditions)
+	cmd := NewWriteCommand(mockDatastore)
 
 	tests := []test{
 		{

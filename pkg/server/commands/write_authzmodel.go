@@ -7,6 +7,7 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -24,18 +25,38 @@ type WriteAuthorizationModelCommand struct {
 	rejectConditions                 bool
 }
 
-func NewWriteAuthorizationModelCommand(
-	backend storage.TypeDefinitionWriteBackend,
-	logger logger.Logger,
-	maxAuthorizationModelSizeInBytes int,
-	rejectConditions bool,
-) *WriteAuthorizationModelCommand {
-	return &WriteAuthorizationModelCommand{
-		backend:                          backend,
-		logger:                           logger,
-		maxAuthorizationModelSizeInBytes: maxAuthorizationModelSizeInBytes,
-		rejectConditions:                 rejectConditions,
+type WriteAuthModelOption func(*WriteAuthorizationModelCommand)
+
+func WithWriteAuthModelLogger(l logger.Logger) WriteAuthModelOption {
+	return func(m *WriteAuthorizationModelCommand) {
+		m.logger = l
 	}
+}
+
+func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
+	return func(m *WriteAuthorizationModelCommand) {
+		m.maxAuthorizationModelSizeInBytes = size
+	}
+}
+
+func WithWriteAuthModelRejectConditions(reject bool) WriteAuthModelOption {
+	return func(m *WriteAuthorizationModelCommand) {
+		m.rejectConditions = reject
+	}
+}
+
+func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBackend, opts ...WriteAuthModelOption) *WriteAuthorizationModelCommand {
+	model := &WriteAuthorizationModelCommand{
+		backend:                          backend,
+		logger:                           logger.NewNoopLogger(),
+		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		rejectConditions:                 false,
+	}
+
+	for _, opt := range opts {
+		opt(model)
+	}
+	return model
 }
 
 // Execute the command using the supplied request.
