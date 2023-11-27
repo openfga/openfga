@@ -15,14 +15,26 @@ type DeleteStoreCommand struct {
 	logger        logger.Logger
 }
 
+type DeleteStoreCmdOption func(*DeleteStoreCommand)
+
+func WithDeleteStoreCmdLogger(l logger.Logger) DeleteStoreCmdOption {
+	return func(c *DeleteStoreCommand) {
+		c.logger = l
+	}
+}
+
 func NewDeleteStoreCommand(
 	storesBackend storage.StoresBackend,
-	logger logger.Logger,
+	opts ...DeleteStoreCmdOption,
 ) *DeleteStoreCommand {
-	return &DeleteStoreCommand{
+	cmd := &DeleteStoreCommand{
 		storesBackend: storesBackend,
-		logger:        logger,
+		logger:        logger.NewNoopLogger(),
 	}
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 func (s *DeleteStoreCommand) Execute(ctx context.Context, req *openfgav1.DeleteStoreRequest) (*openfgav1.DeleteStoreResponse, error) {

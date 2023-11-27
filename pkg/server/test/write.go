@@ -8,7 +8,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -1320,7 +1319,6 @@ type org
 func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range writeCommandTests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1339,7 +1337,7 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 				require.NoError(err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore, logger)
+			cmd := commands.NewWriteCommand(datastore)
 			test.request.StoreId = store
 			if test.request.AuthorizationModelId == "" {
 				test.request.AuthorizationModelId = test.model.Id

@@ -8,9 +8,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/encrypter"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -359,8 +356,6 @@ type repo
 
 	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	encoder := encoder.NewBase64Encoder()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -374,7 +369,7 @@ type repo
 			}
 
 			test.request.StoreId = store
-			resp, err := commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, test.request)
+			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
 			require.NoError(err)
 
 			if test.response.Tuples != nil {
@@ -527,8 +522,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
-	encoder := encoder.NewBase64Encoder()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -537,7 +530,7 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			test.request.StoreId = store
-			_, err = commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, test.request)
+			_, err = commands.NewReadQuery(datastore).Execute(ctx, test.request)
 			require.Error(err)
 		})
 	}
@@ -545,7 +538,6 @@ func ReadQueryErrorTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
 
 	writes := []*openfgav1.TupleKey{
@@ -568,7 +560,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	err := datastore.Write(ctx, store, nil, writes)
 	require.NoError(t, err)
 
-	cmd := commands.NewReadQuery(datastore, logger, encoder.NewBase64Encoder())
+	cmd := commands.NewReadQuery(datastore)
 
 	firstRequest := &openfgav1.ReadRequest{
 		StoreId:           store,
@@ -611,13 +603,7 @@ func ReadAllTuplesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 	store := ulid.Make().String()
-
-	encrypter, err := encrypter.NewGCMEncrypter("key")
-	require.NoError(t, err)
-
-	encoder := encoder.NewTokenEncoder(encrypter, encoder.NewBase64Encoder())
 
 	model := &openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
@@ -629,10 +615,10 @@ func ReadAllTuplesInvalidContinuationTokenTest(t *testing.T, datastore storage.O
 		},
 	}
 
-	err = datastore.WriteAuthorizationModel(ctx, store, model)
+	err := datastore.WriteAuthorizationModel(ctx, store, model)
 	require.NoError(t, err)
 
-	_, err = commands.NewReadQuery(datastore, logger, encoder).Execute(ctx, &openfgav1.ReadRequest{
+	_, err = commands.NewReadQuery(datastore).Execute(ctx, &openfgav1.ReadRequest{
 		StoreId:           store,
 		ContinuationToken: "foo",
 	})

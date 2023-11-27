@@ -17,7 +17,6 @@ import (
 	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/server/test"
@@ -575,9 +574,8 @@ type repo
 				Assertions:           curTest.assertions,
 				AuthorizationModelId: modelID,
 			}
-			logger := logger.NewNoopLogger()
 
-			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore, logger)
+			writeAssertionCmd := commands.NewWriteAssertionsCommand(curTest.mockDatastore)
 			_, err := writeAssertionCmd.Execute(ctx, request)
 			require.ErrorIs(t, curTest.expectedError, err)
 		})
@@ -598,9 +596,8 @@ func TestReadAssertionModelDSError(t *testing.T) {
 		ReadAssertions(gomock.Any(), storeID, modelID).
 		AnyTimes().
 		Return(nil, fmt.Errorf("unable to read"))
-	logger := logger.NewNoopLogger()
 
-	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions, logger)
+	readAssertionQuery := commands.NewReadAssertionsQuery(mockDSBadReadAssertions)
 	_, err := readAssertionQuery.Execute(ctx, storeID, modelID)
 	expectedError := serverErrors.NewInternalError(
 		"", fmt.Errorf("unable to read"),
@@ -1004,6 +1001,144 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForCheck)
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
+}
+
+func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalRejectConditions),
+	)
+
+	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+			},
+			Conditions: map[string]*openfgav1.Condition{
+				"condition1": {
+					Name:       "condition1",
+					Expression: "param1 == 'ok'",
+					Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+						"param1": {
+							TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+						},
+					},
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
+
+	t.Run("rejects_request_with_relation_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+									typesystem.ConditionedRelationReference(
+										typesystem.DirectRelationReference("user", ""),
+										"condition1",
+									),
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
+}
+
+func TestWriteWithExperimentalRejectConditions(t *testing.T) {
+	ctx := context.Background()
+	storeID := ulid.Make().String()
+	modelID := ulid.Make().String()
+
+	mockController := gomock.NewController(t)
+	defer mockController.Finish()
+
+	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
+
+	s := MustNewServerWithOpts(
+		WithDatastore(mockDatastore),
+		WithExperimentals(ExperimentalRejectConditions),
+	)
+
+	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(
+			&openfgav1.AuthorizationModel{
+				Id:            modelID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			nil,
+		)
+
+		_, err := s.Write(ctx, &openfgav1.WriteRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: modelID,
+			Writes: &openfgav1.WriteRequestTupleKeys{
+				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+					tuple.NewWriteRequestTupleKey("document:1", "viewer", "user:jon"),
+					tuple.ConvertTupleKeyToWriteTupleKey(
+						tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
+					),
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
 }
 
 func MustBootstrapDatastore(t testing.TB, engine string) storage.OpenFGADatastore {
