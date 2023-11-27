@@ -912,7 +912,7 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
-	s.logger.WarnWithContext(ctx, "datastore health check failed", zap.Any("status", status.Message))
+	s.logger.WarnWithContext(ctx, "datastore is not ready", zap.Any("status", status.Message))
 	return false, nil
 }
 
