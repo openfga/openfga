@@ -341,7 +341,7 @@ func Write(
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			nil, nil,
+			"", nil,
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id, dbInfo.sqlTime,
 		)

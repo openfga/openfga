@@ -273,9 +273,17 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
+		tk := t.GetKey()
 		for _, k := range deletes {
-			if match(k, t.Key) {
-				s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t.Key, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: now})
+			if match(k, tk) {
+				s.changes[store] = append(
+					s.changes[store],
+					&openfgav1.TupleChange{
+						TupleKey:  tuple.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // redact the condition info
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+						Timestamp: now,
+					},
+				)
 				continue Delete
 			}
 		}

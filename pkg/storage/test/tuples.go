@@ -218,6 +218,54 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 			t.Fatalf("mismatch (-want +got):\n%s", diff)
 		}
 	})
+
+	t.Run("tuple_with_condition_deleted", func(t *testing.T) {
+		storeID := ulid.Make().String()
+
+		tk1 := &openfgav1.TupleKey{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "user:jon",
+			Condition: &openfgav1.RelationshipCondition{
+				Name: "mycond",
+				Context: testutils.MustNewStruct(t, map[string]interface{}{
+					"x": 10,
+				}),
+			},
+		}
+		err := datastore.Write(ctx, storeID, nil, []*openfgav1.TupleKey{tk1})
+		require.NoError(t, err)
+
+		tk2 := &openfgav1.TupleKeyWithoutCondition{
+			Object:   tuple.BuildObject("document", "1"),
+			Relation: "viewer",
+			User:     "user:jon",
+		}
+
+		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKeyWithoutCondition{tk2}, nil)
+		require.NoError(t, err)
+
+		changes, continuationToken, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{PageSize: storage.DefaultPageSize}, 0)
+		require.NoError(t, err)
+		require.NotEmpty(t, continuationToken)
+
+		expectedChanges := []*openfgav1.TupleChange{
+			{
+				TupleKey:  tk1,
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			},
+			{
+				// tuples with a condition that are deleted don't include the condition info
+				// in the changelog entry
+				TupleKey:  tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+			},
+		}
+
+		if diff := cmp.Diff(expectedChanges, changes, cmpOpts...); diff != "" {
+			t.Fatalf("mismatch (-want +got):\n%s", diff)
+		}
+	})
 }
 
 func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore) {
