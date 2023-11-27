@@ -1127,12 +1127,10 @@ func TestWriteWithExperimentalRejectConditions(t *testing.T) {
 		_, err := s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: modelID,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
-					tuple.NewWriteRequestTupleKey("document:1", "viewer", "user:jon"),
-					tuple.ConvertTupleKeyToWriteTupleKey(
-						tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
-					),
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
 				},
 			},
 		})
