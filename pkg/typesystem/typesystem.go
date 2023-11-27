@@ -156,8 +156,12 @@ type TypeSystem struct {
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
-	relations     map[string]map[string]*openfgav1.Relation
-	conditions    map[string]*condition.EvaluableCondition
+	relations map[string]map[string]*openfgav1.Relation
+	// [conditionName] => condition
+	conditions map[string]*condition.EvaluableCondition
+	// [objectType] => [relationName] => TTU relation
+	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
+
 	modelID       string
 	schemaVersion string
 }
@@ -167,12 +171,14 @@ type TypeSystem struct {
 func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
+	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
 
 	for _, td := range model.GetTypeDefinitions() {
 		typeName := td.GetType()
 
 		tds[typeName] = td
 		tdRelations := make(map[string]*openfgav1.Relation, len(td.GetRelations()))
+		ttuRelations[typeName] = make(map[string][]*openfgav1.TupleToUserset, len(td.GetRelations()))
 
 		for relation, rewrite := range td.GetRelations() {
 			r := &openfgav1.Relation{
@@ -186,6 +192,8 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			}
 
 			tdRelations[relation] = r
+			ttus := make([]*openfgav1.TupleToUserset, 0)
+			ttuRelations[typeName][relation] = tupleToUsersetsDefinitions(rewrite, &ttus)
 		}
 		relations[typeName] = tdRelations
 	}
@@ -203,6 +211,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		typeDefinitions: tds,
 		relations:       relations,
 		conditions:      uncompiledConditions,
+		ttuRelations:    ttuRelations,
 	}
 }
 
@@ -1305,21 +1314,6 @@ func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
 	return t.hasCycle(objectType, relationName, relation.GetRewrite(), visited)
 }
 
-// getAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
-// is another map where key=relationName, value=list of tuple to usersets declared in that relation
-func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgav1.TupleToUserset {
-	response := make(map[string]map[string][]*openfgav1.TupleToUserset, 0)
-	for typeName, typeDef := range t.typeDefinitions {
-		response[typeName] = make(map[string][]*openfgav1.TupleToUserset, 0)
-		for relationName, relationDef := range typeDef.GetRelations() {
-			ttus := make([]*openfgav1.TupleToUserset, 0)
-			response[typeName][relationName] = t.tupleToUsersetsDefinitions(relationDef, &ttus)
-		}
-	}
-
-	return response
-}
-
 // IsTuplesetRelation returns a boolean indicating if the provided relation is defined under a
 // TupleToUserset rewrite as a tupleset relation (i.e. the right hand side of a `X from Y`).
 func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
@@ -1328,7 +1322,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 		return false, err
 	}
 
-	for _, ttuDefinitions := range t.getAllTupleToUsersetsDefinitions()[objectType] {
+	for _, ttuDefinitions := range t.ttuRelations[objectType] {
 		for _, ttuDef := range ttuDefinitions {
 			if ttuDef.Tupleset.Relation == relation {
 				return true, nil
@@ -1339,23 +1333,23 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-func (t *TypeSystem) tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
+func tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
 	if relationDef.GetTupleToUserset() != nil {
 		*resp = append(*resp, relationDef.GetTupleToUserset())
 	}
 	if relationDef.GetUnion() != nil {
 		for _, child := range relationDef.GetUnion().GetChild() {
-			t.tupleToUsersetsDefinitions(child, resp)
+			tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetIntersection() != nil {
 		for _, child := range relationDef.GetIntersection().GetChild() {
-			t.tupleToUsersetsDefinitions(child, resp)
+			tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetDifference() != nil {
-		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
-		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
+		tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
+		tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
 	}
 	return *resp
 }

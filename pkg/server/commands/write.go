@@ -20,12 +20,25 @@ type WriteCommand struct {
 	datastore storage.OpenFGADatastore
 }
 
-// NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
-	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+type WriteCommandOption func(*WriteCommand)
+
+func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
+	return func(c *WriteCommand) {
+		c.logger = l
 	}
+}
+
+// NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
+func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
+	cmd := &WriteCommand{
+		datastore: datastore,
+		logger:    logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.

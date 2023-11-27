@@ -10,7 +10,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
-	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -28,8 +27,6 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		expectedError error
 	}
 
-	logger := logger.NewNoopLogger()
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -46,7 +43,7 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 		}
 	}
 
-	cmd := NewWriteCommand(mockDatastore, logger)
+	cmd := NewWriteCommand(mockDatastore)
 
 	tests := []test{
 		{
@@ -149,14 +146,12 @@ func TestValidateWriteRequest(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			logger := logger.NewNoopLogger()
-
 			mockController := gomock.NewController(t)
 			defer mockController.Finish()
 			maxTuplesInWriteOp := 10
 			mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 			mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
-			cmd := NewWriteCommand(mockDatastore, logger)
+			cmd := NewWriteCommand(mockDatastore)
 
 			if test.writes != nil && len(test.writes.TupleKeys) > 0 {
 				mockDatastore.EXPECT().
@@ -205,7 +200,7 @@ type document
 		Write(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(storage.ErrTransactionalWriteFailed)
 
-	cmd := NewWriteCommand(mockDatastore, logger.NewNoopLogger())
+	cmd := NewWriteCommand(mockDatastore)
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),
@@ -298,8 +293,6 @@ func TestValidateConditionsInTuples(t *testing.T) {
 	contextStructBad, err := structpb.NewStruct(map[string]interface{}{"param1": "ok", "param2": 1})
 	require.NoError(t, err)
 
-	logger := logger.NewNoopLogger()
-
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
 
@@ -310,7 +303,7 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		AnyTimes().
 		Return(model, nil)
 
-	cmd := NewWriteCommand(mockDatastore, logger)
+	cmd := NewWriteCommand(mockDatastore)
 
 	tests := []test{
 		{

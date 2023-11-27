@@ -694,3 +694,52 @@ func TestValidateTuple(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkValidateTuple(b *testing.B) {
+	model := &openfgav1.AuthorizationModel{
+		SchemaVersion: typesystem.SchemaVersion1_1,
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "folder",
+				Relations: map[string]*openfgav1.Userset{
+					"viewer": typesystem.This(),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"parent": typesystem.This(),
+					"viewer": typesystem.TupleToUserset("parent", "viewer"),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"parent": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "folder"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	ts := typesystem.New(model)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := ValidateTuple(ts, tuple.NewTupleKey("folder:x", "viewer", fmt.Sprintf("user:%v", i)))
+		require.NoError(b, err)
+	}
+}
