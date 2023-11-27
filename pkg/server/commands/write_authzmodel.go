@@ -57,8 +57,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Conditions:      req.GetConditions(),
 	}
 
-	if w.rejectConditions && model.Conditions != nil {
-		return nil, status.Error(codes.Unimplemented, "conditions not supported")
+	if w.rejectConditions {
+		if conditions := model.GetConditions(); conditions != nil || len(conditions) > 0 {
+			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+		}
 	}
 
 	// Validate the size in bytes of the wire-format encoding of the authorization model.

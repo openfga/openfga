@@ -34,10 +34,6 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger, r
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	if err := c.validateWriteRequest(ctx, req); err != nil {
-		return nil, err
-	}
-
 	if c.rejectConditions {
 		tks := req.GetWrites()
 		for _, tk := range tks.TupleKeys {
@@ -45,6 +41,10 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 				return nil, status.Error(codes.Unimplemented, "conditions not supported")
 			}
 		}
+	}
+
+	if err := c.validateWriteRequest(ctx, req); err != nil {
+		return nil, err
 	}
 
 	err := c.datastore.Write(

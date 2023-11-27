@@ -1014,7 +1014,6 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 	defer mockController.Finish()
 
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
-	mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
@@ -1022,6 +1021,8 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 	)
 
 	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
 		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 			StoreId:       storeID,
 			SchemaVersion: typesystem.SchemaVersion1_1,
@@ -1037,6 +1038,41 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 					Parameters: map[string]*openfgav1.ConditionParamTypeRef{
 						"param1": {
 							TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+						},
+					},
+				},
+			},
+		})
+
+		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+	})
+
+	t.Run("rejects_request_with_relation_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().MaxTypesPerAuthorizationModel().Return(100)
+
+		_, err := s.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
+			StoreId:       storeID,
+			SchemaVersion: typesystem.SchemaVersion1_1,
+			TypeDefinitions: []*openfgav1.TypeDefinition{
+				{
+					Type: "user",
+				},
+				{
+					Type: "document",
+					Relations: map[string]*openfgav1.Userset{
+						"viewer": typesystem.This(),
+					},
+					Metadata: &openfgav1.Metadata{
+						Relations: map[string]*openfgav1.RelationMetadata{
+							"viewer": {
+								DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+									typesystem.DirectRelationReference("user", ""),
+									typesystem.ConditionedRelationReference(
+										typesystem.DirectRelationReference("user", ""),
+										"condition1",
+									),
+								},
+							},
 						},
 					},
 				},
@@ -1063,12 +1099,40 @@ func TestWriteWithExperimentalRejectConditions(t *testing.T) {
 	)
 
 	t.Run("rejects_request_with_condition", func(t *testing.T) {
+		mockDatastore.EXPECT().ReadAuthorizationModel(gomock.Any(), storeID, modelID).AnyTimes().Return(
+			&openfgav1.AuthorizationModel{
+				Id:            modelID,
+				SchemaVersion: typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			nil,
+		)
+
 		_, err := s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: modelID,
 			Writes: &openfgav1.WriteRequestTupleKeys{
 				TupleKeys: []*openfgav1.WriteRequestTupleKey{
-					tuple.NewWriteRequestTupleKey("document:1", "editor", "user:jon"),
+					tuple.NewWriteRequestTupleKey("document:1", "viewer", "user:jon"),
 					tuple.ConvertTupleKeyToWriteTupleKey(
 						tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:maria", "unknown", nil),
 					),
