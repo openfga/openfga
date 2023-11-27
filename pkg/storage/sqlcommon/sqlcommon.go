@@ -311,11 +311,6 @@ func Write(
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
 		objectType, objectID := tupleUtils.SplitObject(tk.GetObject())
 
-		conditionName, conditionContext, err := marshalRelationshipCondition(tk.GetCondition())
-		if err != nil {
-			return err
-		}
-
 		res, err := deleteBuilder.
 			Where(sq.Eq{
 				"store":       store,
@@ -346,7 +341,7 @@ func Write(
 		changelogBuilder = changelogBuilder.Values(
 			store, objectType, objectID,
 			tk.GetRelation(), tk.GetUser(),
-			conditionName, conditionContext,
+			nil, nil,
 			openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 			id, dbInfo.sqlTime,
 		)

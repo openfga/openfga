@@ -238,9 +238,9 @@ type document
 	modelID := writeAuthzModelResp.GetAuthorizationModelId()
 
 	numTuples := 2000
-	tuples := make([]*openfgav1.WriteRequestTupleKey, 0, numTuples)
+	tuples := make([]*openfgav1.TupleKey, 0, numTuples)
 	for i := 0; i < numTuples; i++ {
-		tk := tuple.NewWriteRequestTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
+		tk := tuple.NewTupleKey(fmt.Sprintf("document:%d", i), "editor", "user:jon")
 
 		tuples = append(tuples, tk)
 	}
@@ -248,7 +248,7 @@ type document
 	_, err = s.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: modelID,
-		Writes: &openfgav1.WriteRequestTupleKeys{
+		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: tuples,
 		},
 	})
@@ -831,12 +831,12 @@ type document
 
 		_, err = s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId: store,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
-					tuple.NewWriteRequestTupleKey("document:1", "viewer", "group:1#member"),
-					tuple.NewWriteRequestTupleKey("group:1", "member", "group:2#member"),
-					tuple.NewWriteRequestTupleKey("group:2", "member", "group:3#member"),
-					tuple.NewWriteRequestTupleKey("group:3", "member", "user:jon"),
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					tuple.NewTupleKey("document:1", "viewer", "group:1#member"),
+					tuple.NewTupleKey("group:1", "member", "group:2#member"),
+					tuple.NewTupleKey("group:2", "member", "group:3#member"),
+					tuple.NewTupleKey("group:3", "member", "user:jon"),
 				},
 			},
 		})
@@ -945,8 +945,8 @@ func TestAuthorizationModelInvalidSchemaVersion(t *testing.T) {
 		_, err := s.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              store,
 			AuthorizationModelId: modelID,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{
 						Object:   "repo:openfga/openfga",
 						Relation: "reader",

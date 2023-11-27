@@ -249,7 +249,15 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		// Try to delete tks[0,1], and at the same time write tks[2]. It should fail with expectedError.
-		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tks[0], tks[1]}, []*openfgav1.TupleKey{tks[2]})
+		err = datastore.Write(
+			ctx,
+			storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				tuple.TupleKeyToTupleKeyWithoutCondition(tks[0]),
+				tuple.TupleKeyToTupleKeyWithoutCondition(tks[1]),
+			},
+			[]*openfgav1.TupleKey{tks[2]},
+		)
 		require.EqualError(t, err, expectedError.Error())
 
 		tuples, _, err := datastore.ReadPage(ctx, storeID, nil, storage.PaginationOptions{PageSize: 50})
@@ -261,7 +269,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		storeID := ulid.Make().String()
 		tk := &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"}
 
-		err := datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tk}, nil)
+		err := datastore.Write(
+			ctx,
+			storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				tuple.TupleKeyToTupleKeyWithoutCondition(tk),
+			},
+			nil,
+		)
 		require.ErrorContains(t, err, "cannot delete a tuple which does not exist")
 	})
 
@@ -274,7 +289,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 
 		// Then delete
-		err = datastore.Write(ctx, storeID, []*openfgav1.TupleKey{tk}, nil)
+		err = datastore.Write(
+			ctx,
+			storeID,
+			[]*openfgav1.TupleKeyWithoutCondition{
+				tuple.TupleKeyToTupleKeyWithoutCondition(tk),
+			},
+			nil,
+		)
 		require.NoError(t, err)
 
 		// Ensure it is not there
@@ -334,7 +356,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			},
 		}
 
-		deletes := []*openfgav1.TupleKey{
+		deletes := []*openfgav1.TupleKeyWithoutCondition{
 			{
 				Object:   tk.Object,
 				Relation: tk.Relation,

@@ -14,6 +14,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -317,7 +318,11 @@ Write:
 	return nil
 }
 
-func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1.TupleKey) error {
+func validateTuples(
+	records []*storage.TupleRecord,
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	for _, tk := range deletes {
 		if !find(records, tk) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
@@ -331,29 +336,29 @@ func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1
 	return nil
 }
 
-func match(key *openfgav1.TupleKey, target *openfgav1.TupleKey) bool {
-	if key.Object != "" {
-		td, objectid := tupleUtils.SplitObject(key.Object)
+func match(key tuple.TupleWithoutCondition, target tuple.TupleWithoutCondition) bool {
+	if key.GetObject() != "" {
+		td, objectid := tupleUtils.SplitObject(key.GetObject())
 		if objectid == "" {
-			if td != tupleUtils.GetType(target.Object) {
+			if td != tupleUtils.GetType(target.GetObject()) {
 				return false
 			}
 		} else {
-			if key.Object != target.Object {
+			if key.GetObject() != target.GetObject() {
 				return false
 			}
 		}
 	}
-	if key.Relation != "" && key.Relation != target.Relation {
+	if key.GetRelation() != "" && key.GetRelation() != target.GetRelation() {
 		return false
 	}
-	if key.User != "" && key.User != target.User {
+	if key.GetUser() != "" && key.GetUser() != target.GetUser() {
 		return false
 	}
 	return true
 }
 
-func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
+func find(records []*storage.TupleRecord, tupleKey tuple.TupleWithoutCondition) bool {
 	for _, tr := range records {
 		t := tr.AsTuple()
 		if match(t.Key, tupleKey) {

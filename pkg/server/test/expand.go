@@ -878,7 +878,12 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
 			require.NoError(err)
 
 			require.NoError(err)
@@ -1037,7 +1042,12 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
 			require.NoError(err)
 
 			require.NoError(err)

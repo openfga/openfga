@@ -23,7 +23,7 @@ import (
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       []*openfgav1.TupleKey
+		deletes       []*openfgav1.TupleKeyWithoutCondition
 		writes        []*openfgav1.TupleKey
 		expectedError error
 	}
@@ -37,9 +37,9 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	mockDatastore := mockstorage.NewMockOpenFGADatastore(mockController)
 	mockDatastore.EXPECT().MaxTuplesPerWrite().AnyTimes().Return(maxTuplesInWriteOp)
 
-	items := make([]*openfgav1.TupleKey, maxTuplesInWriteOp+1)
+	items := make([]*openfgav1.TupleKeyWithoutCondition, maxTuplesInWriteOp+1)
 	for i := 0; i < maxTuplesInWriteOp+1; i++ {
-		items[i] = &openfgav1.TupleKey{
+		items[i] = &openfgav1.TupleKeyWithoutCondition{
 			Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(459)),
 			Relation: testutils.CreateRandomString(50),
 			User:     testutils.CreateRandomString(512),
@@ -51,36 +51,46 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 	tests := []test{
 		{
 			name:    "empty_deletes_and_writes",
-			deletes: []*openfgav1.TupleKey{},
+			deletes: []*openfgav1.TupleKeyWithoutCondition{},
 			writes:  []*openfgav1.TupleKey{},
 		},
 		{
 			name:    "good_deletes_and_writes",
-			deletes: []*openfgav1.TupleKey{items[0], items[1]},
-			writes:  []*openfgav1.TupleKey{items[2], items[3]},
+			deletes: []*openfgav1.TupleKeyWithoutCondition{items[0], items[1]},
+			writes: []*openfgav1.TupleKey{
+				tuple.TupleKeyWithoutConditionToTupleKey(items[2]),
+				tuple.TupleKeyWithoutConditionToTupleKey(items[3]),
+			},
 		},
 		{
 			name:          "duplicate_deletes",
-			deletes:       []*openfgav1.TupleKey{items[0], items[1], items[0]},
+			deletes:       []*openfgav1.TupleKeyWithoutCondition{items[0], items[1], items[0]},
 			writes:        []*openfgav1.TupleKey{},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
-			name:          "duplicate_writes",
-			deletes:       []*openfgav1.TupleKey{},
-			writes:        []*openfgav1.TupleKey{items[0], items[1], items[0]},
+			name:    "duplicate_writes",
+			deletes: []*openfgav1.TupleKeyWithoutCondition{},
+			writes: []*openfgav1.TupleKey{
+				tuple.TupleKeyWithoutConditionToTupleKey(items[0]),
+				tuple.TupleKeyWithoutConditionToTupleKey(items[1]),
+				tuple.TupleKeyWithoutConditionToTupleKey(items[0]),
+			},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[0]),
 		},
 		{
-			name:          "same_item_appeared_in_writes_and_deletes",
-			deletes:       []*openfgav1.TupleKey{items[2], items[1]},
-			writes:        []*openfgav1.TupleKey{items[0], items[1]},
+			name:    "same_item_appeared_in_writes_and_deletes",
+			deletes: []*openfgav1.TupleKeyWithoutCondition{items[2], items[1]},
+			writes: []*openfgav1.TupleKey{
+				tuple.TupleKeyWithoutConditionToTupleKey(items[0]),
+				tuple.TupleKeyWithoutConditionToTupleKey(items[1]),
+			},
 			expectedError: serverErrors.DuplicateTupleInWrite(items[1]),
 		},
 		{
 			name:          "too_many_items_writes_and_deletes",
 			deletes:       items[:5],
-			writes:        items[5:],
+			writes:        tuple.TupleKeysWithoutConditionToTupleKeys(items[5:]...),
 			expectedError: serverErrors.ExceededEntityLimit("write operations", maxTuplesInWriteOp),
 		},
 	}
@@ -96,17 +106,21 @@ func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
 func TestValidateWriteRequest(t *testing.T) {
 	type test struct {
 		name          string
-		deletes       *openfgav1.WriteRequestTupleKeys
-		writes        *openfgav1.WriteRequestTupleKeys
+		deletes       *openfgav1.WriteRequestDeletes
+		writes        *openfgav1.WriteRequestWrites
 		expectedError error
 	}
 
-	badItem := &openfgav1.TupleKey{
+	badItemTk := &openfgav1.TupleKey{
 		Object:   fmt.Sprintf("%s:1", testutils.CreateRandomString(20)),
 		Relation: testutils.CreateRandomString(50),
 		User:     "",
 	}
-	badItemTk := tuple.ConvertTupleKeyToWriteTupleKey(badItem)
+	badItemUnconditionedTk := &openfgav1.TupleKeyWithoutCondition{
+		Object:   badItemTk.GetObject(),
+		Relation: badItemTk.GetRelation(),
+		User:     badItemTk.GetUser(),
+	}
 
 	tests := []test{
 		{
@@ -117,31 +131,31 @@ func TestValidateWriteRequest(t *testing.T) {
 		},
 		{
 			name: "write_failure_with_invalid_user",
-			deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{},
 			},
-			writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{badItemTk},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{badItemTk},
 			},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: badItem,
+					TupleKey: badItemTk,
 				},
 			),
 		},
 		{
 			name: "delete_failure_with_invalid_user",
-			deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{badItemTk},
+			deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{badItemUnconditionedTk},
 			},
-			writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{},
+			writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{},
 			},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
-					TupleKey: badItem,
+					TupleKey: badItemTk,
 				},
 			),
 		},
@@ -209,8 +223,8 @@ type document
 
 	resp, err := cmd.Execute(context.Background(), &openfgav1.WriteRequest{
 		StoreId: ulid.Make().String(),
-		Writes: &openfgav1.WriteRequestTupleKeys{
-			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
 				{
 					Object:   "document:1",
 					Relation: "viewer",
@@ -448,9 +462,9 @@ func TestValidateConditionsInTuples(t *testing.T) {
 			err := cmd.validateWriteRequest(context.Background(), &openfgav1.WriteRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: model.Id,
-				Writes: &openfgav1.WriteRequestTupleKeys{
-					TupleKeys: []*openfgav1.WriteRequestTupleKey{
-						tuple.ConvertTupleKeyToWriteTupleKey(test.tuple),
+				Writes: &openfgav1.WriteRequestWrites{
+					TupleKeys: []*openfgav1.TupleKey{
+						test.tuple,
 					},
 				},
 			})
