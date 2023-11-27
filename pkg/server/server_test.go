@@ -71,7 +71,7 @@ func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
 			err = migrateCommand.Execute()
 			require.NoError(t, err)
 
-			status, err := ds.IsReady(context.Background())
+			status, _ := ds.IsReady(context.Background())
 			require.Contains(t, status.Message, fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'.", targetVersion, build.MinimumSupportedDatastoreSchemaRevision))
 			require.False(t, status.IsReady)
 		})
