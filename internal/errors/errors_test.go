@@ -14,7 +14,7 @@ type fooError struct {
 	message string
 }
 
-var f error = (*fooError)(nil)
+var _ error = (*fooError)(nil)
 
 func (f *fooError) Error() string {
 	return f.message
