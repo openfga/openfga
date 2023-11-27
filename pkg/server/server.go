@@ -36,6 +36,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -45,8 +46,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                           = "openfga-authorization-model-id"
+	authorizationModelIDKey                              = "authorization_model_id"
+	ExperimentalRejectConditions ExperimentalFeatureFlag = "reject-conditions"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -515,7 +517,13 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, commands.WithWriteCmdLogger(s.logger))
+	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+
+	cmd := commands.NewWriteCommand(
+		s.datastore,
+		commands.WithWriteCmdLogger(s.logger),
+		commands.WithWriteCmdRejectConditions(rejectConditions),
+	)
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -692,9 +700,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
+	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+		commands.WithWriteAuthModelRejectConditions(rejectConditions),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {

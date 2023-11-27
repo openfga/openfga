@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
@@ -21,6 +22,7 @@ type WriteAuthorizationModelCommand struct {
 	backend                          storage.TypeDefinitionWriteBackend
 	logger                           logger.Logger
 	maxAuthorizationModelSizeInBytes int
+	rejectConditions                 bool
 }
 
 type WriteAuthModelOption func(*WriteAuthorizationModelCommand)
@@ -37,11 +39,18 @@ func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	}
 }
 
+func WithWriteAuthModelRejectConditions(reject bool) WriteAuthModelOption {
+	return func(m *WriteAuthorizationModelCommand) {
+		m.rejectConditions = reject
+	}
+}
+
 func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBackend, opts ...WriteAuthModelOption) *WriteAuthorizationModelCommand {
 	model := &WriteAuthorizationModelCommand{
 		backend:                          backend,
 		logger:                           logger.NewNoopLogger(),
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
+		rejectConditions:                 false,
 	}
 
 	for _, opt := range opts {
@@ -69,6 +78,12 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Conditions:      req.GetConditions(),
 	}
 
+	if w.rejectConditions {
+		if conditions := model.GetConditions(); conditions != nil || len(conditions) > 0 {
+			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+		}
+	}
+
 	// Validate the size in bytes of the wire-format encoding of the authorization model.
 	modelSize := proto.Size(model)
 	if modelSize > w.maxAuthorizationModelSizeInBytes {
@@ -80,6 +95,10 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
+		if w.rejectConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
+			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+		}
+
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)
 	}
 
