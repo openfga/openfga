@@ -14,7 +14,6 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
-	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -279,7 +278,7 @@ Delete:
 				s.changes[store] = append(
 					s.changes[store],
 					&openfgav1.TupleChange{
-						TupleKey:  tuple.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // redact the condition info
+						TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // redact the condition info
 						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
 						Timestamp: now,
 					},
@@ -344,7 +343,7 @@ func validateTuples(
 	return nil
 }
 
-func match(key tuple.TupleWithoutCondition, target tuple.TupleWithoutCondition) bool {
+func match(key tupleUtils.TupleWithoutCondition, target tupleUtils.TupleWithoutCondition) bool {
 	if key.GetObject() != "" {
 		td, objectid := tupleUtils.SplitObject(key.GetObject())
 		if objectid == "" {
@@ -366,7 +365,7 @@ func match(key tuple.TupleWithoutCondition, target tuple.TupleWithoutCondition) 
 	return true
 }
 
-func find(records []*storage.TupleRecord, tupleKey tuple.TupleWithoutCondition) bool {
+func find(records []*storage.TupleRecord, tupleKey tupleUtils.TupleWithoutCondition) bool {
 	for _, tr := range records {
 		t := tr.AsTuple()
 		if match(t.Key, tupleKey) {
