@@ -27,7 +27,7 @@ var (
 				return false
 			}
 
-			if typesystem.GetRelationReferenceAsString(out[i].TuplesetRelation) > typesystem.GetRelationReferenceAsString(out[j].TuplesetRelation) {
+			if out[i].TuplesetRelation > out[j].TuplesetRelation {
 				return false
 			}
 
@@ -46,12 +46,12 @@ func TestRelationshipEdge_String(t *testing.T) {
 	}{
 		{
 			name:     "TupleToUsersetEdge",
-			expected: "userset type:\"document\" relation:\"viewer\", type ttu, tupleset type:\"document\" relation:\"parent\"",
+			expected: "userset type:\"document\" relation:\"viewer\", type ttu, tupleset parent",
 			relationshipEdge: RelationshipEdge{
 				Type:             TupleToUsersetEdge,
 				TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-				TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-				Condition:        NoFurtherEvalCondition,
+				TuplesetRelation: "parent",
+				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			},
 		},
 		{
@@ -60,7 +60,7 @@ func TestRelationshipEdge_String(t *testing.T) {
 			relationshipEdge: RelationshipEdge{
 				Type:            ComputedUsersetEdge,
 				TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-				Condition:       NoFurtherEvalCondition,
+				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			},
 		},
 		{
@@ -69,7 +69,7 @@ func TestRelationshipEdge_String(t *testing.T) {
 			relationshipEdge: RelationshipEdge{
 				Type:            DirectEdge,
 				TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-				Condition:       NoFurtherEvalCondition,
+				TargetReferenceInvolvesIntersectionOrExclusion: false,
 			},
 		},
 	} {
@@ -110,7 +110,7 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 			},
 		},
@@ -135,7 +135,7 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 			},
 		},
@@ -165,8 +165,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        RequiresFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 			},
 		},
@@ -192,7 +192,7 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "writer"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 			},
 		},
@@ -218,8 +218,8 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        RequiresFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 			},
 		},
@@ -245,7 +245,7 @@ func TestPrunedRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("organization", "repo_admin"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -303,12 +303,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -328,7 +328,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -356,17 +356,17 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -390,17 +390,17 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -423,7 +423,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -443,7 +443,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -484,12 +484,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -517,7 +517,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -541,8 +541,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -567,7 +567,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -586,7 +586,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -609,7 +609,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("organization", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -628,7 +628,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -660,7 +660,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -680,7 +680,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -718,12 +718,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "relation1"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "relation4"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -743,7 +743,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "relation2"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -766,7 +766,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -793,17 +793,17 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("team", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -848,8 +848,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "view"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -872,7 +872,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("organization", "can_view"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -895,8 +895,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "view"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -926,7 +926,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("organization", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -952,27 +952,27 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("trial", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("trial", "editor"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("trial", "owner"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("team", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("team", "admin"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -998,7 +998,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("team", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1018,7 +1018,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("team", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1042,7 +1042,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1070,7 +1070,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("group", "member"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1098,8 +1098,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("org", "dept_member"),
-					TuplesetRelation: typesystem.DirectRelationReference("org", "dept"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "dept",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1127,7 +1127,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("resource", "writer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1167,13 +1167,13 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "can_view"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1197,7 +1197,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            ComputedUsersetEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1219,8 +1219,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1240,12 +1240,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "allowed"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1266,12 +1266,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "allowed"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1292,12 +1292,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "allowed"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1317,12 +1317,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "restricted"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1343,12 +1343,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "editor"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "restricted"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1368,12 +1368,12 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "allowed"),
-					Condition:       RequiresFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: true,
 				},
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("document", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1395,8 +1395,8 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:             TupleToUsersetEdge,
 					TargetReference:  typesystem.DirectRelationReference("document", "viewer"),
-					TuplesetRelation: typesystem.DirectRelationReference("document", "parent"),
-					Condition:        NoFurtherEvalCondition,
+					TuplesetRelation: "parent",
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
@@ -1418,7 +1418,7 @@ func TestRelationshipEdges(t *testing.T) {
 				{
 					Type:            DirectEdge,
 					TargetReference: typesystem.DirectRelationReference("folder", "viewer"),
-					Condition:       NoFurtherEvalCondition,
+					TargetReferenceInvolvesIntersectionOrExclusion: false,
 				},
 			},
 		},
