@@ -8,7 +8,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 )
 
-// TupleConditionMet returns a bool indicating if the provided tupleKey's condition (if any) was met.
+// EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
 func EvaluateTupleCondition(
 	tupleKey *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
