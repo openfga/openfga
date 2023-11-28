@@ -35,7 +35,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 
 // Writes and Deletes are typesafe aliases for Write arguments.
 type Writes = []*openfgav1.TupleKey
-type Deletes = []*openfgav1.TupleKey
+type Deletes = []*openfgav1.TupleKeyWithoutCondition
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {

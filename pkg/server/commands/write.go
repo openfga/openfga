@@ -69,8 +69,8 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 	err := c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
-		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes()),
-		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites()),
+		req.GetDeletes().GetTupleKeys(),
+		req.GetWrites().GetTupleKeys(),
 	)
 	if err != nil {
 		return nil, handleError(err)
@@ -85,8 +85,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
-	deletes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes())
-	writes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites())
+	deletes := req.GetDeletes().GetTupleKeys()
+	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
 		return serverErrors.InvalidWriteInput
@@ -134,7 +134,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.TupleKey, writes []*openfgav1.TupleKey) error {
+func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {

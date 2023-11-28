@@ -26,25 +26,13 @@ type writeCommandTest struct {
 }
 
 var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@openfga")
-var writeTk = tuple.ConvertTupleKeyToWriteTupleKey(tk)
+var unconditionedTK = &openfgav1.TupleKeyWithoutCondition{
+	Object:   tk.GetObject(),
+	Relation: tk.GetRelation(),
+	User:     tk.GetUser(),
+}
 
 var writeCommandTests = []writeCommandTest{
-	//	{
-	//		_name: "invalid_schema_version",
-	//		model: &openfgav1.AuthorizationModel{
-	//			Id:            ulid.Make().String(),
-	//			SchemaVersion: typesystem.SchemaVersion1_0,
-	//			TypeDefinitions: parser.MustTransformDSLToProto(`model
-	//	schema 1.0
-	//type repo`).TypeDefinitions,
-	//		},
-	//		request: &openfgav1.WriteRequest{
-	//			Writes: &openfgav1.WriteRequestTupleKeys{
-	//				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
-	//			},
-	//		},
-	//		err: serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion),
-	//	},
 	{
 		_name: "ExecuteWithEmptyWritesAndDeletesReturnsZeroWrittenAndDeleted",
 		// input
@@ -75,8 +63,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk, writeTk},
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{tk, tk},
 			},
 		},
 
@@ -101,8 +89,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object:   "repo:openfga/openfga",
 					Relation: "viewer",
 					User:     "user:github|alice@openfga.com",
@@ -135,8 +123,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object:   "repo:openfga/openfga",
 					Relation: "viewer",
 					User:     "user:github|alice@openfga.com",
@@ -197,8 +185,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object:   "repo:openfga/openfga",
 					Relation: "viewer",
 					User:     "user:github|alice@openfga.com",
@@ -231,8 +219,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object:   "repo:openfga/openfga",
 					Relation: "viewer",
 					User:     "user:github|alice@openfga.com",
@@ -268,8 +256,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object:   "repo:openfga/openfga",
 					Relation: "viewer",
 					User:     "user:github|alice@openfga.com",
@@ -300,8 +288,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk, writeTk},
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{unconditionedTK, unconditionedTK},
 			},
 		},
 		// output
@@ -323,11 +311,11 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{tk},
 			},
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{unconditionedTK},
 			},
 		},
 		// output
@@ -349,8 +337,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{unconditionedTK},
 			},
 		},
 		// output
@@ -369,8 +357,8 @@ type repository`).TypeDefinitions,
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{tk},
 			},
 		},
 		// output
@@ -397,8 +385,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "repo:openfga", Relation: "owner", User: ""},
 				},
 			},
@@ -427,8 +415,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object: "", Relation: "owner", User: "user:elbuo@github.com"},
 				},
 			},
@@ -455,8 +443,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object: "repo:openfga", Relation: "", User: "user:elbuo@github.com"},
 				},
 			},
@@ -485,8 +473,8 @@ type repo
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					Object: "repo:openfga", Relation: "undefined", User: "user:elbuo@github.com"},
 				},
 			},
@@ -518,8 +506,8 @@ type repo
 		tuples: []*openfgav1.TupleKey{tk},
 		// input
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{writeTk},
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{unconditionedTK},
 			},
 		},
 	},
@@ -536,8 +524,8 @@ type repo`).TypeDefinitions,
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{{
 					// invalid because object has no :
 					Object: "openfga", Relation: "owner", User: "user:github|jose@openfga"},
 				},
@@ -569,8 +557,8 @@ type repo
 		// input
 		request: &openfgav1.WriteRequest{
 			AuthorizationModelId: "01GZFXJ2XPAF8FBHDKJ83XAJQP",
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "repo:openfga/openfga", Relation: "admin", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "writer", User: "user:github|jon@openfga"},
 				},
@@ -597,8 +585,8 @@ type org
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{{
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{{
 					Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga"},
 				},
 			},
@@ -629,8 +617,8 @@ type team
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "admin", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "writer", User: "team:openfga/iam#member"},
@@ -670,8 +658,8 @@ type team
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
 					{Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "admin", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "writer", User: "team:openfga/iam#member"},
@@ -709,16 +697,16 @@ type team
 		},
 		// input
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "org:openfga", Relation: "owner", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "admin", User: "user:github|jose@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "writer", User: "team:openfga/iam#member"},
 					{Object: "team:openfga/iam", Relation: "member", User: "user:iaco@openfga"},
 				},
 			},
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
 					{Object: "org:openfga", Relation: "owner", User: "user:github|yenkel@openfga"},
 					{Object: "repo:openfga/openfga", Relation: "reader", User: "team:openfga/platform#member"},
 				},
@@ -740,8 +728,8 @@ type document
 	define viewer: [user]`).TypeDefinitions,
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:doc1", Relation: "viewer", User: "group:engineering#member"},
 				},
 			},
@@ -768,8 +756,8 @@ type document
 	define viewer: [user]`).TypeDefinitions,
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:doc1", Relation: "viewer", User: "document:doc1#editor"},
 				},
 			},
@@ -807,8 +795,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Deletes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Deletes: &openfgav1.WriteRequestDeletes{
+				TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
 					{Object: "org:openfga", Relation: "owner", User: "impossible:1"},
 				},
 			},
@@ -844,8 +832,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "org:openfga", Relation: "owner", User: "undefined:1"},
 				},
 			},
@@ -890,8 +878,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "user:abc"},
 				},
 			},
@@ -936,8 +924,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "group:abc#member"},
 				},
 			},
@@ -985,8 +973,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "undefined:abc#member"},
 				},
 			},
@@ -1028,8 +1016,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "user:bob"},
 				},
 			},
@@ -1066,8 +1054,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "user:abc"},
 				},
 			},
@@ -1125,8 +1113,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "group:abc#member"},
 				},
 			},
@@ -1181,8 +1169,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "group:abc#member"},
 					{Object: "document:budget", Relation: "reader", User: "user:def"},
 				},
@@ -1220,8 +1208,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "user:*"},
 				},
 			},
@@ -1258,8 +1246,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:budget", Relation: "reader", User: "group:*"},
 				},
 			},
@@ -1313,8 +1301,8 @@ type org
 			},
 		},
 		request: &openfgav1.WriteRequest{
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "resource:bad", Relation: "writer", User: "group:fga"},
 				},
 			},
@@ -1340,7 +1328,12 @@ func TestWriteCommand(t *testing.T, datastore storage.OpenFGADatastore) {
 			require.NoError(err)
 
 			if test.tuples != nil {
-				err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
+				err := datastore.Write(
+					ctx,
+					store,
+					[]*openfgav1.TupleKeyWithoutCondition{},
+					test.tuples,
+				)
 				require.NoError(err)
 			}
 

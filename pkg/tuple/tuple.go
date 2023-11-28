@@ -10,6 +10,18 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
+type TupleWithCondition interface {
+	TupleWithoutCondition
+	GetCondition() *openfgav1.RelationshipCondition
+}
+
+type TupleWithoutCondition interface {
+	GetUser() string
+	GetObject() string
+	GetRelation() string
+	String() string
+}
+
 type UserType string
 
 const (
@@ -40,6 +52,31 @@ func ConvertReadRequestTupleKeyToTupleKey(tk *openfgav1.ReadRequestTupleKey) *op
 		Relation: tk.GetRelation(),
 		User:     tk.GetUser(),
 	}
+}
+
+func TupleKeyToTupleKeyWithoutCondition(tk *openfgav1.TupleKey) *openfgav1.TupleKeyWithoutCondition {
+	return &openfgav1.TupleKeyWithoutCondition{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func TupleKeyWithoutConditionToTupleKey(tk *openfgav1.TupleKeyWithoutCondition) *openfgav1.TupleKey {
+	return &openfgav1.TupleKey{
+		Object:   tk.GetObject(),
+		Relation: tk.GetRelation(),
+		User:     tk.GetUser(),
+	}
+}
+
+func TupleKeysWithoutConditionToTupleKeys(tks ...*openfgav1.TupleKeyWithoutCondition) []*openfgav1.TupleKey {
+	converted := make([]*openfgav1.TupleKey, 0, len(tks))
+	for _, tk := range tks {
+		converted = append(converted, TupleKeyWithoutConditionToTupleKey(tk))
+	}
+
+	return converted
 }
 
 func NewTupleKey(object, relation, user string) *openfgav1.TupleKey {
@@ -77,52 +114,6 @@ func NewRelationshipCondition(name string, context *structpb.Struct) *openfgav1.
 		Name:    name,
 		Context: context,
 	}
-}
-
-func NewWriteRequestTupleKey(object, relation, user string) *openfgav1.WriteRequestTupleKey {
-	return &openfgav1.WriteRequestTupleKey{
-		Object:   object,
-		Relation: relation,
-		User:     user,
-	}
-}
-
-func ConvertTupleKeyToWriteTupleKey(tk *openfgav1.TupleKey) *openfgav1.WriteRequestTupleKey {
-	return &openfgav1.WriteRequestTupleKey{
-		Object:    tk.GetObject(),
-		Relation:  tk.GetRelation(),
-		User:      tk.GetUser(),
-		Condition: tk.GetCondition(),
-	}
-}
-
-func ConvertWriteRequestTupleKeyToTupleKey(tk *openfgav1.WriteRequestTupleKey) *openfgav1.TupleKey {
-	return &openfgav1.TupleKey{
-		Object:    tk.GetObject(),
-		Relation:  tk.GetRelation(),
-		User:      tk.GetUser(),
-		Condition: tk.GetCondition(),
-	}
-}
-
-func ConvertWriteRequestsTupleKeysToTupleKeys(tks *openfgav1.WriteRequestTupleKeys) []*openfgav1.TupleKey {
-	if tks == nil {
-		return []*openfgav1.TupleKey{}
-	}
-
-	result := make([]*openfgav1.TupleKey, 0, len(tks.TupleKeys))
-	for _, tk := range tks.TupleKeys {
-		result = append(result, ConvertWriteRequestTupleKeyToTupleKey(tk))
-	}
-	return result
-}
-
-func ConvertTupleKeysToWriteRequestTupleKeys(tks []*openfgav1.TupleKey) *openfgav1.WriteRequestTupleKeys {
-	result := make([]*openfgav1.WriteRequestTupleKey, 0, len(tks))
-	for _, tk := range tks {
-		result = append(result, ConvertTupleKeyToWriteTupleKey(tk))
-	}
-	return &openfgav1.WriteRequestTupleKeys{TupleKeys: result}
 }
 
 func NewCheckRequestTupleKey(object, relation, user string) *openfgav1.CheckRequestTupleKey {
@@ -219,7 +210,7 @@ func GetUserTypeFromUser(user string) UserType {
 
 // TupleKeyToString converts a tuple key into its string representation. It assumes the tupleKey is valid
 // (i.e. no forbidden characters)
-func TupleKeyToString(tk *openfgav1.TupleKey) string {
+func TupleKeyToString(tk TupleWithoutCondition) string {
 	return fmt.Sprintf("%s#%s@%s", tk.GetObject(), tk.GetRelation(), tk.GetUser())
 }
 
