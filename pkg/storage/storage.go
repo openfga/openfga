@@ -184,8 +184,16 @@ type OpenFGADatastore interface {
 	ChangelogBackend
 
 	// IsReady reports whether the datastore is ready to accept traffic.
-	IsReady(ctx context.Context) (bool, error)
+	IsReady(ctx context.Context) (ReadinessStatus, error)
 
 	// Close closes the datastore and cleans up any residual resources.
 	Close()
+}
+
+// ReadinessStatus represents the readiness status of the datastore.
+type ReadinessStatus struct {
+	// Message is a human-friendly status message for the current datastore status.
+	Message string
+
+	IsReady bool
 }

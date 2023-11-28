@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/cmd/migrate"
+	"github.com/openfga/openfga/cmd/util"
+	"github.com/openfga/openfga/internal/build"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/server/commands"
@@ -48,6 +52,30 @@ func TestServerPanicIfNoDatastore(t *testing.T) {
 	require.PanicsWithError(t, "failed to construct the OpenFGA server: a datastore option must be provided", func() {
 		_ = MustNewServerWithOpts()
 	})
+}
+
+func TestServerNotReadyDueToDatastoreRevision(t *testing.T) {
+	engines := []string{"postgres", "mysql"}
+
+	for _, engine := range engines {
+		t.Run(engine, func(t *testing.T) {
+			_, ds, uri, err := util.MustBootstrapDatastore(t, engine)
+			require.NoError(t, err)
+
+			targetVersion := build.MinimumSupportedDatastoreSchemaRevision - 1
+
+			migrateCommand := migrate.NewMigrateCommand()
+
+			migrateCommand.SetArgs([]string{"--datastore-engine", engine, "--datastore-uri", uri, "--version", strconv.Itoa(int(targetVersion))})
+
+			err = migrateCommand.Execute()
+			require.NoError(t, err)
+
+			status, _ := ds.IsReady(context.Background())
+			require.Contains(t, status.Message, fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'.", targetVersion, build.MinimumSupportedDatastoreSchemaRevision))
+			require.False(t, status.IsReady)
+		})
+	}
 }
 
 func TestServerPanicIfEmptyRequestDurationDatastoreCountBuckets(t *testing.T) {
@@ -266,9 +294,9 @@ func TestListObjectsReleasesConnections(t *testing.T) {
 
 	// If ListObjects is still hogging the database connection pool even after responding, then this fails.
 	// If ListObjects is closing up its connections effectively then this will not fail.
-	ready, err := ds.IsReady(timeoutCtx)
+	status, err := ds.IsReady(timeoutCtx)
 	require.NoError(t, err)
-	require.True(t, ready)
+	require.True(t, status.IsReady)
 }
 
 func TestOperationsWithInvalidModel(t *testing.T) {

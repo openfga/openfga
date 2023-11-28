@@ -24,9 +24,9 @@ var (
 
 func RunAllTests(t *testing.T, ds storage.OpenFGADatastore) {
 	t.Run("TestDatastoreIsReady", func(t *testing.T) {
-		ready, err := ds.IsReady(context.Background())
+		status, err := ds.IsReady(context.Background())
 		require.NoError(t, err)
-		require.True(t, ready)
+		require.True(t, status.IsReady)
 	})
 	// tuples
 	t.Run("TestTupleWriteAndRead", func(t *testing.T) { TupleWritingAndReadingTest(t, ds) })
