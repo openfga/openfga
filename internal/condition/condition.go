@@ -44,7 +44,6 @@ type EvaluationResult struct {
 // given a CEL expression and a set of parameters. Calling .Evaluate() will
 // optionally call .Compile() which validates and compiles the expression and
 // parameter type definitions if it hasn't been done already.
-// Note: at the moment, this is not safe for concurrent use.
 type EvaluableCondition struct {
 	*openfgav1.Condition
 

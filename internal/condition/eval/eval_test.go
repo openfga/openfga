@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTupleConditionMet(t *testing.T) {
+func TestEvaluateTupleCondition(t *testing.T) {
 	tests := []struct {
 		name         string
 		tupleKey     *openfgav1.TupleKey
