@@ -3,6 +3,8 @@ package commands
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -229,14 +231,8 @@ type document
 			},
 		},
 	})
-	require.ErrorIs(
-		t,
-		err,
-		serverErrors.NewInternalError(
-			"concurrent write conflict",
-			storage.ErrTransactionalWriteFailed,
-		),
-	)
+
+	require.ErrorIs(t, err, status.Error(codes.Aborted, "transaction aborted"))
 	require.Nil(t, resp)
 }
 
