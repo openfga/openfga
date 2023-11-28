@@ -354,33 +354,32 @@ func ReadQuerySuccessTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		},
 	}
 
-	require := require.New(t)
 	ctx := context.Background()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
 			store := ulid.Make().String()
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			if test.tuples != nil {
 				err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
-				require.NoError(err)
+				require.NoError(t, err)
 			}
 
 			test.request.StoreId = store
 			resp, err := commands.NewReadQuery(datastore).Execute(ctx, test.request)
-			require.NoError(err)
+			require.NoError(t, err)
 
 			if test.response.Tuples != nil {
-				require.Equal(len(test.response.Tuples), len(resp.Tuples))
+				require.Equal(t, len(test.response.Tuples), len(resp.Tuples))
 
 				for i, responseTuple := range test.response.Tuples {
 					responseTupleKey := responseTuple.Key
 					actualTupleKey := resp.Tuples[i].Key
-					require.Equal(responseTupleKey.Object, actualTupleKey.Object)
-					require.Equal(responseTupleKey.Relation, actualTupleKey.Relation)
-					require.Equal(responseTupleKey.User, actualTupleKey.User)
+					require.Equal(t, responseTupleKey.Object, actualTupleKey.Object)
+					require.Equal(t, responseTupleKey.Relation, actualTupleKey.Relation)
+					require.Equal(t, responseTupleKey.User, actualTupleKey.User)
 				}
 			}
 		})
