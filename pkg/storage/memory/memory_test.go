@@ -114,7 +114,7 @@ func TestTupleRecordMatchTupleKey(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.match, Match(test.source, test.target))
+			require.Equal(t, test.match, match(test.source, test.target))
 		})
 	}
 }
@@ -148,7 +148,7 @@ func TestFindTupleKey(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, test.found, Find(test.records, test.tupleKey))
+			require.Equal(t, test.found, find(test.records, test.tupleKey))
 		})
 	}
 }

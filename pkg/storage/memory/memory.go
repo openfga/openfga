@@ -27,10 +27,10 @@ type staticIterator struct {
 	mu                sync.Mutex
 }
 
-// Match returns true if all the fields in *TupleRecord are equal to the same field in the target *TupleKey.
+// match returns true if all the fields in *TupleRecord are equal to the same field in the target *TupleKey.
 // If the input Object doesn't specify an ID, only the Object Types are compared.
 // If a field in the input parameter is empty, it is ignored in the comparison.
-func Match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
+func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 	if target.Object != "" {
 		td, objectid := tupleUtils.SplitObject(target.Object)
 		if objectid == "" {
@@ -249,7 +249,7 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 		copy(matches, s.tuples[store])
 	} else {
 		for _, t := range s.tuples[store] {
-			if Match(t, tk) {
+			if match(t, tk) {
 				matches = append(matches, t)
 			}
 		}
@@ -295,7 +295,7 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 Delete:
 	for _, t := range s.tuples[store] {
 		for _, k := range deletes {
-			if Match(t, k) {
+			if match(t, k) {
 				s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t.AsTuple().Key, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: now})
 				continue Delete
 			}
@@ -306,7 +306,7 @@ Delete:
 Write:
 	for _, t := range writes {
 		for _, et := range records {
-			if Match(et, t) {
+			if match(et, t) {
 				continue Write
 			}
 		}
@@ -331,22 +331,22 @@ Write:
 
 func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1.TupleKey) error {
 	for _, tk := range deletes {
-		if !Find(records, tk) {
+		if !find(records, tk) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
 	for _, tk := range writes {
-		if Find(records, tk) {
+		if find(records, tk) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE)
 		}
 	}
 	return nil
 }
 
-// Find returns true if there is any *TupleRecord for which storage.Match returns true
-func Find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
+// find returns true if there is any *TupleRecord for which storage.match returns true
+func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
 	for _, tr := range records {
-		if Match(tr, tupleKey) {
+		if match(tr, tupleKey) {
 			return true
 		}
 	}
@@ -362,7 +362,7 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	defer s.mu.Unlock()
 
 	for _, t := range s.tuples[store] {
-		if Match(t, key) {
+		if match(t, key) {
 			return t.AsTuple(), nil
 		}
 	}
@@ -381,7 +381,7 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, fil
 
 	var matches []*storage.TupleRecord
 	for _, t := range s.tuples[store] {
-		if Match(t, &openfgav1.TupleKey{
+		if match(t, &openfgav1.TupleKey{
 			Object:   filter.Object,
 			Relation: filter.Relation,
 		}) && tupleUtils.GetUserTypeFromUser(t.User) == tupleUtils.UserSet {
