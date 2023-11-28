@@ -14,9 +14,11 @@ import (
 	"github.com/go-sql-driver/mysql"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
+	"github.com/pressly/goose/v3"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -449,13 +451,27 @@ func ReadAuthorizationModel(ctx context.Context, dbInfo *DBInfo, store, modelID 
 }
 
 // IsReady returns true if the connection to the datastore is successful
-func IsReady(ctx context.Context, db *sql.DB) (bool, error) {
+func IsReady(ctx context.Context, db *sql.DB) (storage.ReadinessStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		return false, err
+		return storage.ReadinessStatus{}, err
 	}
 
-	return true, nil
+	revision, err := goose.GetDBVersion(db)
+	if err != nil {
+		return storage.ReadinessStatus{}, err
+	}
+
+	if revision < build.MinimumSupportedDatastoreSchemaRevision {
+		return storage.ReadinessStatus{
+			Message: fmt.Sprintf("datastore requires migrations: at revision '%d', but requires '%d'. Run 'openfga migrate'.", revision, build.MinimumSupportedDatastoreSchemaRevision),
+			IsReady: false,
+		}, nil
+	}
+
+	return storage.ReadinessStatus{
+		IsReady: true,
+	}, nil
 }
