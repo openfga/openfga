@@ -10,7 +10,6 @@ import (
 	celtypes "github.com/google/cel-go/common/types"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition/types"
-	"github.com/openfga/openfga/internal/errors"
 	"golang.org/x/exp/maps"
 )
 
@@ -183,10 +182,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // for the last most context wins.
 func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (EvaluationResult, error) {
 	if err := e.Compile(); err != nil {
-		return emptyEvaluationResult, errors.With(&EvaluationError{
-			Condition: e.Name,
-			Cause:     err,
-		}, ErrEvaluationFailed)
+		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
 
 	// merge context maps
@@ -198,18 +194,12 @@ func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (Evaluation
 
 	typedParams, err := e.CastContextToTypedParameters(clonedMap)
 	if err != nil {
-		return emptyEvaluationResult, errors.With(&EvaluationError{
-			Condition: e.Name,
-			Cause:     err,
-		}, ErrEvaluationFailed)
+		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
 
 	activation, err := e.celEnv.PartialVars(typedParams)
 	if err != nil {
-		return emptyEvaluationResult, errors.With(&EvaluationError{
-			Condition: e.Name,
-			Cause:     fmt.Errorf("failed to construct condition partial vars: %v", err),
-		}, ErrEvaluationFailed)
+		return emptyEvaluationResult, NewEvaluationError(e.Name, fmt.Errorf("failed to construct condition partial vars: %v", err))
 	}
 
 	var missingParameters []string

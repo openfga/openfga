@@ -254,7 +254,9 @@ func TestEvaluate(t *testing.T) {
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
-				require.EqualError(t, err, test.err.Error())
+				var evalError *condition.EvaluationError
+				require.ErrorAs(t, err, &evalError)
+				require.EqualError(t, evalError, test.err.Error())
 			} else {
 				require.NoError(t, err)
 			}

@@ -23,6 +23,7 @@ require (
 	github.com/jackc/pgx/v5 v5.5.0
 	github.com/jon-whit/go-grpc-prometheus v1.4.0
 	github.com/karlseguin/ccache/v3 v3.0.5
+	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/openfga/api/proto v0.0.0-20231122192407-7f9be45ba22c
 	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
