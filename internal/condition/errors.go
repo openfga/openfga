@@ -3,7 +3,7 @@ package condition
 import (
 	"fmt"
 
-	"github.com/openfga/openfga/internal/errors"
+	"github.com/natefinch/wrap"
 )
 
 var ErrEvaluationFailed = fmt.Errorf("failed to evaluate relationship condition")
@@ -27,7 +27,7 @@ type EvaluationError struct {
 }
 
 func NewEvaluationError(condition string, cause error) error {
-	return errors.With(&EvaluationError{
+	return wrap.With(&EvaluationError{
 		Condition: condition,
 		Cause:     cause,
 	}, ErrEvaluationFailed)
