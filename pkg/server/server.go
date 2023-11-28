@@ -372,10 +372,6 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 	)
 	if err != nil {
 		if errors.Is(err, condition.ErrEvaluationFailed) {
-			var evalError *condition.EvaluationError
-			if errors.As(err, &evalError) {
-				return nil, serverErrors.ValidationError(evalError)
-			}
 			return nil, serverErrors.ValidationError(err)
 		}
 
@@ -604,10 +600,6 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		}
 
 		if errors.Is(err, condition.ErrEvaluationFailed) {
-			var evalError *condition.EvaluationError
-			if errors.As(err, &evalError) {
-				return nil, serverErrors.ValidationError(evalError)
-			}
 			return nil, serverErrors.ValidationError(err)
 		}
 

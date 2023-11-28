@@ -14,7 +14,7 @@ type CompilationError struct {
 }
 
 func (e *CompilationError) Error() string {
-	return fmt.Sprintf("failed to compile expression on condition '%s': %v", e.Condition, e.Cause)
+	return fmt.Sprintf("failed to compile expression on condition '%s' - %v", e.Condition, e.Cause)
 }
 
 func (e *CompilationError) Unwrap() error {
@@ -38,7 +38,7 @@ func (e *EvaluationError) Error() string {
 		return e.Unwrap().Error()
 	}
 
-	return fmt.Sprintf("%s '%s': %v", ErrEvaluationFailed.Error(), e.Condition, e.Cause)
+	return fmt.Sprintf("'%s' - %v", e.Condition, e.Cause)
 }
 
 func (e *EvaluationError) Unwrap() error {
@@ -51,7 +51,7 @@ type ParameterTypeError struct {
 }
 
 func (e *ParameterTypeError) Error() string {
-	return fmt.Sprintf("parameter type error on condition '%s': %v", e.Condition, e.Cause)
+	return fmt.Sprintf("parameter type error on condition '%s' - %v", e.Condition, e.Cause)
 }
 
 func (e *ParameterTypeError) Unwrap() error {
