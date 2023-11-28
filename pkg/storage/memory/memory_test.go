@@ -3,10 +3,11 @@ package memory
 import (
 	"testing"
 
-	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/oklog/ulid/v2"
+	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/test"
-	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestMemdbStorage(t *testing.T) {
@@ -15,13 +16,27 @@ func TestMemdbStorage(t *testing.T) {
 }
 
 func TestStaticTupleIteratorNoRace(t *testing.T) {
+	now := timestamppb.Now()
+
 	iter := &staticIterator{
-		tuples: []*openfgav1.Tuple{
+		records: []*storage.TupleRecord{
 			{
-				Key: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				Store:      "store",
+				ObjectType: "document",
+				ObjectID:   "1",
+				Relation:   "viewer",
+				User:       "user:jon",
+				Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+				InsertedAt: now.AsTime(),
 			},
 			{
-				Key: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				Store:      "store",
+				ObjectType: "document",
+				ObjectID:   "1",
+				Relation:   "viewer",
+				User:       "user:jon",
+				Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+				InsertedAt: now.AsTime(),
 			},
 		},
 	}
