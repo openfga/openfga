@@ -1,7 +1,9 @@
 package memory
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -45,14 +47,63 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 	defer iter.Stop()
 
 	go func() {
-		_, err := iter.Next()
+		_, err := iter.Next(context.Background())
 		require.NoError(t, err)
 	}()
 
 	go func() {
-		_, err := iter.Next()
+		_, err := iter.Next(context.Background())
 		require.NoError(t, err)
 	}()
+}
+
+func TestStaticTupleIteratorContextCanceled(t *testing.T) {
+	iter := &staticIterator{
+		records: []*storage.TupleRecord{
+			{
+				ObjectType: "document",
+				ObjectID:   "1",
+				Relation:   "viewer",
+				User:       "user:jon",
+			},
+		},
+	}
+	defer iter.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	_, err := iter.Next(ctx)
+	require.NoError(t, err)
+
+	cancel()
+
+	_, err = iter.Next(ctx)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestStaticTupleIteratorContextDeadlineExceeded(t *testing.T) {
+	iter := &staticIterator{
+		records: []*storage.TupleRecord{
+			{
+				ObjectType: "document",
+				ObjectID:   "1",
+				Relation:   "viewer",
+				User:       "user:jon",
+			},
+		},
+	}
+	defer iter.Stop()
+
+	deadlineCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	_, err := iter.Next(deadlineCtx)
+	require.NoError(t, err)
+
+	time.Sleep(2 * time.Second)
+
+	_, err = iter.Next(deadlineCtx)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestTupleRecordMatchTupleKey(t *testing.T) {

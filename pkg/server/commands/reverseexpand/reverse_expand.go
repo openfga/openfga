@@ -421,7 +421,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	pool.WithMaxGoroutines(int(c.resolveNodeBreadthLimit))
 
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
