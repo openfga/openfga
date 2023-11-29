@@ -216,7 +216,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	tests := []struct {
 		name            string
 		typeDefinitions []*openfgav1.TypeDefinition
-		tuples          []*openfgav1.WriteRequestTupleKey
+		tuples          []*openfgav1.TupleKey
 		assertions      []checktest.Assertion
 	}{
 		{
@@ -235,7 +235,7 @@ type commerce_store
 	define approved_timeslot: [timeslot]
 	define hourly_employee: [fga_user]
 `).TypeDefinitions,
-			tuples: []*openfgav1.WriteRequestTupleKey{
+			tuples: []*openfgav1.TupleKey{
 				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
 				{Object: "commerce_store:0", Relation: "approved_timeslot", User: "timeslot:11_12"},
@@ -276,7 +276,7 @@ type document
 	define restricted: [user]
 	define viewer: [user] but not restricted
 `).TypeDefinitions,
-			tuples: []*openfgav1.WriteRequestTupleKey{
+			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
 			assertions: []checktest.Assertion{
@@ -334,7 +334,7 @@ type document
   relations
 	define viewer: [group#member]
 `).TypeDefinitions,
-			tuples: []*openfgav1.WriteRequestTupleKey{
+			tuples: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
 				{Object: "group:eng", Relation: "member", User: "user:jon"},
 			},
@@ -381,7 +381,7 @@ type document
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes: &openfgav1.WriteRequestTupleKeys{
+					Writes: &openfgav1.WriteRequestWrites{
 						TupleKeys: test.tuples,
 					},
 				})
@@ -700,7 +700,7 @@ func GRPCDeleteStoreTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgav1.WriteRequestTupleKey
+		tuples []*openfgav1.TupleKey
 		model  *openfgav1.AuthorizationModel
 	}
 
@@ -810,7 +810,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes: &openfgav1.WriteRequestTupleKeys{
+					Writes: &openfgav1.WriteRequestWrites{
 						TupleKeys: test.testData.tuples,
 					},
 				})
@@ -833,7 +833,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 
 func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 	type testData struct {
-		tuples []*openfgav1.WriteRequestTupleKey
+		tuples []*openfgav1.TupleKey
 		model  string
 	}
 
@@ -884,7 +884,7 @@ type document
 				},
 			},
 			testData: &testData{
-				tuples: []*openfgav1.WriteRequestTupleKey{
+				tuples: []*openfgav1.TupleKey{
 					{Object: "document:1", Relation: "viewer", User: "user:jon"},
 					{Object: "document:1", Relation: "allowed", User: "user:jon"},
 				},
@@ -925,7 +925,7 @@ type document
 					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes: &openfgav1.WriteRequestTupleKeys{
+						Writes: &openfgav1.WriteRequestWrites{
 							TupleKeys: test.testData.tuples,
 						},
 					})
@@ -1012,8 +1012,8 @@ func TestCheckWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:1", Relation: "viewer", User: "user:*"},
 				},
 			},
@@ -1136,8 +1136,8 @@ func TestExpandWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: "document:1", Relation: "viewer", User: "user:*"},
 					{Object: "document:1", Relation: "viewer", User: "user:jon"},
 				},

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTupleConditionMet(t *testing.T) {
+func TestEvaluateTupleCondition(t *testing.T) {
 	tests := []struct {
 		name         string
 		tupleKey     *openfgav1.TupleKey
@@ -38,7 +38,7 @@ condition correct_ip(ip: string) {
 }`),
 			context:      map[string]interface{}{"ip": "192.168.0.1"},
 			conditionMet: false,
-			expectedErr:  "failed to evaluate relationship condition 'unknown': condition was not found",
+			expectedErr:  "'unknown' - condition was not found",
 		},
 		{
 			name:     "condition_not_met",
@@ -84,7 +84,9 @@ condition correct_ip(ip: string) {
 
 			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, test.context)
 			if err != nil {
-				require.EqualError(t, err, test.expectedErr)
+				var evalError *condition.EvaluationError
+				require.ErrorAs(t, err, &evalError)
+				require.EqualError(t, evalError, test.expectedErr)
 			} else {
 				require.Empty(t, test.expectedErr)
 				require.Equal(t, test.conditionMet, condEvalResult.ConditionMet)

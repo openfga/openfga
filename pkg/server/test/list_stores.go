@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/encoder"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
@@ -16,11 +14,10 @@ import (
 
 func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	// clean up all stores from other tests
-	getStoresQuery := commands.NewListStoresQuery(datastore, logger, encoder.NewBase64Encoder())
-	deleteCmd := commands.NewDeleteStoreCommand(datastore, logger)
+	getStoresQuery := commands.NewListStoresQuery(datastore)
+	deleteCmd := commands.NewDeleteStoreCommand(datastore)
 	deleteContinuationToken := ""
 	for ok := true; ok; ok = deleteContinuationToken != "" {
 		listStoresResponse, _ := getStoresQuery.Execute(ctx, &openfgav1.ListStoresRequest{
@@ -42,7 +39,7 @@ func TestListStores(t *testing.T, datastore storage.OpenFGADatastore) {
 	require.Empty(t, listStoresResponse.Stores)
 
 	// create two stores
-	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore)
 	firstStoreName := testutils.CreateRandomString(10)
 	_, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: firstStoreName})
 	require.NoError(t, err, "error creating store 1")

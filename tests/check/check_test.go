@@ -105,8 +105,8 @@ type document
 
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: &openfgav1.WriteRequestTupleKeys{
-			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:1", Relation: "viewer", User: "user:anne"},
 			},
 		},
@@ -315,7 +315,9 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes:               tuple.ConvertTupleKeysToWriteRequestTupleKeys(tuples),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tuples,
+		},
 	})
 	require.NoError(b, err)
 
@@ -351,7 +353,9 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes:               tuple.ConvertTupleKeysToWriteRequestTupleKeys(tuples),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tuples,
+		},
 	})
 	require.NoError(b, err)
 
@@ -391,8 +395,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
 				},
 			},
@@ -404,8 +408,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.WriteRequestTupleKeys{
-			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
 			},
 		},
@@ -416,8 +420,8 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.WriteRequestTupleKeys{
-			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
 			},
 		},
@@ -500,8 +504,8 @@ type document
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			Writes: &openfgav1.WriteRequestTupleKeys{
-				TupleKeys: []*openfgav1.WriteRequestTupleKey{
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
 					{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
 				},
 			},
@@ -513,8 +517,8 @@ type document
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.WriteRequestTupleKeys{
-			TupleKeys: []*openfgav1.WriteRequestTupleKey{
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
 				{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
 			},
 		},
@@ -579,9 +583,11 @@ condition password(p: string) {
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: tuple.ConvertTupleKeysToWriteRequestTupleKeys([]*openfgav1.TupleKey{
-			tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
-		}),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
+			},
+		},
 	})
 	require.NoError(b, err)
 
@@ -629,9 +635,11 @@ condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: tuple.ConvertTupleKeysToWriteRequestTupleKeys([]*openfgav1.TupleKey{
-			tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
-		}),
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
+			},
+		},
 	})
 	require.NoError(b, err)
 

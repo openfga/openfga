@@ -272,9 +272,17 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 Delete:
 	for _, tr := range s.tuples[store] {
 		t := tr.AsTuple()
+		tk := t.GetKey()
 		for _, k := range deletes {
-			if match(k, t.Key) {
-				s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t.Key, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: now})
+			if match(k, tk) {
+				s.changes[store] = append(
+					s.changes[store],
+					&openfgav1.TupleChange{
+						TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // redact the condition info
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+						Timestamp: now,
+					},
+				)
 				continue Delete
 			}
 		}
@@ -317,7 +325,11 @@ Write:
 	return nil
 }
 
-func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1.TupleKey) error {
+func validateTuples(
+	records []*storage.TupleRecord,
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	for _, tk := range deletes {
 		if !find(records, tk) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
@@ -331,29 +343,29 @@ func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1
 	return nil
 }
 
-func match(key *openfgav1.TupleKey, target *openfgav1.TupleKey) bool {
-	if key.Object != "" {
-		td, objectid := tupleUtils.SplitObject(key.Object)
+func match(key tupleUtils.TupleWithoutCondition, target tupleUtils.TupleWithoutCondition) bool {
+	if key.GetObject() != "" {
+		td, objectid := tupleUtils.SplitObject(key.GetObject())
 		if objectid == "" {
-			if td != tupleUtils.GetType(target.Object) {
+			if td != tupleUtils.GetType(target.GetObject()) {
 				return false
 			}
 		} else {
-			if key.Object != target.Object {
+			if key.GetObject() != target.GetObject() {
 				return false
 			}
 		}
 	}
-	if key.Relation != "" && key.Relation != target.Relation {
+	if key.GetRelation() != "" && key.GetRelation() != target.GetRelation() {
 		return false
 	}
-	if key.User != "" && key.User != target.User {
+	if key.GetUser() != "" && key.GetUser() != target.GetUser() {
 		return false
 	}
 	return true
 }
 
-func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
+func find(records []*storage.TupleRecord, tupleKey tupleUtils.TupleWithoutCondition) bool {
 	for _, tr := range records {
 		t := tr.AsTuple()
 		if match(t.Key, tupleKey) {

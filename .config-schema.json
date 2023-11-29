@@ -77,9 +77,10 @@
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
-                "type": "string"
+                "type": "string",
+                "enum": ["reject-conditions"]
             },
-            "default": [],
+            "default": ["reject-conditions"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "playground": {

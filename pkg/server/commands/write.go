@@ -12,24 +12,56 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger    logger.Logger
-	datastore storage.OpenFGADatastore
+	logger           logger.Logger
+	datastore        storage.OpenFGADatastore
+	rejectConditions bool
+}
+
+type WriteCommandOption func(*WriteCommand)
+
+func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
+	return func(c *WriteCommand) {
+		c.logger = l
+	}
+}
+
+func WithWriteCmdRejectConditions(reject bool) WriteCommandOption {
+	return func(m *WriteCommand) {
+		m.rejectConditions = reject
+	}
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
-func NewWriteCommand(datastore storage.OpenFGADatastore, logger logger.Logger) *WriteCommand {
-	return &WriteCommand{
-		logger:    logger,
-		datastore: datastore,
+func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
+	cmd := &WriteCommand{
+		datastore:        datastore,
+		logger:           logger.NewNoopLogger(),
+		rejectConditions: false,
 	}
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
+	return cmd
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
+	if c.rejectConditions {
+		tks := req.GetWrites()
+		for _, tk := range tks.TupleKeys {
+			if tk.Condition != nil {
+				return nil, status.Error(codes.Unimplemented, "conditions not supported")
+			}
+		}
+	}
+
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}
@@ -37,8 +69,8 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 	err := c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
-		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes()),
-		tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites()),
+		req.GetDeletes().GetTupleKeys(),
+		req.GetWrites().GetTupleKeys(),
 	)
 	if err != nil {
 		return nil, handleError(err)
@@ -53,8 +85,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
-	deletes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetDeletes())
-	writes := tupleUtils.ConvertWriteRequestsTupleKeysToTupleKeys(req.GetWrites())
+	deletes := req.GetDeletes().GetTupleKeys()
+	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
 		return serverErrors.InvalidWriteInput
@@ -102,7 +134,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.
-func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(deletes []*openfgav1.TupleKey, writes []*openfgav1.TupleKey) error {
+func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	tuples := map[string]struct{}{}
 
 	for _, tk := range deletes {
