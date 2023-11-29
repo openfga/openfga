@@ -66,6 +66,11 @@ func (t *TupleKeysHasher) Append(h hasher) error {
 		return true
 	})
 
+	// prefix to avoid overlap with previous strings written
+	if err := h.WriteString("/"); err != nil {
+		return err
+	}
+
 	for _, tupleKey := range sortedTupleKeys {
 		// tuple with a separator at the end
 		key := fmt.Sprintf("%s#%s@%s,", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())

@@ -243,6 +243,39 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
+			name: "separates_tuple_key_and_contextual_tuples",
+			initialReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:pre"),
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "fix:1",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+				},
+			},
+			subsequentReq: &ResolveCheckRequest{
+				StoreID:              "12",
+				AuthorizationModelID: "33",
+				TupleKey:             tuple.NewTupleKey("document:abc", "reader", "user:prefi"),
+				ContextualTuples: []*openfgav1.TupleKey{
+					{
+						Object:   "x:1",
+						Relation: "reader",
+						User:     "user:XYZ",
+					},
+				},
+			},
+			setInitialResult: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
+			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
+				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+			},
+		},
+		{
 			name: "extra_contextual_tuples_does_not_return_results_from_cache",
 			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
