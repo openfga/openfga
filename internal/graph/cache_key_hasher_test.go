@@ -10,11 +10,11 @@ import (
 )
 
 func TestHasher(t *testing.T) {
-	hasher1 := NewHasher(xxhash.New())
+	hasher1 := NewCacheKeyHasher(xxhash.New())
 	err := hasher1.WriteString("a")
 	require.NoError(t, err)
 
-	hasher2 := NewHasher(xxhash.New())
+	hasher2 := NewCacheKeyHasher(xxhash.New())
 	err = hasher2.WriteString("b")
 	require.NoError(t, err)
 
@@ -65,11 +65,11 @@ func TestTupleKeysHasherSortsFirst(t *testing.T) {
 	}
 	for name, test := range testCases {
 		t.Run(name, func(t *testing.T) {
-			hasher1 := NewHasher(xxhash.New())
+			hasher1 := NewCacheKeyHasher(xxhash.New())
 			tuplesHasher := NewTupleKeysHasher(test.tuplesOriginal...)
 			require.NoError(t, tuplesHasher.Append(hasher1))
 
-			hasher2 := NewHasher(xxhash.New())
+			hasher2 := NewCacheKeyHasher(xxhash.New())
 			tuplesInvertedHasher := NewTupleKeysHasher(test.tuplesReversed...)
 			require.NoError(t, tuplesInvertedHasher.Append(hasher2))
 

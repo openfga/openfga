@@ -17,8 +17,8 @@ type CacheKeyHasher struct {
 	hasher *xxhash.Digest
 }
 
-// NewHasher returns a hasher for string values.
-func NewHasher(xhash *xxhash.Digest) *CacheKeyHasher {
+// NewCacheKeyHasher returns a hasher for string values.
+func NewCacheKeyHasher(xhash *xxhash.Digest) *CacheKeyHasher {
 	return &CacheKeyHasher{hasher: xhash}
 }
 

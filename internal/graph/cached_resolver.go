@@ -174,7 +174,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 // For one store and model ID, the same tuple provided with the same contextual tuples will produce the same
 // cache key. Contextual tuple order is ignored, only the contents are compared.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	hasher := NewHasher(xxhash.New())
+	hasher := NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
 	key := fmt.Sprintf("%s/%s/%s#%s@%s",
