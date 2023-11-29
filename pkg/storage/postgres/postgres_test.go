@@ -33,9 +33,9 @@ func TestPostgresDatastoreAfterCloseIsNotReady(t *testing.T) {
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	ds.Close()
-	ready, err := ds.IsReady(context.Background())
+	status, err := ds.IsReady(context.Background())
 	require.Error(t, err)
-	require.False(t, ready)
+	require.False(t, status.IsReady)
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
