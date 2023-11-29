@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"errors"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -10,16 +11,16 @@ var ErrIteratorDone = errors.New("iterator done")
 
 type Iterator[T any] interface {
 	// Next will return the next available item.
-	Next() (T, error)
+	Next(ctx context.Context) (T, error)
 	// Stop terminates iteration over the underlying iterator.
 	Stop()
 }
 
-// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next() until it
+// TupleIterator is an iterator for Tuples. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
 // returns an ErrIteratorDone error.
 type TupleIterator = Iterator[*openfgav1.Tuple]
 
-// TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next() until it
+// TupleKeyIterator is an iterator for TupleKeys. It is closed by explicitly calling Stop() or by calling Next(ctx) until it
 // returns an ErrIteratorDone error.
 type TupleKeyIterator = Iterator[*openfgav1.TupleKey]
 
@@ -27,7 +28,11 @@ type emptyTupleIterator struct{}
 
 var _ TupleIterator = (*emptyTupleIterator)(nil)
 
-func (e *emptyTupleIterator) Next() (*openfgav1.Tuple, error) {
+func (e *emptyTupleIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	return nil, ErrIteratorDone
 }
 func (e *emptyTupleIterator) Stop() {}
@@ -36,12 +41,12 @@ type combinedIterator[T any] struct {
 	iters []Iterator[T]
 }
 
-func (c *combinedIterator[T]) Next() (T, error) {
+func (c *combinedIterator[T]) Next(ctx context.Context) (T, error) {
 	for i, iter := range c.iters {
 		if iter == nil {
 			continue
 		}
-		val, err := iter.Next()
+		val, err := iter.Next(ctx)
 		if err != nil {
 			if !errors.Is(err, ErrIteratorDone) {
 				return val, err
@@ -96,8 +101,8 @@ type tupleKeyIterator struct {
 
 var _ TupleKeyIterator = (*tupleKeyIterator)(nil)
 
-func (t *tupleKeyIterator) Next() (*openfgav1.TupleKey, error) {
-	tuple, err := t.iter.Next()
+func (t *tupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
+	tuple, err := t.iter.Next(ctx)
 	return tuple.GetKey(), err
 }
 
@@ -114,8 +119,13 @@ type staticIterator[T any] struct {
 	items []T
 }
 
-func (s *staticIterator[T]) Next() (T, error) {
+func (s *staticIterator[T]) Next(ctx context.Context) (T, error) {
 	var val T
+
+	if ctx.Err() != nil {
+		return val, ctx.Err()
+	}
+
 	if len(s.items) == 0 {
 		return val, ErrIteratorDone
 	}
@@ -142,9 +152,9 @@ var _ TupleKeyIterator = &filteredTupleKeyIterator{}
 
 // Next returns the next most tuple in the underlying iterator that meets
 // the filter function this iterator was constructed with.
-func (f *filteredTupleKeyIterator) Next() (*openfgav1.TupleKey, error) {
+func (f *filteredTupleKeyIterator) Next(ctx context.Context) (*openfgav1.TupleKey, error) {
 	for {
-		tuple, err := f.iter.Next()
+		tuple, err := f.iter.Next(ctx)
 		if err != nil {
 			return nil, err
 		}

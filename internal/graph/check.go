@@ -199,14 +199,21 @@ func resolver(ctx context.Context, concurrencyLimit uint32, resultChan chan<- ch
 	var wg sync.WaitGroup
 
 	checker := func(fn CheckHandlerFunc) {
-		defer wg.Done()
+		defer func() {
+			wg.Done()
+			<-limiter
+		}()
 
 		resolved := make(chan checkOutcome, 1)
+
+		if ctx.Err() != nil {
+			resultChan <- checkOutcome{nil, ctx.Err()}
+			return
+		}
 
 		go func() {
 			resp, err := fn(ctx)
 			resolved <- checkOutcome{resp, err}
-			<-limiter
 		}()
 
 		select {
@@ -445,6 +452,10 @@ func (c *LocalChecker) ResolveCheck(
 	ctx context.Context,
 	req *ResolveCheckRequest,
 ) (*ResolveCheckResponse, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
 	defer span.End()
 
@@ -495,13 +506,17 @@ func (c *LocalChecker) ResolveCheck(
 // related to it.
 func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkDirect")
+		defer span.End()
+
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
-
-		ctx, span := tracer.Start(ctx, "checkDirect")
-		defer span.End()
 
 		storeID := req.GetStoreID()
 		reqTupleKey := req.GetTupleKey()
@@ -563,6 +578,10 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.Object, reqTupleKey.Relation))))
 			defer span.End()
 
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+
 			response := &ResolveCheckResponse{
 				Allowed: false,
 				ResolutionMetadata: &ResolutionMetadata{
@@ -590,7 +609,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			var errs error
 			var handlers []CheckHandlerFunc
 			for {
-				t, err := filteredIter.Next()
+				t, err := filteredIter.Next(ctx)
 				if err != nil {
 					if errors.Is(err, storage.ErrIteratorDone) {
 						break
@@ -697,6 +716,10 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 		ctx, span := tracer.Start(ctx, "checkComputedUserset")
 		defer span.End()
 
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		rewrittenTupleKey := tuple.NewTupleKey(
 			req.TupleKey.GetObject(),
 			rewrite.ComputedUserset.GetRelation(),
@@ -728,13 +751,17 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 // of them evaluates the computed userset of the TTU rewrite rule for them.
 func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequest, rewrite *openfgav1.Userset) CheckHandlerFunc {
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		ctx, span := tracer.Start(ctx, "checkTTU")
+		defer span.End()
+
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		typesys, ok := typesystem.TypesystemFromContext(parentctx) // note: use of 'parentctx' not 'ctx' - this is important
 		if !ok {
 			return nil, fmt.Errorf("typesystem missing in context")
 		}
-
-		ctx, span := tracer.Start(ctx, "checkTTU")
-		defer span.End()
 
 		ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
@@ -773,7 +800,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		var errs error
 		var handlers []CheckHandlerFunc
 		for {
-			t, err := filteredIter.Next()
+			t, err := filteredIter.Next(ctx)
 			if err != nil {
 				if err == storage.ErrIteratorDone {
 					break

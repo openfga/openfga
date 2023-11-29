@@ -77,11 +77,11 @@ func TestReadEnsureNoOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	// we expect that objectID1 will return first because it is inserted first
-	curTuple, err := iter.Next()
+	curTuple, err := iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, firstTuple, curTuple.Key)
 
-	curTuple, err = iter.Next()
+	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.Key)
 }

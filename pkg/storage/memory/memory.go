@@ -53,7 +53,11 @@ func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
 	return true
 }
 
-func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
+func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -68,10 +72,10 @@ func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
-func (s *staticIterator) ToArray() ([]*openfgav1.Tuple, []byte, error) {
+func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, []byte, error) {
 	var res []*openfgav1.Tuple
 	for range s.records {
-		t, err := s.Next()
+		t, err := s.Next(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -171,7 +175,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 		return nil, nil, err
 	}
 
-	return it.ToArray()
+	return it.ToArray(ctx)
 }
 
 func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {

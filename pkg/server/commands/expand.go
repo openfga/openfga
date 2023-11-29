@@ -155,7 +155,7 @@ func (q *ExpandQuery) resolveThis(ctx context.Context, store string, tk *openfga
 
 	distinctUsers := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -266,7 +266,7 @@ func (q *ExpandQuery) resolveTupleToUserset(
 	var computed []*openfgav1.UsersetTree_Computed
 	seen := make(map[string]bool)
 	for {
-		tk, err := filteredIter.Next()
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
