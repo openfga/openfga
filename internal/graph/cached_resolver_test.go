@@ -200,10 +200,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 			},
 		},
 		{
-			// Ideally we will have the same order. However, having different order
-			// will not be catastrophic - just result in a cache miss and potentially
-			// duplicate entry
-			name: "different_order_contextual_tuples_does_not_return_results_from_cache",
+			name: "different_order_contextual_tuples_results_in_cache_hit",
 			initialReq: &ResolveCheckRequest{
 				StoreID:              "12",
 				AuthorizationModelID: "33",
@@ -242,7 +239,7 @@ func TestResolveCheckFromCache(t *testing.T) {
 				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
 			},
 			setTestExpectations: func(mock *MockCheckResolver, request *ResolveCheckRequest) {
-				mock.EXPECT().ResolveCheck(ctx, request).Times(1).Return(result, nil)
+				mock.EXPECT().ResolveCheck(ctx, request).Times(0)
 			},
 		},
 		{
