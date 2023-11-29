@@ -66,21 +66,13 @@ func (t *TupleKeysHasher) Append(h hasher) error {
 		return true
 	})
 
-	n := 0
 	for _, tupleKey := range sortedTupleKeys {
-		key := fmt.Sprintf("%s#%s@%s", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())
+		// tuple with a separator at the end
+		key := fmt.Sprintf("%s#%s@%s,", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())
 
 		if err := h.WriteString(key); err != nil {
 			return err
 		}
-
-		if n < len(t.tupleKeys)-1 {
-			if err := h.WriteString(","); err != nil {
-				return err
-			}
-		}
-
-		n++
 	}
 
 	return nil
