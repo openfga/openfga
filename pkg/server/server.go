@@ -924,7 +924,18 @@ func (s *Server) IsReady(ctx context.Context) (bool, error) {
 	// for now we only depend on the datastore being ready, but in the future
 	// server readiness may also depend on other criteria in addition to the
 	// datastore being ready.
-	return s.datastore.IsReady(ctx)
+
+	status, err := s.datastore.IsReady(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if status.IsReady {
+		return true, nil
+	}
+
+	s.logger.WarnWithContext(ctx, "datastore is not ready", zap.Any("status", status.Message))
+	return false, nil
 }
 
 // resolveTypesystem resolves the underlying TypeSystem given the storeID and modelID and

@@ -34,9 +34,9 @@ func TestMySQLDatastoreAfterCloseIsNotReady(t *testing.T) {
 	ds, err := New(uri, sqlcommon.NewConfig())
 	require.NoError(t, err)
 	ds.Close()
-	ready, err := ds.IsReady(context.Background())
+	status, err := ds.IsReady(context.Background())
 	require.Error(t, err)
-	require.False(t, ready)
+	require.False(t, status.IsReady)
 }
 
 // TestReadEnsureNoOrder asserts that the read response is not ordered by ulid
@@ -74,14 +74,15 @@ func TestReadEnsureNoOrder(t *testing.T) {
 		store,
 		tuple.NewTupleKey("doc:", "relation", ""))
 	defer iter.Stop()
+
 	require.NoError(t, err)
 
 	// we expect that objectID1 will return first because it is inserted first
-	curTuple, err := iter.Next()
+	curTuple, err := iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, firstTuple, curTuple.Key)
 
-	curTuple, err = iter.Next()
+	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, secondTuple, curTuple.Key)
 }

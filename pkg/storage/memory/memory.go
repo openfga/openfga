@@ -28,7 +28,36 @@ type staticIterator struct {
 	mu                sync.Mutex
 }
 
-func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
+// match returns true if all the fields in *TupleRecord are equal to the same field in the target *TupleKey.
+// If the input Object doesn't specify an ID, only the Object Types are compared.
+// If a field in the input parameter is empty, it is ignored in the comparison.
+func match(t *storage.TupleRecord, target *openfgav1.TupleKey) bool {
+	if target.Object != "" {
+		td, objectid := tupleUtils.SplitObject(target.Object)
+		if objectid == "" {
+			if td != t.ObjectType {
+				return false
+			}
+		} else {
+			if td != t.ObjectType || objectid != t.ObjectID {
+				return false
+			}
+		}
+	}
+	if target.Relation != "" && t.Relation != target.Relation {
+		return false
+	}
+	if target.User != "" && t.User != target.User {
+		return false
+	}
+	return true
+}
+
+func (s *staticIterator) Next(ctx context.Context) (*openfgav1.Tuple, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -43,10 +72,10 @@ func (s *staticIterator) Next() (*openfgav1.Tuple, error) {
 
 func (s *staticIterator) Stop() {}
 
-func (s *staticIterator) ToArray() ([]*openfgav1.Tuple, []byte, error) {
+func (s *staticIterator) ToArray(ctx context.Context) ([]*openfgav1.Tuple, []byte, error) {
 	var res []*openfgav1.Tuple
 	for range s.records {
-		t, err := s.Next()
+		t, err := s.Next(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -64,7 +93,7 @@ const (
 	defaultMaxTypesPerAuthorizationModel = 100
 )
 
-// A MemoryBackend provides an ephemeral memory-backed implementation of TupleBackend and AuthorizationModelBackend.
+// A MemoryBackend provides an ephemeral memory-backed implementation of storage.OpenFGADatastore.
 // MemoryBackend instances may be safely shared by multiple go-routines.
 type MemoryBackend struct {
 	maxTuplesPerWrite             int
@@ -146,7 +175,7 @@ func (s *MemoryBackend) ReadPage(ctx context.Context, store string, key *openfga
 		return nil, nil, err
 	}
 
-	return it.ToArray()
+	return it.ToArray(ctx)
 }
 
 func (s *MemoryBackend) ReadChanges(ctx context.Context, store, objectType string, paginationOptions storage.PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error) {
@@ -224,10 +253,9 @@ func (s *MemoryBackend) read(ctx context.Context, store string, tk *openfgav1.Tu
 		matches = make([]*storage.TupleRecord, len(s.tuples[store]))
 		copy(matches, s.tuples[store])
 	} else {
-		for _, tr := range s.tuples[store] {
-			t := tr.AsTuple()
-			if match(tk, t.Key) {
-				matches = append(matches, tr)
+		for _, t := range s.tuples[store] {
+			if match(t, tk) {
+				matches = append(matches, t)
 			}
 		}
 	}
@@ -274,7 +302,7 @@ Delete:
 		t := tr.AsTuple()
 		tk := t.GetKey()
 		for _, k := range deletes {
-			if match(k, tk) {
+			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
 				s.changes[store] = append(
 					s.changes[store],
 					&openfgav1.TupleChange{
@@ -291,9 +319,8 @@ Delete:
 
 Write:
 	for _, t := range writes {
-		for _, tr := range records {
-			trt := tr.AsTuple()
-			if match(t, trt.Key) {
+		for _, et := range records {
+			if match(et, t) {
 				continue Write
 			}
 		}
@@ -331,7 +358,7 @@ func validateTuples(
 	writes []*openfgav1.TupleKey,
 ) error {
 	for _, tk := range deletes {
-		if !find(records, tk) {
+		if !find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}
@@ -343,32 +370,10 @@ func validateTuples(
 	return nil
 }
 
-func match(key tupleUtils.TupleWithoutCondition, target tupleUtils.TupleWithoutCondition) bool {
-	if key.GetObject() != "" {
-		td, objectid := tupleUtils.SplitObject(key.GetObject())
-		if objectid == "" {
-			if td != tupleUtils.GetType(target.GetObject()) {
-				return false
-			}
-		} else {
-			if key.GetObject() != target.GetObject() {
-				return false
-			}
-		}
-	}
-	if key.GetRelation() != "" && key.GetRelation() != target.GetRelation() {
-		return false
-	}
-	if key.GetUser() != "" && key.GetUser() != target.GetUser() {
-		return false
-	}
-	return true
-}
-
-func find(records []*storage.TupleRecord, tupleKey tupleUtils.TupleWithoutCondition) bool {
+// find returns true if there is any *TupleRecord for which storage.match returns true
+func find(records []*storage.TupleRecord, tupleKey *openfgav1.TupleKey) bool {
 	for _, tr := range records {
-		t := tr.AsTuple()
-		if match(t.Key, tupleKey) {
+		if match(tr, tupleKey) {
 			return true
 		}
 	}
@@ -383,10 +388,9 @@ func (s *MemoryBackend) ReadUserTuple(ctx context.Context, store string, key *op
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, tr := range s.tuples[store] {
-		t := tr.AsTuple()
-		if match(key, t.Key) {
-			return t, nil
+	for _, t := range s.tuples[store] {
+		if match(t, key) {
+			return t.AsTuple(), nil
 		}
 	}
 
@@ -403,23 +407,22 @@ func (s *MemoryBackend) ReadUsersetTuples(ctx context.Context, store string, fil
 	defer s.mu.Unlock()
 
 	var matches []*storage.TupleRecord
-	for _, tr := range s.tuples[store] {
-		t := tr.AsTuple()
-		if match(&openfgav1.TupleKey{
+	for _, t := range s.tuples[store] {
+		if match(t, &openfgav1.TupleKey{
 			Object:   filter.Object,
 			Relation: filter.Relation,
-		}, t.Key) && tupleUtils.GetUserTypeFromUser(t.GetKey().GetUser()) == tupleUtils.UserSet {
+		}) && tupleUtils.GetUserTypeFromUser(t.User) == tupleUtils.UserSet {
 			if len(filter.AllowedUserTypeRestrictions) == 0 { // 1.0 model
-				matches = append(matches, tr)
+				matches = append(matches, t)
 				continue
 			}
 
 			// 1.1 model: see if the tuple found is of an allowed type
-			userType := tupleUtils.GetType(t.GetKey().GetUser())
-			_, userRelation := tupleUtils.SplitObjectRelation(t.GetKey().GetUser())
+			userType := tupleUtils.GetType(t.User)
+			_, userRelation := tupleUtils.SplitObjectRelation(t.User)
 			for _, allowedType := range filter.AllowedUserTypeRestrictions {
 				if allowedType.Type == userType && allowedType.GetRelation() == userRelation {
-					matches = append(matches, tr)
+					matches = append(matches, t)
 					continue
 				}
 			}
@@ -441,13 +444,12 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	defer s.mu.Unlock()
 
 	var matches []*storage.TupleRecord
-	for _, tr := range s.tuples[store] {
-		t := tr.AsTuple()
-		if tupleUtils.GetType(t.Key.GetObject()) != filter.ObjectType {
+	for _, t := range s.tuples[store] {
+		if t.ObjectType != filter.ObjectType {
 			continue
 		}
 
-		if t.Key.GetRelation() != filter.Relation {
+		if t.Relation != filter.Relation {
 			continue
 		}
 
@@ -457,8 +459,8 @@ func (s *MemoryBackend) ReadStartingWithUser(
 				targetUser = tupleUtils.GetObjectRelationAsString(userFilter)
 			}
 
-			if targetUser == t.Key.GetUser() {
-				matches = append(matches, tr)
+			if targetUser == t.User {
+				matches = append(matches, t)
 			}
 		}
 	}
@@ -740,6 +742,6 @@ func (s *MemoryBackend) ListStores(ctx context.Context, paginationOptions storag
 	return res, []byte(continuationToken), nil
 }
 
-func (s *MemoryBackend) IsReady(ctx context.Context) (bool, error) {
-	return true, nil
+func (s *MemoryBackend) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
+	return storage.ReadinessStatus{IsReady: true}, nil
 }

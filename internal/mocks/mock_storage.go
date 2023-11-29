@@ -777,10 +777,10 @@ func (mr *MockOpenFGADatastoreMockRecorder) GetStore(ctx, id interface{}) *gomoc
 }
 
 // IsReady mocks base method.
-func (m *MockOpenFGADatastore) IsReady(ctx context.Context) (bool, error) {
+func (m *MockOpenFGADatastore) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsReady", ctx)
-	ret0, _ := ret[0].(bool)
+	ret0, _ := ret[0].(storage.ReadinessStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

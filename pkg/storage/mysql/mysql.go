@@ -729,6 +729,6 @@ func (m *MySQL) ReadChanges(
 
 // IsReady reports whether this MySQL datastore instance is ready
 // to accept connections.
-func (m *MySQL) IsReady(ctx context.Context) (bool, error) {
+func (m *MySQL) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, m.db)
 }

@@ -513,7 +513,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		var gotTupleKeys []*openfgav1.TupleKey
 		for {
-			tk, err := iter.Next()
+			tk, err := iter.Next(ctx)
 			if err != nil {
 				if errors.Is(err, storage.ErrIteratorDone) {
 					break
@@ -526,7 +526,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		}
 
 		// Then the iterator should run out
-		_, err = gotTuples.Next()
+		_, err = gotTuples.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 
 		require.Len(t, gotTupleKeys, 3)
@@ -543,7 +543,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer gotTuples.Stop()
 
-		_, err = gotTuples.Next()
+		_, err = gotTuples.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
@@ -571,7 +571,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		gotTk, err := iter.Next()
+		gotTk, err := iter.Next(ctx)
 		require.NoError(t, err)
 
 		expected := tuple.NewTupleKey("document:1", "viewer", "group:eng#member")
@@ -579,7 +579,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		_, err = iter.Next()
+		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
@@ -608,9 +608,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		gotOne, err := iter.Next()
+		gotOne, err := iter.Next(ctx)
 		require.NoError(t, err)
-		gotTwo, err := iter.Next()
+		gotTwo, err := iter.Next(ctx)
 		require.NoError(t, err)
 
 		expected := []*openfgav1.TupleKey{
@@ -621,7 +621,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		_, err = iter.Next()
+		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
@@ -649,7 +649,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		got, err := iter.Next()
+		got, err := iter.Next(ctx)
 		require.NoError(t, err)
 
 		expected := tuple.NewTupleKey("document:1", "viewer", "user:*")
@@ -657,7 +657,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		_, err = iter.Next()
+		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 
@@ -686,9 +686,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		iter := storage.NewTupleKeyIteratorFromTupleIterator(gotTuples)
 		defer iter.Stop()
 
-		gotOne, err := iter.Next()
+		gotOne, err := iter.Next(ctx)
 		require.NoError(t, err)
-		gotTwo, err := iter.Next()
+		gotTwo, err := iter.Next(ctx)
 		require.NoError(t, err)
 
 		expected := []*openfgav1.TupleKey{
@@ -699,7 +699,7 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 			require.FailNowf(t, "mismatch (-want +got):\n%s", diff)
 		}
 
-		_, err = iter.Next()
+		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
 	})
 }
@@ -1047,7 +1047,7 @@ func ReadTest(t *testing.T, datastore storage.OpenFGADatastore) {
 func getObjects(tupleIterator storage.TupleIterator, require *require.Assertions) []string {
 	var objects []string
 	for {
-		tp, err := tupleIterator.Next()
+		tp, err := tupleIterator.Next(context.Background())
 		if err != nil {
 			if err == storage.ErrIteratorDone {
 				break
@@ -1065,7 +1065,7 @@ func getTupleKeys(tupleIterator storage.TupleIterator, t *testing.T) []*openfgav
 	t.Helper()
 	var tupleKeys []*openfgav1.TupleKey
 	for {
-		tp, err := tupleIterator.Next()
+		tp, err := tupleIterator.Next(context.Background())
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break

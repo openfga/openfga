@@ -720,6 +720,6 @@ func (p *Postgres) ReadChanges(
 
 // IsReady reports whether this Postgres datastore instance is ready
 // to accept connections.
-func (p *Postgres) IsReady(ctx context.Context) (bool, error) {
+func (p *Postgres) IsReady(ctx context.Context) (storage.ReadinessStatus, error) {
 	return sqlcommon.IsReady(ctx, p.db)
 }

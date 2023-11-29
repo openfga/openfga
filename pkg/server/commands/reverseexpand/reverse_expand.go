@@ -430,7 +430,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	var errs *multierror.Error
 	for {
-		t, err := iter.Next()
+		t, err := iter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
