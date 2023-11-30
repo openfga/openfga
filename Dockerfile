@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=bind,target=. \
     CGO_ENABLED=0 go build -o /bin/openfga ./cmd/openfga
 
-FROM cgr.dev/chainguard/static@sha256:676e989769aa9a5254fbfe14abb698804674b91c4d574bb33368d87930c5c472
+FROM alpine:3.18.4
 
 EXPOSE 8081
 EXPOSE 8080
@@ -22,9 +22,11 @@ EXPOSE 3000
 
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.22 /ko-app/grpc-health-probe /user/local/bin/grpc_health_probe
 COPY --from=builder /bin/openfga /openfga
+COPY docker-entrypoint.sh /
 
 # Healthcheck configuration for the container using grpc_health_probe
 # The container will be considered healthy if the gRPC health probe returns a successful response.
 HEALTHCHECK --interval=5s --timeout=30s --retries=3 CMD ["/usr/local/bin/grpc_health_probe", "-addr=:8081"]
 
-ENTRYPOINT ["/openfga"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["/openfga", "run"]
