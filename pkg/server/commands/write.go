@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -19,31 +20,39 @@ import (
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
 type WriteCommand struct {
-	logger           logger.Logger
-	datastore        storage.OpenFGADatastore
-	rejectConditions bool
+	logger                    logger.Logger
+	datastore                 storage.OpenFGADatastore
+	rejectConditions          bool
+	conditionContextByteLimit int
 }
 
 type WriteCommandOption func(*WriteCommand)
 
 func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
-	return func(c *WriteCommand) {
-		c.logger = l
+	return func(wc *WriteCommand) {
+		wc.logger = l
 	}
 }
 
 func WithWriteCmdRejectConditions(reject bool) WriteCommandOption {
-	return func(m *WriteCommand) {
-		m.rejectConditions = reject
+	return func(wc *WriteCommand) {
+		wc.rejectConditions = reject
+	}
+}
+
+func WithConditionContextByteLimit(limit int) WriteCommandOption {
+	return func(wc *WriteCommand) {
+		wc.conditionContextByteLimit = limit
 	}
 }
 
 // NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
 func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
 	cmd := &WriteCommand{
-		datastore:        datastore,
-		logger:           logger.NewNoopLogger(),
-		rejectConditions: false,
+		datastore:                 datastore,
+		logger:                    logger.NewNoopLogger(),
+		rejectConditions:          false,
+		conditionContextByteLimit: config.DefaultWriteContextByteLimit,
 	}
 
 	for _, opt := range opts {
@@ -115,7 +124,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			}
 
 			contextSize := proto.Size(tk.GetCondition().GetContext())
-			if contextSize > 64*1_024 {
+			if contextSize > c.conditionContextByteLimit {
 				return serverErrors.ValidationError(fmt.Errorf("todo: better error message"))
 			}
 		}
