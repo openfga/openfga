@@ -80,7 +80,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	if !w.enableConditions {
 		if conditions := model.GetConditions(); conditions != nil || len(conditions) > 0 {
-			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+			return nil, status.Error(codes.InvalidArgument, "conditions not supported")
 		}
 	}
 
@@ -96,7 +96,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
 		if !w.enableConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
-			return nil, status.Error(codes.Unimplemented, "conditions not supported")
+			return nil, status.Error(codes.InvalidArgument, "conditions not supported")
 		}
 
 		return nil, serverErrors.InvalidAuthorizationModelInput(err)

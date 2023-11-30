@@ -1069,7 +1069,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 
 	t.Run("rejects_request_with_relation_condition", func(t *testing.T) {
@@ -1104,7 +1104,7 @@ func TestWriteAuthorizationModelWithExperimentalEnableConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 }
 
@@ -1163,7 +1163,7 @@ func TestWriteWithExperimentalRejectConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 }
 

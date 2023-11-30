@@ -80,6 +80,7 @@
                 "type": "string",
                 "enum": ["enable-conditions"]
             },
+            "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "playground": {

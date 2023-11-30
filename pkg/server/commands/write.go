@@ -57,7 +57,7 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		tks := req.GetWrites()
 		for _, tk := range tks.TupleKeys {
 			if tk.Condition != nil {
-				return nil, status.Error(codes.Unimplemented, "conditions not supported")
+				return nil, status.Error(codes.InvalidArgument, "conditions not supported")
 			}
 		}
 	}
