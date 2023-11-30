@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/tuple"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"google.golang.org/grpc/codes"
@@ -125,7 +126,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 			contextSize := proto.Size(tk.GetCondition().GetContext())
 			if contextSize > c.conditionContextByteLimit {
-				return serverErrors.ValidationError(fmt.Errorf("todo: better error message"))
+				return serverErrors.ValidationError(&tuple.InvalidTupleError{
+					Cause:    fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, c.conditionContextByteLimit),
+					TupleKey: tk,
+				})
 			}
 		}
 	}

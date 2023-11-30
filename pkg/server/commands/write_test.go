@@ -10,13 +10,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
+	"github.com/openfga/openfga/internal/server/config"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestValidateNoDuplicatesAndCorrectSize(t *testing.T) {
@@ -301,11 +302,12 @@ func TestValidateConditionsInTuples(t *testing.T) {
 		},
 	}
 
-	contextStructGood, err := structpb.NewStruct(map[string]interface{}{"param1": "ok"})
-	require.NoError(t, err)
+	contextStructGood := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok"})
+	contextStructBad := testutils.MustNewStruct(t, map[string]interface{}{"param1": "ok", "param2": 1})
 
-	contextStructBad, err := structpb.NewStruct(map[string]interface{}{"param1": "ok", "param2": 1})
-	require.NoError(t, err)
+	contextStructExceedesLimit := testutils.MustNewStruct(t, map[string]any{
+		"param1": testutils.CreateRandomString(config.DefaultWriteContextByteLimit + 1),
+	})
 
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -443,6 +445,32 @@ func TestValidateConditionsInTuples(t *testing.T) {
 						Condition: &openfgav1.RelationshipCondition{
 							Name:    "condition2",
 							Context: contextStructGood,
+						},
+					},
+				},
+			),
+		},
+		{
+			name: "condition_context_exceeds_limit",
+			tuple: &openfgav1.TupleKey{
+				Object:   "document:1",
+				Relation: "viewer",
+				User:     "user:*",
+				Condition: &openfgav1.RelationshipCondition{
+					Name:    "condition1",
+					Context: contextStructExceedesLimit,
+				},
+			},
+			expectedError: serverErrors.ValidationError(
+				&tuple.InvalidTupleError{
+					Cause: fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", proto.Size(contextStructExceedesLimit), config.DefaultWriteContextByteLimit),
+					TupleKey: &openfgav1.TupleKey{
+						Object:   "document:1",
+						Relation: "viewer",
+						User:     "user:*",
+						Condition: &openfgav1.RelationshipCondition{
+							Name:    "condition1",
+							Context: contextStructExceedesLimit,
 						},
 					},
 				},
