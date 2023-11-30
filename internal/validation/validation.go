@@ -235,7 +235,7 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	contextStruct := tk.Condition.GetContext()
+	contextStruct := tk.GetCondition().GetContext()
 	contextFieldMap := contextStruct.GetFields()
 	conditionParams := condition.GetParameters()
 
