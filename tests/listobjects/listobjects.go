@@ -43,7 +43,7 @@ type testParams struct {
 type stage struct {
 	Model                string
 	Tuples               []*openfgav1.TupleKey
-	ListObjectAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
+	ListObjectAssertions []*listobjectstest.Assertion `json:"listObjectsAssertions"`
 }
 
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
@@ -162,6 +162,10 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 					})
 					require.NoError(t, err)
 				}
+			}
+
+			if len(stage.ListObjectAssertions) == 0 {
+				t.Skipf("no list objects assertions defined")
 			}
 
 			for _, assertion := range stage.ListObjectAssertions {

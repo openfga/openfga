@@ -42,7 +42,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.TupleKey
-	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
+	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests
@@ -197,6 +197,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 			}
 
+			if len(stage.CheckAssertions) == 0 {
+				t.Skipf("no check assertions defined")
+			}
 			for _, assertion := range stage.CheckAssertions {
 				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
