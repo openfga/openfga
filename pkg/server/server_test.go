@@ -1031,7 +1031,7 @@ func TestDefaultMaxConcurrentReadSettings(t *testing.T) {
 	require.EqualValues(t, math.MaxUint32, s.maxConcurrentReadsForListObjects)
 }
 
-func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
+func TestWriteAuthorizationModelWithExperimentalEnableConditions(t *testing.T) {
 	ctx := context.Background()
 	storeID := ulid.Make().String()
 
@@ -1042,7 +1042,7 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalRejectConditions),
+		WithExperimentals(),
 	)
 
 	t.Run("rejects_request_with_condition", func(t *testing.T) {
@@ -1069,7 +1069,7 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 
 	t.Run("rejects_request_with_relation_condition", func(t *testing.T) {
@@ -1104,7 +1104,7 @@ func TestWriteAuthorizationModelWithExperimentalRejectConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 }
 
@@ -1120,7 +1120,7 @@ func TestWriteWithExperimentalRejectConditions(t *testing.T) {
 
 	s := MustNewServerWithOpts(
 		WithDatastore(mockDatastore),
-		WithExperimentals(ExperimentalRejectConditions),
+		WithExperimentals(),
 	)
 
 	t.Run("rejects_request_with_condition", func(t *testing.T) {
@@ -1163,7 +1163,7 @@ func TestWriteWithExperimentalRejectConditions(t *testing.T) {
 			},
 		})
 
-		require.ErrorIs(t, err, status.Error(codes.Unimplemented, "conditions not supported"))
+		require.ErrorIs(t, err, status.Error(codes.InvalidArgument, "conditions not supported"))
 	})
 }
 
