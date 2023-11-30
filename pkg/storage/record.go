@@ -22,26 +22,14 @@ type TupleRecord struct {
 }
 
 func (t *TupleRecord) AsTuple() *openfgav1.Tuple {
-	tk := &openfgav1.TupleKey{
-		Object:   tupleutils.BuildObject(t.ObjectType, t.ObjectID),
-		Relation: t.Relation,
-		User:     t.User,
-	}
-
-	if t.ConditionName != "" {
-		tk.Condition = &openfgav1.RelationshipCondition{
-			Name:    t.ConditionName,
-			Context: t.ConditionContext,
-		}
-
-		// normalize nil context to empty context
-		if t.ConditionContext == nil {
-			tk.Condition.Context = &structpb.Struct{}
-		}
-	}
-
 	return &openfgav1.Tuple{
-		Key:       tk,
+		Key: tupleutils.NewTupleKeyWithCondition(
+			tupleutils.BuildObject(t.ObjectType, t.ObjectID),
+			t.Relation,
+			t.User,
+			t.ConditionName,
+			t.ConditionContext,
+		),
 		Timestamp: timestamppb.New(t.InsertedAt),
 	}
 }

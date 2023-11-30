@@ -678,26 +678,22 @@ func (p *Postgres) ReadChanges(
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
-		tk := &openfgav1.TupleKey{
-			Object:   tupleUtils.BuildObject(objectType, objectID),
-			Relation: relation,
-			User:     user,
-		}
-
+		var conditionContextStruct structpb.Struct
 		if conditionName != "" {
-			tk.Condition = &openfgav1.RelationshipCondition{
-				Name: conditionName,
-			}
-
 			if conditionContext != nil {
-				var conditionContextStruct structpb.Struct
 				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
 					return nil, nil, err
 				}
-
-				tk.Condition.Context = &conditionContextStruct
 			}
 		}
+
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			relation,
+			user,
+			conditionName,
+			&conditionContextStruct,
+		)
 
 		changes = append(changes, &openfgav1.TupleChange{
 			TupleKey:  tk,
