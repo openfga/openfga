@@ -403,43 +403,13 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				Relation: "viewer",
 				User:     "user:*",
 				Condition: &openfgav1.RelationshipCondition{
-					Name: "condition1",
-					Context: testutils.MustNewStruct(t, map[string]any{
-						"param2": "someval",
-					}),
-				},
-			},
-			expectedError: serverErrors.ValidationError(
-				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("found invalid context parameter: param2"),
-					TupleKey: &openfgav1.TupleKey{
-						Object:   "document:2",
-						Relation: "viewer",
-						User:     "user:*",
-						Condition: &openfgav1.RelationshipCondition{
-							Name: "condition1",
-							Context: testutils.MustNewStruct(t, map[string]any{
-								"param2": "someval",
-							}),
-						},
-					},
-				},
-			),
-		},
-		{
-			name: "too_many_context_parameters",
-			tuple: &openfgav1.TupleKey{
-				Object:   "document:2",
-				Relation: "viewer",
-				User:     "user:*",
-				Condition: &openfgav1.RelationshipCondition{
 					Name:    "condition1",
 					Context: contextStructBad,
 				},
 			},
 			expectedError: serverErrors.ValidationError(
 				&tuple.InvalidConditionalTupleError{
-					Cause: fmt.Errorf("request condition context contains more parameter values than the condition specifies: got 2, expected 1"),
+					Cause: fmt.Errorf("found invalid context parameter: param2"),
 					TupleKey: &openfgav1.TupleKey{
 						Object:   "document:2",
 						Relation: "viewer",

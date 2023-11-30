@@ -29,6 +29,10 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		return validator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+			if err := requestContextWithinLimits(req); err != nil {
+				return nil, err
+			}
+
 			return handler(contextWithRequestIsValidated(ctx), req)
 		})
 	}

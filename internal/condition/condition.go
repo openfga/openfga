@@ -148,8 +148,8 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 
 	converted := make(map[string]any, len(contextMap))
 
-	for key, value := range contextMap {
-		paramTypeRef, ok := parameterTypes[key]
+	for parameterKey, paramTypeRef := range parameterTypes {
+		contextValue, ok := contextMap[parameterKey]
 		if !ok {
 			continue
 		}
@@ -162,15 +162,16 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 			}
 		}
 
-		convertedParam, err := varType.ConvertValue(value.AsInterface())
+		convertedParam, err := varType.ConvertValue(contextValue.AsInterface())
 		if err != nil {
 			return nil, &ParameterTypeError{
 				Condition: e.Name,
-				Cause:     fmt.Errorf("failed to convert context parameter '%s': %w", key, err),
+				Cause:     fmt.Errorf("failed to convert context parameter '%s': %w", parameterKey, err),
 			}
 		}
 
-		converted[key] = convertedParam
+		converted[parameterKey] = convertedParam
+
 	}
 
 	return converted, nil
