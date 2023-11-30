@@ -181,12 +181,12 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // context provided. If more than one source of context is provided, and if the
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
-func (e *EvaluableCondition) Evaluate(contextStructs ...map[string]*structpb.Value) (EvaluationResult, error) {
+func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
 	if err := e.Compile(); err != nil {
 		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
 
-	contextFields := contextStructs[0]
+	contextFields := contextMaps[0]
 	if contextFields == nil {
 		contextFields = map[string]*structpb.Value{}
 	}
@@ -194,7 +194,7 @@ func (e *EvaluableCondition) Evaluate(contextStructs ...map[string]*structpb.Val
 	// merge context fields
 	clonedContextFields := maps.Clone(contextFields)
 
-	for _, fields := range contextStructs[1:] {
+	for _, fields := range contextMaps[1:] {
 		maps.Copy(clonedContextFields, fields)
 	}
 
