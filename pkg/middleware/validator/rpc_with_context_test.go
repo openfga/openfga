@@ -12,7 +12,6 @@ import (
 var contextProtoSize int
 
 func BenchmarkContextSize(b *testing.B) {
-
 	context, err := structpb.NewStruct(map[string]interface{}{
 		"s": testutils.CreateRandomString(256 * 1_024),
 	})
@@ -21,7 +20,7 @@ func BenchmarkContextSize(b *testing.B) {
 	bytes, err := proto.Marshal(context)
 	require.NoError(b, err)
 
-	require.Equal(b, proto.Size(context), len(bytes))
+	require.Len(b, proto.Size(context), len(bytes))
 
 	var protoSizeIterations int
 	var protoMarshalIterations int

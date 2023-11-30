@@ -115,8 +115,8 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			}
 
 			contextSize := proto.Size(tk.GetCondition().GetContext())
-			if contextSize > 128*1_024 {
-				// handle error
+			if contextSize > 64*1_024 {
+				return serverErrors.ValidationError(fmt.Errorf("todo: better error message"))
 			}
 		}
 	}
