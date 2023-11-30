@@ -197,6 +197,9 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 			}
 
+			if len(stage.CheckAssertions) == 0 {
+				t.Skipf("no check assertions defined")
+			}
 			for _, assertion := range stage.CheckAssertions {
 				detailedInfo := fmt.Sprintf("Check request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Tuple, stage.Model, stage.Tuples, assertion.ContextualTuples)
 

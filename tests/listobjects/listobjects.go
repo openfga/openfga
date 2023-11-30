@@ -41,9 +41,9 @@ type testParams struct {
 
 // stage is a stage of a test. All stages will be run in a single store.
 type stage struct {
-	Model                string
-	Tuples               []*openfgav1.TupleKey
-	ListObjectAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
+	Model                 string
+	Tuples                []*openfgav1.TupleKey
+	ListObjectsAssertions []*listobjectstest.Assertion `yaml:"listObjectsAssertions"`
 }
 
 // ClientInterface defines interface for running ListObjects and StreamedListObjects tests
@@ -164,7 +164,11 @@ func runTest(t *testing.T, test individualTest, params testParams, contextTupleT
 				}
 			}
 
-			for _, assertion := range stage.ListObjectAssertions {
+			if len(stage.ListObjectsAssertions) == 0 {
+				t.Skipf("no list objects assertions defined")
+			}
+
+			for _, assertion := range stage.ListObjectsAssertions {
 				detailedInfo := fmt.Sprintf("ListObject request: %s. Model: %s. Tuples: %s. Contextual tuples: %s", assertion.Request, stage.Model, stage.Tuples, assertion.ContextualTuples)
 
 				ctxTuples := assertion.ContextualTuples
