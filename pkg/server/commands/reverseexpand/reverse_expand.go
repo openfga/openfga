@@ -441,7 +441,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 		tk := t.GetKey()
 
-		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context.AsMap())
+		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue

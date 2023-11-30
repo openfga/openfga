@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition/types"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var celBaseEnv *cel.Env
@@ -131,7 +132,7 @@ func (e *EvaluableCondition) compile() error {
 // CastContextToTypedParameters converts the provided context to typed condition
 // parameters and returns an error if any additional context fields are provided
 // that are not defined by the evaluable condition.
-func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]any) (map[string]any, error) {
+func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]*structpb.Value) (map[string]any, error) {
 	if len(contextMap) == 0 {
 		return nil, nil
 	}
@@ -147,8 +148,8 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 
 	converted := make(map[string]any, len(contextMap))
 
-	for key, value := range contextMap {
-		paramTypeRef, ok := parameterTypes[key]
+	for parameterKey, paramTypeRef := range parameterTypes {
+		contextValue, ok := contextMap[parameterKey]
 		if !ok {
 			continue
 		}
@@ -161,15 +162,15 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 			}
 		}
 
-		convertedParam, err := varType.ConvertValue(value)
+		convertedParam, err := varType.ConvertValue(contextValue.AsInterface())
 		if err != nil {
 			return nil, &ParameterTypeError{
 				Condition: e.Name,
-				Cause:     fmt.Errorf("failed to convert context parameter '%s': %w", key, err),
+				Cause:     fmt.Errorf("failed to convert context parameter '%s': %w", parameterKey, err),
 			}
 		}
 
-		converted[key] = convertedParam
+		converted[parameterKey] = convertedParam
 	}
 
 	return converted, nil
@@ -180,19 +181,24 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // context provided. If more than one source of context is provided, and if the
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
-func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]any) (EvaluationResult, error) {
+func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
 	if err := e.Compile(); err != nil {
 		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
 
-	// merge context maps
-	clonedMap := maps.Clone(contextMaps[0])
-
-	for _, contextMap := range contextMaps[1:] {
-		maps.Copy(clonedMap, contextMap)
+	contextFields := contextMaps[0]
+	if contextFields == nil {
+		contextFields = map[string]*structpb.Value{}
 	}
 
-	typedParams, err := e.CastContextToTypedParameters(clonedMap)
+	// merge context fields
+	clonedContextFields := maps.Clone(contextFields)
+
+	for _, fields := range contextMaps[1:] {
+		maps.Copy(clonedContextFields, fields)
+	}
+
+	typedParams, err := e.CastContextToTypedParameters(clonedContextFields)
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}

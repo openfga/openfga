@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestEvaluateTupleCondition(t *testing.T) {
@@ -82,7 +83,10 @@ condition correct_ip(ip: string) {
 			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 
-			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, test.context)
+			contextStruct, err := structpb.NewStruct(test.context)
+			require.NoError(t, err)
+
+			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, contextStruct)
 			if err != nil {
 				var evalError *condition.EvaluationError
 				require.ErrorAs(t, err, &evalError)
@@ -161,7 +165,10 @@ condition str_cond(s: string) {
 			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 
-			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, test.context)
+			contextStruct, err := structpb.NewStruct(test.context)
+			require.NoError(t, err)
+
+			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, contextStruct)
 			require.NoError(t, err)
 
 			require.Equal(t, test.result, condEvalResult)
