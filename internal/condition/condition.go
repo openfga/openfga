@@ -171,7 +171,6 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 		}
 
 		converted[parameterKey] = convertedParam
-
 	}
 
 	return converted, nil
