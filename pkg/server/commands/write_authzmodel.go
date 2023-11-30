@@ -22,7 +22,7 @@ type WriteAuthorizationModelCommand struct {
 	backend                          storage.TypeDefinitionWriteBackend
 	logger                           logger.Logger
 	maxAuthorizationModelSizeInBytes int
-	rejectConditions                 bool
+	enableConditions                 bool
 }
 
 type WriteAuthModelOption func(*WriteAuthorizationModelCommand)
@@ -39,9 +39,9 @@ func WithWriteAuthModelMaxSizeInBytes(size int) WriteAuthModelOption {
 	}
 }
 
-func WithWriteAuthModelRejectConditions(reject bool) WriteAuthModelOption {
+func WithWriteAuthModelEnableConditions(enable bool) WriteAuthModelOption {
 	return func(m *WriteAuthorizationModelCommand) {
-		m.rejectConditions = reject
+		m.enableConditions = enable
 	}
 }
 
@@ -50,7 +50,7 @@ func NewWriteAuthorizationModelCommand(backend storage.TypeDefinitionWriteBacken
 		backend:                          backend,
 		logger:                           logger.NewNoopLogger(),
 		maxAuthorizationModelSizeInBytes: serverconfig.DefaultMaxAuthorizationModelSizeInBytes,
-		rejectConditions:                 false,
+		enableConditions:                 true,
 	}
 
 	for _, opt := range opts {
@@ -78,7 +78,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Conditions:      req.GetConditions(),
 	}
 
-	if w.rejectConditions {
+	if !w.enableConditions {
 		if conditions := model.GetConditions(); conditions != nil || len(conditions) > 0 {
 			return nil, status.Error(codes.Unimplemented, "conditions not supported")
 		}
@@ -95,7 +95,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 
 	_, err := typesystem.NewAndValidate(ctx, model)
 	if err != nil {
-		if w.rejectConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
+		if !w.enableConditions && errors.Is(err, typesystem.ErrNoConditionForRelation) {
 			return nil, status.Error(codes.Unimplemented, "conditions not supported")
 		}
 

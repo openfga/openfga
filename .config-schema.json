@@ -78,9 +78,8 @@
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["reject-conditions"]
+                "enum": ["enable-conditions"]
             },
-            "default": ["reject-conditions"],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"
         },
         "playground": {
