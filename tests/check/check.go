@@ -42,7 +42,7 @@ type testParams struct {
 type stage struct {
 	Model           string
 	Tuples          []*openfgav1.TupleKey
-	CheckAssertions []*checktest.Assertion `yaml:"checkAssertions"`
+	CheckAssertions []*checktest.Assertion `json:"checkAssertions"`
 }
 
 // ClientInterface defines client interface for running check tests
