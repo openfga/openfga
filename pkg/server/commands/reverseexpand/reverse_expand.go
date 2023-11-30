@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -421,7 +422,13 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	if err != nil {
 		return err
 	}
-	defer iter.Stop()
+
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		validation.FilterInvalidTuples(c.typesystem),
+	)
+	defer filteredIter.Stop()
 
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
@@ -430,7 +437,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	var errs *multierror.Error
 	for {
-		t, err := iter.Next(ctx)
+		tk, err := filteredIter.Next(ctx)
 		if err != nil {
 			if errors.Is(err, storage.ErrIteratorDone) {
 				break
@@ -438,8 +445,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 			return err
 		}
-
-		tk := t.GetKey()
 
 		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context.AsMap())
 		if err != nil {
