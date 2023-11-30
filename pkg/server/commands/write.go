@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
@@ -111,6 +112,11 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
 				return serverErrors.ValidationError(err)
+			}
+
+			contextSize := proto.Size(tk.GetCondition().GetContext())
+			if contextSize > 128*1_024 {
+				// handle error
 			}
 		}
 	}

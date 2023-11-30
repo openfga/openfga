@@ -235,15 +235,25 @@ func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	contextMap := tk.Condition.Context.AsMap()
-	typedParams, err := condition.CastContextToTypedParameters(contextMap)
+	contextStruct := tk.Condition.GetContext()
+	contextFieldMap := contextStruct.GetFields()
+	conditionParams := condition.GetParameters()
+
+	if len(contextFieldMap) > len(conditionParams) {
+		return &tuple.InvalidConditionalTupleError{
+			Cause:    fmt.Errorf("request condition context contains more parameter values than the condition specifies: got %d, expected %d", len(contextFieldMap), len(conditionParams)),
+			TupleKey: tk,
+		}
+	}
+
+	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
 	if err != nil {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: err, TupleKey: tk,
 		}
 	}
 
-	for key := range contextMap {
+	for key := range contextFieldMap {
 		_, ok := typedParams[key]
 		if !ok {
 			return &tuple.InvalidConditionalTupleError{

@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	maxRequestContextSizeBytes = 131072 // 128KiB
+	maxRequestContextSizeBytes = 128 * 1_204 // 128KB
 )
 
 type requestWithContext interface {
@@ -23,12 +23,7 @@ func requestContextWithinLimits(req interface{}) error {
 
 	reqContext := reqWithContext.GetContext()
 
-	bytes, err := proto.Marshal(reqContext)
-	if err != nil {
-		return err
-	}
-
-	contextSize := len(bytes)
+	contextSize := proto.Size(reqContext)
 	if contextSize > maxRequestContextSizeBytes {
 		return status.Errorf(codes.InvalidArgument, "request 'context' size limit exceeded - %d (bytes) exceeds limit of %d (bytes)", contextSize, maxRequestContextSizeBytes)
 	}
