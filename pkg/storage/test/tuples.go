@@ -205,7 +205,15 @@ func ReadChangesTest(t *testing.T, datastore storage.OpenFGADatastore) {
 
 		expectedChanges := []*openfgav1.TupleChange{
 			{
-				TupleKey:  tk1,
+				TupleKey: &openfgav1.TupleKey{
+					Object:   tuple.BuildObject("folder", "folder1"),
+					Relation: "viewer",
+					User:     "bob",
+					Condition: &openfgav1.RelationshipCondition{
+						Name:    "condition",
+						Context: &structpb.Struct{},
+					},
+				},
 				Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
 			},
 			{

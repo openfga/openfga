@@ -346,7 +346,19 @@ Write:
 			InsertedAt:       now.AsTime(),
 		})
 
-		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: now})
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			t.Relation,
+			t.User,
+			conditionName,
+			conditionContext,
+		)
+
+		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{
+			TupleKey:  tk,
+			Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			Timestamp: now,
+		})
 	}
 	s.tuples[store] = records
 	return nil
