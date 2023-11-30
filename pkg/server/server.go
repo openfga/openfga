@@ -48,7 +48,7 @@ type ExperimentalFeatureFlag string
 const (
 	AuthorizationModelIDHeader                           = "openfga-authorization-model-id"
 	authorizationModelIDKey                              = "authorization_model_id"
-	ExperimentalRejectConditions ExperimentalFeatureFlag = "reject-conditions"
+	ExperimentalEnableConditions ExperimentalFeatureFlag = "enable-conditions"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -517,12 +517,12 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
 
 	cmd := commands.NewWriteCommand(
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
-		commands.WithWriteCmdRejectConditions(rejectConditions),
+		commands.WithWriteCmdEnableConditions(enableConditions),
 	)
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
@@ -700,12 +700,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	rejectConditions := slices.Contains(s.experimentals, ExperimentalRejectConditions)
+	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
 
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
-		commands.WithWriteAuthModelRejectConditions(rejectConditions),
+		commands.WithWriteAuthModelEnableConditions(enableConditions),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {

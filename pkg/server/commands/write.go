@@ -20,7 +20,7 @@ import (
 type WriteCommand struct {
 	logger           logger.Logger
 	datastore        storage.OpenFGADatastore
-	rejectConditions bool
+	enableConditions bool
 }
 
 type WriteCommandOption func(*WriteCommand)
@@ -31,9 +31,9 @@ func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
 	}
 }
 
-func WithWriteCmdRejectConditions(reject bool) WriteCommandOption {
+func WithWriteCmdEnableConditions(enable bool) WriteCommandOption {
 	return func(m *WriteCommand) {
-		m.rejectConditions = reject
+		m.enableConditions = enable
 	}
 }
 
@@ -42,7 +42,7 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 	cmd := &WriteCommand{
 		datastore:        datastore,
 		logger:           logger.NewNoopLogger(),
-		rejectConditions: false,
+		enableConditions: true,
 	}
 
 	for _, opt := range opts {
@@ -53,11 +53,11 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	if c.rejectConditions {
+	if !c.enableConditions {
 		tks := req.GetWrites()
 		for _, tk := range tks.TupleKeys {
 			if tk.Condition != nil {
-				return nil, status.Error(codes.Unimplemented, "conditions not supported")
+				return nil, status.Error(codes.InvalidArgument, "conditions not supported")
 			}
 		}
 	}
