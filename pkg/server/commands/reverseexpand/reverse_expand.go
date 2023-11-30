@@ -11,6 +11,7 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -413,7 +414,13 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 	if err != nil {
 		return err
 	}
-	defer iter.Stop()
+
+	// filter out invalid tuples yielded by the database iterator
+	filteredIter := storage.NewFilteredTupleKeyIterator(
+		storage.NewTupleKeyIteratorFromTupleIterator(iter),
+		validation.FilterInvalidTuples(c.typesystem),
+	)
+	defer filteredIter.Stop()
 
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
