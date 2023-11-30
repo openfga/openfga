@@ -1,3 +1,7 @@
+// Package graph contains code and other packages related to the evaluation of graph queries.
+//
+// Code which implements graph traversal and evaluation of FGA models and related tuples should
+// be implemented herein.
 package graph
 
 import (
