@@ -112,7 +112,7 @@ tests:
               user: user:jon
               type: document
               relation: viewer
-            expectation:
+            errorCode: 2000
           - request:
               user: user:jon
               type: document
