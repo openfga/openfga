@@ -1,39 +1,14 @@
-package graph
+package keys
 
 import (
 	"fmt"
 	"sort"
 
-	"github.com/cespare/xxhash/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 )
 
 type hasher interface {
 	WriteString(value string) error
-}
-
-// CacheKeyHasher implements a key hash using Hash64 for computing cache keys in a stable way.
-type CacheKeyHasher struct {
-	hasher *xxhash.Digest
-}
-
-// NewCacheKeyHasher returns a hasher for string values.
-func NewCacheKeyHasher(xhash *xxhash.Digest) *CacheKeyHasher {
-	return &CacheKeyHasher{hasher: xhash}
-}
-
-// WriteString writes the provided string to the hash.
-func (c *CacheKeyHasher) WriteString(value string) error {
-	_, err := c.hasher.WriteString(value)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *CacheKeyHasher) Key() uint64 {
-	return c.hasher.Sum64()
 }
 
 // NewTupleKeysHasher returns a hasher for an array of *openfgav1.TupleKey.

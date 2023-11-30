@@ -8,6 +8,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/karlseguin/ccache/v3"
+	"github.com/openfga/openfga/internal/keys"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -174,7 +175,7 @@ func (c *CachedCheckResolver) ResolveCheck(
 // For one store and model ID, the same tuple provided with the same contextual tuples will produce the same
 // cache key. Contextual tuple order is ignored, only the contents are compared.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
-	hasher := NewCacheKeyHasher(xxhash.New())
+	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
 	tupleKey := req.GetTupleKey()
 	key := fmt.Sprintf("%s/%s/%s#%s@%s",
@@ -191,10 +192,10 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 
 	// here, avoid hashing if we don't need to
 	if len(req.GetContextualTuples()) > 0 {
-		if err := NewTupleKeysHasher(req.GetContextualTuples()...).Append(hasher); err != nil {
+		if err := keys.NewTupleKeysHasher(req.GetContextualTuples()...).Append(hasher); err != nil {
 			return "", err
 		}
 	}
 
-	return strconv.FormatUint(hasher.Key(), 10), nil
+	return strconv.FormatUint(hasher.Key().ToUInt64(), 10), nil
 }

@@ -1,4 +1,4 @@
-package graph
+package keys
 
 import (
 	"testing"
@@ -8,18 +8,6 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 )
-
-func TestHasher(t *testing.T) {
-	hasher1 := NewCacheKeyHasher(xxhash.New())
-	err := hasher1.WriteString("a")
-	require.NoError(t, err)
-
-	hasher2 := NewCacheKeyHasher(xxhash.New())
-	err = hasher2.WriteString("b")
-	require.NoError(t, err)
-
-	require.NotEqual(t, hasher1.Key(), hasher2.Key())
-}
 
 func TestTupleKeysHasherSortsFirst(t *testing.T) {
 	var testCases = map[string]struct {
