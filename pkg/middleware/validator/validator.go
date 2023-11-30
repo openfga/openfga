@@ -29,10 +29,6 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		return requestValidator(ctx, req, info, func(ctx context.Context, req interface{}) (interface{}, error) {
-			if err := requestContextWithinLimits(req); err != nil {
-				return nil, err
-			}
-
 			return handler(contextWithRequestIsValidated(ctx), req)
 		})
 	}
@@ -55,18 +51,6 @@ func StreamServerInterceptor() grpc.StreamServerInterceptor {
 type recvWrapper struct {
 	ctx context.Context
 	grpc.ServerStream
-}
-
-func (r *recvWrapper) RecvMsg(m any) error {
-	if err := r.ServerStream.RecvMsg(m); err != nil {
-		return err
-	}
-
-	if err := requestContextWithinLimits(m); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *recvWrapper) Context() context.Context {
