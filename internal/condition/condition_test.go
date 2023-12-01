@@ -9,6 +9,7 @@ import (
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/types"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestNewCompiled(t *testing.T) {
@@ -250,7 +251,10 @@ func TestEvaluate(t *testing.T) {
 			compiledCondition, err := condition.NewCompiled(test.condition)
 			require.NoError(t, err)
 
-			result, err := compiledCondition.Evaluate(test.context)
+			contextStruct, err := structpb.NewStruct(test.context)
+			require.NoError(t, err)
+
+			result, err := compiledCondition.Evaluate(contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
@@ -395,7 +399,10 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 			err := condition.Compile()
 			require.NoError(t, err)
 
-			result, err := condition.Evaluate(test.context)
+			contextStruct, err := structpb.NewStruct(test.context)
+			require.NoError(t, err)
+
+			result, err := condition.Evaluate(contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
@@ -473,7 +480,10 @@ func TestCastContextToTypedParameters(t *testing.T) {
 				Parameters: test.conditionParameterTypes,
 			})
 
-			typedParams, err := c.CastContextToTypedParameters(test.contextMap)
+			contextStruct, err := structpb.NewStruct(test.contextMap)
+			require.NoError(t, err)
+
+			typedParams, err := c.CastContextToTypedParameters(contextStruct.GetFields())
 
 			if test.expectedError != nil {
 				require.Error(t, err)

@@ -6,13 +6,14 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
 func EvaluateTupleCondition(
 	tupleKey *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
-	context map[string]interface{},
+	context *structpb.Struct,
 ) (*condition.EvaluationResult, error) {
 	tupleCondition := tupleKey.GetCondition()
 	conditionName := tupleCondition.GetName()
@@ -23,13 +24,19 @@ func EvaluateTupleCondition(
 		}
 
 		// merge both contexts
-		contextSlice := []map[string]interface{}{context}
-		tupleContext := tupleCondition.GetContext()
-		if tupleContext != nil {
-			contextSlice = append(contextSlice, tupleContext.AsMap())
+		contextFields := []map[string]*structpb.Value{
+			{},
+		}
+		if context != nil {
+			contextFields = []map[string]*structpb.Value{context.GetFields()}
 		}
 
-		conditionResult, err := evaluableCondition.Evaluate(contextSlice...)
+		tupleContext := tupleCondition.GetContext()
+		if tupleContext != nil {
+			contextFields = append(contextFields, tupleContext.GetFields())
+		}
+
+		conditionResult, err := evaluableCondition.Evaluate(contextFields...)
 		if err != nil {
 			return nil, err
 		}

@@ -235,15 +235,17 @@ func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) e
 		}
 	}
 
-	contextMap := tk.Condition.Context.AsMap()
-	typedParams, err := condition.CastContextToTypedParameters(contextMap)
+	contextStruct := tk.GetCondition().GetContext()
+	contextFieldMap := contextStruct.GetFields()
+
+	typedParams, err := condition.CastContextToTypedParameters(contextFieldMap)
 	if err != nil {
 		return &tuple.InvalidConditionalTupleError{
 			Cause: err, TupleKey: tk,
 		}
 	}
 
-	for key := range contextMap {
+	for key := range contextFieldMap {
 		_, ok := typedParams[key]
 		if !ok {
 			return &tuple.InvalidConditionalTupleError{
