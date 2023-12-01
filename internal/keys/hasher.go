@@ -26,6 +26,9 @@ func (s stringHasher) Append(h hasher) error {
 	return h.WriteString(string(s))
 }
 
+// NewTupleKeysHasher returns a hasher for an array of *openfgav1.TupleKey.
+// It sorts the tuples first to guarantee that two arrays that are identical except for the ordering
+// return the same hash.
 func NewTupleKeysHasher(tupleKeys ...*openfgav1.TupleKey) *tupleKeysHasher {
 	return &tupleKeysHasher{tupleKeys}
 }
@@ -56,6 +59,11 @@ func (t tupleKeysHasher) Append(h hasher) error {
 		return true
 	})
 
+	// prefix to avoid overlap with previous strings written
+	if err := h.WriteString("/"); err != nil {
+		return err
+	}
+
 	n := 0
 	for _, tupleKey := range sortedTupleKeys {
 		key := fmt.Sprintf("%s#%s@%s", tupleKey.GetObject(), tupleKey.GetRelation(), tupleKey.GetUser())
@@ -76,19 +84,25 @@ func (t tupleKeysHasher) Append(h hasher) error {
 	return nil
 }
 
-// ContextHasher represents a hashable protobuf Struct.
+// contextHasher represents a hashable protobuf Struct.
 //
-// The ContextHasher can be used to generate a stable hash of a protobuf Struct. The fields
+// The contextHasher can be used to generate a stable hash of a protobuf Struct. The fields
 // of the struct are ordered to produce a stable hash, and the values for each struct key
 // are produced using the structValueHasher, which produces a stable hash value for the Struct
 // value.
-type ContextHasher struct {
+type contextHasher struct {
 	*structpb.Struct
 }
 
-var _ hashableValue = (*ContextHasher)(nil)
+// NewContextHasher constructs a contextHasher which can be used to produce
+// a stable hash of a protobuf Struct.
+func NewContextHasher(s *structpb.Struct) *contextHasher {
+	return &contextHasher{s}
+}
 
-func (c ContextHasher) Append(h hasher) error {
+var _ hashableValue = (*contextHasher)(nil)
+
+func (c contextHasher) Append(h hasher) error {
 	if c.Struct == nil {
 		return nil
 	}
@@ -153,7 +167,7 @@ func (s structValueHasher) Append(h hasher) error {
 			n++
 		}
 	case *structpb.Value_StructValue:
-		return ContextHasher{val.StructValue}.Append(h)
+		return contextHasher{val.StructValue}.Append(h)
 	default:
 		panic("unexpected structpb value encountered")
 	}

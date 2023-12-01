@@ -172,9 +172,9 @@ func (c *CachedCheckResolver) ResolveCheck(
 // checkRequestCacheKey converts the ResolveCheckRequest into a canonical cache key that can be
 // used for Check resolution cache key lookups in a stable way.
 //
-// The same tuple provided with the same contextual tuples and context should produce the same
-// cache key. Contextual tuple order and context parameter order is ignored, only the contents
-// are compared.
+// For one store and model ID, the same tuple provided with the same contextual tuples and context
+// should produce the same cache key. Contextual tuple order and context parameter order is ignored,
+// only the contents are compared.
 func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	hasher := keys.NewCacheKeyHasher(xxhash.New())
 
@@ -200,9 +200,7 @@ func checkRequestCacheKey(req *ResolveCheckRequest) (string, error) {
 	}
 
 	if req.GetContext() != nil {
-		err := keys.ContextHasher{
-			Struct: req.GetContext(),
-		}.Append(hasher)
+		err := keys.NewContextHasher(req.GetContext()).Append(hasher)
 		if err != nil {
 			return "", err
 		}

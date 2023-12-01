@@ -1,18 +1,21 @@
 package keys
 
-import "github.com/cespare/xxhash/v2"
+import (
+	"github.com/cespare/xxhash/v2"
+)
 
 // cacheKeyHasher implements a key hash using Hash64 for computing cache keys in a stable way.
 type cacheKeyHasher struct {
 	hasher *xxhash.Digest
 }
 
+// NewCacheKeyHasher returns a hasher for string values.
 func NewCacheKeyHasher(xhash *xxhash.Digest) *cacheKeyHasher {
 	return &cacheKeyHasher{hasher: xhash}
 }
 
 // WriteString writes the provided string to the hash.
-func (c cacheKeyHasher) WriteString(value string) error {
+func (c *cacheKeyHasher) WriteString(value string) error {
 	_, err := c.hasher.WriteString(value)
 	if err != nil {
 		return err
