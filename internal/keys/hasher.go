@@ -3,6 +3,7 @@ package keys
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"golang.org/x/exp/maps"
@@ -147,7 +148,7 @@ func (s structValueHasher) Append(h hasher) error {
 	case *structpb.Value_StringValue:
 		return h.WriteString(val.StringValue)
 	case *structpb.Value_NumberValue:
-		return h.WriteString(fmt.Sprintf("%f", val.NumberValue))
+		return h.WriteString(strconv.FormatFloat(val.NumberValue, 'f', -1, 64)) // -1 precision ensures we represent the 64-bit value with the maximum precision needed to represent it, see strconv#FormatFloat for more info.
 	case *structpb.Value_ListValue:
 		n := 0
 		values := val.ListValue.GetValues()
