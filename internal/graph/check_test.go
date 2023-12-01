@@ -46,7 +46,7 @@ func TestResolveCheckDeterministic(t *testing.T) {
 	    define allowed: [user] as self
 	    define viewer: [group#member] as self or editor
 	    define editor: [group#member] as self and allowed
-	    
+
 	`)
 
 	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(

@@ -12,12 +12,13 @@ import (
 	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd/run"
-	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/openfga/openfga/tests"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
@@ -41,22 +42,16 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
-func TestCheckLogs(t *testing.T) {
-	// create mock OTLP server
-	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
-	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
-	otlpServerPortReleaser()
-	_, serverStopFunc, err := mocks.NewMockTracingServer(otlpServerPort)
-	defer serverStopFunc()
-	require.NoError(t, err)
-
+func TestCheckObservability(t *testing.T) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
 	cfg.Trace.Enabled = true
-	cfg.Trace.OTLP.Endpoint = localOTLPServerURL
 	cfg.Datastore.Engine = "memory"
+
+	tp := telemetry.MustNewTracerProvider(telemetry.WithSamplingRatio(1))
 
 	observerLogger, logs := observer.New(zap.DebugLevel)
 	serverCtx := &run.ServerContext{
+		TracerProvider: tp,
 		Logger: &logger.ZapLogger{
 			Logger: zap.New(observerLogger),
 		},
@@ -164,6 +159,9 @@ func TestCheckLogs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
+			spanRecorder := tracetest.NewSpanRecorder()
+			tp.RegisterSpanProcessor(spanRecorder)
+
 			// clear observed logs after each run
 			defer logs.TakeAll()
 
@@ -212,6 +210,18 @@ func TestCheckLogs(t *testing.T) {
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
 			require.Len(t, fields, 13)
+
+			spans := spanRecorder.Ended()
+			require.Len(t, spans, 8)
+
+			var present bool
+			for _, span := range spans {
+				if span.Name() == "openfga.v1.OpenFGAService/Check" {
+					present = true
+				}
+			}
+
+			require.True(t, present, "openfga.v1.OpenFGAService/Check should be present")
 		})
 	}
 }

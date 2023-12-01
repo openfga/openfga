@@ -18,16 +18,27 @@ import (
 )
 
 type TracerOption func(d *customTracer)
+type OTLPOption func(d *otlp)
 
-func WithOTLPEndpoint(endpoint string) TracerOption {
-	return func(d *customTracer) {
+func WithOTLPEndpoint(endpoint string) OTLPOption {
+	return func(d *otlp) {
 		d.endpoint = endpoint
 	}
 }
 
-func WithOTLPInsecure() TracerOption {
-	return func(d *customTracer) {
+func WithOTLPInsecure() OTLPOption {
+	return func(d *otlp) {
 		d.insecure = true
+	}
+}
+
+func WithOTLP(opts ...OTLPOption) TracerOption {
+	return func(d *customTracer) {
+		d.otlp = &otlp{}
+
+		for _, opt := range opts {
+			opt(d.otlp)
+		}
 	}
 }
 
@@ -43,17 +54,19 @@ func WithAttributes(attrs ...attribute.KeyValue) TracerOption {
 	}
 }
 
+type otlp struct {
+	endpoint string
+	insecure bool
+}
 type customTracer struct {
-	endpoint   string
-	insecure   bool
-	attributes []attribute.KeyValue
+	otlp *otlp
 
+	attributes    []attribute.KeyValue
 	samplingRatio float64
 }
 
-func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
+func MustNewTracerProvider(opts ...TracerOption) TracerProvider {
 	tracer := &customTracer{
-		endpoint:      "",
 		attributes:    []attribute.KeyValue{},
 		samplingRatio: 0,
 	}
@@ -69,35 +82,46 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 		panic(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	options := []otlptracegrpc.Option{
-		otlptracegrpc.WithEndpoint(tracer.endpoint),
-		otlptracegrpc.WithDialOption(grpc.WithBlock()),
-	}
-
-	if tracer.insecure {
-		options = append(options, otlptracegrpc.WithInsecure())
-	}
-
 	var exp sdktrace.SpanExporter
-	exp, err = otlptracegrpc.New(ctx, options...)
-	if err != nil {
-		panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
+
+	if tracer.otlp != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		options := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(tracer.otlp.endpoint),
+			otlptracegrpc.WithDialOption(grpc.WithBlock()),
+		}
+
+		if tracer.otlp.insecure {
+			options = append(options, otlptracegrpc.WithInsecure())
+		}
+
+		exp, err = otlptracegrpc.New(ctx, options...)
+		if err != nil {
+			panic(fmt.Sprintf("failed to establish a connection with the otlp exporter: %v", err))
+		}
 	}
 
-	tp := sdktrace.NewTracerProvider(
+	providerOptions := []sdktrace.TracerProviderOption{
 		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(tracer.samplingRatio)),
 		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
-	)
+	}
+
+	if exp != nil {
+		providerOptions = append(
+			providerOptions,
+			sdktrace.WithSpanProcessor(sdktrace.NewBatchSpanProcessor(exp)),
+		)
+	}
+
+	tp := sdktrace.NewTracerProvider(providerOptions...)
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	otel.SetTracerProvider(tp)
 
-	return tp
+	return &tracerProvider{tp: tp}
 }
 
 func TraceError(span trace.Span, err error) {
