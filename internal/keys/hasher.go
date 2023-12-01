@@ -14,15 +14,15 @@ type hasher interface {
 // NewTupleKeysHasher returns a hasher for an array of *openfgav1.TupleKey.
 // It sorts the tuples first to guarantee that two arrays that are identical except for the ordering
 // return the same hash.
-func NewTupleKeysHasher(tupleKeys ...*openfgav1.TupleKey) *TupleKeysHasher {
-	return &TupleKeysHasher{tupleKeys}
+func NewTupleKeysHasher(tupleKeys ...*openfgav1.TupleKey) *tupleKeysHasher {
+	return &tupleKeysHasher{tupleKeys}
 }
 
-type TupleKeysHasher struct {
+type tupleKeysHasher struct {
 	tupleKeys []*openfgav1.TupleKey
 }
 
-func (t *TupleKeysHasher) Append(h hasher) error {
+func (t *tupleKeysHasher) Append(h hasher) error {
 	sortedTupleKeys := append([]*openfgav1.TupleKey(nil), t.tupleKeys...) // Copy input to avoid mutating it
 
 	sort.SliceStable(sortedTupleKeys, func(i, j int) bool {
