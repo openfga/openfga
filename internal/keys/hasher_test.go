@@ -130,7 +130,7 @@ func TestContextHasher(t *testing.T) {
 		},
 		{
 			context1: map[string]any{
-				"x": []any{1 / 1},
+				"x": []any{float64(1) / 1},
 			},
 			context2: map[string]any{
 				"x": []any{1},
