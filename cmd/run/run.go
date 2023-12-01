@@ -295,8 +295,6 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	otel.SetTracerProvider(noop.NewTracerProvider())
-
 	var tracerProviderCloser func()
 
 	if config.Trace.Enabled {
@@ -322,6 +320,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 			_ = tp.ForceFlush(ctx)
 			_ = tp.Shutdown(ctx)
 		}
+	} else {
+		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
 
 	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
