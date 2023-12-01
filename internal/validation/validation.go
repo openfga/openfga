@@ -61,7 +61,7 @@ func ValidateTuple(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error
 			return &tuple.InvalidTupleError{Cause: err, TupleKey: tk}
 		}
 
-		if err := validateCondition(typesys, tk); err != nil {
+		if err := ValidateCondition(typesys, tk); err != nil {
 			return err
 		}
 	}
@@ -175,8 +175,8 @@ func validateTypeRestrictions(typesys *typesystem.TypeSystem, tk *openfgav1.Tupl
 	return fmt.Errorf("type '%s' is not an allowed type restriction for '%s#%s'", userType, objectType, tk.GetRelation())
 }
 
-// validateCondition enforces conditions on a relationship tuple
-func validateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
+// ValidateCondition enforces conditions on a relationship tuple
+func ValidateCondition(typesys *typesystem.TypeSystem, tk *openfgav1.TupleKey) error {
 	objectType := tuple.GetType(tk.Object)
 	userType := tuple.GetType(tk.User)
 	userRelation := tuple.GetRelation(tk.User)
