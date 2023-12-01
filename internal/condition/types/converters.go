@@ -60,7 +60,10 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 		return uint64(numericValue), nil
 
 	case float64:
-		numericValue, _ := bigFloat.Float64()
+		numericValue, a := bigFloat.Float64()
+		if a == big.Above {
+			return nil, fmt.Errorf("too many digits")
+		}
 		return numericValue, nil
 
 	default:
