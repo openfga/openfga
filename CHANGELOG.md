@@ -8,6 +8,45 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.8] - 2023-12-04
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.7...v1.3.8)
+
+### Added
+* Experimental support for ABAC Conditional Relationships.
+
+  To enable experimental support for ABAC Conditional Relationships you can pass the `enable-conditions` experimental flag. For example, `openfga run --experimentals=enabled-conditions`. The upcoming `v1.4.0` release will introduce official support for this new feature. For more information please see our [official blog post](https://openfga.dev/blog/conditional-tuples-announcement). In the `v1.4.0` release will have more official documentation on [openfga.dev](https://openfga.dev/).
+
+* Minimum datastore schema revision check in the server's health check ([#1166](https://github.com/openfga/openfga/pull/1166))
+
+  Each OpenFGA release from here forward will explicitly reference a minimum datastore schema version that is required to run that specific release of OpenFGA. If OpenFGA operators have not migrated up to that revision then the server's health checks will fail.
+
+* Username/password configuration overrides for the `openfga migrate` entrypoint ([#1133](https://github.com/openfga/openfga/pull/1133)). Thanks for the contribution @martin31821!
+
+  Similar to the server's main entrypoint `openfga run`, you can now override the datastore username and password with environment variables. when running the `openfga migrate` utility.
+
+* Healthcheck definitions in Dockerfile ([#1134](https://github.com/openfga/openfga/pull/1134)). Thanks @Siddhant-K-code!
+
+### Changed
+* Database iterators yielded by the RelationshipTupleReader storage interface now accept a `context` parameter which allows iteration to be promptly terminated ([#1055](https://github.com/openfga/openfga/pull/1055))
+
+  We have noticed improvements in query performance by adding this because once a resolution path has been found we more quickly cancel any further evaluation by terminating the iterators promptly.
+
+* Normalized the in memory storage adapter implementation to make use of TupleRecords internally ([#1180](https://github.com/openfga/openfga/pull/1180))
+
+* Improved tuple validation peformance with precomputation of TTUs ([#1171]https://github.com/openfga/openfga/pull/1171)
+
+* Refactored the commands in the `pkg/server/commands` package to uniformly use the Options builder pattern ([#1142](https://github.com/openfga/openfga/pull/1142)). Thanks for the contribution @ilaleksin!
+
+* Upgraded to Go `1.21.4` ([#1143](https://github.com/openfga/openfga/pull/1143)). Thanks @tranngoclam!
+
+### Fixed
+* Cache key computation with contextual tuples with different ordering. ([#1187](https://github.com/openfga/openfga/pull/1187))
+
+  If two requests were made with the same request body and contextual tuples but the order of the contextual tuples differed, then the cache key that was produced would differ.
+
+* Missing child spans in OpenTelemetry traces ([#1196](https://github.com/openfga/openfga/pull/1196))
+
 ## [v1.3.7] - 2023-11-06
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.6...v1.3.7)
@@ -734,7 +773,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.7...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.8...HEAD
+[1.3.8]: https://github.com/openfga/openfga/releases/tag/v1.3.8
 [1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
 [1.3.6]: https://github.com/openfga/openfga/releases/tag/v1.3.6
 [1.3.5]: https://github.com/openfga/openfga/releases/tag/v1.3.5
