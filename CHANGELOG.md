@@ -34,7 +34,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 * Normalized the in memory storage adapter implementation to make use of TupleRecords internally ([#1180](https://github.com/openfga/openfga/pull/1180))
 
-* Improved tuple validation peformance with precomputation of TTUs ([#1171]https://github.com/openfga/openfga/pull/1171))
+* Improved tuple validation peformance with precomputation of TTUs ([#1171](https://github.com/openfga/openfga/pull/1171))
 
 * Refactored the commands in the `pkg/server/commands` package to uniformly use the Options builder pattern ([#1142](https://github.com/openfga/openfga/pull/1142)). Thanks for the contribution @ilaleksin!
 
