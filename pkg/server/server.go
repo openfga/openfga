@@ -13,6 +13,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/gateway"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -27,6 +28,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
+	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -34,6 +36,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -43,8 +46,9 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader = "openfga-authorization-model-id"
-	authorizationModelIDKey    = "authorization_model_id"
+	AuthorizationModelIDHeader                           = "openfga-authorization-model-id"
+	authorizationModelIDKey                              = "authorization_model_id"
+	ExperimentalEnableConditions ExperimentalFeatureFlag = "enable-conditions"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -363,9 +367,14 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 			Type:                 targetObjectType,
 			Relation:             req.Relation,
 			User:                 req.User,
+			Context:              req.Context,
 		},
 	)
 	if err != nil {
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
+		}
+
 		return nil, err
 	}
 	queryCount := float64(*result.ResolutionMetadata.QueryCount)
@@ -508,7 +517,13 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	cmd := commands.NewWriteCommand(s.datastore, commands.WithWriteCmdLogger(s.logger))
+	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
+
+	cmd := commands.NewWriteCommand(
+		s.datastore,
+		commands.WithWriteCmdLogger(s.logger),
+		commands.WithWriteCmdEnableConditions(enableConditions),
+	)
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: typesys.GetAuthorizationModelID(), // the resolved model id
@@ -550,7 +565,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		return nil, err
 	}
 
-	if err := validation.ValidateUserObjectRelation(typesys, tk); err != nil {
+	if err := validation.ValidateUserObjectRelation(typesys, tuple.ConvertCheckRequestTupleKeyToTupleKey(tk)); err != nil {
 		return nil, serverErrors.ValidationError(err)
 	}
 
@@ -571,8 +586,9 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	resp, err := checkResolver.ResolveCheck(ctx, &graph.ResolveCheckRequest{
 		StoreID:              req.GetStoreId(),
 		AuthorizationModelID: typesys.GetAuthorizationModelID(), // the resolved model id
-		TupleKey:             req.GetTupleKey(),
+		TupleKey:             tuple.ConvertCheckRequestTupleKeyToTupleKey(req.GetTupleKey()),
 		ContextualTuples:     req.ContextualTuples.GetTupleKeys(),
+		Context:              req.GetContext(),
 		ResolutionMetadata: &graph.ResolutionMetadata{
 			Depth:               s.resolveNodeLimit,
 			DatastoreQueryCount: 0,
@@ -581,6 +597,10 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 	if err != nil {
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
+		}
+
+		if errors.Is(err, condition.ErrEvaluationFailed) {
+			return nil, serverErrors.ValidationError(err)
 		}
 
 		return nil, serverErrors.HandleError("", err)
@@ -615,7 +635,6 @@ func (s *Server) Expand(ctx context.Context, req *openfgav1.ExpandRequest) (*ope
 	ctx, span := tracer.Start(ctx, "Expand", trace.WithAttributes(
 		attribute.KeyValue{Key: "object", Value: attribute.StringValue(tk.GetObject())},
 		attribute.KeyValue{Key: "relation", Value: attribute.StringValue(tk.GetRelation())},
-		attribute.KeyValue{Key: "user", Value: attribute.StringValue(tk.GetUser())},
 	))
 	defer span.End()
 
@@ -681,9 +700,12 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
+	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
+
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
+		commands.WithWriteAuthModelEnableConditions(enableConditions),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
