@@ -17,6 +17,45 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
   To enable experimental support for ABAC Conditional Relationships you can pass the `enable-conditions` experimental flag. For example, `openfga run --experimentals=enabled-conditions`. The upcoming `v1.4.0` release will introduce official support for this new feature. For more information please see our [official blog post](https://openfga.dev/blog/conditional-tuples-announcement). The `v1.4.0` release will have more official documentation on [openfga.dev](https://openfga.dev/).
 
+  > ⚠️ If you enable experimental support for ABAC and introduce models and/or relationship tuples into the system and then choose to rollback to a prior release, then you may experience unintended side-effects. Care should be taken!
+  >
+  > Read on for more information.
+
+  If you introduce a model with a condition defined in a relation's type restriction(s) and then rollback, then the model will be treated as though the conditioned type restriction did not exist.
+
+  ```
+  model
+    schema 1.1
+
+  type user
+
+  type document
+    relations
+      define viewer: [user with somecondition]
+
+  condition somecondition(x: int) {
+    x < 100
+  }
+  ```
+  and then you rollback to `v1.3.7` or earlier, then the model above will be treated equivalently to
+  ```
+  model
+    schema 1.1
+
+  type user
+
+  type document
+    relations
+      define viewer: [user]
+  ```
+
+  Likewise, if you write a relationship tuple with a condition and then rollback, then the tuple will be treated as an unconditioned tuple.
+
+  ```
+  - document:1#viewer@user:jon, {condition: "somecondition"}
+  ```
+  will be treated equivalently to `document:1#viewer@user:jon` in `v1.3.7` or earlier. That is, `Check(document:1#viewer@user:jon)` would return `{allowed: true}` even though at the tuple was introduced it was conditioned.
+
 * Minimum datastore schema revision check in the server's health check ([#1166](https://github.com/openfga/openfga/pull/1166))
 
   Each OpenFGA release from here forward will explicitly reference a minimum datastore schema version that is required to run that specific release of OpenFGA. If OpenFGA operators have not migrated up to that revision then the server's health checks will fail.
