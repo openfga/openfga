@@ -81,7 +81,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * If two requests were made with the same request body and contextual tuples but the order of the contextual tuples differed, then the cache key that is produced is now the same.([#1187](https://github.com/openfga/openfga/pull/1187))
 
 
-* Missing child spans in OpenTelemetry traces ([#1196](https://github.com/openfga/openfga/pull/1196))
+* Use `NoOp` TracerProvider if tracing is disabled ([#1139](https://github.com/openfga/openfga/pull/1139) and [#1196](https://github.com/openfga/openfga/pull/1196))
 
 ## [v1.3.7] - 2023-11-06
 
