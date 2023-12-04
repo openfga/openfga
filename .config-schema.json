@@ -77,7 +77,8 @@
             "description": "a list of experimental features to enable",
             "type": "array",
             "items": {
-                "type": "string"
+                "type": "string",
+                "enum": ["enable-conditions"]
             },
             "default": [],
             "x-env-variable": "OPENFGA_EXPERIMENTALS"

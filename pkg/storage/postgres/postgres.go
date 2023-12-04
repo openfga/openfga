@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -158,7 +159,7 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	defer span.End()
 
 	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -216,9 +217,10 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var record sqlcommon.TupleRecord
+	var conditionContext []byte
+	var record storage.TupleRecord
 	err := p.stbl.
-		Select("object_type", "object_id", "relation", "_user").
+		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -229,9 +231,17 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User)
+		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.ConditionName, &conditionContext)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	if conditionContext != nil {
+		var conditionContextStruct structpb.Struct
+		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+			return nil, err
+		}
+		record.ConditionContext = &conditionContextStruct
 	}
 
 	return record.AsTuple(), nil
@@ -241,7 +251,7 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -290,7 +300,7 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	}
 
 	rows, err := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "ulid", "inserted_at").
+		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -615,7 +625,7 @@ func (p *Postgres) ReadChanges(
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "inserted_at").
+	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "condition_name", "condition_context", "inserted_at").
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
@@ -648,21 +658,45 @@ func (p *Postgres) ReadChanges(
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, user string
+		var objectType, objectID, relation, conditionName, user string
 		var operation int
 		var insertedAt time.Time
+		var conditionContext []byte
 
-		err = rows.Scan(&ulid, &objectType, &objectID, &relation, &user, &operation, &insertedAt)
+		err = rows.Scan(
+			&ulid,
+			&objectType,
+			&objectID,
+			&relation,
+			&user,
+			&operation,
+			&conditionName,
+			&conditionContext,
+			&insertedAt,
+		)
 		if err != nil {
 			return nil, nil, sqlcommon.HandleSQLError(err)
 		}
 
+		var conditionContextStruct structpb.Struct
+		if conditionName != "" {
+			if conditionContext != nil {
+				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
+
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			relation,
+			user,
+			conditionName,
+			&conditionContextStruct,
+		)
+
 		changes = append(changes, &openfgav1.TupleChange{
-			TupleKey: &openfgav1.TupleKey{
-				Object:   tupleUtils.BuildObject(objectType, objectID),
-				Relation: relation,
-				User:     user,
-			},
+			TupleKey:  tk,
 			Operation: openfgav1.TupleOperation(operation),
 			Timestamp: timestamppb.New(insertedAt.UTC()),
 		})
