@@ -41,9 +41,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 * Upgraded to Go `1.21.4` ([#1143](https://github.com/openfga/openfga/pull/1143)). Thanks @tranngoclam!
 
 ### Fixed
-* Cache key computation with contextual tuples with different ordering. ([#1187](https://github.com/openfga/openfga/pull/1187))
+* If two requests were made with the same request body and contextual tuples but the order of the contextual tuples differed, then the cache key that is produced is now the same.([#1187](https://github.com/openfga/openfga/pull/1187))
 
-  If two requests were made with the same request body and contextual tuples but the order of the contextual tuples differed, then the cache key that was produced would differ.
 
 * Missing child spans in OpenTelemetry traces ([#1196](https://github.com/openfga/openfga/pull/1196))
 
