@@ -15,7 +15,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Added
 * Experimental support for ABAC Conditional Relationships.
 
-  To enable experimental support for ABAC Conditional Relationships you can pass the `enable-conditions` experimental flag. For example, `openfga run --experimentals=enabled-conditions`. The upcoming `v1.4.0` release will introduce official support for this new feature. For more information please see our [official blog post](https://openfga.dev/blog/conditional-tuples-announcement). In the `v1.4.0` release will have more official documentation on [openfga.dev](https://openfga.dev/).
+  To enable experimental support for ABAC Conditional Relationships you can pass the `enable-conditions` experimental flag. For example, `openfga run --experimentals=enabled-conditions`. The upcoming `v1.4.0` release will introduce official support for this new feature. For more information please see our [official blog post](https://openfga.dev/blog/conditional-tuples-announcement). The `v1.4.0` release will have more official documentation on [openfga.dev](https://openfga.dev/).
 
 * Minimum datastore schema revision check in the server's health check ([#1166](https://github.com/openfga/openfga/pull/1166))
 
