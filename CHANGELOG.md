@@ -21,7 +21,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
   >
   > Read on for more information.
 
-  If you introduce a model with a condition defined in a relation's type restriction(s) and then rollback, then the model will be treated as though the conditioned type restriction did not exist.
+  If you introduce a model with a condition defined in a relation's type restriction(s) and then rollback to a prior OpenFGA release, then the model will be treated as though the conditioned type restriction did not exist.
 
   ```
   model
@@ -49,7 +49,7 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
       define viewer: [user]
   ```
 
-  Likewise, if you write a relationship tuple with a condition and then rollback, then the tuple will be treated as an unconditioned tuple.
+  Likewise, if you write a relationship tuple with a condition and then rollback to a prior release, then the tuple will be treated as an unconditioned tuple.
 
   ```
   - document:1#viewer@user:jon, {condition: "somecondition"}
