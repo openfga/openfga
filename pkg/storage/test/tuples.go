@@ -13,7 +13,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
-	tupleutils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -741,13 +740,13 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err := iter.Next(ctx)
+		tp, err := iter.Next(ctx)
 		require.NoError(t, err)
-		require.Nil(t, tuple.GetKey().GetCondition())
+		require.Nil(t, tp.GetKey().GetCondition())
 
-		tuple, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
 		require.NoError(t, err)
-		require.Nil(t, tuple.GetKey().GetCondition())
+		require.Nil(t, tp.GetKey().GetCondition())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
@@ -756,12 +755,12 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err = iter.Next(ctx)
+		tp, err = iter.Next(ctx)
 		require.NoError(t, err)
-		require.Nil(t, tuple.GetKey().GetCondition())
+		require.Nil(t, tp.GetKey().GetCondition())
 
 		iter, err = datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-			ObjectType: tupleutils.GetType(tupleKey1.GetObject()),
+			ObjectType: tuple.GetType(tupleKey1.GetObject()),
 			Relation:   tupleKey1.GetRelation(),
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
@@ -770,9 +769,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err = iter.Next(ctx)
+		tp, err = iter.Next(ctx)
 		require.NoError(t, err)
-		require.Nil(t, tuple.GetKey().GetCondition())
+		require.Nil(t, tp.GetKey().GetCondition())
 
 		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
 		require.NoError(t, err)
@@ -816,15 +815,15 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err := iter.Next(ctx)
+		tp, err := iter.Next(ctx)
 		require.NoError(t, err)
-		require.Equal(t, "somecondition", tuple.GetKey().GetCondition().GetName())
-		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
-		require.Empty(t, tuple.GetKey().GetCondition().GetContext())
+		require.Equal(t, "somecondition", tp.GetKey().GetCondition().GetName())
+		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
+		require.Empty(t, tp.GetKey().GetCondition().GetContext())
 
-		tuple, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
 		require.NoError(t, err)
-		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
 		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
 			Object:   tupleKey2.GetObject(),
@@ -833,12 +832,12 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err = iter.Next(ctx)
+		tp, err = iter.Next(ctx)
 		require.NoError(t, err)
-		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
 		iter, err = datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
-			ObjectType: tupleutils.GetType(tupleKey1.GetObject()),
+			ObjectType: tuple.GetType(tupleKey1.GetObject()),
 			Relation:   tupleKey1.GetRelation(),
 			UserFilter: []*openfgav1.ObjectRelation{
 				{Object: tupleKey1.GetUser()},
@@ -847,9 +846,9 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		defer iter.Stop()
 
-		tuple, err = iter.Next(ctx)
+		tp, err = iter.Next(ctx)
 		require.NoError(t, err)
-		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 
 		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
 		require.NoError(t, err)
