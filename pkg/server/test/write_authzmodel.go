@@ -468,7 +468,7 @@ type other
 
 		// conditions
 		{
-			name:             "do_not_allow_conditions_if_bool_is_false_and_conditions_received",
+			name:             "disabled_conditions_and_conditions_received",
 			enableConditions: false,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
@@ -503,7 +503,7 @@ type other
 			errCode: codes.InvalidArgument,
 		},
 		{
-			name:             "do_not_allow_conditions_if_bool_is_false_and_relation_references_condition",
+			name:             "disabled_conditions_and_relation_references_condition",
 			enableConditions: false,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
