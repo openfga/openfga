@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -153,4 +154,28 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	_, err = ds.ReadAuthorizationModel(ctx, store, modelID)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
+}
+
+func TestReadUserTupleNullCondition(t *testing.T) {
+	ctx := context.Background()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	stmt := `
+		INSERT INTO tuple (
+			store, object_type, object_id, relation, _user, user_type, ulid,
+			condition_name, condition_context, inserted_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());
+	`
+	ulid := ulid.Make().String()
+	_, err = ds.db.ExecContext(ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne", "user", ulid, nil, nil)
+	require.NoError(t, err)
+
+	tk := tuple.NewTupleKey("folder:2021-budget", "owner", "user:anne")
+	_, err = ds.ReadUserTuple(ctx, "store", tk)
+	require.NoError(t, err)
 }
