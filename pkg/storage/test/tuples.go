@@ -13,6 +13,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
+	tupleutils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -709,6 +710,152 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 
 		_, err = iter.Next(ctx)
 		require.ErrorIs(t, err, storage.ErrIteratorDone)
+	})
+
+	t.Run("tuples_with_nil_condition", func(t *testing.T) {
+		// this test ensures we don't normalize nil conditions to an empty value
+		storeID := ulid.Make().String()
+
+		tupleKey1 := tuple.NewTupleKey("document:1", "viewer", "user:jon")
+		tupleKey2 := tuple.NewTupleKey("group:1", "member", "group:2#member")
+
+		tks := []*openfgav1.TupleKey{
+			{
+				Object:    tupleKey1.GetObject(),
+				Relation:  tupleKey1.GetRelation(),
+				User:      tupleKey1.GetUser(),
+				Condition: nil,
+			},
+			{
+				Object:    tupleKey2.GetObject(),
+				Relation:  tupleKey2.GetRelation(),
+				User:      tupleKey2.GetUser(),
+				Condition: nil,
+			},
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tks)
+		require.NoError(t, err)
+
+		iter, err := datastore.Read(ctx, storeID, tupleKey1)
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err := iter.Next(ctx)
+		require.NoError(t, err)
+		require.Nil(t, tuple.GetKey().GetCondition())
+
+		tuple, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		require.NoError(t, err)
+		require.Nil(t, tuple.GetKey().GetCondition())
+
+		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   tupleKey2.GetObject(),
+			Relation: tupleKey2.GetRelation(),
+		})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err = iter.Next(ctx)
+		require.NoError(t, err)
+		require.Nil(t, tuple.GetKey().GetCondition())
+
+		iter, err = datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: tupleutils.GetType(tupleKey1.GetObject()),
+			Relation:   tupleKey1.GetRelation(),
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: tupleKey1.GetUser()},
+			},
+		})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err = iter.Next(ctx)
+		require.NoError(t, err)
+		require.Nil(t, tuple.GetKey().GetCondition())
+
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		require.Nil(t, changes[0].GetTupleKey().GetCondition())
+		require.Nil(t, changes[1].GetTupleKey().GetCondition())
+	})
+
+	t.Run("normalize_empty_context", func(t *testing.T) {
+		// this test ensures we normalize nil or empty context as empty context in all reads
+		storeID := ulid.Make().String()
+
+		tupleKey1 := tuple.NewTupleKey("document:1", "viewer", "user:jon")
+		tupleKey2 := tuple.NewTupleKey("group:1", "member", "group:2#member")
+
+		tks := []*openfgav1.TupleKey{
+			{
+				Object:   tupleKey1.GetObject(),
+				Relation: tupleKey1.GetRelation(),
+				User:     tupleKey1.GetUser(),
+				Condition: &openfgav1.RelationshipCondition{
+					Name:    "somecondition",
+					Context: nil,
+				},
+			},
+			{
+				Object:   tupleKey2.GetObject(),
+				Relation: tupleKey2.GetRelation(),
+				User:     tupleKey2.GetUser(),
+				Condition: &openfgav1.RelationshipCondition{
+					Name:    "othercondition",
+					Context: nil,
+				},
+			},
+		}
+
+		err := datastore.Write(ctx, storeID, nil, tks)
+		require.NoError(t, err)
+
+		iter, err := datastore.Read(ctx, storeID, tupleKey1)
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err := iter.Next(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "somecondition", tuple.GetKey().GetCondition().GetName())
+		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+		require.Empty(t, tuple.GetKey().GetCondition().GetContext())
+
+		tuple, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
+		require.NoError(t, err)
+		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+
+		iter, err = datastore.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
+			Object:   tupleKey2.GetObject(),
+			Relation: tupleKey2.GetRelation(),
+		})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err = iter.Next(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+
+		iter, err = datastore.ReadStartingWithUser(ctx, storeID, storage.ReadStartingWithUserFilter{
+			ObjectType: tupleutils.GetType(tupleKey1.GetObject()),
+			Relation:   tupleKey1.GetRelation(),
+			UserFilter: []*openfgav1.ObjectRelation{
+				{Object: tupleKey1.GetUser()},
+			},
+		})
+		require.NoError(t, err)
+		defer iter.Stop()
+
+		tuple, err = iter.Next(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, tuple.GetKey().GetCondition().GetContext())
+
+		changes, _, err := datastore.ReadChanges(ctx, storeID, "", storage.PaginationOptions{}, 0)
+		require.NoError(t, err)
+		require.Len(t, changes, 2)
+		require.NotNil(t, changes[0].GetTupleKey().GetCondition().GetContext())
+		require.NotNil(t, changes[1].GetTupleKey().GetCondition().GetContext())
 	})
 }
 
