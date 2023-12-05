@@ -189,6 +189,13 @@ func TestAllowNullCondition(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, tk, curTuple.Key)
 
+	tuples, _, err := ds.ReadPage(ctx, "store", &openfgav1.TupleKey{}, storage.PaginationOptions{
+		PageSize: 2,
+	})
+	require.NoError(t, err)
+	require.Len(t, tuples, 1)
+	require.Equal(t, tk, tuples[0].GetKey())
+
 	userTuple, err := ds.ReadUserTuple(ctx, "store", tk)
 	require.NoError(t, err)
 	require.Equal(t, tk, userTuple.Key)
