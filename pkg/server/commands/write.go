@@ -65,9 +65,11 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
 	if !c.enableConditions {
 		tks := req.GetWrites()
-		for _, tk := range tks.TupleKeys {
-			if tk.Condition != nil {
-				return nil, status.Error(codes.InvalidArgument, "conditions not supported")
+		if tks != nil {
+			for _, tk := range tks.TupleKeys {
+				if tk.Condition != nil {
+					return nil, status.Error(codes.InvalidArgument, "conditions not supported")
+				}
 			}
 		}
 	}
