@@ -159,7 +159,10 @@ func (p *Postgres) read(ctx context.Context, store string, tupleKey *openfgav1.T
 	defer span.End()
 
 	sb := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store})
 	if opts != nil {
@@ -217,10 +220,14 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
+	var conditionName *string
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := p.stbl.
-		Select("object_type", "object_id", "relation", "_user", "condition_name", "condition_context").
+		Select(
+			"object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -231,9 +238,20 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 			"user_type":   userType,
 		}).
 		QueryRowContext(ctx).
-		Scan(&record.ObjectType, &record.ObjectID, &record.Relation, &record.User, &record.ConditionName, &conditionContext)
+		Scan(
+			&record.ObjectType,
+			&record.ObjectID,
+			&record.Relation,
+			&record.User,
+			&conditionName,
+			&conditionContext,
+		)
 	if err != nil {
 		return nil, sqlcommon.HandleSQLError(err)
+	}
+
+	if conditionName != nil {
+		record.ConditionName = *conditionName
 	}
 
 	if conditionContext != nil {
@@ -251,7 +269,11 @@ func (p *Postgres) ReadUsersetTuples(ctx context.Context, store string, filter s
 	ctx, span := tracer.Start(ctx, "postgres.ReadUsersetTuples")
 	defer span.End()
 
-	sb := p.stbl.Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+	sb := p.stbl.
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{"store": store}).
 		Where(sq.Eq{"user_type": tupleUtils.UserSet})
@@ -300,7 +322,10 @@ func (p *Postgres) ReadStartingWithUser(ctx context.Context, store string, opts 
 	}
 
 	rows, err := p.stbl.
-		Select("store", "object_type", "object_id", "relation", "_user", "condition_name", "condition_context", "ulid", "inserted_at").
+		Select(
+			"store", "object_type", "object_id", "relation", "_user",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		).
 		From("tuple").
 		Where(sq.Eq{
 			"store":       store,
@@ -330,7 +355,8 @@ func (p *Postgres) ReadAuthorizationModels(ctx context.Context, store string, op
 	ctx, span := tracer.Start(ctx, "postgres.ReadAuthorizationModels")
 	defer span.End()
 
-	sb := p.stbl.Select("authorization_model_id").
+	sb := p.stbl.
+		Select("authorization_model_id").
 		Distinct().
 		From("authorization_model").
 		Where(sq.Eq{"store": store}).
@@ -492,7 +518,8 @@ func (p *Postgres) ListStores(ctx context.Context, opts storage.PaginationOption
 	ctx, span := tracer.Start(ctx, "postgres.ListStores")
 	defer span.End()
 
-	sb := p.stbl.Select("id", "name", "created_at", "updated_at").
+	sb := p.stbl.
+		Select("id", "name", "created_at", "updated_at").
 		From("store").
 		Where(sq.Eq{"deleted_at": nil}).
 		OrderBy("id")
@@ -625,7 +652,11 @@ func (p *Postgres) ReadChanges(
 	ctx, span := tracer.Start(ctx, "postgres.ReadChanges")
 	defer span.End()
 
-	sb := p.stbl.Select("ulid", "object_type", "object_id", "relation", "_user", "operation", "condition_name", "condition_context", "inserted_at").
+	sb := p.stbl.
+		Select(
+			"ulid", "object_type", "object_id", "relation", "_user", "operation",
+			"condition_name", "condition_context", "inserted_at",
+		).
 		From("changelog").
 		Where(sq.Eq{"store": store}).
 		Where(fmt.Sprintf("inserted_at < NOW() - interval '%dms'", horizonOffset.Milliseconds())).
