@@ -744,6 +744,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
 
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
+			PageSize: 2,
+		})
+		require.NoError(t, err)
+		require.Len(t, tuples, 2)
+		require.Nil(t, tuples[0].GetKey().GetCondition())
+		require.Nil(t, tuples[1].GetKey().GetCondition())
+
 		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
 		require.NoError(t, err)
 		require.Nil(t, tp.GetKey().GetCondition())
@@ -820,6 +828,14 @@ func TupleWritingAndReadingTest(t *testing.T, datastore storage.OpenFGADatastore
 		require.Equal(t, "somecondition", tp.GetKey().GetCondition().GetName())
 		require.NotNil(t, tp.GetKey().GetCondition().GetContext())
 		require.Empty(t, tp.GetKey().GetCondition().GetContext())
+
+		tuples, _, err := datastore.ReadPage(ctx, storeID, &openfgav1.TupleKey{}, storage.PaginationOptions{
+			PageSize: 2,
+		})
+		require.NoError(t, err)
+		require.Len(t, tuples, 2)
+		require.NotNil(t, tuples[0].GetKey().GetCondition().GetContext())
+		require.NotNil(t, tuples[1].GetKey().GetCondition().GetContext())
 
 		tp, err = datastore.ReadUserTuple(ctx, storeID, tupleKey1)
 		require.NoError(t, err)
