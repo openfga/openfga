@@ -1448,6 +1448,7 @@ type org
 			}
 
 			if test.response != nil {
+				require.NoError(t, gotErr)
 				require.Equal(t, test.response, resp)
 			}
 		})
