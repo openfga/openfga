@@ -1,7 +1,7 @@
 # OpenFGA Security Self Assessment
 
 ## Table of Contents
-s
+
 * [Metadata](#metadata)
   * [Security links](#security-links)
 * [Overview](#overview)
@@ -33,11 +33,21 @@ s
 
 ## Overview
 
-OpenFGA is a high performance and flexible authorization/permission engine. It incorporates Relationship-Based Access Control (ReBAC) and Attribute Based Access Control (ABAC) concepts with a domain-specific language that makes it easy to craft authorization and permission solutions that can grow and evolve to any use case, at any scale. 
+
+
+Implementing access control is a very common requirement when developing applications, where different subjects can perform different actions on different resources. 
+
+OpenFGA is a high performance and flexible authorization/permission engine that can be used to implement fine grained access control in any application component. 
+
+Developers can use OpenFGA to easily craft authorization and permission methods based on the policies they require that are specific to their own projects.
+
+### Background
+
+OpenFGA is an authorization/permission engine that incorporates Relationship-Based Access Control (ReBAC) and Attribute Based Access Control (ABAC) concepts with a domain-specific language that enables crafting authorizations solutions that can grow and evolve to any use case.
 
 It's inspired on the idea described in the [Google Zanzibar paper](https://research.google/pubs/pub48190/).
 
-### Background
+Fine-Grained Authorization refers to individual users having access to specific objects and resources within a system. Google Drive is an example of this, as owners of resources can grant different users to have different levels of access to their resources.
 
 OpenFGA makes helps developers make authorization decisions by combining two concepts:
 
@@ -82,42 +92,27 @@ With this information, OpenFGA can be queried in different ways:
 
 - Using the [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoint to ask questions like "What are all the documents for which `user:alice` is a `viewer`. With the data provided above, OpenFGA will return `{object_ids { "document:readme" }`
 
-OpenFGA was accepted as a CNCF sandbox project in June 2022. Since our inclusion in the CNCF, it has been promising community contribution, growth, and adoption. Companies such as [Canonical](https://canonical.com) or [Okta](https://fga.dev) are building products and integrations on top of the OpenFGA, while others, like [Wolt](https://wolt.com) and [Read.ai](https://www.read.ai/) are using OpenFGA to implement authorization for their products.
-
-OpenFGA has an active community, with 500+ Discord members, 40 unique contributors, and an average of [850 commits per month](https://openfga.devstats.cncf.io/d/2/commits-repository-groups?orgId=1&var-period=m&var-repogroups=All&from=now-1y%2Fy&to=now-1y%2Fy). 
-
 ### Actors
+
+The actors within the system are the OpenFGA server, Database server, and the CLI/API clients. 
 
 **OpenFGA Server**
 
-The OpenFGA server is responsible for storing and querying relationship tuples and authorization models.
+The OpenFGA server is responsible for:
 
-Given that it's going to be used to know if a user can perform an action on a resource, any potential bug in the OpenFGA server logic can have security implications. 
-
-The server can be configured without authentication, with a shared key, or using the OAuth client credentials flow.
+- Storing and retrieving relationship tuples
+- Storing and retrieving and authorization models.
+- Evaluating the inferred permissions for a given subject and object.
 
 **Database Server**
 
-The database server stores relationship tuples, authorization models and a changelog. OpenFGA currently supports Postgres and MySQL, and it can be extended to support other databases.
-
-Database credentials can be provided as a parameter to the OpenFGA server, via environment variables or a configuration file.
+Stores the relationship tuples and authorization models, as well as a changelog. Currently support Postgres and MySQL.
 
 **CLI/API Clients**
 
-The CLI/API clients are used to make API requests to the OpenFGA server. This includes functionality such as creating and querying relationship tuples, updating the authorization model and running authorization queries such as checking for access or listing objects a user has access to.
+Make API requests to the OpenFGA server, i.e. creating/querying relationship tuples, updating authorization models, checking for access, or listing objects a user has access to. 
 
-They authenticate using any of the mechanisms supported by the server (no authentication, shared key, OAuth client credentials).
-
-If the credentials were compromised, the attacker would be able to perform any action granted to those credentials. This would include: 
-
-* Changing the authorization model.
-* Adding tuples to give the attacker access to a resource.
-* Removing tuples to prevent a user from accessing a resource.
-* Querying authorization data, giving the attacker access to privileged information.
-
-To achieve this the attacker would need to be able to connect directly to the OpenFGA service, which is not recommended to be accessible from outside the services’ internal network.
-
-OpenFGA provides versioned authorization models, and applications should point to a specific version. This implies that even if the attacker updates the authorization model, it should not have any effect unless they can also update the application configuration to make it point to the new version.
+Clients can use either no authentication, shared key, or OAuth client credentials as a method for authentication.
 
 ### Actions
 
@@ -129,39 +124,44 @@ Every time a server endpoint is invoked, OpenFGA validates that:
 
   - Ensures that the input is a semantically valid, e.g. that a tuple is valid according to the authorization model or that the model does not have disallowed cyclical or problematic definitions
 
-  - The payload of the API call:
+  - Payload Verification: 
   
-    - Matches the Protobuf API definitions.
-    - Validates the parameters have the proper structure, e.g. users need to be written this way 'user:<userid>'
+    - Confirm that API payloads adhere to Protobuf API definitions.  
+    - Validate parameters for proper structure, e.g. ensuring users are written in the correct format which is 'user:<userid>'
   
 **Writing an Authorization Model**
 
-OpenFGA validates that the Authorization Models are semantically valid from the server standpoint, as in they do not have cyclical or problematic definitions, or other disallowed criteria.
+  - Semantic Model Verification: OpenFGA validates that Authorization Models are semantically valid, avoiding cyclical or problematic definitions and other disallowed criteria.
 
-When a model is written a new version is created (Authorization Models in OpenFGA are immutable). The application needs to be configured to use the new version when needed, and when after it has been validated and confirmed to be working as expected.
+  - Version and Configuration: When writing a model, a new version is created (models are immutable). Applications must be configured to use the new version after validation and confirmation of expected behavior.
 
 **Calling the Authorization Query endpoints**
 
-When the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) and [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoints are called, OpenFGA needs to traverse the graph defined by the model and instated by the tuples. The graph can be very wide and deep. To protect the service from a DoSS, OpenFGA needs to limit both the number of simultaneous paths it explores, as well as the depth of the paths it traverses.
+When the [/check](https://openfga.dev/api/service#/Relationship%20Queries/Check) and [/list-objects](https://openfga.dev/api/service#/Relationship%20Queries/ListObjects) endpoints are called, OpenFGA limits the number of simultaneous paths explored and enforces depth limitations on the graph traversal. 
+
+To protect against DoS attacks, OpenFGA restricts both the number of simultaneous paths explored and the depth of paths traversed in the graph.
 
 **Upgrading OpenFGA Database Schema**
 
-When new version of OpenFGA are installed, it might imply running a database migration in the target system. To avoid downtime, migrations need to be carefully written and planned.
+Database Migration Planning: When installing new versions of OpenFGA, database migrations can be executed in a way that minimizes downtime and ensure a smooth transition in the target system.
 
 ### Goals
 
-* Provide developers a flexible way to implement authorization in their applications.
+* Simplify and standardize authorization processes, making them more consistent across various applications and systems.
 
-* Provide a high performance and scalable authorization service that can be used in any application component.
+* Establish patterns and standards for externalized authorization.
 
-* Allow centralized authorization decisions, decoupling policy enforcement from decision making. Allows different teams to implement authorization using a common framework that can be used in any application component.
+* Create architectural patterns, terminologies, and protocols that enable interoperability among different authorization systems.
 
-* Not to be coupled to any authentication technology. It only requires a way to identify the subject of the authorization (user, application, device, etc).
+* Deliver an authorization service for any application component.
+
+* Enable centralized authorization decisions and permits diverse teams to implement authorization using a shared framework across various application components.
 
 ### Non-Goals
 
-* Does not provide tools for end-users to manage groups, roles, permissions.
-* Does not aim to be a general purpose data store for non-authorization related data
+* Tools for management of groups/roles/permissions not inherently provided to the end-users.
+* Does not intend to serve as a comprehensive data repository for non-authorization related data.
+* Does not aim to provide a complete authentication and Access Control Solution.
 
 ## Self-Assessment Use
 
@@ -169,33 +169,39 @@ This self-assessment is created by the OpenFGA team to perform an internal analy
 
 This document serves to provide OpenFGA users with an initial understanding of OpenFGA's security, where to find existing security documentation, OpenFGA plans for security, and general overview of OpenFGA security practices, both for development of OpenFGA as well as security of OpenFGA.
 
-This document provides OpenFGA maintainers and stakeholders with additional context to help inform the roadmap creation process, so that security and feature improvements can be prioritized accordingly.
+This document provides the CNCF TAG-Security with an initial understanding of OpenFGA to assist in a joint-assessment, necessary for projects under incubation. Taken together, this document and the joint-assessment serve as a cornerstone for if and when OpenFGA seeks graduation and is preparing for a security audit.
 
 ## Security Functions and Features
 
 See [Actors](#actors) and [Actions](#actions) for more detailed description of the critical actors, actions, and potential threats.
 
-### Critical
-
-TBD
-
 ### Security Relevant
 
-TBD
+Applications track and point to specific versions of authorization models.
 
 ## Project Compliance
 
-When using OpenFGA you need to store relationship tuples like `{user: user: alice, relation: can_view, object: document:readme }`. We recommend users to not to store  Personal Identifiable Information like email addresses in any of the relationship tuples. This will make it simpler to comply with GDPR and other privacy regulations.
+When utilizing OpenFGA, it's required to store relationship tuples like `{user: user: alice, relation: can_view, object: document:readme }`. We strongly advise users against storing Personal Identifiable Information (PII) such as email addresses in any of the relationship tuples. 
+
+This precaution is recommended to ensure compliance with GDPR and other privacy regulations.
+
+By refraining from including PII in relationship tuples, users can simplify their compliance efforts and mitigate potential privacy risks. This practice aligns with data protection principles and safeguards user privacy, contributing to a more secure and regulatory-compliant implementation of OpenFGA.
 
 ## Secure Development Practices
 
-The OpenFGA project follows established CNCF and OSS best practices for code development and delivery. OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374), has an [OpenSSF scorecard of](https://api.securityscorecards.dev/projects/github.com/openfga/openfga) 9 and a [CLO Monitor score of 99%](https://clomonitor.io/projects/openfga).
+The OpenFGA project include the test cases as per the CNCF standard. It passes the [OpenSSF](https://bestpractices.coreinfrastructure.org/projects/6374) Best Practices. SonarScan tells that the OpenFGA's code coverage is around 83% with A+ Go rating.
 
-OpenFGA's code coverage is 83%, and it has a [A+ Go rating](https://goreportcard.com/report/github.com/openfga/openfga).
+The OpenFGA project follows established CNCF and OSS best practices for code development and delivery. OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374), has an [OpenSSF scorecard of](https://api.securityscorecards.dev/projects/github.com/openfga/openfga) 9.1 and a [CLO Monitor score of 100%](https://clomonitor.io/projects/openfga).
+
+CodeCov [reports a code coverage of 82.10%](https://app.codecov.io/gh/openfga/openfga, and it has a [A+ Go rating](https://goreportcard.com/report/github.com/openfga/openfga).
 
 ### Ecosystem
 
 OpenFGA uses [Chainguard images](https://www.chainguard.dev/chainguard-images), it supports [OpenTelemetry](https://github.com/open-telemetry), and can be monitored with tools like [Grafana](https://grafana.com/), [Prometheus](https://prometheus.io/) and [Jaeger](https://www.jaegertracing.io/). 
+
+To monitor the logs and enabling the tracing mechanisms, OpenFGA can be integrated with [Jaeger](https://www.jaegertracing.io/). Jaeger adds the tracing headers to the logs, making easy to track the request flow. 
+
+It supports [OpenTelemetry](https://github.com/open-telemetry), and can be monitored with tools like [Grafana](https://grafana.com/), [Prometheus](https://prometheus.io/), and [Dynatrace](https://www.dynatrace.com/) which it delivers analytics and automation for unified observability and security.
 
 It provides [Helm Charts](https://github.com/openfga/helm-charts) that are available in [Artifact Hub](https://artifacthub.io/packages/helm/openfga/openfga).
 
@@ -215,7 +221,7 @@ Team and users members communicate with each other through the [OpenFGA Discord]
 
 #### Security Email Group
 
-To report a security problem in OpenFGA, users should contact the Maintainers Team at security@openfga.dev. The security email group is also listed in the security document in [our repository](https://github.com/openfga/.github/blob/main/SECURITY.md).
+Any kind of security related issues, vulnerabilities can be reported to OpenFGA team at security@openfga.dev. This email is given in [OpenFGA repository](https://github.com/openfga/.github/blob/main/SECURITY.md)
 
 ## Security Issue Resolution
 ### Responsible Disclosure Process
@@ -228,13 +234,11 @@ The OpenFGA maintainers are responsible for responding within 5 working days. It
 
 See [OpenFGA Security Doc](https://github.com/openfga/.github/blob/main/SECURITY.md) for a description for how incidents should be communicated. 
 
-OpenFGA maintainers are responsible for tracking any vulnerabilities reported. 
+The OpenFGA maintainers bear the responsibility of monitoring and addressing reported vulnerabilities. Identified issues undergo prioritized triage, with immediate escalation upon confirmation. The triage process is conducted in private channels.
 
-Issues are triaged with high priority, and are escalated if confirmed. Issues are triaged in private channels. 
+Adhering to the GitHub security advisory process, OpenFGA initiates the CVE (Common Vulnerabilities and Exposures) request upon issue identification. The resolution is developed in a private branch associated with the CVE.
 
-OpenFGA follows the Github security advisory process. When an issue is identified, a CVE is requested, and the fix is worked out in a private branch linked to the CVE.
-
-Once the fix is confirmed, it will be released in a new patch release for each OpenFGA major supported version.
+Upon confirmation of the fix's effectiveness, it is released through a new patch for each major supported version of OpenFGA.
 
 The changelog will link to the CVE, which will describe the vulnerability and its mitigation. Any public announcements sent for these fixes will be linked to [the release notes](https://github.com/openfga/openfga/releases/tag/v1.3.2).
 
@@ -244,26 +248,24 @@ The changelog will link to the CVE, which will describe the vulnerability and it
 
 All OpenFGA security issues can be found on the [Github advisories page](https://github.com/openfga/openfga/security/advisories).
 
-Given OpenFGA makes authorization decisions, bugs in OpenFGA can cause security issues for OpenFGA's adopters. Each product bug where OpenFGA returns a positive authorization result when it should not is treated as a security vulnerability.
+OpenFGA occasionally responded incorrectly to authorization queries, which is a security vulnerability. This is usually due to problems in the way relationships are defined in the relationship tuples. Known issues have been fixed.
 
-OpenFGA [passes OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/6374). 
+There have also been issues in responsiveness when a certain number of ListObjects are executed. This has also been fixed with updates.
 
 ### Case Studies. 
 
-- [Okta Fine Grained Authorization](https://fga.dev) is a SaaS product built on top of OpenFGA. It provisions and operates a set of OpenFGA nodes for their customers in a multi-tenant environment.
+The list of projects that utilize OpenFGA include Okta FGA, Twintag, Mapped, Procure Ai,Canonical (Juju & LFX), Wolt, Italarchivi, Read AI, Virtool, Configu, Fianu Labs, and ExcID.
 
-- Canonical uses OpenFGA as an authorization component for Juju and for LFX. Some relevant links discussing it:
-
-  - [Commercial Systems OpenFGA](https://github.com/canonical/cs-openfga)
-  - [OpenFGA Charm Relation Interfaces](https://github.com/canonical/charm-relation-interfaces/blob/main/interfaces/openfga/v0/README.md)
-  - [OpenFGA Authorization Driver for LXD](https://discourse.ubuntu.com/t/openfga-authorization-driver/38979)
-
-- [Read.AI](https://www.read.ai/) uses OpenFGA to implement authorization for their products. One of their features it to record/analyze meetings. They use OpenFGA to control the different actions different users can perform on recorded meetings.
-
-The list of companies that publicly acknowledged using OpenFGA can be found [here](https://github.com/openfga/community/blob/main/ADOPTERS.md).
+An up to date list of companies that publicly acknowledged using OpenFGA can be found [here](https://github.com/openfga/community/blob/main/ADOPTERS.md).
 
 ### Related Projects/Vendors
 
-[OPA](https://github.com/open-policy-agent) is a CNCF project that can be used to externalize authorization. It uses [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) as its policy language. The main difference with OpenFGA is that OpenFGA stores the data it needs to use to make authorization decisions as relationship tuples. OPA needs to be provided with that data when invoking the policies, or needs to query the data when evaluating the policy.
+[OPA (Open Policy Agent)](https://github.com/open-policy-agent):
+ - Part of CNCF projects for externalizing authorization.
+ - Uses Rego as its policy language.
+ - Differs from OpenFGA by storing required data as relationship tuples.
+ - Requires data provision during policy invocation or querying during evaluation.
 
-[Kyverno](https://github.com/kyverno) is a CNCF project designed to implement security policies for Kubernetes deployments. 
+ [Kyverno](https://github.com/kyverno):
+
+ - CNCF project focusing on implementing security policies for Kubernetes deployments.
