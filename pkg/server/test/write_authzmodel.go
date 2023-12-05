@@ -44,10 +44,11 @@ func WriteAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastor
 	}
 
 	var tests = []struct {
-		name          string
-		request       *openfgav1.WriteAuthorizationModelRequest
-		allowSchema10 bool
-		errCode       codes.Code
+		name             string
+		request          *openfgav1.WriteAuthorizationModelRequest
+		allowSchema10    bool
+		enableConditions bool
+		errCode          codes.Code
 	}{
 		{
 			name: "fails_if_too_many_types",
@@ -467,7 +468,74 @@ type other
 
 		// conditions
 		{
-			name: "condition_valid",
+			name:             "do_not_allow_conditions_if_bool_is_false_and_conditions_received",
+			enableConditions: false,
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.DirectRelationReference("user", ""),
+									},
+								},
+							},
+						},
+					},
+				},
+				Conditions: map[string]*openfgav1.Condition{
+					"condition1": {
+						Name:       "condition1",
+						Expression: "param1 == 'ok'",
+						Parameters: nil,
+					},
+				},
+			},
+			errCode: codes.InvalidArgument,
+		},
+		{
+			name:             "do_not_allow_conditions_if_bool_is_false_and_relation_references_condition",
+			enableConditions: false,
+			request: &openfgav1.WriteAuthorizationModelRequest{
+				StoreId: storeID,
+				TypeDefinitions: []*openfgav1.TypeDefinition{
+					{
+						Type: "user",
+					},
+					{
+						Type: "document",
+						Relations: map[string]*openfgav1.Userset{
+							"viewer": typesystem.This(),
+						},
+						Metadata: &openfgav1.Metadata{
+							Relations: map[string]*openfgav1.RelationMetadata{
+								"viewer": {
+									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+										typesystem.ConditionedRelationReference(
+											typesystem.WildcardRelationReference("user"),
+											"condition1",
+										),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			errCode: codes.InvalidArgument,
+		},
+		{
+			name:             "condition_valid",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -507,7 +575,8 @@ type other
 			},
 		},
 		{
-			name: "condition_fails_undefined",
+			name:             "condition_fails_undefined",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -548,7 +617,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_syntax_error",
+			name:             "condition_fails_syntax_error",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -589,7 +659,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_invalid_parameter_type",
+			name:             "condition_fails_invalid_parameter_type",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -630,7 +701,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_invalid_output_type",
+			name:             "condition_fails_invalid_output_type",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -671,7 +743,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_key_condition_name_mismatch",
+			name:             "condition_fails_key_condition_name_mismatch",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -721,7 +794,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_missing_parameters",
+			name:             "condition_fails_missing_parameters",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -758,7 +832,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_missing_parameter",
+			name:             "condition_fails_missing_parameter",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -798,10 +873,9 @@ type other
 			},
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
-
-		// conditions
 		{
-			name: "condition_fails_undefined",
+			name:             "condition_fails_undefined",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -842,7 +916,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_syntax_error",
+			name:             "condition_fails_syntax_error",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -883,7 +958,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_invalid_parameter_type",
+			name:             "condition_fails_invalid_parameter_type",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -924,7 +1000,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_invalid_output_type",
+			name:             "condition_fails_invalid_output_type",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -965,7 +1042,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_key_condition_name_mismatch",
+			name:             "condition_fails_key_condition_name_mismatch",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -1015,7 +1093,8 @@ type other
 			errCode: codes.Code(openfgav1.ErrorCode_invalid_authorization_model),
 		},
 		{
-			name: "condition_fails_missing_parameter",
+			name:             "condition_fails_missing_parameter",
+			enableConditions: true,
 			request: &openfgav1.WriteAuthorizationModelRequest{
 				StoreId: storeID,
 				TypeDefinitions: []*openfgav1.TypeDefinition{
@@ -1056,7 +1135,8 @@ type other
 	ctx := context.Background()
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cmd := commands.NewWriteAuthorizationModelCommand(datastore)
+			cmd := commands.NewWriteAuthorizationModelCommand(datastore,
+				commands.WithWriteAuthModelEnableConditions(test.enableConditions))
 			resp, err := cmd.Execute(ctx, test.request)
 			status, ok := status.FromError(err)
 			require.True(t, ok)
