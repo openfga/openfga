@@ -167,7 +167,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
-	var conditionName *string
+	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := t.rows.Scan(
@@ -185,8 +185,8 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, err
 	}
 
-	if conditionName != nil {
-		record.ConditionName = *conditionName
+	if conditionName.Valid {
+		record.ConditionName = conditionName.String
 	}
 
 	if conditionContext != nil {

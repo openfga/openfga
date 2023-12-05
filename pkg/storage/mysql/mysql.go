@@ -206,7 +206,7 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 	objectType, objectID := tupleUtils.SplitObject(tupleKey.GetObject())
 	userType := tupleUtils.GetUserTypeFromUser(tupleKey.GetUser())
 
-	var conditionName *string
+	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := m.stbl.
@@ -236,8 +236,8 @@ func (m *MySQL) ReadUserTuple(ctx context.Context, store string, tupleKey *openf
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if conditionName != nil {
-		record.ConditionName = *conditionName
+	if conditionName.Valid {
+		record.ConditionName = conditionName.String
 	}
 
 	if conditionContext != nil {
