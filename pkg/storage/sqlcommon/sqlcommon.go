@@ -167,6 +167,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, storage.ErrIteratorDone
 	}
 
+	var conditionName sql.NullString
 	var conditionContext []byte
 	var record storage.TupleRecord
 	err := t.rows.Scan(
@@ -175,7 +176,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		&record.ObjectID,
 		&record.Relation,
 		&record.User,
-		&record.ConditionName,
+		&conditionName,
 		&conditionContext,
 		&record.Ulid,
 		&record.InsertedAt,
@@ -183,6 +184,8 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	record.ConditionName = conditionName.String
 
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
@@ -355,7 +358,10 @@ func Write(
 
 	insertBuilder := dbInfo.stbl.
 		Insert("tuple").
-		Columns("store", "object_type", "object_id", "relation", "_user", "user_type", "condition_name", "condition_context", "ulid", "inserted_at")
+		Columns(
+			"store", "object_type", "object_id", "relation", "_user", "user_type",
+			"condition_name", "condition_context", "ulid", "inserted_at",
+		)
 
 	for _, tk := range writes {
 		id := ulid.MustNew(ulid.Timestamp(now), ulid.DefaultEntropy()).String()
