@@ -46,7 +46,7 @@ func WithConditionContextByteLimit(limit int) WriteCommandOption {
 	}
 }
 
-// NewWriteCommand creates a WriteCommand with specified storage.TupleBackend to use for storage.
+// NewWriteCommand creates a WriteCommand with specified storage.OpenFGADatastore to use for storage.
 func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOption) *WriteCommand {
 	cmd := &WriteCommand{
 		datastore:                 datastore,

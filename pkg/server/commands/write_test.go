@@ -490,7 +490,12 @@ func TestValidateConditionsInTuples(t *testing.T) {
 				},
 			})
 
-			require.ErrorIs(t, err, test.expectedError)
+			if test.expectedError != nil {
+				require.ErrorIs(t, err, test.expectedError)
+				require.ErrorContains(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
 		})
 	}
 }
