@@ -222,6 +222,10 @@ func MustDefaultConfigWithRandomPorts() *serverconfig.Config {
 	config.Playground.Enabled = false
 	config.Metrics.Enabled = false
 
+	// Add the `enable-conditions` experimental flag to allow explicit control
+	// of tests around the behavior introduced when the flag is set or unset.
+	config.Experimentals = []string{string(server.ExperimentalEnableConditions)}
+
 	httpPort, httpPortReleaser := TCPRandomPort()
 	defer httpPortReleaser()
 	grpcPort, grpcPortReleaser := TCPRandomPort()

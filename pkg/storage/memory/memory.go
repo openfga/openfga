@@ -16,6 +16,7 @@ import (
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -297,14 +298,23 @@ func (s *MemoryBackend) Write(ctx context.Context, store string, deletes storage
 
 	var records []*storage.TupleRecord
 Delete:
-	for _, t := range s.tuples[store] {
+	for _, tr := range s.tuples[store] {
+		t := tr.AsTuple()
+		tk := t.GetKey()
 		for _, k := range deletes {
-			if match(t, k) {
-				s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t.AsTuple().Key, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE, Timestamp: now})
+			if match(tr, tupleUtils.TupleKeyWithoutConditionToTupleKey(k)) {
+				s.changes[store] = append(
+					s.changes[store],
+					&openfgav1.TupleChange{
+						TupleKey:  tupleUtils.NewTupleKey(tk.GetObject(), tk.GetRelation(), tk.GetUser()), // redact the condition info
+						Operation: openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+						Timestamp: now,
+					},
+				)
 				continue Delete
 			}
 		}
-		records = append(records, t)
+		records = append(records, tr)
 	}
 
 Write:
@@ -315,27 +325,52 @@ Write:
 			}
 		}
 
+		var conditionName string
+		var conditionContext *structpb.Struct
+		if condition := t.GetCondition(); condition != nil {
+			conditionName = condition.Name
+			conditionContext = condition.Context
+		}
+
 		objectType, objectID := tupleUtils.SplitObject(t.Object)
 
 		records = append(records, &storage.TupleRecord{
-			Store:      store,
-			ObjectType: objectType,
-			ObjectID:   objectID,
-			Relation:   t.Relation,
-			User:       t.User,
-			Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-			InsertedAt: now.AsTime(),
+			Store:            store,
+			ObjectType:       objectType,
+			ObjectID:         objectID,
+			Relation:         t.Relation,
+			User:             t.User,
+			ConditionName:    conditionName,
+			ConditionContext: conditionContext,
+			Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+			InsertedAt:       now.AsTime(),
 		})
 
-		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{TupleKey: t, Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE, Timestamp: now})
+		tk := tupleUtils.NewTupleKeyWithCondition(
+			tupleUtils.BuildObject(objectType, objectID),
+			t.Relation,
+			t.User,
+			conditionName,
+			conditionContext,
+		)
+
+		s.changes[store] = append(s.changes[store], &openfgav1.TupleChange{
+			TupleKey:  tk,
+			Operation: openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+			Timestamp: now,
+		})
 	}
 	s.tuples[store] = records
 	return nil
 }
 
-func validateTuples(records []*storage.TupleRecord, deletes, writes []*openfgav1.TupleKey) error {
+func validateTuples(
+	records []*storage.TupleRecord,
+	deletes []*openfgav1.TupleKeyWithoutCondition,
+	writes []*openfgav1.TupleKey,
+) error {
 	for _, tk := range deletes {
-		if !find(records, tk) {
+		if !find(records, tupleUtils.TupleKeyWithoutConditionToTupleKey(tk)) {
 			return storage.InvalidWriteInputError(tk, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE)
 		}
 	}

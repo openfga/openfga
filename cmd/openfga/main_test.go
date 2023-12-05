@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -18,6 +17,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -221,24 +221,25 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 	}{
 		{
 			name: "issue_1058",
-			typeDefinitions: parser.MustParse(`
-			type fga_user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type fga_user
 
-			type timeslot
-			  relations
-				define user: [fga_user] as self
+type timeslot
+  relations
+	define user: [fga_user]
 
-			type commerce_store
-			  relations
-				define approved_hourly_access as user from approved_timeslot and hourly_employee
-				define approved_timeslot: [timeslot] as self
-				define hourly_employee: [fga_user] as self
-			`),
+type commerce_store
+  relations
+	define approved_hourly_access: user from approved_timeslot and hourly_employee
+	define approved_timeslot: [timeslot]
+	define hourly_employee: [fga_user]
+`).TypeDefinitions,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("commerce_store:0", "hourly_employee", "fga_user:anne"),
-				tuple.NewTupleKey("commerce_store:1", "hourly_employee", "fga_user:anne"),
-				tuple.NewTupleKey("commerce_store:0", "approved_timeslot", "timeslot:11_12"),
-				tuple.NewTupleKey("commerce_store:1", "approved_timeslot", "timeslot:12_13"),
+				{Object: "commerce_store:0", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:1", Relation: "hourly_employee", User: "fga_user:anne"},
+				{Object: "commerce_store:0", Relation: "approved_timeslot", User: "timeslot:11_12"},
+				{Object: "commerce_store:1", Relation: "approved_timeslot", User: "timeslot:12_13"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -266,16 +267,17 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cache_computed_userset_subproblem_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define restricted: [user] as self
-			    define viewer: [user] as self but not restricted
-			`),
+type document
+  relations
+	define restricted: [user]
+	define viewer: [user] but not restricted
+`).TypeDefinitions,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -294,13 +296,14 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cached_direct_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [user] as self
-			`),
+type document
+  relations
+	define viewer: [user]
+`).TypeDefinitions,
 			assertions: []checktest.Assertion{
 				{
 					Tuple:            tuple.NewTupleKey("document:1", "viewer", "user:jon"),
@@ -318,21 +321,22 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 		},
 		{
 			name: "cached_direct_userset_relationship_with_contextual_tuple",
-			typeDefinitions: parser.MustParse(`
-			type user
-			
-			type group
-			  relations
-			    define restricted: [user] as self
-			    define member: [user] as self but not restricted
+			typeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-			type document
-			  relations
-			    define viewer: [group#member] as self
-			`),
+type group
+  relations
+	define restricted: [user]
+	define member: [user] but not restricted
+
+type document
+  relations
+	define viewer: [group#member]
+`).TypeDefinitions,
 			tuples: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-				tuple.NewTupleKey("group:eng", "member", "user:jon"),
+				{Object: "document:1", Relation: "viewer", User: "group:eng#member"},
+				{Object: "group:eng", Relation: "member", User: "user:jon"},
 			},
 			assertions: []checktest.Assertion{
 				{
@@ -377,7 +381,7 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes: &openfgav1.TupleKeys{
+					Writes: &openfgav1.WriteRequestWrites{
 						TupleKeys: test.tuples,
 					},
 				})
@@ -385,10 +389,19 @@ func TestCheckWithQueryCacheEnabled(t *testing.T) {
 			}
 
 			for _, assertion := range test.assertions {
+				var tk *openfgav1.CheckRequestTupleKey
+				if assertion.Tuple != nil {
+					tk = tuple.NewCheckRequestTupleKey(
+						assertion.Tuple.GetObject(),
+						assertion.Tuple.GetRelation(),
+						assertion.Tuple.GetUser(),
+					)
+				}
+
 				checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					TupleKey:             assertion.Tuple,
+					TupleKey:             tk,
 					ContextualTuples: &openfgav1.ContextualTupleKeys{
 						TupleKeys: assertion.ContextualTuples,
 					},
@@ -714,7 +727,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              "1",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -725,7 +738,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String() + "A",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -736,7 +749,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              "ABCDEFGHIJKLMNOPQRSTUVWXY@",
 				AuthorizationModelId: ulid.Make().String(),
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -747,7 +760,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: ulid.Make().String() + "A",
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -758,7 +771,7 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 			input: &openfgav1.CheckRequest{
 				StoreId:              ulid.Make().String(),
 				AuthorizationModelId: "ABCDEFGHIJKLMNOPQRSTUVWXY@",
-				TupleKey:             tuple.NewTupleKey("document:doc1", "viewer", "bob"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:doc1", "viewer", "bob"),
 			},
 			output: output{
 				errorCode: codes.InvalidArgument,
@@ -797,7 +810,9 @@ func GRPCCheckTest(t *testing.T, tester OpenFGATester) {
 				_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 					StoreId:              storeID,
 					AuthorizationModelId: modelID,
-					Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+					Writes: &openfgav1.WriteRequestWrites{
+						TupleKeys: test.testData.tuples,
+					},
 				})
 				require.NoError(t, err)
 			}
@@ -846,13 +861,13 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 				errorCode: codes.Code(openfgav1.ErrorCode_authorization_model_not_found),
 			},
 			testData: &testData{
-				model: `
-				type user
+				model: `model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define viewer: [user] as self
-				`,
+type document
+  relations
+	define viewer: [user]`,
 			},
 		},
 		{
@@ -870,17 +885,17 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 			},
 			testData: &testData{
 				tuples: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-					tuple.NewTupleKey("document:1", "allowed", "user:jon"),
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
+					{Object: "document:1", Relation: "allowed", User: "user:jon"},
 				},
-				model: `
-				type user
+				model: `model
+	schema 1.1
+type user
 
-				type document
-				  relations
-				    define allowed: [user] as self
-				    define viewer: [user] as self and allowed
-				`,
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`,
 			},
 		},
 	}
@@ -892,7 +907,7 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			typedefs := parser.MustParse(test.testData.model)
+			typedefs := parser.MustTransformDSLToProto(test.testData.model).TypeDefinitions
 
 			storeID := test.input.StoreId
 
@@ -910,7 +925,9 @@ func GRPCListObjectsTest(t *testing.T, tester OpenFGATester) {
 					_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 						StoreId:              storeID,
 						AuthorizationModelId: modelID,
-						Writes:               &openfgav1.TupleKeys{TupleKeys: test.testData.tuples},
+						Writes: &openfgav1.WriteRequestWrites{
+							TupleKeys: test.testData.tuples,
+						},
 					})
 					require.NoError(t, err)
 				}
@@ -995,9 +1012,9 @@ func TestCheckWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
+			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
 				},
 			},
 		})
@@ -1031,7 +1048,7 @@ func TestCheckWorkflows(t *testing.T) {
 
 		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
 		})
 		require.NoError(t, err)
 		require.False(t, resp.Allowed)
@@ -1119,10 +1136,10 @@ func TestExpandWorkflows(t *testing.T) {
 
 		_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 			StoreId: storeID,
-			Writes: &openfgav1.TupleKeys{
+			Writes: &openfgav1.WriteRequestWrites{
 				TupleKeys: []*openfgav1.TupleKey{
-					tuple.NewTupleKey("document:1", "viewer", "user:*"),
-					tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+					{Object: "document:1", Relation: "viewer", User: "user:*"},
+					{Object: "document:1", Relation: "viewer", User: "user:jon"},
 				},
 			},
 		})
@@ -1130,7 +1147,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err := client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -1181,7 +1198,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -1230,7 +1247,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 
@@ -1282,7 +1299,7 @@ func TestExpandWorkflows(t *testing.T) {
 
 		expandResp, err = client.Expand(context.Background(), &openfgav1.ExpandRequest{
 			StoreId:  storeID,
-			TupleKey: tuple.NewTupleKey("document:1", "viewer", ""),
+			TupleKey: tuple.NewExpandRequestTupleKey("document:1", "viewer"),
 		})
 		require.NoError(t, err)
 

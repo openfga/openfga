@@ -9,8 +9,9 @@ import (
 	"net/http"
 	"testing"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/cmd/run"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -23,6 +24,7 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tuples = []*openfgav1.TupleKey{
@@ -79,13 +81,13 @@ func TestCheckObservability(t *testing.T) {
 
 	storeID := createStoreResp.GetId()
 
-	typedefs := parser.MustParse(`
-	type user
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
 
-	type document
-	  relations
-	    define viewer: [user] as self
-	`)
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions
 
 	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
@@ -98,9 +100,9 @@ func TestCheckObservability(t *testing.T) {
 
 	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: &openfgav1.TupleKeys{
+		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+				{Object: "document:1", Relation: "viewer", User: "user:anne"},
 			},
 		},
 	})
@@ -119,14 +121,14 @@ func TestCheckObservability(t *testing.T) {
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
-				TupleKey:             tuple.NewTupleKey("document:1", "viewer", "user:anne"),
+				TupleKey:             tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:anne"),
 			},
 			expectedContext: map[string]interface{}{
 				"grpc_service":           "openfga.v1.OpenFGAService",
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -148,7 +150,7 @@ func TestCheckObservability(t *testing.T) {
 				"grpc_method":            "Check",
 				"grpc_type":              "unary",
 				"grpc_code":              int32(0),
-				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false}`, storeID, authorizationModelID),
+				"raw_request":            fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"document:1","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
 				"raw_response":           `{"allowed":true,"resolution":""}`,
 				"authorization_model_id": authorizationModelID,
 				"store_id":               storeID,
@@ -195,7 +197,6 @@ func TestCheckObservability(t *testing.T) {
 			require.Len(t, expectedLogs, 1)
 
 			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
-
 			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
 			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
 			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
@@ -262,29 +263,31 @@ func benchmarkAll(b *testing.B, engine string) {
 	b.Run("BenchmarkCheckWithDirectResolution", func(b *testing.B) { benchmarkCheckWithDirectResolution(b, engine) })
 	b.Run("BenchmarkCheckWithBypassDirectRead", func(b *testing.B) { benchmarkCheckWithBypassDirectRead(b, engine) })
 	b.Run("BenchmarkCheckWithBypassUsersetRead", func(b *testing.B) { benchmarkCheckWithBypassUsersetRead(b, engine) })
+	b.Run("BenchmarkCheckWithOneCondition", func(b *testing.B) { benchmarkCheckWithOneCondition(b, engine) })
+	b.Run("BenchmarkCheckWithOneConditionWithManyParameters", func(b *testing.B) { benchmarkCheckWithOneConditionWithManyParameters(b, engine) })
 }
 
-const githubModel = `
+const githubModel = `model
+  schema 1.1
 type user
 type team
   relations
-    define member: [user,team#member] as self
+    define member: [user,team#member]
 type repo
   relations
-    define admin: [user,team#member] as self or repo_admin from owner
-    define maintainer: [user,team#member] as self or admin
-    define owner: [organization] as self
-    define reader: [user,team#member] as self or triager or repo_reader from owner
-    define triager: [user,team#member] as self or writer
-    define writer: [user,team#member] as self or maintainer or repo_writer from owner
+    define admin: [user,team#member] or repo_admin from owner
+    define maintainer: [user,team#member] or admin
+    define owner: [organization]
+    define reader: [user,team#member] or triager or repo_reader from owner
+    define triager: [user,team#member] or writer
+    define writer: [user,team#member] or maintainer or repo_writer from owner
 type organization
   relations
-    define member: [user] as self or owner
-    define owner: [user] as self
-    define repo_admin: [user,organization#member] as self
-    define repo_reader: [user,organization#member] as self
-    define repo_writer: [user,organization#member] as self
-`
+    define member: [user] or owner
+    define owner: [user]
+    define repo_admin: [user,organization#member]
+    define repo_reader: [user,organization#member]
+    define repo_writer: [user,organization#member]`
 
 func setupBenchmarkTest(b *testing.B, engine string) (context.CancelFunc, *grpc.ClientConn, openfgav1.OpenFGAServiceClient) {
 	cfg := run.MustDefaultConfigWithRandomPorts()
@@ -316,13 +319,15 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes:               &openfgav1.TupleKeys{TupleKeys: tuples},
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tuples,
+		},
 	})
 	require.NoError(b, err)
 
@@ -332,7 +337,7 @@ func benchmarkCheckWithoutTrace(b *testing.B, engine string) {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			TupleKey:             tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 		})
 
 		require.NoError(b, err)
@@ -352,13 +357,15 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes:               &openfgav1.TupleKeys{TupleKeys: tuples},
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: tuples,
+		},
 	})
 	require.NoError(b, err)
 
@@ -368,7 +375,7 @@ func benchmarkCheckWithTrace(b *testing.B, engine string) {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			TupleKey:             tuple.NewTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "reader", "user:github|iaco@openfga"),
 			Trace:                true,
 		})
 
@@ -389,7 +396,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -398,9 +405,11 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey(fmt.Sprintf("team:%d", i), "member", "user:anne"),
-			}},
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: fmt.Sprintf("team:%d", i), Relation: "member", User: "user:anne"},
+				},
+			},
 		})
 		require.NoError(b, err)
 	}
@@ -409,9 +418,11 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-			tuple.NewTupleKey("repo:openfga", "admin", "team:999#member"),
-		}},
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "repo:openfga", Relation: "admin", User: "team:999#member"},
+			},
+		},
 	})
 	require.NoError(b, err)
 
@@ -419,9 +430,11 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-			tuple.NewTupleKey("repo:openfga", "admin", "user:anne"),
-		}},
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "repo:openfga", Relation: "admin", User: "user:anne"},
+			},
+		},
 	})
 	require.NoError(b, err)
 
@@ -431,7 +444,7 @@ func benchmarkCheckWithDirectResolution(b *testing.B, engine string) {
 		_, err = client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			TupleKey:             tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:anne"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "admin", "user:anne"),
 		})
 
 		require.NoError(b, err)
@@ -451,7 +464,7 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:         storeID,
 		SchemaVersion:   typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(githubModel),
+		TypeDefinitions: parser.MustTransformDSLToProto(githubModel).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -462,7 +475,7 @@ func benchmarkCheckWithBypassDirectRead(b *testing.B, engine string) {
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
 			// users can't be direct owners of repos
-			TupleKey: tuple.NewTupleKey("repo:openfga/openfga", "owner", "user:anne"),
+			TupleKey: tuple.NewCheckRequestTupleKey("repo:openfga/openfga", "owner", "user:anne"),
 		})
 
 		require.False(b, check.Allowed)
@@ -484,13 +497,15 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err := client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`type user
-          type group
-            relations
-              define member: [user] as self
-          type document
-            relations
-              define viewer: [user:*, group#member] as self`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type group
+  relations
+    define member: [user]
+type document
+  relations
+    define viewer: [user:*, group#member]`).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -499,9 +514,11 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 		_, err = client.Write(ctx, &openfgav1.WriteRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey(fmt.Sprintf("group:%d", i), "member", "user:anne"),
-			}},
+			Writes: &openfgav1.WriteRequestWrites{
+				TupleKeys: []*openfgav1.TupleKey{
+					{Object: fmt.Sprintf("group:%d", i), Relation: "member", User: "user:anne"},
+				},
+			},
 		})
 		require.NoError(b, err)
 	}
@@ -510,9 +527,11 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
 		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-		Writes: &openfgav1.TupleKeys{TupleKeys: []*openfgav1.TupleKey{
-			tuple.NewTupleKey("document:budget", "viewer", "group:999#member"),
-		}},
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				{Object: "document:budget", Relation: "viewer", User: "group:999#member"},
+			},
+		},
 	})
 	require.NoError(b, err)
 
@@ -520,14 +539,16 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 	writeAuthModelResponse, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId:       storeID,
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`type user
-          type user2
-          type group
-            relations
-              define member: [user2] as self
-          type document
-            relations
-              define viewer: [user:*, group#member] as self`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type user2
+type group
+  relations
+    define member: [user2]
+type document
+  relations
+    define viewer: [user:*, group#member]`).TypeDefinitions,
 	})
 	require.NoError(b, err)
 
@@ -539,10 +560,121 @@ func benchmarkCheckWithBypassUsersetRead(b *testing.B, engine string) {
 		check, err := client.Check(ctx, &openfgav1.CheckRequest{
 			StoreId:              storeID,
 			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
-			TupleKey:             tuple.NewTupleKey("document:budget", "viewer", "user:anne"),
+			TupleKey:             tuple.NewCheckRequestTupleKey("document:budget", "viewer", "user:anne"),
 		})
 
 		require.False(b, check.Allowed)
 		require.NoError(b, err)
+	}
+}
+
+func benchmarkCheckWithOneCondition(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	storeID := ulid.Make().String()
+	model := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type doc
+  relations
+    define viewer: [user with password]
+condition password(p: string) {
+  p == "secret"
+}`)
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "password", nil),
+			},
+		},
+	})
+	require.NoError(b, err)
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"p": "secret",
+	})
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
+			Context:              contextStruct,
+		})
+		require.NoError(b, err)
+		require.True(b, resp.Allowed)
+	}
+}
+
+func benchmarkCheckWithOneConditionWithManyParameters(b *testing.B, engine string) {
+	cancel, conn, client := setupBenchmarkTest(b, engine)
+	defer cancel()
+	defer conn.Close()
+
+	storeID := ulid.Make().String()
+	model := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+type doc
+  relations
+    define viewer: [user with complex]
+condition complex(b: bool, s:string, i: int, u: uint, d: double, du: duration, t:timestamp, ip:ipaddress) {
+  b == true && s == "s" && i == 1 && u == uint(1) && d == 0.1 && du == duration("1h") && t == timestamp("1972-01-01T10:00:20.021Z") && ip == ipaddress("127.0.0.1")
+}`)
+	writeAuthModelResponse, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   model.GetSchemaVersion(),
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+	})
+	require.NoError(b, err)
+	_, err = client.Write(context.Background(), &openfgav1.WriteRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+		Writes: &openfgav1.WriteRequestWrites{
+			TupleKeys: []*openfgav1.TupleKey{
+				tuple.NewTupleKeyWithCondition("doc:x", "viewer", "user:maria", "complex", nil),
+			},
+		},
+	})
+	require.NoError(b, err)
+
+	contextStruct, err := structpb.NewStruct(map[string]interface{}{
+		"b":  true,
+		"s":  "s",
+		"i":  1,
+		"u":  1,
+		"d":  0.1,
+		"du": "1h",
+		"t":  "1972-01-01T10:00:20.021Z",
+		"ip": "127.0.0.1",
+	})
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		resp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+			StoreId:              storeID,
+			AuthorizationModelId: writeAuthModelResponse.AuthorizationModelId,
+			TupleKey:             tuple.NewCheckRequestTupleKey("doc:x", "viewer", "user:maria"),
+			Context:              contextStruct,
+		})
+		require.NoError(b, err)
+		require.True(b, resp.Allowed)
 	}
 }

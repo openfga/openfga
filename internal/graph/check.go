@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
@@ -17,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/exp/maps"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 var tracer = otel.Tracer("internal/graph/check")
@@ -30,6 +34,7 @@ type ResolveCheckRequest struct {
 	AuthorizationModelID string
 	TupleKey             *openfgav1.TupleKey
 	ContextualTuples     []*openfgav1.TupleKey
+	Context              *structpb.Struct
 	ResolutionMetadata   *ResolutionMetadata
 	VisitedPaths         map[string]struct{}
 }
@@ -92,6 +97,13 @@ func (r *ResolveCheckRequest) GetResolutionMetadata() *ResolutionMetadata {
 		return r.ResolutionMetadata
 	}
 
+	return nil
+}
+
+func (r *ResolveCheckRequest) GetContext() *structpb.Struct {
+	if r != nil {
+		return r.Context
+	}
 	return nil
 }
 
@@ -458,8 +470,9 @@ func (c *LocalChecker) ResolveCheck(
 		panic("typesystem missing in context")
 	}
 
-	object := req.GetTupleKey().GetObject()
-	relation := req.GetTupleKey().GetRelation()
+	tupleKey := req.GetTupleKey()
+	object := tupleKey.GetObject()
+	relation := tupleKey.GetRelation()
 
 	objectType, _ := tuple.SplitObject(object)
 	rel, err := typesys.GetRelation(objectType, relation)
@@ -506,15 +519,15 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		storeID := req.GetStoreID()
-		tk := req.GetTupleKey()
-		objectType := tuple.GetType(tk.GetObject())
-		relation := tk.GetRelation()
+		reqTupleKey := req.GetTupleKey()
+		objectType := tuple.GetType(reqTupleKey.GetObject())
+		relation := reqTupleKey.GetRelation()
 
 		// directlyRelatedUsersetTypes could be "user:*" or "group#member"
 		directlyRelatedUsersetTypes, _ := typesys.DirectlyRelatedUsersets(objectType, relation)
 
 		fn1 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", tk.String())))
+			ctx, span := tracer.Start(ctx, "checkDirectUserTuple", trace.WithAttributes(attribute.String("tuple_key", reqTupleKey.String())))
 			defer span.End()
 
 			response := &ResolveCheckResponse{
@@ -524,7 +537,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				},
 			}
 
-			t, err := c.ds.ReadUserTuple(ctx, storeID, tk)
+			t, err := c.ds.ReadUserTuple(ctx, storeID, reqTupleKey)
 			if err != nil {
 				if errors.Is(err, storage.ErrNotFound) {
 					return response, nil
@@ -534,9 +547,26 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			// filter out invalid tuples yielded by the database query
-			err = validation.ValidateTuple(typesys, tk)
+			tupleKey := t.GetKey()
+			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
+				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext())
+				if err != nil {
+					return nil, err
+				}
+
+				if len(condEvalResult.MissingParameters) > 0 {
+					return nil, condition.NewEvaluationError(
+						tupleKey.GetCondition().GetName(),
+						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
+					)
+				}
+
+				if !condEvalResult.ConditionMet {
+					return response, nil
+				}
+
 				span.SetAttributes(attribute.Bool("allowed", true))
 				response.Allowed = true
 				return response, nil
@@ -545,7 +575,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 		}
 
 		fn2 := func(ctx context.Context) (*ResolveCheckResponse, error) {
-			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(tk.Object, tk.Relation))))
+			ctx, span := tracer.Start(ctx, "checkDirectUsersetTuples", trace.WithAttributes(attribute.String("userset", tuple.ToObjectRelationString(reqTupleKey.Object, reqTupleKey.Relation))))
 			defer span.End()
 
 			if ctx.Err() != nil {
@@ -560,8 +590,8 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			iter, err := c.ds.ReadUsersetTuples(ctx, storeID, storage.ReadUsersetTuplesFilter{
-				Object:                      tk.Object,
-				Relation:                    tk.Relation,
+				Object:                      reqTupleKey.Object,
+				Relation:                    reqTupleKey.Relation,
 				AllowedUserTypeRestrictions: directlyRelatedUsersetTypes,
 			})
 			if err != nil {
@@ -576,6 +606,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			)
 			defer filteredIter.Stop()
 
+			var errs error
 			var handlers []CheckHandlerFunc
 			for {
 				t, err := filteredIter.Next(ctx)
@@ -587,21 +618,35 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
-
-				// for 1.0 models, if the user is '*' then we're done searching
-				if usersetObject == tuple.Wildcard && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_0 {
-					span.SetAttributes(attribute.Bool("allowed", true))
-					response.Allowed = true
-					return response, nil
+				condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+				if err != nil {
+					errs = multierror.Append(errs, err)
+					continue
 				}
 
-				// for 1.1 models, if the user value is a typed wildcard and the type of the wildcard
+				if len(condEvalResult.MissingParameters) > 0 {
+					errs = multierror.Append(errs, condition.NewEvaluationError(
+						t.GetCondition().GetName(),
+						fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+							tuple.TupleKeyToString(t),
+							condEvalResult.MissingParameters),
+					))
+
+					continue
+				}
+
+				if !condEvalResult.ConditionMet {
+					continue
+				}
+
+				usersetObject, usersetRelation := tuple.SplitObjectRelation(t.GetUser())
+
+				// if the user value is a typed wildcard and the type of the wildcard
 				// matches the target user objectType, then we're done searching
 				if tuple.IsTypedWildcard(usersetObject) && typesys.GetSchemaVersion() == typesystem.SchemaVersion1_1 {
 					wildcardType := tuple.GetType(usersetObject)
 
-					if tuple.GetType(tk.GetUser()) == wildcardType {
+					if tuple.GetType(reqTupleKey.GetUser()) == wildcardType {
 						span.SetAttributes(attribute.Bool("allowed", true))
 						response.Allowed = true
 						return response, nil
@@ -611,7 +656,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 				}
 
 				if usersetRelation != "" {
-					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, tk.GetUser())
+					tupleKey := tuple.NewTupleKey(usersetObject, usersetRelation, reqTupleKey.GetUser())
 
 					if _, visited := req.VisitedPaths[tuple.TupleKeyToString(tupleKey)]; visited {
 						return nil, ErrCycleDetected
@@ -629,22 +674,28 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 								DatastoreQueryCount: response.GetResolutionMetadata().DatastoreQueryCount,
 							},
 							VisitedPaths: maps.Clone(req.VisitedPaths),
+							Context:      req.GetContext(),
 						}))
 				}
 			}
 
-			if len(handlers) == 0 {
-				return response, nil
+			if len(handlers) == 0 && errs != nil {
+				return nil, errs
 			}
 
-			return union(ctx, c.concurrencyLimit, handlers...)
+			resp, err := union(ctx, c.concurrencyLimit, handlers...)
+			if err != nil {
+				return nil, multierror.Append(errs, err)
+			}
+
+			return resp, nil
 		}
 
 		var checkFuncs []CheckHandlerFunc
 
 		shouldCheckDirectTuple, _ := typesys.IsDirectlyRelated(
-			typesystem.DirectRelationReference(objectType, relation),                                         // target
-			typesystem.DirectRelationReference(tuple.GetType(tk.GetUser()), tuple.GetRelation(tk.GetUser())), // source
+			typesystem.DirectRelationReference(objectType, relation),                                                           // target
+			typesystem.DirectRelationReference(tuple.GetType(reqTupleKey.GetUser()), tuple.GetRelation(reqTupleKey.GetUser())), // source
 		)
 
 		if shouldCheckDirectTuple {
@@ -691,6 +742,7 @@ func (c *LocalChecker) checkComputedUserset(_ context.Context, req *ResolveCheck
 					DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount,
 				},
 				VisitedPaths: maps.Clone(req.VisitedPaths),
+				Context:      req.GetContext(),
 			})(ctx)
 	}
 }
@@ -745,6 +797,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		)
 		defer filteredIter.Stop()
 
+		var errs error
 		var handlers []CheckHandlerFunc
 		for {
 			t, err := filteredIter.Next(ctx)
@@ -754,6 +807,28 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				}
 
 				return response, err
+			}
+
+			condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+			if err != nil {
+				errs = multierror.Append(errs, err)
+
+				continue
+			}
+
+			if len(condEvalResult.MissingParameters) > 0 {
+				errs = multierror.Append(errs, condition.NewEvaluationError(
+					t.GetCondition().GetName(),
+					fmt.Errorf("tuple '%s' is missing context parameters '%v'",
+						tuple.TupleKeyToString(t),
+						condEvalResult.MissingParameters),
+				))
+
+				continue
+			}
+
+			if !condEvalResult.ConditionMet {
+				continue
 			}
 
 			userObj, _ := tuple.SplitObjectRelation(t.GetUser())
@@ -786,23 +861,25 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 						DatastoreQueryCount: req.GetResolutionMetadata().DatastoreQueryCount, // add TTU read below
 					},
 					VisitedPaths: maps.Clone(req.VisitedPaths),
+					Context:      req.GetContext(),
 				}))
 		}
 
-		if len(handlers) == 0 {
-			return response, nil
+		if len(handlers) == 0 && errs != nil {
+			return nil, errs
 		}
 
 		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
-
-		if err == nil {
-			// if we had 3 dispatched requests, and the final result is "allowed = false",
-			// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
-			// if final result is "allowed = true", we want final reads to be N1 + 1
-			unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+		if err != nil {
+			return nil, multierror.Append(errs, err)
 		}
 
-		return unionResponse, err
+		// if we had 3 dispatched requests, and the final result is "allowed = false",
+		// we want final reads to be (N1 + N2 + N3 + 1) and not (N1 + 1) + (N2 + 1) + (N3 + 1)
+		// if final result is "allowed = true", we want final reads to be N1 + 1
+		unionResponse.GetResolutionMetadata().DatastoreQueryCount++
+
+		return unionResponse, nil
 	}
 }
 

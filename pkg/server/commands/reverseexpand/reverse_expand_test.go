@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/internal/mocks"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/tuple"
@@ -23,12 +23,12 @@ func TestReverseExpandRespectsContextCancellation(t *testing.T) {
 	typeSystem := typesystem.New(&openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-				type user
-				type document
-				  relations
-				    define viewer: [user] as self
-				`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions,
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()
@@ -98,13 +98,13 @@ func TestReverseExpandRespectsContextTimeout(t *testing.T) {
 	typeSystem := typesystem.New(&openfgav1.AuthorizationModel{
 		Id:            ulid.Make().String(),
 		SchemaVersion: typesystem.SchemaVersion1_1,
-		TypeDefinitions: parser.MustParse(`
-				type user
-				type document
-				  relations
-				    define allowed: [user] as self
-				    define viewer: [user] as self and allowed
-				`),
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define allowed: [user]
+	define viewer: [user] and allowed`).TypeDefinitions,
 	})
 	mockController := gomock.NewController(t)
 	defer mockController.Finish()

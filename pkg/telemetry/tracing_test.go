@@ -27,6 +27,6 @@ func TestTracing(t *testing.T) {
 	span.End()
 
 	spans := spanRecorder.Ended()
-	require.Equal(t, 1, len(spans))
+	require.Len(t, spans, 1)
 	require.Equal(t, "test", spans[0].Name())
 }
