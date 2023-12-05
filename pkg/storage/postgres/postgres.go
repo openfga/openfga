@@ -250,16 +250,16 @@ func (p *Postgres) ReadUserTuple(ctx context.Context, store string, tupleKey *op
 		return nil, sqlcommon.HandleSQLError(err)
 	}
 
-	if conditionName.Valid {
+	if conditionName.String != "" {
 		record.ConditionName = conditionName.String
-	}
 
-	if conditionContext != nil {
-		var conditionContextStruct structpb.Struct
-		if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
-			return nil, err
+		if conditionContext != nil {
+			var conditionContextStruct structpb.Struct
+			if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
+				return nil, err
+			}
+			record.ConditionContext = &conditionContextStruct
 		}
-		record.ConditionContext = &conditionContextStruct
 	}
 
 	return record.AsTuple(), nil
@@ -689,9 +689,10 @@ func (p *Postgres) ReadChanges(
 	var changes []*openfgav1.TupleChange
 	var ulid string
 	for rows.Next() {
-		var objectType, objectID, relation, conditionName, user string
+		var objectType, objectID, relation, user string
 		var operation int
 		var insertedAt time.Time
+		var conditionName sql.NullString
 		var conditionContext []byte
 
 		err = rows.Scan(
@@ -710,7 +711,7 @@ func (p *Postgres) ReadChanges(
 		}
 
 		var conditionContextStruct structpb.Struct
-		if conditionName != "" {
+		if conditionName.String != "" {
 			if conditionContext != nil {
 				if err := proto.Unmarshal(conditionContext, &conditionContextStruct); err != nil {
 					return nil, nil, err
@@ -722,7 +723,7 @@ func (p *Postgres) ReadChanges(
 			tupleUtils.BuildObject(objectType, objectID),
 			relation,
 			user,
-			conditionName,
+			conditionName.String,
 			&conditionContextStruct,
 		)
 

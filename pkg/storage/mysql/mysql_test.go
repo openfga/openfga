@@ -157,7 +157,7 @@ func TestReadAuthorizationModelUnmarshallError(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot parse invalid wire-format data")
 }
 
-// TestAllowNullCondition tests that tuples existing before
+// TestAllowNullCondition tests that tuple and changelog rows existing before
 // migration 005_add_conditions_to_tuples can be successfully read.
 func TestAllowNullCondition(t *testing.T) {
 	ctx := context.Background()
@@ -221,4 +221,28 @@ func TestAllowNullCondition(t *testing.T) {
 	curTuple, err = iter.Next(ctx)
 	require.NoError(t, err)
 	require.Equal(t, tk, curTuple.Key)
+
+	stmt = `
+	INSERT INTO changelog (
+		store, object_type, object_id, relation, _user, ulid,
+		condition_name, condition_context, inserted_at, operation
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?);
+`
+	_, err = ds.db.ExecContext(
+		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
+		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_WRITE,
+	)
+	require.NoError(t, err)
+
+	_, err = ds.db.ExecContext(
+		ctx, stmt, "store", "folder", "2021-budget", "owner", "user:anne",
+		ulid.Make().String(), nil, nil, openfgav1.TupleOperation_TUPLE_OPERATION_DELETE,
+	)
+	require.NoError(t, err)
+
+	changes, _, err := ds.ReadChanges(ctx, "store", "folder", storage.PaginationOptions{}, 0)
+	require.NoError(t, err)
+	require.Len(t, changes, 2)
+	require.Equal(t, tk, changes[0].TupleKey)
+	require.Equal(t, tk, changes[1].TupleKey)
 }

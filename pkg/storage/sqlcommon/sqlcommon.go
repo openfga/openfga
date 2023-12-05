@@ -185,9 +185,7 @@ func (t *SQLTupleIterator) next() (*storage.TupleRecord, error) {
 		return nil, err
 	}
 
-	if conditionName.Valid {
-		record.ConditionName = conditionName.String
-	}
+	record.ConditionName = conditionName.String
 
 	if conditionContext != nil {
 		var conditionContextStruct structpb.Struct
