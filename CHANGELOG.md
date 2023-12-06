@@ -8,6 +8,15 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.9] - 2023-12-05
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.8...v1.3.9)
+
+### Fixed
+* Avoid panic when processing a nil set of writes ([#1208](https://github.com/openfga/openfga/pull/1208)) - thanks @stgraber!
+
+* Decoding of null conditions in SQL storage implementations ([#1212](https://github.com/openfga/openfga/pull/1212))
+
 ## [v1.3.8] - 2023-12-04
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.7...v1.3.8)
@@ -809,7 +818,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.8...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.9...HEAD
+[1.3.9]: https://github.com/openfga/openfga/releases/tag/v1.3.9
 [1.3.8]: https://github.com/openfga/openfga/releases/tag/v1.3.8
 [1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
 [1.3.6]: https://github.com/openfga/openfga/releases/tag/v1.3.6
