@@ -60,7 +60,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
-		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertCheckRequestTupleKeyToTupleKey(assertion.TupleKey)); err != nil {
+		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.TupleKey)); err != nil {
 			return nil, serverErrors.ValidationError(err)
 		}
 	}
