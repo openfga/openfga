@@ -25,7 +25,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20231201195548-7ad5c05e75ca
+	github.com/openfga/api/proto v0.0.0-20231207192921-6b154bd03ebe
 	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
 	github.com/pressly/goose/v3 v3.16.0
 	github.com/rs/cors v1.10.1
@@ -53,6 +53,7 @@ require (
 	github.com/envoyproxy/protoc-gen-validate v1.0.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
+	github.com/openfga/api v0.0.0-20231207192921-6b154bd03ebe // indirect
 	github.com/sagikazarmark/locafero v0.3.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/sethvargo/go-retry v0.2.4 // indirect

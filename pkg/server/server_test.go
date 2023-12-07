@@ -1008,7 +1008,7 @@ type repo
 			StoreId:              store,
 			AuthorizationModelId: modelID,
 			Assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:elbuo"),
+				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 				Expectation: false,
 			}},
 		})
