@@ -774,14 +774,14 @@ tests:
               "x": "-1.79769313486231570814527423731704356798070e+309"
             errorCode: 2000
           - request:
-              object: document:1
+              type: document
               relation: viewer
               user: user:jon
             context:
               "x": 1.79769313486231570814527423731704356798070e+309
             errorCode: 2000
           - request:
-              object: document:1
+              type: document
               relation: viewer
               user: user:jon
             context:
