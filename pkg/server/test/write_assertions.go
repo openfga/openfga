@@ -43,14 +43,14 @@ type repo
 		{
 			_name: "writing_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:elbuo"),
+				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 				Expectation: false,
 			}},
 		},
 		{
 			_name: "writing_assertions_succeeds_when_it_is_not_directly_assignable",
 			assertions: []*openfgav1.Assertion{{
-				TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:elbuo"),
+				TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 				Expectation: false,
 			}},
 		},
@@ -58,19 +58,19 @@ type repo
 			_name: "writing_multiple_assertions_succeeds",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:elbuo"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:maria"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:maria"),
 					Expectation: true,
 				},
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:jon"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:jon"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "reader", "user:jose"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "reader", "user:jose"),
 					Expectation: true,
 				},
 			},
@@ -79,15 +79,15 @@ type repo
 			_name: "writing_multiple_assertions_succeeds_when_it_is_not_directly_assignable",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:maria"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:maria"),
 					Expectation: false,
 				},
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:jon"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:jon"),
 					Expectation: true,
 				},
 			},
@@ -165,7 +165,7 @@ type repo
 			_name: "writing_assertion_with_invalid_relation_fails",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey: tuple.NewCheckRequestTupleKey(
+					TupleKey: tuple.NewAssertionTupleKey(
 						"repo:test",
 						"invalidrelation",
 						"user:elbuo",
@@ -182,7 +182,7 @@ type repo
 			_name: "writing_assertion_with_not_found_id",
 			assertions: []*openfgav1.Assertion{
 				{
-					TupleKey:    tuple.NewCheckRequestTupleKey("repo:test", "can_read", "user:elbuo"),
+					TupleKey:    tuple.NewAssertionTupleKey("repo:test", "can_read", "user:elbuo"),
 					Expectation: false,
 				},
 			},

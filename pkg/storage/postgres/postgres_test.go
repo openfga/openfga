@@ -252,3 +252,40 @@ func TestAllowNullCondition(t *testing.T) {
 	require.Equal(t, tk, changes[0].TupleKey)
 	require.Equal(t, tk, changes[1].TupleKey)
 }
+
+// TestMarshalledAssertions tests that previously persisted marshalled
+// assertions can be read back. In any case where the Assertions proto model
+// needs to change, we'll likely need to introduce a series of data migrations.
+func TestMarshalledAssertions(t *testing.T) {
+	ctx := context.Background()
+	testDatastore := storagefixtures.RunDatastoreTestContainer(t, "postgres")
+
+	uri := testDatastore.GetConnectionURI(true)
+	ds, err := New(uri, sqlcommon.NewConfig())
+	require.NoError(t, err)
+	defer ds.Close()
+
+	// Note: this represents an assertion written on v1.3.7
+	stmt := `
+		INSERT INTO assertion (
+			store, authorization_model_id, assertions
+		) VALUES ($1, $2, DECODE('0a2b0a270a12666f6c6465723a323032312d62756467657412056f776e65721a0a757365723a616e6e657a1001','hex'));
+	`
+	_, err = ds.db.ExecContext(ctx, stmt, "store", "model")
+	require.NoError(t, err)
+
+	assertions, err := ds.ReadAssertions(ctx, "store", "model")
+	require.NoError(t, err)
+
+	expectedAssertions := []*openfgav1.Assertion{
+		{
+			TupleKey: &openfgav1.AssertionTupleKey{
+				Object:   "folder:2021-budget",
+				Relation: "owner",
+				User:     "user:annez",
+			},
+			Expectation: true,
+		},
+	}
+	require.Equal(t, expectedAssertions, assertions)
+}
