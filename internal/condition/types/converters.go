@@ -60,7 +60,10 @@ func numericTypeConverterFunc[T int64 | uint64 | float64](value any) (any, error
 		return uint64(numericValue), nil
 
 	case float64:
-		numericValue, _ := bigFloat.Float64()
+		numericValue, a := bigFloat.Float64()
+		if a == big.Above || a == big.Below {
+			return nil, fmt.Errorf("number cannot be represented as a float64: %s", bigFloat.String())
+		}
 		return numericValue, nil
 
 	default:
