@@ -18,6 +18,8 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 ### Fixed
 * Reorder protobuf fields for persisted Assertions ([#1217](https://github.com/openfga/openfga/pull/1217))
 
+  Assertions written after on or after v1.3.8 should be re-written to resolve some binary encoding issues that were introduced.
+
 * Handle floating point conversion errors in conditions ([#1200](https://github.com/openfga/openfga/pull/1200))
 
 ## [v1.3.9] - 2023-12-05
