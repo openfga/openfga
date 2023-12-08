@@ -13,8 +13,6 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -22,7 +20,6 @@ import (
 type WriteCommand struct {
 	logger                    logger.Logger
 	datastore                 storage.OpenFGADatastore
-	enableConditions          bool
 	conditionContextByteLimit int
 }
 
@@ -31,12 +28,6 @@ type WriteCommandOption func(*WriteCommand)
 func WithWriteCmdLogger(l logger.Logger) WriteCommandOption {
 	return func(wc *WriteCommand) {
 		wc.logger = l
-	}
-}
-
-func WithWriteCmdEnableConditions(enable bool) WriteCommandOption {
-	return func(m *WriteCommand) {
-		m.enableConditions = enable
 	}
 }
 
@@ -51,7 +42,6 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 	cmd := &WriteCommand{
 		datastore:                 datastore,
 		logger:                    logger.NewNoopLogger(),
-		enableConditions:          true,
 		conditionContextByteLimit: config.DefaultWriteContextByteLimit,
 	}
 
@@ -63,17 +53,6 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
 func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	if !c.enableConditions {
-		tks := req.GetWrites()
-		if tks != nil {
-			for _, tk := range tks.TupleKeys {
-				if tk.Condition != nil {
-					return nil, status.Error(codes.InvalidArgument, "conditions not supported")
-				}
-			}
-		}
-	}
-
 	if err := c.validateWriteRequest(ctx, req); err != nil {
 		return nil, err
 	}

@@ -36,7 +36,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -46,9 +45,8 @@ import (
 type ExperimentalFeatureFlag string
 
 const (
-	AuthorizationModelIDHeader                           = "openfga-authorization-model-id"
-	authorizationModelIDKey                              = "authorization_model_id"
-	ExperimentalEnableConditions ExperimentalFeatureFlag = "enable-conditions"
+	AuthorizationModelIDHeader = "openfga-authorization-model-id"
+	authorizationModelIDKey    = "authorization_model_id"
 )
 
 var tracer = otel.Tracer("openfga/pkg/server")
@@ -517,12 +515,9 @@ func (s *Server) Write(ctx context.Context, req *openfgav1.WriteRequest) (*openf
 		return nil, err
 	}
 
-	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
-
 	cmd := commands.NewWriteCommand(
 		s.datastore,
 		commands.WithWriteCmdLogger(s.logger),
-		commands.WithWriteCmdEnableConditions(enableConditions),
 	)
 	return cmd.Execute(ctx, &openfgav1.WriteRequest{
 		StoreId:              storeID,
@@ -700,12 +695,9 @@ func (s *Server) WriteAuthorizationModel(ctx context.Context, req *openfgav1.Wri
 		Method:  "WriteAuthorizationModel",
 	})
 
-	enableConditions := slices.Contains(s.experimentals, ExperimentalEnableConditions)
-
 	c := commands.NewWriteAuthorizationModelCommand(s.datastore,
 		commands.WithWriteAuthModelLogger(s.logger),
 		commands.WithWriteAuthModelMaxSizeInBytes(s.maxAuthorizationModelSizeInBytes),
-		commands.WithWriteAuthModelEnableConditions(enableConditions),
 	)
 	res, err := c.Execute(ctx, req)
 	if err != nil {
