@@ -8,6 +8,18 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
+## [v1.3.10] - 2023-12-08
+
+[Full changelog](https://github.com/openfga/openfga/compare/v1.3.9...v1.3.10)
+
+### Changed
+* Bumped up to Go 1.21.5 ([#1219](https://github.com/openfga/openfga/pull/1219))
+
+### Fixed
+* Reorder protobuf fields for persisted Assertions ([#1217](https://github.com/openfga/openfga/pull/1217))
+
+* Handle floating point conversion errors in conditions ([#1200](https://github.com/openfga/openfga/pull/1200))
+
 ## [v1.3.9] - 2023-12-05
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.8...v1.3.9)
@@ -818,7 +830,8 @@ no tuple key instead.
 * Memory storage adapter implementation
 * Early support for preshared key or OIDC authentication methods
 
-[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.9...HEAD
+[Unreleased]: https://github.com/openfga/openfga/compare/v1.3.10...HEAD
+[1.3.10]: https://github.com/openfga/openfga/releases/tag/v1.3.10
 [1.3.9]: https://github.com/openfga/openfga/releases/tag/v1.3.9
 [1.3.8]: https://github.com/openfga/openfga/releases/tag/v1.3.8
 [1.3.7]: https://github.com/openfga/openfga/releases/tag/v1.3.7
