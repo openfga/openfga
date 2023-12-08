@@ -14,18 +14,15 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type writeCommandTest struct {
-	_name            string
-	model            *openfgav1.AuthorizationModel
-	tuples           []*openfgav1.TupleKey
-	enableConditions bool
-	request          *openfgav1.WriteRequest
-	err              error
-	response         *openfgav1.WriteResponse
+	_name    string
+	model    *openfgav1.AuthorizationModel
+	tuples   []*openfgav1.TupleKey
+	request  *openfgav1.WriteRequest
+	err      error
+	response *openfgav1.WriteResponse
 }
 
 var tk = tuple.NewTupleKey("repo:openfga/openfga", "admin", "user:github|alice@openfga")
@@ -1320,102 +1317,6 @@ type org
 				},
 			),
 		},
-		{
-			_name:            "disabled_conditions_and_nonempty_writes_returns_error",
-			enableConditions: false,
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgav1.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(
-											typesystem.DirectRelationReference("user", ""),
-											"condition1",
-										),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
-			request: &openfgav1.WriteRequest{
-				Writes: &openfgav1.WriteRequestWrites{
-					TupleKeys: []*openfgav1.TupleKey{
-						tuple.NewTupleKeyWithCondition("group:fga", "member", "user:anne", "condition1", nil),
-					},
-				},
-			},
-			err: status.Error(codes.InvalidArgument, "conditions not supported"),
-		},
-		{
-			_name:            "disabled_conditions_and_empty_writes_returns_error",
-			enableConditions: false,
-			model: &openfgav1.AuthorizationModel{
-				Id:            ulid.Make().String(),
-				SchemaVersion: typesystem.SchemaVersion1_1,
-				TypeDefinitions: []*openfgav1.TypeDefinition{
-					{
-						Type: "user",
-					},
-					{
-						Type: "group",
-						Relations: map[string]*openfgav1.Userset{
-							"member": typesystem.This(),
-						},
-						Metadata: &openfgav1.Metadata{
-							Relations: map[string]*openfgav1.RelationMetadata{
-								"member": {
-									DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
-										typesystem.ConditionedRelationReference(
-											typesystem.DirectRelationReference("user", ""),
-											"condition1",
-										),
-									},
-								},
-							},
-						},
-					},
-				},
-				Conditions: map[string]*openfgav1.Condition{
-					"condition1": {
-						Name:       "condition1",
-						Expression: "param1 == 'ok'",
-						Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-							"param1": {
-								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-							},
-						},
-					},
-				},
-			},
-			request: &openfgav1.WriteRequest{
-				Writes: nil,
-			},
-			err: serverErrors.InvalidWriteInput,
-		},
 	}
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
@@ -1434,8 +1335,7 @@ type org
 				require.NoError(t, err)
 			}
 
-			cmd := commands.NewWriteCommand(datastore,
-				commands.WithWriteCmdEnableConditions(test.enableConditions))
+			cmd := commands.NewWriteCommand(datastore)
 			test.request.StoreId = store
 			if test.request.AuthorizationModelId == "" {
 				test.request.AuthorizationModelId = test.model.Id
