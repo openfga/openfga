@@ -25,7 +25,7 @@ require (
 	github.com/karlseguin/ccache/v3 v3.0.5
 	github.com/natefinch/wrap v0.2.0
 	github.com/oklog/ulid/v2 v2.1.0
-	github.com/openfga/api/proto v0.0.0-20231207214630-ed3d38b89835
+	github.com/openfga/api/proto v0.0.0-20231208224251-d2c535d32f73
 	github.com/openfga/language/pkg/go v0.0.0-20231031183108-e539f1c420b3
 	github.com/pressly/goose/v3 v3.16.0
 	github.com/rs/cors v1.10.1
