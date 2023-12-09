@@ -732,6 +732,22 @@ func TestGRPCServingTLS(t *testing.T) {
 	})
 }
 
+func TestGRPCMaxMessageSize(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+}
+
 func TestServerMetricsReporting(t *testing.T) {
 	t.Run("mysql", func(t *testing.T) {
 		testServerMetricsReporting(t, "mysql")

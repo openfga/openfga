@@ -18,6 +18,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/openfga/openfga/internal/server/config"
 	checktest "github.com/openfga/openfga/internal/test/check"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -202,6 +203,60 @@ func newOpenFGATester(t *testing.T, args ...string) OpenFGATester {
 		httpPort: httpPort,
 		cleanup:  stopContainer,
 	}
+}
+
+func TestGRPCMaxMessageSize(t *testing.T) {
+	tester := newOpenFGATester(t)
+	defer tester.Cleanup()
+
+	conn := connect(t, tester)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "max_message_size",
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() { ulid.MustParse(createResp.GetId()) })
+
+	storeID := createResp.GetId()
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId: storeID,
+		TypeDefinitions: parser.MustTransformDSLToProto(`model
+  schema 1.1
+  
+type user
+
+type document
+  relations
+    define viewer: [user with conds]
+
+condition conds(s: string) {
+  "alpha" in s
+}`).GetTypeDefinitions(),
+		SchemaVersion: typesystem.SchemaVersion1_1,
+	})
+	require.NoError(t, err)
+	require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
+
+	modelID := writeModelResp.GetAuthorizationModelId()
+
+	checkResp, err := client.Check(context.Background(), &openfgav1.CheckRequest{
+		StoreId:              storeID,
+		AuthorizationModelId: modelID,
+		TupleKey: &openfgav1.CheckRequestTupleKey{
+			Object:   "document:1",
+			Relation: "viewer",
+			User:     "user:jon",
+		},
+		Context: testutils.MustNewStruct(t, map[string]interface{}{
+			"s": testutils.CreateRandomString(config.DefaultMaxRPCMessageSizeInBytes + 1),
+		}),
+	})
+	require.Error(t, err)
+	require.Nil(t, checkResp)
 }
 
 func TestCheckWithQueryCacheEnabled(t *testing.T) {
