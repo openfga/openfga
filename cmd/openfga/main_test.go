@@ -222,11 +222,9 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 
 	storeID := createResp.GetId()
 
-	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
-		StoreId: storeID,
-		TypeDefinitions: parser.MustTransformDSLToProto(`model
+	model := parser.MustTransformDSLToProto(`model
   schema 1.1
-  
+
 type user
 
 type document
@@ -234,9 +232,14 @@ type document
     define viewer: [user with conds]
 
 condition conds(s: string) {
-  "alpha" in s
-}`).GetTypeDefinitions(),
-		SchemaVersion: typesystem.SchemaVersion1_1,
+  "alpha" == s
+}`)
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		TypeDefinitions: model.GetTypeDefinitions(),
+		Conditions:      model.GetConditions(),
+		SchemaVersion:   typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 	require.NotPanics(t, func() { ulid.MustParse(writeModelResp.GetAuthorizationModelId()) })
@@ -255,7 +258,10 @@ condition conds(s: string) {
 			"s": testutils.CreateRandomString(config.DefaultMaxRPCMessageSizeInBytes + 1),
 		}),
 	})
-	require.Error(t, err)
+	s, ok := status.FromError(err)
+	require.True(t, ok)
+	require.Equal(t, codes.ResourceExhausted, s.Code())
+	require.ErrorContains(t, err, "grpc: received message larger than max")
 	require.Nil(t, checkResp)
 }
 
