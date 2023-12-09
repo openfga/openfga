@@ -745,7 +745,6 @@ func TestGRPCMaxMessageSize(t *testing.T) {
 	}()
 
 	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
-
 }
 
 func TestServerMetricsReporting(t *testing.T) {
