@@ -8,12 +8,16 @@ Try to keep listed changes to a concise bulleted list of simple explanations of 
 
 ## [Unreleased]
 
-## [v1.4.0] - 2023-12-08
+## [v1.4.0] - 2023-12-11
 
 [Full changelog](https://github.com/openfga/openfga/compare/v1.3.10...v1.4.0)
 
 ### Changed
-* Enable support for ABAC Conditional Relationships by default. ([#1220](https://github.com/openfga/openfga/pull/1220))
+* Enable support for Conditional Relationship Tuples by default. ([#1220](https://github.com/openfga/openfga/pull/1220))
+
+* Added stricter gRPC server max message size constraints ([#1222](https://github.com/openfga/openfga/pull/1222))
+
+  We changed the default gRPC max message size (4MB) to a stricter 512KB to protect the server from excessively large request `context` fields. This shouldn't impact existing clients since our calculated max message size should be much smaller than 512KB given our other input constraints.
 
 ## [v1.3.10] - 2023-12-08
 
