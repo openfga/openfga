@@ -389,7 +389,9 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 		return fmt.Errorf("failed to initialize authenticator: %w", err)
 	}
 
-	var serverOpts []grpc.ServerOption
+	serverOpts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(serverconfig.DefaultMaxRPCMessageSizeInBytes),
+	}
 
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
 		[]grpc.UnaryServerInterceptor{
