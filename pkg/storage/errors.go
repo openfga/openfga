@@ -15,7 +15,7 @@ var (
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
 	ErrInvalidWriteInput        = errors.New("invalid write input")
 	ErrNotFound                 = errors.New("not found")
-	ErrTransactionalWriteFailed = errors.New("transactional write failed due to bad input")
+	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
 	ErrMismatchObjectType       = errors.New("mismatched types in request and continuation token")
 	ErrExceededWriteBatchLimit  = errors.New("number of operations exceeded write batch limit")
 	ErrCancelled                = errors.New("request has been cancelled")
