@@ -165,7 +165,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return status.Error(codes.Aborted, "transaction aborted")
+		return status.Error(codes.Aborted, err.Error())
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}

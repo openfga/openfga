@@ -68,7 +68,6 @@ func sanitizedMessage(message string) string {
 // NewEncodedError returns the encoded error with the correct http status code etc.
 func NewEncodedError(errorCode int32, message string) *EncodedError {
 	if !IsValidEncodedError(errorCode) {
-		// Check to see if it is aborted
 		if errorCode == int32(codes.Aborted) {
 			return &EncodedError{
 				HTTPStatusCode: http.StatusConflict,
