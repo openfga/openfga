@@ -13,6 +13,8 @@ import (
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -163,7 +165,7 @@ func (c *WriteCommand) validateNoDuplicatesAndCorrectSize(
 
 func handleError(err error) error {
 	if errors.Is(err, storage.ErrTransactionalWriteFailed) {
-		return serverErrors.NewInternalError("concurrent write conflict", err)
+		return status.Error(codes.Aborted, err.Error())
 	} else if errors.Is(err, storage.ErrInvalidWriteInput) {
 		return serverErrors.WriteFailedDueToInvalidInput(err)
 	}
