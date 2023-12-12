@@ -232,7 +232,7 @@ type document
 		},
 	})
 
-	require.ErrorIs(t, err, status.Error(codes.Aborted, "transaction aborted"))
+	require.ErrorIs(t, err, status.Error(codes.Aborted, storage.ErrTransactionalWriteFailed.Error()))
 	require.Nil(t, resp)
 }
 
