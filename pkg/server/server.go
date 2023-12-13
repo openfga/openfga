@@ -369,6 +369,7 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 		},
 	)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		if errors.Is(err, condition.ErrEvaluationFailed) {
 			return nil, serverErrors.ValidationError(err)
 		}
@@ -447,6 +448,7 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		srv,
 	)
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return err
 	}
 	queryCount := float64(*resolutionMetadata.QueryCount)
@@ -590,6 +592,7 @@ func (s *Server) Check(ctx context.Context, req *openfgav1.CheckRequest) (*openf
 		},
 	})
 	if err != nil {
+		telemetry.TraceError(span, err)
 		if errors.Is(err, graph.ErrResolutionDepthExceeded) || errors.Is(err, graph.ErrCycleDetected) {
 			return nil, serverErrors.AuthorizationModelResolutionTooComplex
 		}

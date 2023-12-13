@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/sourcegraph/conc/pool"
@@ -318,7 +319,11 @@ func (c *ReverseExpandQuery) execute(
 		})
 	}
 
-	return pool.Wait()
+	err = pool.Wait()
+	if err != nil {
+		telemetry.TraceError(span, err)
+	}
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -500,6 +505,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	errs = multierror.Append(errs, pool.Wait())
 	if errs.ErrorOrNil() != nil {
+		telemetry.TraceError(trace.SpanFromContext(ctx), errs.ErrorOrNil())
 		return errs
 	}
 
