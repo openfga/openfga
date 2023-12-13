@@ -398,6 +398,8 @@ func (s *Server) ListObjects(ctx context.Context, req *openfgav1.ListObjectsRequ
 }
 
 func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) error {
+	start := time.Now()
+
 	ctx := srv.Context()
 	ctx, span := tracer.Start(ctx, "StreamedListObjects", trace.WithAttributes(
 		attribute.String("object_type", req.GetType()),
@@ -465,6 +467,12 @@ func (s *Server) StreamedListObjects(req *openfgav1.StreamedListObjectsRequest, 
 		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
 		methodName,
 	).Observe(queryCount)
+
+	requestDurationByQueryHistogram.WithLabelValues(
+		openfgav1.OpenFGAService_ServiceDesc.ServiceName,
+		methodName,
+		utils.Bucketize(uint(*resolutionMetadata.QueryCount), s.requestDurationByQueryHistogramBuckets),
+	).Observe(float64(time.Since(start).Milliseconds()))
 
 	return nil
 }
