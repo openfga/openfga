@@ -364,6 +364,9 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		return ctx.Err()
 	}
 
+	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
+	defer span.End()
+
 	var userFilter []*openfgav1.ObjectRelation
 	var relationFilter string
 
@@ -431,9 +434,6 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 		},
 	)
 	defer filteredIter.Stop()
-
-	ctx, span := tracer.Start(ctx, "readTuplesAndExecute")
-	defer span.End()
 
 	pool := pool.New().WithContext(ctx)
 	pool.WithCancelOnError()
