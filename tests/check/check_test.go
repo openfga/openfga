@@ -113,10 +113,13 @@ type document
 	})
 	require.NoError(t, err)
 
+	logs.TakeAll()
+
 	type test struct {
 		_name           string
 		grpcReq         *openfgav1.CheckRequest
 		httpReqBody     io.Reader
+		expectedError   bool
 		expectedContext map[string]interface{}
 	}
 
@@ -162,6 +165,46 @@ type document
 				"user_agent":             "test-user-agent",
 			},
 		},
+		{
+			_name: "check_grpc_error",
+			grpcReq: &openfgav1.CheckRequest{
+				AuthorizationModelId: authorizationModelID,
+				StoreId:              storeID,
+				TupleKey:             tuple.NewCheckRequestTupleKey("", "viewer", "user:anne"),
+			},
+			expectedError: true,
+			expectedContext: map[string]interface{}{
+				"grpc_service": "openfga.v1.OpenFGAService",
+				"grpc_method":  "Check",
+				"grpc_type":    "unary",
+				"grpc_code":    int32(2009),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_response": `{"code":2009,"message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"store_id":     storeID,
+				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
+			},
+		},
+		{
+			_name: "check_http_error",
+			httpReqBody: bytes.NewBufferString(`{
+  "tuple_key": {
+    "user": "user:anne",
+    "relation": "viewer"
+  },
+  "authorization_model_id": "` + authorizationModelID + `"
+}`),
+			expectedError: true,
+			expectedContext: map[string]interface{}{
+				"grpc_service": "openfga.v1.OpenFGAService",
+				"grpc_method":  "Check",
+				"grpc_type":    "unary",
+				"grpc_code":    int32(2009),
+				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
+				"raw_response": `{"code":2009,"message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"store_id":     storeID,
+				"user_agent":   "test-user-agent",
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -181,7 +224,11 @@ type document
 
 				_, err = client.Do(httpReq)
 			}
-			require.NoError(t, err)
+			if test.expectedError && test.grpcReq != nil {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
 
 			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
 				if e.Message == "grpc_req_complete" {
@@ -208,11 +255,15 @@ type document
 			require.Equal(t, test.expectedContext["authorization_model_id"], fields["authorization_model_id"])
 			require.Equal(t, test.expectedContext["store_id"], fields["store_id"])
 			require.Equal(t, test.expectedContext["user_agent"], fields["user_agent"])
-			require.NotEmpty(t, fields["datastore_query_count"])
 			require.NotEmpty(t, fields["peer.address"])
 			require.NotEmpty(t, fields["request_id"])
 			require.NotEmpty(t, fields["trace_id"])
-			require.Len(t, fields, 13)
+			if !test.expectedError {
+				require.NotEmpty(t, fields["datastore_query_count"])
+				require.Len(t, fields, 13)
+			} else {
+				require.Len(t, fields, 12)
+			}
 		})
 	}
 }

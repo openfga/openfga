@@ -395,9 +395,11 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
 		[]grpc.UnaryServerInterceptor{
-			requestid.NewUnaryInterceptor(),
+			grpc_ctxtags.UnaryServerInterceptor(),   // needed for logging
+			requestid.NewUnaryInterceptor(),         // add request_id to ctxtags
+			storeid.NewUnaryInterceptor(),           // if available, add store_id to ctxtags
+			logging.NewLoggingInterceptor(s.Logger), // needed to log invalid requests
 			validator.UnaryServerInterceptor(),
-			grpc_ctxtags.UnaryServerInterceptor(),
 		}...,
 	))
 
@@ -424,8 +426,6 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
 		[]grpc.UnaryServerInterceptor{
-			storeid.NewUnaryInterceptor(),
-			logging.NewLoggingInterceptor(s.Logger),
 			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
 		}...,
 	))

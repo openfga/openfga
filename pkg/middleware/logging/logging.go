@@ -4,6 +4,7 @@ package logging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap/ctxzap"
@@ -52,6 +53,7 @@ type reporter struct {
 	protomarshaler protojson.MarshalOptions
 }
 
+// PostCall is called after all the PostMsgSend.
 func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.fields = append(r.fields, ctxzap.TagsToFields(r.ctx)...)
 
@@ -59,11 +61,9 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.fields = append(r.fields, zap.Int32(grpcCodeKey, code))
 
 	if err != nil {
-		if internalError, ok := err.(serverErrors.InternalError); ok {
+		var internalError serverErrors.InternalError
+		if errors.As(err, &internalError) {
 			r.fields = append(r.fields, zap.String(internalErrorKey, internalError.Internal().Error()))
-		}
-
-		if isInternalError(code) {
 			r.logger.Error(err.Error(), r.fields...)
 		} else {
 			r.fields = append(r.fields, zap.Error(err))
@@ -76,7 +76,15 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 	r.logger.Info(grpcReqCompleteKey, r.fields...)
 }
 
+// PostMsgSend is called once in unary requests and multiple times in streaming requests.
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
+	if err != nil {
+		marshalled, err2 := json.Marshal(status.Convert(err).Proto())
+		if err2 == nil {
+			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(marshalled)))
+		}
+		return
+	}
 	protomsg, ok := msg.(protoreflect.ProtoMessage)
 	if ok {
 		if resp, err := r.protomarshaler.Marshal(protomsg); err == nil {
@@ -138,11 +146,4 @@ func reportable(l logger.Logger) interceptors.CommonReportableFunc {
 			protomarshaler: protojson.MarshalOptions{EmitUnpopulated: true},
 		}, ctx
 	}
-}
-
-func isInternalError(code int32) bool {
-	if code >= 4000 && code < 5000 {
-		return true
-	}
-	return false
 }
