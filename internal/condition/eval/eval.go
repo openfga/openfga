@@ -7,6 +7,8 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/server/config"
+	"github.com/openfga/openfga/internal/utils"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,9 +19,9 @@ var conditionEvaluationCostHistogram = promauto.NewHistogram(prometheus.Histogra
 	Namespace:                       build.ProjectName,
 	Name:                            "condition_evaluation_cost",
 	Help:                            "A histogram of the CEL evaluation cost of a Condition in a Relationship Tuple",
-	Buckets:                         []float64{1, 5, 15, 20, 35, 50, 75, 90, 100},
+	Buckets:                         utils.LinearBuckets(1, config.DefaultMaxConditionEvaluationCost, 10),
 	NativeHistogramBucketFactor:     1.1,
-	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMaxBucketNumber:  config.DefaultMaxConditionEvaluationCost,
 	NativeHistogramMinResetDuration: time.Hour,
 })
 
