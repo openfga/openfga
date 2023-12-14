@@ -2,12 +2,26 @@ package eval
 
 import (
 	"fmt"
+	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/typesystem"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+var conditionEvaluationCostHistogram = promauto.NewHistogram(prometheus.HistogramOpts{
+	Namespace:                       build.ProjectName,
+	Name:                            "condition_evaluation_cost",
+	Help:                            "A histogram of the CEL evaluation cost of a Condition in a Relationship Tuple",
+	Buckets:                         []float64{1, 5, 15, 20, 35, 50, 75, 90, 100},
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
+})
 
 // EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
 func EvaluateTupleCondition(
@@ -40,6 +54,8 @@ func EvaluateTupleCondition(
 		if err != nil {
 			return nil, err
 		}
+
+		conditionEvaluationCostHistogram.Observe(float64(conditionResult.Cost))
 
 		return &conditionResult, nil
 	}
