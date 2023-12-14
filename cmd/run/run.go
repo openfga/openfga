@@ -52,9 +52,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	"go.opentelemetry.io/otel"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
-	"go.opentelemetry.io/otel/trace/noop"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -275,7 +273,8 @@ func run(_ *cobra.Command, _ []string) {
 }
 
 type ServerContext struct {
-	Logger logger.Logger
+	Logger         logger.Logger
+	TracerProvider telemetry.TracerProvider
 }
 
 func convertStringArrayToUintArray(stringArray []string) []uint {
@@ -291,40 +290,41 @@ func convertStringArrayToUintArray(stringArray []string) []uint {
 }
 
 func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) error {
-	var tracerProviderCloser func()
+	if s.TracerProvider == nil {
+		if config.Trace.Enabled {
+			s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
 
-	if config.Trace.Enabled {
-		s.Logger.Info(fmt.Sprintf("🕵 tracing enabled: sampling ratio is %v and sending traces to '%s', tls: %t", config.Trace.SampleRatio, config.Trace.OTLP.Endpoint, config.Trace.OTLP.TLS.Enabled))
+			otlpOptions := []telemetry.OTLPOption{
+				telemetry.WithOTLPEndpoint(
+					config.Trace.OTLP.Endpoint,
+				),
+			}
 
-		options := []telemetry.TracerOption{
-			telemetry.WithOTLPEndpoint(
-				config.Trace.OTLP.Endpoint,
-			),
-			telemetry.WithAttributes(
-				semconv.ServiceNameKey.String(config.Trace.ServiceName),
-				semconv.ServiceVersionKey.String(build.Version),
-			),
-			telemetry.WithSamplingRatio(config.Trace.SampleRatio),
+			if !config.Trace.OTLP.TLS.Enabled {
+				otlpOptions = append(otlpOptions, telemetry.WithOTLPInsecure())
+			}
+
+			options := []telemetry.TracerOption{
+				telemetry.WithOTLP(otlpOptions...),
+				telemetry.WithAttributes(
+					semconv.ServiceNameKey.String(config.Trace.ServiceName),
+					semconv.ServiceVersionKey.String(build.Version),
+				),
+				telemetry.WithSamplingRatio(config.Trace.SampleRatio),
+			}
+
+			s.TracerProvider = telemetry.MustNewTracerProvider(options...)
+		} else {
+			s.TracerProvider = telemetry.Noop()
 		}
-
-		if !config.Trace.OTLP.TLS.Enabled {
-			options = append(options, telemetry.WithOTLPInsecure())
-		}
-
-		tp := telemetry.MustNewTracerProvider(options...)
-		tracerProviderCloser = func() {
-			_ = tp.ForceFlush(ctx)
-			_ = tp.Shutdown(ctx)
-		}
-	} else {
-		otel.SetTracerProvider(noop.NewTracerProvider())
 	}
 
-	s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
-
 	var experimentals []server.ExperimentalFeatureFlag
-	for _, feature := range config.Experimentals {
-		experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+	if len(config.Experimentals) > 0 {
+		s.Logger.Info(fmt.Sprintf("🧪 experimental features enabled: %v", config.Experimentals))
+		for _, feature := range config.Experimentals {
+			experimentals = append(experimentals, server.ExperimentalFeatureFlag(feature))
+		}
 	}
 
 	datastoreOptions := []sqlcommon.DatastoreOption{
@@ -721,8 +721,8 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 
 	datastore.Close()
 
-	if tracerProviderCloser != nil {
-		tracerProviderCloser()
+	if err := s.TracerProvider.Close(ctx); err != nil {
+		s.Logger.Info("failed to gracefully close tracing provider", zap.Error(err))
 	}
 
 	s.Logger.Info("server exited. goodbye 👋")
