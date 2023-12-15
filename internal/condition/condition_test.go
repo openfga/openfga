@@ -3,11 +3,13 @@ package condition_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/condition/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -248,13 +250,14 @@ func TestEvaluate(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			compiledCondition, err := condition.NewCompiled(test.condition)
 			require.NoError(t, err)
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			result, err := compiledCondition.Evaluate(context.Background(), contextStruct.GetFields())
+			result, err := compiledCondition.Evaluate(ctx, contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
@@ -394,6 +397,7 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			condition := condition.NewUncompiled(test.condition).WithMaxEvaluationCost(test.maxCost)
 
 			err := condition.Compile()
@@ -402,13 +406,98 @@ func TestEvaluateWithMaxCost(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			result, err := condition.Evaluate(context.Background(), contextStruct.GetFields())
+			result, err := condition.Evaluate(ctx, contextStruct.GetFields())
 
 			require.Equal(t, test.result, result)
 			if test.err != nil {
 				require.ErrorContains(t, err, test.err.Error())
 			} else {
 				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestCastContextToTypedParameters(t *testing.T) {
+	tests := []struct {
+		name                    string
+		contextMap              map[string]any
+		conditionParameterTypes map[string]*openfgav1.ConditionParamTypeRef
+		expectedParams          map[string]any
+		expectedError           *condition.ParameterTypeError
+	}{
+		{
+			name: "valid",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {
+					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
+				},
+			},
+			expectedParams: map[string]any{
+				"param1": mustConvertValue(types.StringParamType, "ok"),
+			},
+		},
+		{
+			name:                    "empty_context_map",
+			contextMap:              map[string]any{},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
+			expectedParams:          nil,
+		},
+		{
+			name: "empty_parameter_types",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{},
+			expectedParams:          nil,
+			expectedError: &condition.ParameterTypeError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("no parameters defined for the condition"),
+			},
+		},
+		{
+			name: "failed_to_decode_condition_parameter_type",
+			contextMap: map[string]any{
+				"param1": "ok",
+			},
+			conditionParameterTypes: map[string]*openfgav1.ConditionParamTypeRef{
+				"param1": {
+					TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_UNSPECIFIED,
+				},
+			},
+			expectedParams: nil,
+			expectedError: &condition.ParameterTypeError{
+				Condition: "condition1",
+				Cause:     fmt.Errorf("failed to decode condition parameter type 'TYPE_NAME_UNSPECIFIED': unknown condition parameter type `TYPE_NAME_UNSPECIFIED`"),
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c := condition.NewUncompiled(&openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "param1 == 'ok'",
+				Parameters: test.conditionParameterTypes,
+			})
+
+			contextStruct, err := structpb.NewStruct(test.contextMap)
+			require.NoError(t, err)
+
+			typedParams, err := c.CastContextToTypedParameters(contextStruct.GetFields())
+
+			if test.expectedError != nil {
+				require.Error(t, err)
+				require.EqualError(t, err, test.expectedError.Error())
+			} else {
+				require.NoError(t, err)
+			}
+
+			if !reflect.DeepEqual(typedParams, test.expectedParams) {
+				t.Errorf("expected %v, got %v", test.expectedParams, typedParams)
 			}
 		})
 	}
@@ -503,6 +592,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			condition := condition.NewUncompiled(test.condition).
 				WithInterruptCheckFrequency(test.checkFrequency)
 
@@ -512,7 +602,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			evalCtx, cancel := context.WithTimeout(context.Background(), time.Microsecond)
+			evalCtx, cancel := context.WithTimeout(ctx, time.Microsecond)
 			defer cancel()
 
 			result, err := condition.Evaluate(evalCtx, contextStruct.GetFields())
@@ -525,4 +615,13 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			}
 		})
 	}
+}
+
+func mustConvertValue(varType types.ParameterType, value any) any {
+	convertedParam, err := varType.ConvertValue(value)
+	if err != nil {
+		panic(err)
+	}
+
+	return convertedParam
 }
