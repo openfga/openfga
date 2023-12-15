@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"context"
 	"fmt"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
@@ -11,6 +12,7 @@ import (
 
 // EvaluateTupleCondition returns a bool indicating if the provided tupleKey's condition (if any) was met.
 func EvaluateTupleCondition(
+	ctx context.Context,
 	tupleKey *openfgav1.TupleKey,
 	typesys *typesystem.TypeSystem,
 	context *structpb.Struct,
@@ -36,7 +38,7 @@ func EvaluateTupleCondition(
 			contextFields = append(contextFields, tupleContext.GetFields())
 		}
 
-		conditionResult, err := evaluableCondition.Evaluate(contextFields...)
+		conditionResult, err := evaluableCondition.Evaluate(ctx, contextFields...)
 		if err != nil {
 			return nil, err
 		}

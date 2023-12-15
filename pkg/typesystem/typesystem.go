@@ -25,7 +25,8 @@ const (
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
 
-	defaultMaxEvaluationCost = 100
+	defaultMaxEvaluationCost       = 100
+	defaultInterruptCheckFrequency = 100
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -187,8 +188,10 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
 	for name, cond := range model.GetConditions() {
 		uncompiledConditions[name] = condition.NewUncompiled(cond).
-			WithMaxEvaluationCost(defaultMaxEvaluationCost). // care should be taken here - decreasing can cause API compatibility problems
-			WithTrackEvaluationCost()
+			WithTrackEvaluationCost().
+			// care should be taken here - decreasing can cause API compatibility problems
+			WithMaxEvaluationCost(defaultMaxEvaluationCost).
+			WithInterruptCheckFrequency(defaultInterruptCheckFrequency)
 	}
 
 	return &TypeSystem{

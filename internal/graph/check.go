@@ -551,7 +551,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			err = validation.ValidateTuple(typesys, tupleKey)
 
 			if t != nil && err == nil {
-				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext())
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, tupleKey, typesys, req.GetContext())
 				if err != nil {
 					return nil, err
 				}
@@ -618,7 +618,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 					return response, err
 				}
 
-				condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+				condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 				if err != nil {
 					errs = multierror.Append(errs, err)
 					continue
@@ -809,7 +809,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 				return response, err
 			}
 
-			condEvalResult, err := eval.EvaluateTupleCondition(t, typesys, req.GetContext())
+			condEvalResult, err := eval.EvaluateTupleCondition(ctx, t, typesys, req.GetContext())
 			if err != nil {
 				errs = multierror.Append(errs, err)
 

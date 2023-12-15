@@ -1,9 +1,11 @@
 package condition
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
@@ -181,7 +183,7 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 // context provided. If more than one source of context is provided, and if the
 // keys provided in those context(s) are overlapping, then the overlapping key
 // for the last most context wins.
-func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
+func (e *EvaluableCondition) Evaluate(ctx context.Context, contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
 	if err := e.Compile(); err != nil {
 		return emptyEvaluationResult, NewEvaluationError(e.Name, err)
 	}
@@ -217,7 +219,10 @@ func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value)
 		missingParameters = append(missingParameters, key)
 	}
 
-	out, details, err := e.celProgram.Eval(activation)
+	evalCtx, cancel := context.WithTimeout(ctx, time.Millisecond)
+	defer cancel()
+
+	out, details, err := e.celProgram.ContextEval(evalCtx, activation)
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,
@@ -278,6 +283,16 @@ func (e *EvaluableCondition) WithTrackEvaluationCost() *EvaluableCondition {
 // condition because it modifies the behavior of the CEL program that is constructed after Compile.
 func (e *EvaluableCondition) WithMaxEvaluationCost(cost uint64) *EvaluableCondition {
 	e.celProgramOpts = append(e.celProgramOpts, cel.CostLimit(cost))
+
+	return e
+}
+
+// WithInterruptCheckFrequency enables CEL evaluation enforcement of the number of iterations
+// within a comprehension on the EvaluableCondition and returns the mutated EvaluableCondition.
+// The expectation is that this is called on the Uncompiled condition because it modifies
+// the behavior of the CEL program that is constructed after Compile.
+func (e *EvaluableCondition) WithInterruptCheckFrequency(checkFrequency uint) *EvaluableCondition {
+	e.celProgramOpts = append(e.celProgramOpts, cel.InterruptCheckFrequency(checkFrequency))
 
 	return e
 }

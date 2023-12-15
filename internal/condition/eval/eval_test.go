@@ -80,13 +80,15 @@ condition correct_ip(ip: string) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+
 			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, contextStruct)
+			condEvalResult, err := EvaluateTupleCondition(ctx, test.tupleKey, ts, contextStruct)
 			if err != nil {
 				var evalError *condition.EvaluationError
 				require.ErrorAs(t, err, &evalError)
@@ -162,13 +164,14 @@ condition str_cond(s: string) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
 			ts, err := typesystem.NewAndValidate(context.Background(), test.model)
 			require.NoError(t, err)
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
 
-			condEvalResult, err := EvaluateTupleCondition(test.tupleKey, ts, contextStruct)
+			condEvalResult, err := EvaluateTupleCondition(ctx, test.tupleKey, ts, contextStruct)
 			require.NoError(t, err)
 
 			require.Equal(t, test.result, condEvalResult)
