@@ -818,7 +818,6 @@ tests:
               relation: viewer
               user: user:maria
             context:
-              "x": 1
             expectation: false
         listObjectsAssertions:
           - request:
@@ -826,5 +825,4 @@ tests:
               type: document
               relation: viewer
             context:
-              "x": 1
             expectation:
