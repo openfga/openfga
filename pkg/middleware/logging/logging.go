@@ -79,9 +79,12 @@ func (r *reporter) PostCall(err error, _ time.Duration) {
 // PostMsgSend is called once in unary requests and multiple times in streaming requests.
 func (r *reporter) PostMsgSend(msg interface{}, err error, _ time.Duration) {
 	if err != nil {
-		marshalled, err2 := json.Marshal(status.Convert(err).Proto())
-		if err2 == nil {
-			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(marshalled)))
+		// this is the actual error that customers see:
+		intCode := serverErrors.ConvertToEncodedErrorCode(status.Convert(err))
+		encodedError := serverErrors.NewEncodedError(intCode, err.Error())
+		protomsg := encodedError.ActualError
+		if resp, err := json.Marshal(protomsg); err == nil {
+			r.fields = append(r.fields, zap.Any(rawResponseKey, json.RawMessage(resp)))
 		}
 		return
 	}

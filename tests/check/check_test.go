@@ -144,7 +144,7 @@ type document
 			},
 		},
 		{
-			_name: "check_http_success",
+			_name: "http_check_success",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -166,7 +166,7 @@ type document
 			},
 		},
 		{
-			_name: "check_grpc_error",
+			_name: "grpc_check_error",
 			grpcReq: &openfgav1.CheckRequest{
 				AuthorizationModelId: authorizationModelID,
 				StoreId:              storeID,
@@ -179,13 +179,13 @@ type document
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2009),
 				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
-				"raw_response": `{"code":2009,"message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent" + " grpc-go/" + grpc.Version,
 			},
 		},
 		{
-			_name: "check_http_error",
+			_name: "http_check_error",
 			httpReqBody: bytes.NewBufferString(`{
   "tuple_key": {
     "user": "user:anne",
@@ -200,7 +200,7 @@ type document
 				"grpc_type":    "unary",
 				"grpc_code":    int32(2009),
 				"raw_request":  fmt.Sprintf(`{"store_id":"%s","tuple_key":{"object":"","relation":"viewer","user":"user:anne"},"contextual_tuples":null,"authorization_model_id":"%s","trace":false,"context":null}`, storeID, authorizationModelID),
-				"raw_response": `{"code":2009,"message":"Invalid input. Make sure you provide a user, object and relation"}`,
+				"raw_response": `{"code":"invalid_check_input","message":"Invalid input. Make sure you provide a user, object and relation"}`,
 				"store_id":     storeID,
 				"user_agent":   "test-user-agent",
 			},
