@@ -400,19 +400,19 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 				validator.UnaryServerInterceptor(),
 			}...,
 		),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				requestid.NewStreamingInterceptor(),
+				validator.StreamServerInterceptor(),
+				grpc_ctxtags.StreamServerInterceptor(),
+			}...,
+		),
 	}
 
-	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
-		[]grpc.StreamServerInterceptor{
-			requestid.NewStreamingInterceptor(),
-			validator.StreamServerInterceptor(),
-			grpc_ctxtags.StreamServerInterceptor(),
-		}...,
-	))
-
 	if config.Metrics.Enabled {
-		serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor))
-		serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
+		serverOpts = append(serverOpts,
+			grpc.ChainUnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+			grpc.ChainStreamInterceptor(grpc_prometheus.StreamServerInterceptor))
 
 		if config.Metrics.EnableRPCHistograms {
 			grpc_prometheus.EnableHandlingTimeHistogram()
@@ -426,18 +426,17 @@ func (s *ServerContext) Run(ctx context.Context, config *serverconfig.Config) er
 	serverOpts = append(serverOpts, grpc.ChainUnaryInterceptor(
 		[]grpc.UnaryServerInterceptor{
 			grpcauth.UnaryServerInterceptor(authnmw.AuthFunc(authenticator)),
-		}...,
-	))
-
-	serverOpts = append(serverOpts, grpc.ChainStreamInterceptor(
-		[]grpc.StreamServerInterceptor{
-			grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
-			// The following interceptors wrap the server stream with our own
-			// wrapper and must come last.
-			storeid.NewStreamingInterceptor(),
-			logging.NewStreamingLoggingInterceptor(s.Logger),
-		}...,
-	))
+		}...),
+		grpc.ChainStreamInterceptor(
+			[]grpc.StreamServerInterceptor{
+				grpcauth.StreamServerInterceptor(authnmw.AuthFunc(authenticator)),
+				// The following interceptors wrap the server stream with our own
+				// wrapper and must come last.
+				storeid.NewStreamingInterceptor(),
+				logging.NewStreamingLoggingInterceptor(s.Logger),
+			}...,
+		),
+	)
 
 	if config.GRPC.TLS.Enabled {
 		if config.GRPC.TLS.CertPath == "" || config.GRPC.TLS.KeyPath == "" {
