@@ -870,6 +870,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
 	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
 	require.Contains(t, stringBody, "go_sql_idle_connections")
+	require.Contains(t, stringBody, "condition_evaluation_cost")
 }
 
 func TestHTTPServerDisabled(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/build"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
@@ -31,13 +32,15 @@ const streamedBufferSize = 100
 
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "list_objects_further_eval_required_count",
-		Help: "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
+		Namespace: build.ProjectName,
+		Name:      "list_objects_further_eval_required_count",
+		Help:      "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
 	})
 
 	noFurtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "list_objects_no_further_eval_required_count",
-		Help: "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
+		Namespace: build.ProjectName,
+		Name:      "list_objects_no_further_eval_required_count",
+		Help:      "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
 	})
 )
 
