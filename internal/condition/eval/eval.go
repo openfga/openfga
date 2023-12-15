@@ -19,7 +19,7 @@ var conditionEvaluationCostHistogram = promauto.NewHistogram(prometheus.Histogra
 	Namespace:                       build.ProjectName,
 	Name:                            "condition_evaluation_cost",
 	Help:                            "A histogram of the CEL evaluation cost of a Condition in a Relationship Tuple",
-	Buckets:                         utils.LinearBuckets(1, config.DefaultMaxConditionEvaluationCost, 10),
+	Buckets:                         utils.LinearBuckets(0, config.DefaultMaxConditionEvaluationCost, 10),
 	NativeHistogramBucketFactor:     1.1,
 	NativeHistogramMaxBucketNumber:  config.DefaultMaxConditionEvaluationCost,
 	NativeHistogramMinResetDuration: time.Hour,
