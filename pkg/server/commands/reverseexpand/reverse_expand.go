@@ -337,9 +337,16 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
@@ -353,9 +360,16 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
@@ -508,7 +522,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	errs = multierror.Append(errs, pool.Wait())
 	if errs.ErrorOrNil() != nil {
-		telemetry.TraceError(trace.SpanFromContext(ctx), errs.ErrorOrNil())
+		telemetry.TraceError(span, errs.ErrorOrNil())
 		return errs
 	}
 

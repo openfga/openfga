@@ -283,9 +283,6 @@ func union(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHandle
 		}
 	}
 
-	if err != nil {
-		telemetry.TraceError(trace.SpanFromContext(ctx), err)
-	}
 	return &ResolveCheckResponse{
 		Allowed: false,
 		ResolutionMetadata: &ResolutionMetadata{
@@ -331,7 +328,6 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 	allowed := true
 	if err != nil {
 		allowed = false
-		telemetry.TraceError(trace.SpanFromContext(ctx), err)
 	}
 	return &ResolveCheckResponse{
 		Allowed: allowed,
@@ -396,7 +392,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				telemetry.TraceError(trace.SpanFromContext(ctx), baseResult.err)
 				return response, baseResult.err
 			}
 
@@ -409,7 +404,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				telemetry.TraceError(trace.SpanFromContext(ctx), subResult.err)
 				return response, subResult.err
 			}
 
@@ -714,7 +708,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = append(checkFuncs, fn2)
 		}
 
-		return union(ctx, c.concurrencyLimit, checkFuncs...)
+		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		return resp, err
 	}
 }
 
@@ -925,10 +923,18 @@ func (c *LocalChecker) checkSetOperation(
 	}
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		var err error
+		var resp *ResolveCheckResponse
 		ctx, span := tracer.Start(ctx, reducerKey)
-		defer span.End()
+		defer func() {
+			if err != nil {
+				telemetry.TraceError(span, err)
+			}
+			span.End()
+		}()
 
-		return reducer(ctx, c.concurrencyLimit, handlers...)
+		resp, err = reducer(ctx, c.concurrencyLimit, handlers...)
+		return resp, err
 	}
 }
 
