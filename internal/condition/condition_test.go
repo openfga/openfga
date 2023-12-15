@@ -8,7 +8,6 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
-	"github.com/openfga/openfga/internal/condition/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -526,13 +525,4 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			}
 		})
 	}
-}
-
-func mustConvertValue(varType types.ParameterType, value any) any {
-	convertedParam, err := varType.ConvertValue(value)
-	if err != nil {
-		panic(err)
-	}
-
-	return convertedParam
 }
