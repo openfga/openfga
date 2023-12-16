@@ -21,6 +21,11 @@ type ExpandQuery struct {
 	datastore storage.OpenFGADatastore
 }
 
+type ExpandQueryResponse struct {
+	*openfgav1.ExpandResponse
+	ModelIDUsed string
+}
+
 type ExpandQueryOption func(*ExpandQuery)
 
 func WithExpandQueryLogger(l logger.Logger) ExpandQueryOption {
@@ -42,7 +47,7 @@ func NewExpandQuery(datastore storage.OpenFGADatastore, opts ...ExpandQueryOptio
 	return eq
 }
 
-func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest) (*openfgav1.ExpandResponse, error) {
+func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest) (*ExpandQueryResponse, error) {
 	store := req.GetStoreId()
 	modelID := req.GetAuthorizationModelId()
 	tupleKey := req.GetTupleKey()
@@ -55,22 +60,20 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 
 	tk := tupleUtils.NewTupleKey(object, relation, "")
 
-	model, err := q.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := storage.ResolveAuthorizationModel(ctx, q.datastore, store, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
-
+		if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
+			return nil, serverErrors.LatestAuthorizationModelNotFound(store)
+		}
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-	}
-
-	typesys, err := typesystem.NewAndValidate(ctx, model)
+	err = typesys.Validate()
 	if err != nil {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidModel)
+		return nil, serverErrors.ValidationError(err)
 	}
 
 	if err = validation.ValidateObject(typesys, tk); err != nil {
@@ -103,10 +106,13 @@ func (q *ExpandQuery) Execute(ctx context.Context, req *openfgav1.ExpandRequest)
 		return nil, err
 	}
 
-	return &openfgav1.ExpandResponse{
-		Tree: &openfgav1.UsersetTree{
-			Root: root,
+	return &ExpandQueryResponse{
+		ExpandResponse: &openfgav1.ExpandResponse{
+			Tree: &openfgav1.UsersetTree{
+				Root: root,
+			},
 		},
+		ModelIDUsed: typesys.GetAuthorizationModelID(),
 	}, nil
 }
 

@@ -22,6 +22,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/openfga/openfga/pkg/typesystem"
+
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/sqlcommon"
@@ -331,7 +333,7 @@ func (m *MySQL) MaxTuplesPerWrite() int {
 	return m.maxTuplesPerWriteField
 }
 
-func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*openfgav1.AuthorizationModel, error) {
+func (m *MySQL) ReadAuthorizationModel(ctx context.Context, store string, modelID string) (*typesystem.TypeSystem, error) {
 	ctx, span := tracer.Start(ctx, "mysql.ReadAuthorizationModel")
 	defer span.End()
 
@@ -396,11 +398,11 @@ func (m *MySQL) ReadAuthorizationModels(ctx context.Context, store string, opts 
 	models := make([]*openfgav1.AuthorizationModel, 0, numModelIDs)
 	// We use numModelIDs here to avoid retrieving possibly one extra model.
 	for i := 0; i < numModelIDs; i++ {
-		model, err := m.ReadAuthorizationModel(ctx, store, modelIDs[i])
+		typesys, err := m.ReadAuthorizationModel(ctx, store, modelIDs[i])
 		if err != nil {
 			return nil, nil, err
 		}
-		models = append(models, model)
+		models = append(models, typesys.GetModel())
 	}
 
 	return models, token, nil

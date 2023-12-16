@@ -39,7 +39,7 @@ func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBacken
 
 func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
 	modelID := req.GetId()
-	azm, err := q.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
+	typesys, err := q.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
@@ -47,6 +47,6 @@ func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgav
 		return nil, serverErrors.HandleError("", err)
 	}
 	return &openfgav1.ReadAuthorizationModelResponse{
-		AuthorizationModel: azm,
+		AuthorizationModel: typesys.GetModel(),
 	}, nil
 }

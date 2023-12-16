@@ -341,6 +341,7 @@ func TestCheckWithUnexpectedCycle(t *testing.T) {
 		name     string
 		model    string
 		tupleKey *openfgav1.TupleKey
+		errorMsg string
 	}{
 		{
 			name: "test_1",
@@ -354,6 +355,7 @@ type resource
 	define y: [user] but not z
 	define z: [user] or x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+			errorMsg: "an authorization model cannot contain a cycle",
 		},
 		{
 			name: "test_2",
@@ -367,6 +369,7 @@ type resource
 	define y: [user] and z
 	define z: [user] or x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+			errorMsg: "an authorization model cannot contain a cycle",
 		},
 		{
 			name: "test_3",
@@ -377,6 +380,7 @@ type resource
 	define x: y
 	define y: x`,
 			tupleKey: tuple.NewTupleKey("resource:1", "x", "user:jon"),
+			errorMsg: "potential loop",
 		},
 		{
 			name: "test_4",
@@ -413,7 +417,7 @@ type resource
 			// if the branch producing the cycle is reached first, then an error is returned, otherwise
 			// a result is returned if some other terminal path of evaluation was reached before the cycle
 			if err != nil {
-				require.ErrorIs(t, err, ErrCycleDetected)
+				require.ErrorContains(t, err, test.errorMsg)
 			} else {
 				require.False(t, resp.GetAllowed())
 				require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly

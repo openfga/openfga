@@ -1,0 +1,2 @@
+/internal/mocks/mock_storage.go linguist-generated=true
+/internal/graph/mock_* linguist-generated=true

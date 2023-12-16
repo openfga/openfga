@@ -647,7 +647,7 @@ condition condition1(x: int) {
 					done <- struct{}{}
 				}()
 
-				_, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
+				_, modelUsed, err := listObjectsQuery.ExecuteStreamed(ctx, &openfgav1.StreamedListObjectsRequest{
 					StoreId:          storeID,
 					Type:             test.objectType,
 					Relation:         test.relation,
@@ -659,6 +659,7 @@ condition condition1(x: int) {
 				<-done
 
 				require.NoError(t, err)
+				require.NotEmpty(t, modelUsed)
 				// there is no upper bound of the number of results for the streamed version
 				require.GreaterOrEqual(t, len(streamedObjectIds), int(test.minimumResultsExpected))
 				require.ElementsMatch(t, test.allResults, streamedObjectIds)

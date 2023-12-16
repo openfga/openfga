@@ -16,6 +16,8 @@ import (
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/openfga/openfga/pkg/typesystem"
+
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
@@ -480,7 +482,7 @@ func (s *MemoryBackend) ReadStartingWithUser(
 	return &staticIterator{records: matches}, nil
 }
 
-func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*openfgav1.AuthorizationModel, bool) {
+func findAuthorizationModelByID(id string, configurations map[string]*AuthorizationModelEntry) (*typesystem.TypeSystem, bool) {
 	var nsc *openfgav1.AuthorizationModel
 
 	if id == "" {
@@ -502,11 +504,11 @@ func findAuthorizationModelByID(id string, configurations map[string]*Authorizat
 			nsc = entry.model
 		}
 	}
-	return nsc, true
+	return typesystem.New(nsc), true
 }
 
 // ReadAuthorizationModel See storage.AuthorizationModelBackend.ReadAuthorizationModel
-func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error) {
+func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string, id string) (*typesystem.TypeSystem, error) {
 	_, span := tracer.Start(ctx, "memory.ReadAuthorizationModel")
 	defer span.End()
 
@@ -597,7 +599,7 @@ func (s *MemoryBackend) FindLatestAuthorizationModelID(ctx context.Context, stor
 		telemetry.TraceError(span, storage.ErrNotFound)
 		return "", storage.ErrNotFound
 	}
-	return nsc.Id, nil
+	return nsc.GetAuthorizationModelID(), nil
 }
 
 // WriteAuthorizationModel See storage.TypeDefinitionWriteBackend.WriteAuthorizationModel

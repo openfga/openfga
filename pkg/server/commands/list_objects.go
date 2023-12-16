@@ -46,7 +46,7 @@ var (
 )
 
 type ListObjectsQuery struct {
-	datastore               storage.RelationshipTupleReader
+	datastore               storage.Reader
 	logger                  logger.Logger
 	listObjectsDeadline     time.Duration
 	listObjectsMaxResults   uint32
@@ -60,6 +60,7 @@ type ListObjectsQuery struct {
 type ListObjectsResponse struct {
 	Objects            []string
 	ResolutionMetadata reverseexpand.ResolutionMetadata
+	ModelIDUsed        string
 }
 
 type ListObjectsQueryOption func(d *ListObjectsQuery)
@@ -109,7 +110,7 @@ func WithMaxConcurrentReads(limit uint32) ListObjectsQueryOption {
 	}
 }
 
-func NewListObjectsQuery(ds storage.RelationshipTupleReader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
+func NewListObjectsQuery(ds storage.Reader, opts ...ListObjectsQueryOption) *ListObjectsQuery {
 	query := &ListObjectsQuery{
 		datastore:               ds,
 		logger:                  logger.NewNoopLogger(),
@@ -154,40 +155,49 @@ func (q *ListObjectsQuery) evaluate(
 	resultsChan chan<- ListObjectsResult,
 	maxResults uint32,
 	resolutionMetadata *reverseexpand.ResolutionMetadata,
-) error {
+) (string, error) {
 	targetObjectType := req.GetType()
 	targetRelation := req.GetRelation()
 
-	typesys, ok := typesystem.TypesystemFromContext(ctx)
-	if !ok {
-		panic("typesystem missing in context")
+	typesys, err := storage.ResolveAuthorizationModel(ctx, q.datastore, req.GetStoreId(), req.GetAuthorizationModelId())
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return "", serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
+		}
+		if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
+			return "", serverErrors.LatestAuthorizationModelNotFound(req.GetStoreId())
+		}
+		return "", serverErrors.HandleError("", err)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(typesys.GetSchemaVersion()) {
-		return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	err = typesys.Validate()
+	if err != nil {
+		return "", serverErrors.ValidationError(err)
 	}
+
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
 
 	for _, ctxTuple := range req.GetContextualTuples().GetTupleKeys() {
 		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
-			return serverErrors.HandleTupleValidateError(err)
+			return "", serverErrors.HandleTupleValidateError(err)
 		}
 	}
 
-	_, err := typesys.GetRelation(targetObjectType, targetRelation)
+	_, err = typesys.GetRelation(targetObjectType, targetRelation)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrObjectTypeUndefined) {
-			return serverErrors.TypeNotFound(targetObjectType)
+			return "", serverErrors.TypeNotFound(targetObjectType)
 		}
 
 		if errors.Is(err, typesystem.ErrRelationUndefined) {
-			return serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
+			return "", serverErrors.RelationNotFound(targetRelation, targetObjectType, nil)
 		}
 
-		return serverErrors.NewInternalError("", err)
+		return "", serverErrors.NewInternalError("", err)
 	}
 
 	if err := validation.ValidateUser(typesys, req.GetUser()); err != nil {
-		return serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
+		return "", serverErrors.ValidationError(fmt.Errorf("invalid 'user' value: %s", err))
 	}
 
 	handler := func() {
@@ -316,7 +326,7 @@ func (q *ListObjectsQuery) evaluate(
 
 	go handler()
 
-	return nil
+	return typesys.GetAuthorizationModelID(), nil
 }
 
 func trySendObject(object string, objectsFound *atomic.Uint32, maxResults uint32, resultsChan chan<- ListObjectsResult) {
@@ -349,7 +359,7 @@ func (q *ListObjectsQuery) Execute(
 
 	resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	modelIDUsed, err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +376,7 @@ func (q *ListObjectsQuery) Execute(
 			return &ListObjectsResponse{
 				Objects:            objects,
 				ResolutionMetadata: *resolutionMetadata,
+				ModelIDUsed:        modelIDUsed,
 			}, nil
 
 		case result, channelOpen := <-resultsChan:
@@ -394,6 +405,7 @@ func (q *ListObjectsQuery) Execute(
 				return &ListObjectsResponse{
 					Objects:            objects,
 					ResolutionMetadata: *resolutionMetadata,
+					ModelIDUsed:        modelIDUsed,
 				}, nil
 			}
 			objects = append(objects, result.ObjectID)
@@ -404,7 +416,7 @@ func (q *ListObjectsQuery) Execute(
 // ExecuteStreamed executes the ListObjectsQuery, returning a stream of object IDs.
 // It ignores the value of q.listObjectsMaxResults and returns all available results
 // until q.listObjectsDeadline is hit
-func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, error) {
+func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.StreamedListObjectsRequest, srv openfgav1.OpenFGAService_StreamedListObjectsServer) (*reverseexpand.ResolutionMetadata, string, error) {
 	maxResults := uint32(math.MaxUint32)
 	// make a buffered channel so that writer goroutines aren't blocked when attempting to send a result
 	resultsChan := make(chan ListObjectsResult, streamedBufferSize)
@@ -418,9 +430,9 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 
 	resolutionMetadata := reverseexpand.NewResolutionMetadata()
 
-	err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
+	modelUsed, err := q.evaluate(timeoutCtx, req, resultsChan, maxResults, resolutionMetadata)
 	if err != nil {
-		return nil, err
+		return nil, modelUsed, err
 	}
 
 	for {
@@ -429,30 +441,30 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			q.logger.WarnWithContext(
 				ctx, fmt.Sprintf("list objects timeout after %s", q.listObjectsDeadline.String()),
 			)
-			return resolutionMetadata, nil
+			return resolutionMetadata, modelUsed, nil
 
 		case result, channelOpen := <-resultsChan:
 			if !channelOpen {
 				// Channel closed! No more results.
-				return resolutionMetadata, nil
+				return resolutionMetadata, modelUsed, nil
 			}
 
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
-					return nil, result.Err
+					return nil, modelUsed, result.Err
 				}
 
 				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
-					return nil, serverErrors.ValidationError(result.Err)
+					return nil, modelUsed, serverErrors.ValidationError(result.Err)
 				}
 
-				return nil, serverErrors.HandleError("", result.Err)
+				return nil, modelUsed, serverErrors.HandleError("", result.Err)
 			}
 
 			if err := srv.Send(&openfgav1.StreamedListObjectsResponse{
 				Object: result.ObjectID,
 			}); err != nil {
-				return nil, serverErrors.NewInternalError("", err)
+				return nil, modelUsed, serverErrors.NewInternalError("", err)
 			}
 		}
 	}

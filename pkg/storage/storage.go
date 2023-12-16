@@ -5,9 +5,14 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/pkg/errors"
+
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 const (
@@ -131,11 +136,35 @@ type ReadUsersetTuplesFilter struct {
 	AllowedUserTypeRestrictions []*openfgav1.RelationReference // optional
 }
 
+// ResolveAuthorizationModel is a helper function that validates a model ID, and tries to
+// fetch a specific store + model ID. If model ID is empty, it tries to fetch the latest model from that store.
+// TODO this could be a reusable command with unit tests that can return server errors directly
+var ResolveAuthorizationModel = func(ctx context.Context, ds AuthorizationModelReadBackend, storeID, modelID string) (*typesystem.TypeSystem, error) {
+	if modelID != "" {
+		if _, err := ulid.Parse(modelID); err != nil {
+			return nil, ErrNotFound
+		}
+	}
+	latestModelID := modelID
+	var err error
+	if modelID == "" {
+		latestModelID, err = ds.FindLatestAuthorizationModelID(ctx, storeID)
+		if err != nil {
+			if errors.Is(err, ErrNotFound) {
+				return nil, ErrLatestAuthorizationModelNotFound
+			}
+			return nil, fmt.Errorf("failed to FindLatestAuthorizationModelID: %w", err)
+		}
+	}
+
+	return ds.ReadAuthorizationModel(ctx, storeID, latestModelID)
+}
+
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
 	// ReadAuthorizationModel Read the model corresponding to store and model id
 	// If it's not found, it must return ErrNotFound
-	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
+	ReadAuthorizationModel(ctx context.Context, store string, id string) (*typesystem.TypeSystem, error)
 
 	// ReadAuthorizationModels Read all type definitions ids for the supplied store.
 	ReadAuthorizationModels(ctx context.Context, store string, options PaginationOptions) ([]*openfgav1.AuthorizationModel, []byte, error)
@@ -182,6 +211,11 @@ type ChangelogBackend interface {
 	// The horizonOffset should be specified using a unit no more granular than a millisecond and should be interpreted
 	// as a millisecond duration.
 	ReadChanges(ctx context.Context, store, objectType string, paginationOptions PaginationOptions, horizonOffset time.Duration) ([]*openfgav1.TupleChange, []byte, error)
+}
+
+type Reader interface {
+	RelationshipTupleReader
+	AuthorizationModelReadBackend
 }
 
 type OpenFGADatastore interface {

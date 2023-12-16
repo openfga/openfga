@@ -9,14 +9,14 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// NewCombinedTupleReader returns a TupleReader that reads from a persistent datastore and from the contextual
+// NewCombinedTupleReader returns a decorator over a OpenFGADatastore that reads from a persistent datastore and from the contextual
 // tuples specified in the request
-func NewCombinedTupleReader(ds storage.RelationshipTupleReader, contextualTuples []*openfgav1.TupleKey) storage.RelationshipTupleReader {
-	return &combinedTupleReader{RelationshipTupleReader: ds, contextualTuples: contextualTuples}
+func NewCombinedTupleReader(ds storage.Reader, contextualTuples []*openfgav1.TupleKey) storage.Reader {
+	return &combinedTupleReader{Reader: ds, contextualTuples: contextualTuples}
 }
 
 type combinedTupleReader struct {
-	storage.RelationshipTupleReader
+	storage.Reader
 	contextualTuples []*openfgav1.TupleKey
 }
 
@@ -44,7 +44,7 @@ func (c *combinedTupleReader) Read(
 ) (storage.TupleIterator, error) {
 	iter1 := storage.NewStaticTupleIterator(filterTuples(c.contextualTuples, tk.Object, tk.Relation))
 
-	iter2, err := c.RelationshipTupleReader.Read(ctx, storeID, tk)
+	iter2, err := c.Reader.Read(ctx, storeID, tk)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (c *combinedTupleReader) ReadPage(
 ) ([]*openfgav1.Tuple, []byte, error) {
 	// no reading from contextual tuples
 
-	return c.RelationshipTupleReader.ReadPage(ctx, store, tk, opts)
+	return c.Reader.ReadPage(ctx, store, tk, opts)
 }
 
 func (c *combinedTupleReader) ReadUserTuple(
@@ -76,7 +76,7 @@ func (c *combinedTupleReader) ReadUserTuple(
 		}
 	}
 
-	return c.RelationshipTupleReader.ReadUserTuple(ctx, store, tk)
+	return c.Reader.ReadUserTuple(ctx, store, tk)
 }
 
 func (c *combinedTupleReader) ReadUsersetTuples(
@@ -94,7 +94,7 @@ func (c *combinedTupleReader) ReadUsersetTuples(
 
 	iter1 := storage.NewStaticTupleIterator(usersetTuples)
 
-	iter2, err := c.RelationshipTupleReader.ReadUsersetTuples(ctx, store, filter)
+	iter2, err := c.Reader.ReadUsersetTuples(ctx, store, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (c *combinedTupleReader) ReadStartingWithUser(
 
 	iter1 := storage.NewStaticTupleIterator(filteredTuples)
 
-	iter2, err := c.RelationshipTupleReader.ReadStartingWithUser(ctx, store, filter)
+	iter2, err := c.Reader.ReadStartingWithUser(ctx, store, filter)
 	if err != nil {
 		return nil, err
 	}

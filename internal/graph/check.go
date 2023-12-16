@@ -18,6 +18,7 @@ import (
 	"github.com/openfga/openfga/internal/condition/eval"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -42,6 +43,7 @@ type ResolveCheckRequest struct {
 }
 
 type ResolveCheckResponse struct {
+	ModelIDUsed        string
 	Allowed            bool
 	ResolutionMetadata *ResolutionMetadata
 }
@@ -123,7 +125,7 @@ type checkOutcome struct {
 }
 
 type LocalChecker struct {
-	ds                 storage.RelationshipTupleReader
+	ds                 storage.Reader
 	delegate           CheckResolver
 	concurrencyLimit   uint32
 	maxConcurrentReads uint32
@@ -154,7 +156,7 @@ func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 
 // NewLocalChecker constructs a LocalChecker that can be used to evaluate a Check
 // request locally.
-func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOption) CheckResolver {
+func NewLocalChecker(ds storage.Reader, opts ...LocalCheckerOption) CheckResolver {
 	checker := &LocalChecker{
 		ds:                 ds,
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
@@ -431,6 +433,7 @@ func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) Che
 	}
 }
 
+// TODO the validation logic in this function only needs to run once per Check, not for each subproblem
 // ResolveCheck resolves a node out of a tree of evaluations. If the depth of the tree has gotten too large,
 // evaluation is aborted and an error is returned. The depth is NOT increased on computed usersets.
 func (c *LocalChecker) ResolveCheck(
@@ -439,6 +442,11 @@ func (c *LocalChecker) ResolveCheck(
 ) (*ResolveCheckResponse, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
+	}
+
+	tk := req.GetTupleKey()
+	if tk.GetUser() == "" || tk.GetRelation() == "" || tk.GetObject() == "" {
+		return nil, serverErrors.InvalidCheckInput
 	}
 
 	ctx, span := tracer.Start(ctx, "ResolveCheck")
@@ -452,7 +460,33 @@ func (c *LocalChecker) ResolveCheck(
 
 	typesys, ok := typesystem.TypesystemFromContext(ctx)
 	if !ok {
-		panic("typesystem missing in context")
+		var err error
+		typesys, err = storage.ResolveAuthorizationModel(ctx, c.ds, req.GetStoreID(), req.GetAuthorizationModelID())
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelID())
+			}
+			if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
+				return nil, serverErrors.LatestAuthorizationModelNotFound(req.GetStoreID())
+			}
+			return nil, serverErrors.HandleError("", err)
+		}
+	}
+
+	err := typesys.Validate()
+	if err != nil {
+		return nil, serverErrors.ValidationError(err)
+	}
+	ctx = typesystem.ContextWithTypesystem(ctx, typesys)
+
+	if err := validation.ValidateUserObjectRelation(typesys, req.GetTupleKey()); err != nil {
+		return nil, serverErrors.ValidationError(err)
+	}
+
+	for _, ctxTuple := range req.GetContextualTuples() {
+		if err := validation.ValidateTuple(typesys, ctxTuple); err != nil {
+			return nil, serverErrors.HandleTupleValidateError(err)
+		}
 	}
 
 	tupleKey := req.GetTupleKey()
@@ -482,6 +516,8 @@ func (c *LocalChecker) ResolveCheck(
 		telemetry.TraceError(span, err)
 		return nil, err
 	}
+
+	resp.ModelIDUsed = typesys.GetAuthorizationModelID()
 
 	return resp, nil
 }

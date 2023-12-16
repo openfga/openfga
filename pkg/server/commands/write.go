@@ -16,7 +16,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // WriteCommand is used to Write and Delete tuples. Instances may be safely shared by multiple goroutines.
@@ -24,6 +23,11 @@ type WriteCommand struct {
 	logger                    logger.Logger
 	datastore                 storage.OpenFGADatastore
 	conditionContextByteLimit int
+}
+
+type WriteCommandResponse struct {
+	*openfgav1.WriteResponse
+	ModelIDUsed string
 }
 
 type WriteCommandOption func(*WriteCommand)
@@ -55,12 +59,13 @@ func NewWriteCommand(datastore storage.OpenFGADatastore, opts ...WriteCommandOpt
 }
 
 // Execute deletes and writes the specified tuples. Deletes are applied first, then writes.
-func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*openfgav1.WriteResponse, error) {
-	if err := c.validateWriteRequest(ctx, req); err != nil {
+func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest) (*WriteCommandResponse, error) {
+	modelID, err := c.validateWriteRequest(ctx, req)
+	if err != nil {
 		return nil, err
 	}
 
-	err := c.datastore.Write(
+	err = c.datastore.Write(
 		ctx,
 		req.GetStoreId(),
 		req.GetDeletes().GetTupleKeys(),
@@ -70,10 +75,10 @@ func (c *WriteCommand) Execute(ctx context.Context, req *openfgav1.WriteRequest)
 		return nil, handleError(err)
 	}
 
-	return &openfgav1.WriteResponse{}, nil
+	return &WriteCommandResponse{WriteResponse: &openfgav1.WriteResponse{}, ModelIDUsed: modelID}, nil
 }
 
-func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.WriteRequest) error {
+func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.WriteRequest) (string, error) {
 	ctx, span := tracer.Start(ctx, "validateWriteRequest")
 	defer span.End()
 
@@ -83,33 +88,31 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	writes := req.GetWrites().GetTupleKeys()
 
 	if len(deletes) == 0 && len(writes) == 0 {
-		return serverErrors.InvalidWriteInput
+		return modelID, serverErrors.InvalidWriteInput
 	}
 
 	if len(writes) > 0 {
-		authModel, err := c.datastore.ReadAuthorizationModel(ctx, store, modelID)
+		typesys, err := storage.ResolveAuthorizationModel(ctx, c.datastore, store, modelID)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				return serverErrors.AuthorizationModelNotFound(modelID)
+				return modelID, serverErrors.AuthorizationModelNotFound(modelID)
 			}
-			return err
+			if errors.Is(err, storage.ErrLatestAuthorizationModelNotFound) {
+				return modelID, serverErrors.LatestAuthorizationModelNotFound(store)
+			}
+			return modelID, serverErrors.HandleError("", err)
 		}
-
-		if !typesystem.IsSchemaVersionSupported(authModel.GetSchemaVersion()) {
-			return serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
-		}
-
-		typesys := typesystem.New(authModel)
+		modelID = typesys.GetAuthorizationModelID()
 
 		for _, tk := range writes {
 			err := validation.ValidateTuple(typesys, tk)
 			if err != nil {
-				return serverErrors.ValidationError(err)
+				return modelID, serverErrors.ValidationError(err)
 			}
 
 			contextSize := proto.Size(tk.GetCondition().GetContext())
 			if contextSize > c.conditionContextByteLimit {
-				return serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
+				return modelID, serverErrors.ValidationError(&tupleUtils.InvalidTupleError{
 					Cause:    fmt.Errorf("condition context size limit exceeded: %d bytes exceeds %d bytes", contextSize, c.conditionContextByteLimit),
 					TupleKey: tk,
 				})
@@ -119,7 +122,7 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 
 	for _, tk := range deletes {
 		if ok := tupleUtils.IsValidUser(tk.GetUser()); !ok {
-			return serverErrors.ValidationError(
+			return "", serverErrors.ValidationError(
 				&tupleUtils.InvalidTupleError{
 					Cause:    fmt.Errorf("the 'user' field is malformed"),
 					TupleKey: tk,
@@ -129,10 +132,10 @@ func (c *WriteCommand) validateWriteRequest(ctx context.Context, req *openfgav1.
 	}
 
 	if err := c.validateNoDuplicatesAndCorrectSize(deletes, writes); err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return modelID, nil
 }
 
 // validateNoDuplicatesAndCorrectSize ensures the deletes and writes contain no duplicates and length fits.

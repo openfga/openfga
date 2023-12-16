@@ -139,6 +139,9 @@ func ConditionedRelationReference(rel *openfgav1.RelationReference, condition st
 
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
+	// original model
+	model *openfgav1.AuthorizationModel
+
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
@@ -147,9 +150,6 @@ type TypeSystem struct {
 	conditions map[string]*condition.EvaluableCondition
 	// [objectType] => [relationName] => TTU relation
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
-
-	modelID       string
-	schemaVersion string
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
@@ -192,8 +192,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 
 	return &TypeSystem{
-		modelID:         model.GetId(),
-		schemaVersion:   model.GetSchemaVersion(),
+		model:           model,
 		typeDefinitions: tds,
 		relations:       relations,
 		conditions:      uncompiledConditions,
@@ -201,14 +200,22 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 }
 
+func (t *TypeSystem) GetModel() *openfgav1.AuthorizationModel {
+	return t.model
+}
+
 // GetAuthorizationModelID returns the id for the authorization model this
 // TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
-	return t.modelID
+	return t.model.GetId()
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
-	return t.schemaVersion
+	return t.model.GetSchemaVersion()
+}
+
+func (t *TypeSystem) GetTypeDefinitions() []*openfgav1.TypeDefinition {
+	return t.model.GetTypeDefinitions()
 }
 
 func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
@@ -819,18 +826,25 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 	defer span.End()
 
 	t := New(model)
+	if err := t.Validate(); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+func (t *TypeSystem) Validate() error {
 	schemaVersion := t.GetSchemaVersion()
 
 	if !IsSchemaVersionSupported(schemaVersion) {
-		return nil, ErrInvalidSchemaVersion
+		return ErrInvalidSchemaVersion
 	}
 
-	if containsDuplicateType(model) {
-		return nil, ErrDuplicateTypes
+	if containsDuplicateType(t.model) {
+		return ErrDuplicateTypes
 	}
 
 	if err := t.validateNames(); err != nil {
-		return nil, err
+		return err
 	}
 
 	typedefsMap := t.typeDefinitions
@@ -858,16 +872,16 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		for _, relationName := range relationNames {
 			err := t.validateRelation(typeName, relationName, relationMap)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
 	if err := t.validateConditions(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return t, nil
+	return nil
 }
 
 // validateRelation applies all the validation rules to a relation definition in a model. A relation

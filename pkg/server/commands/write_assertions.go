@@ -11,7 +11,6 @@ import (
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
 	tupleUtils "github.com/openfga/openfga/pkg/tuple"
-	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 type WriteAssertionsCommand struct {
@@ -45,7 +44,7 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 	modelID := req.GetAuthorizationModelId()
 	assertions := req.GetAssertions()
 
-	model, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
+	typesys, err := w.datastore.ReadAuthorizationModel(ctx, store, modelID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(req.GetAuthorizationModelId())
@@ -54,11 +53,10 @@ func (w *WriteAssertionsCommand) Execute(ctx context.Context, req *openfgav1.Wri
 		return nil, serverErrors.HandleError("", err)
 	}
 
-	if !typesystem.IsSchemaVersionSupported(model.GetSchemaVersion()) {
-		return nil, serverErrors.ValidationError(typesystem.ErrInvalidSchemaVersion)
+	err = typesys.Validate()
+	if err != nil {
+		return nil, serverErrors.ValidationError(err)
 	}
-
-	typesys := typesystem.New(model)
 
 	for _, assertion := range assertions {
 		if err := validation.ValidateUserObjectRelation(typesys, tupleUtils.ConvertAssertionTupleKeyToTupleKey(assertion.TupleKey)); err != nil {
