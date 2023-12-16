@@ -35,7 +35,7 @@ func NewPaginationOptions(ps int32, contToken string) PaginationOptions {
 
 // Writes and Deletes are typesafe aliases for Write arguments.
 type Writes = []*openfgav1.TupleKey
-type Deletes = []*openfgav1.TupleKey
+type Deletes = []*openfgav1.TupleKeyWithoutCondition
 
 // A TupleBackend provides an R/W interface for managing tuples.
 type TupleBackend interface {
@@ -184,8 +184,16 @@ type OpenFGADatastore interface {
 	ChangelogBackend
 
 	// IsReady reports whether the datastore is ready to accept traffic.
-	IsReady(ctx context.Context) (bool, error)
+	IsReady(ctx context.Context) (ReadinessStatus, error)
 
 	// Close closes the datastore and cleans up any residual resources.
 	Close()
+}
+
+// ReadinessStatus represents the readiness status of the datastore.
+type ReadinessStatus struct {
+	// Message is a human-friendly status message for the current datastore status.
+	Message string
+
+	IsReady bool
 }

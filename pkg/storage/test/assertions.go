@@ -8,6 +8,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/storage"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,11 +20,11 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		modelID := ulid.Make().String()
 		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    tupleUtils.NewAssertionTupleKey("doc:readme", "owner", "10"),
 				Expectation: false,
 			},
 			{
-				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"},
+				TupleKey:    tupleUtils.NewAssertionTupleKey("doc:readme", "viewer", "11"),
 				Expectation: true,
 			},
 		}
@@ -42,11 +43,11 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 	t.Run("writing_twice_overwrites_assertions", func(t *testing.T) {
 		store := ulid.Make().String()
 		modelID := ulid.Make().String()
-		assertions := []*openfgav1.Assertion{{TupleKey: &openfgav1.TupleKey{Object: "doc:readme", Relation: "viewer", User: "11"}, Expectation: true}}
+		assertions := []*openfgav1.Assertion{{TupleKey: tupleUtils.NewAssertionTupleKey("doc:readme", "viewer", "11"), Expectation: true}}
 
 		err := datastore.WriteAssertions(ctx, store, modelID, []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    tupleUtils.NewAssertionTupleKey("doc:readme", "owner", "10"),
 				Expectation: false,
 			},
 		})
@@ -69,7 +70,7 @@ func AssertionsTest(t *testing.T, datastore storage.OpenFGADatastore) {
 		newModelID := ulid.Make().String()
 		assertions := []*openfgav1.Assertion{
 			{
-				TupleKey:    &openfgav1.TupleKey{Object: "doc:readme", Relation: "owner", User: "10"},
+				TupleKey:    tupleUtils.NewAssertionTupleKey("doc:readme", "owner", "10"),
 				Expectation: false,
 			},
 		}

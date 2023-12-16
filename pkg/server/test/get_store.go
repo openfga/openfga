@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -35,11 +34,10 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 	ignoreStoreFields := protocmp.IgnoreFields(protoadapt.MessageV2Of(&openfgav1.GetStoreResponse{}), "created_at", "updated_at", "id")
 
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test._name, func(t *testing.T) {
-			query := commands.NewGetStoreQuery(datastore, logger)
+			query := commands.NewGetStoreQuery(datastore)
 			resp, err := query.Execute(ctx, test.request)
 
 			if test.err != nil {
@@ -57,15 +55,14 @@ func TestGetStoreQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 func TestGetStoreSucceeds(t *testing.T, datastore storage.OpenFGADatastore) {
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	store := testutils.CreateRandomString(10)
-	createStoreQuery := commands.NewCreateStoreCommand(datastore, logger)
+	createStoreQuery := commands.NewCreateStoreCommand(datastore)
 
 	createStoreResponse, err := createStoreQuery.Execute(ctx, &openfgav1.CreateStoreRequest{Name: store})
 	require.NoError(t, err)
 
-	query := commands.NewGetStoreQuery(datastore, logger)
+	query := commands.NewGetStoreQuery(datastore)
 	actualResponse, actualError := query.Execute(ctx, &openfgav1.GetStoreRequest{StoreId: createStoreResponse.Id})
 	require.NoError(t, actualError)
 

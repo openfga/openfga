@@ -19,7 +19,7 @@ func TestBoundedConcurrencyWrapper(t *testing.T) {
 	store := ulid.Make().String()
 	slowBackend := mocks.NewMockSlowDataStorage(memory.New(), time.Second)
 
-	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKey{}, []*openfgav1.TupleKey{
+	err := slowBackend.Write(context.Background(), store, []*openfgav1.TupleKeyWithoutCondition{}, []*openfgav1.TupleKey{
 		tuple.NewTupleKey("obj:1", "viewer", "user:anne"),
 	})
 	require.NoError(t, err)

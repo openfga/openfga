@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3.5.2
 
-      - uses: actions/setup-go@93397bea11091df50f3d7e59dc26a7711a8bcfbe # v4.1.0
+      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
@@ -40,9 +40,14 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           comment-on-alert: true
 
+      - name: Get CPU information
+        uses: kenchan0130/actions-system-info@19ac84a24678e27ef7e91016765c221f97b1dc28 # v1
+        id: system-info
+
       - name: Save benchmark JSON to cache
         uses: actions/cache/save@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
         with:
           path: ./cache/benchmark-data.json
           # Save with commit hash to avoid "cache already exists"
-          key: ${{ github.sha }}-go-benchmark
+          # Save with OS & CPU info to prevent comparing against results from different CPUs
+          key: ${{ github.sha }}-${{ runner.os }}-${{ steps.system-info.outputs.cpu-model }}-go-benchmark

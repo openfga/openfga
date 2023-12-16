@@ -10,6 +10,8 @@ import (
 	"sort"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 )
@@ -23,20 +25,6 @@ const (
 	SchemaVersion1_1 string = "1.1"
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
-)
-
-var (
-	ErrModelNotFound         = errors.New("authorization model not found")
-	ErrDuplicateTypes        = errors.New("an authorization model cannot contain duplicate types")
-	ErrInvalidSchemaVersion  = errors.New("invalid schema version")
-	ErrInvalidModel          = errors.New("invalid authorization model encountered")
-	ErrRelationUndefined     = errors.New("undefined relation")
-	ErrObjectTypeUndefined   = errors.New("undefined object type")
-	ErrInvalidUsersetRewrite = errors.New("invalid userset rewrite definition")
-	ErrReservedKeywords      = errors.New("self and this are reserved keywords")
-	ErrCycle                 = errors.New("an authorization model cannot contain a cycle")
-	ErrNoEntrypoints         = errors.New("no entrypoints defined")
-	ErrNoEntryPointsLoop     = errors.New("potential loop")
 )
 
 func IsSchemaVersionSupported(version string) bool {
@@ -143,12 +131,22 @@ func Difference(base *openfgav1.Userset, sub *openfgav1.Userset) *openfgav1.User
 	}
 }
 
+func ConditionedRelationReference(rel *openfgav1.RelationReference, condition string) *openfgav1.RelationReference {
+	rel.Condition = condition
+	return rel
+}
+
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
-	relations     map[string]map[string]*openfgav1.Relation
+	relations map[string]map[string]*openfgav1.Relation
+	// [conditionName] => condition
+	conditions map[string]*condition.EvaluableCondition
+	// [objectType] => [relationName] => TTU relation
+	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
+
 	modelID       string
 	schemaVersion string
 }
@@ -158,12 +156,14 @@ type TypeSystem struct {
 func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	tds := make(map[string]*openfgav1.TypeDefinition, len(model.GetTypeDefinitions()))
 	relations := make(map[string]map[string]*openfgav1.Relation, len(model.GetTypeDefinitions()))
+	ttuRelations := make(map[string]map[string][]*openfgav1.TupleToUserset, len(model.GetTypeDefinitions()))
 
 	for _, td := range model.GetTypeDefinitions() {
 		typeName := td.GetType()
 
 		tds[typeName] = td
 		tdRelations := make(map[string]*openfgav1.Relation, len(td.GetRelations()))
+		ttuRelations[typeName] = make(map[string][]*openfgav1.TupleToUserset, len(td.GetRelations()))
 
 		for relation, rewrite := range td.GetRelations() {
 			r := &openfgav1.Relation{
@@ -177,8 +177,17 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 			}
 
 			tdRelations[relation] = r
+			ttus := make([]*openfgav1.TupleToUserset, 0)
+			ttuRelations[typeName][relation] = tupleToUsersetsDefinitions(rewrite, &ttus)
 		}
 		relations[typeName] = tdRelations
+	}
+
+	uncompiledConditions := make(map[string]*condition.EvaluableCondition, len(model.GetConditions()))
+	for name, cond := range model.GetConditions() {
+		uncompiledConditions[name] = condition.NewUncompiled(cond).
+			WithMaxEvaluationCost(config.DefaultMaxConditionEvaluationCost). // care should be taken here - decreasing can cause API compatibility problems
+			WithTrackEvaluationCost()
 	}
 
 	return &TypeSystem{
@@ -186,6 +195,8 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		schemaVersion:   model.GetSchemaVersion(),
 		typeDefinitions: tds,
 		relations:       relations,
+		conditions:      uncompiledConditions,
+		ttuRelations:    ttuRelations,
 	}
 }
 
@@ -197,6 +208,10 @@ func (t *TypeSystem) GetAuthorizationModelID() string {
 
 func (t *TypeSystem) GetSchemaVersion() string {
 	return t.schemaVersion
+}
+
+func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {
+	return t.conditions
 }
 
 func (t *TypeSystem) GetTypeDefinition(objectType string) (*openfgav1.TypeDefinition, bool) {
@@ -235,6 +250,13 @@ func (t *TypeSystem) GetRelation(objectType, relation string) (*openfgav1.Relati
 	}
 
 	return r, nil
+}
+
+func (t *TypeSystem) GetCondition(name string) (*condition.EvaluableCondition, bool) {
+	if _, ok := t.conditions[name]; !ok {
+		return nil, false
+	}
+	return t.conditions[name], true
 }
 
 // GetRelationReferenceAsString returns team#member, or team:*, or an empty string if the input is nil.
@@ -840,6 +862,10 @@ func NewAndValidate(ctx context.Context, model *openfgav1.AuthorizationModel) (*
 		}
 	}
 
+	if err := t.validateConditions(); err != nil {
+		return nil, err
+	}
+
 	return t, nil
 }
 
@@ -1055,8 +1081,33 @@ func (t *TypeSystem) validateTypeRestrictions(objectType string, relationName st
 				}
 			}
 		}
+
+		if related.Condition != "" {
+			// Validate the conditions referenced by the relations are included in the model.
+			if _, ok := t.conditions[related.Condition]; !ok {
+				return &RelationConditionError{
+					Relation:  relationName,
+					Condition: related.Condition,
+					Err:       ErrNoConditionForRelation,
+				}
+			}
+		}
 	}
 
+	return nil
+}
+
+// validateConditions validates the conditions provided in the model.
+func (t *TypeSystem) validateConditions() error {
+	for key, c := range t.conditions {
+		if key != c.Name {
+			return fmt.Errorf("condition key '%s' does not match condition name '%s'", key, c.Name)
+		}
+
+		if err := c.Compile(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1113,81 +1164,6 @@ func RewriteContainsExclusion(rewrite *openfgav1.Userset) bool {
 	}
 
 	return result != nil && result.(bool) // type-cast matches the return from the WalkRelationshipRewriteHandler above
-}
-
-type InvalidTypeError struct {
-	ObjectType string
-	Cause      error
-}
-
-func (e *InvalidTypeError) Error() string {
-	return fmt.Sprintf("the definition of type '%s' is invalid", e.ObjectType)
-}
-
-func (e *InvalidTypeError) Unwrap() error {
-	return e.Cause
-}
-
-type InvalidRelationError struct {
-	ObjectType string
-	Relation   string
-	Cause      error
-}
-
-func (e *InvalidRelationError) Error() string {
-	return fmt.Sprintf("the definition of relation '%s' in object type '%s' is invalid: %s", e.Relation, e.ObjectType, e.Cause)
-}
-
-func (e *InvalidRelationError) Unwrap() error {
-	return e.Cause
-}
-
-type ObjectTypeUndefinedError struct {
-	ObjectType string
-	Err        error
-}
-
-func (e *ObjectTypeUndefinedError) Error() string {
-	return fmt.Sprintf("'%s' is an undefined object type", e.ObjectType)
-}
-
-func (e *ObjectTypeUndefinedError) Unwrap() error {
-	return e.Err
-}
-
-type RelationUndefinedError struct {
-	ObjectType string
-	Relation   string
-	Err        error
-}
-
-func (e *RelationUndefinedError) Error() string {
-	if e.ObjectType != "" {
-		return fmt.Sprintf("'%s#%s' relation is undefined", e.ObjectType, e.Relation)
-	}
-
-	return fmt.Sprintf("'%s' relation is undefined", e.Relation)
-}
-
-func (e *RelationUndefinedError) Unwrap() error {
-	return e.Err
-}
-
-func AssignableRelationError(objectType, relation string) error {
-	return fmt.Errorf("the assignable relation '%s' in object type '%s' must contain at least one relation type", relation, objectType)
-}
-
-func NonAssignableRelationError(objectType, relation string) error {
-	return fmt.Errorf("the non-assignable relation '%s' in object type '%s' should not contain a relation type", relation, objectType)
-}
-
-func InvalidRelationTypeError(objectType, relation, relatedObjectType, relatedRelation string) error {
-	relationType := relatedObjectType
-	if relatedRelation != "" {
-		relationType = tuple.ToObjectRelationString(relatedObjectType, relatedRelation)
-	}
-
-	return fmt.Errorf("the relation type '%s' on '%s' in object type '%s' is not valid", relationType, relation, objectType)
 }
 
 func (t *TypeSystem) hasCycle(
@@ -1252,21 +1228,6 @@ func (t *TypeSystem) HasCycle(objectType, relationName string) (bool, error) {
 	return t.hasCycle(objectType, relationName, relation.GetRewrite(), visited)
 }
 
-// getAllTupleToUsersetsDefinitions returns a map where the key is the object type and the value
-// is another map where key=relationName, value=list of tuple to usersets declared in that relation
-func (t *TypeSystem) getAllTupleToUsersetsDefinitions() map[string]map[string][]*openfgav1.TupleToUserset {
-	response := make(map[string]map[string][]*openfgav1.TupleToUserset, 0)
-	for typeName, typeDef := range t.typeDefinitions {
-		response[typeName] = make(map[string][]*openfgav1.TupleToUserset, 0)
-		for relationName, relationDef := range typeDef.GetRelations() {
-			ttus := make([]*openfgav1.TupleToUserset, 0)
-			response[typeName][relationName] = t.tupleToUsersetsDefinitions(relationDef, &ttus)
-		}
-	}
-
-	return response
-}
-
 // IsTuplesetRelation returns a boolean indicating if the provided relation is defined under a
 // TupleToUserset rewrite as a tupleset relation (i.e. the right hand side of a `X from Y`).
 func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, error) {
@@ -1275,7 +1236,7 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 		return false, err
 	}
 
-	for _, ttuDefinitions := range t.getAllTupleToUsersetsDefinitions()[objectType] {
+	for _, ttuDefinitions := range t.ttuRelations[objectType] {
 		for _, ttuDef := range ttuDefinitions {
 			if ttuDef.Tupleset.Relation == relation {
 				return true, nil
@@ -1286,23 +1247,23 @@ func (t *TypeSystem) IsTuplesetRelation(objectType, relation string) (bool, erro
 	return false, nil
 }
 
-func (t *TypeSystem) tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
+func tupleToUsersetsDefinitions(relationDef *openfgav1.Userset, resp *[]*openfgav1.TupleToUserset) []*openfgav1.TupleToUserset {
 	if relationDef.GetTupleToUserset() != nil {
 		*resp = append(*resp, relationDef.GetTupleToUserset())
 	}
 	if relationDef.GetUnion() != nil {
 		for _, child := range relationDef.GetUnion().GetChild() {
-			t.tupleToUsersetsDefinitions(child, resp)
+			tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetIntersection() != nil {
 		for _, child := range relationDef.GetIntersection().GetChild() {
-			t.tupleToUsersetsDefinitions(child, resp)
+			tupleToUsersetsDefinitions(child, resp)
 		}
 	}
 	if relationDef.GetDifference() != nil {
-		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
-		t.tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
+		tupleToUsersetsDefinitions(relationDef.GetDifference().GetBase(), resp)
+		tupleToUsersetsDefinitions(relationDef.GetDifference().GetSubtract(), resp)
 	}
 	return *resp
 }

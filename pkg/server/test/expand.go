@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
 	"github.com/openfga/openfga/pkg/storage"
@@ -62,10 +61,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -115,10 +114,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -196,10 +195,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -287,10 +286,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -373,10 +372,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -446,10 +445,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -530,10 +529,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "active_admin",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"active_admin",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -612,10 +611,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			},
 			tuples: []*openfgav1.TupleKey{},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -743,10 +742,10 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
-					Object:   "repo:openfga/foo",
-					Relation: "writer",
-				},
+				TupleKey: tuple.NewExpandRequestTupleKey(
+					"repo:openfga/foo",
+					"writer",
+				),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -846,7 +845,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 				tuple.NewTupleKey("document:1", "parent", "document:2#editor"),
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: tuple.NewTupleKey("document:1", "parent", ""),
+				TupleKey: tuple.NewExpandRequestTupleKey("document:1", "parent"),
 			},
 			expected: &openfgav1.ExpandResponse{
 				Tree: &openfgav1.UsersetTree{
@@ -869,7 +868,6 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -878,7 +876,12 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
 			require.NoError(err)
 
 			require.NoError(err)
@@ -886,7 +889,7 @@ func TestExpandQuery(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore)
 			got, err := query.Execute(ctx, test.request)
 			require.NoError(err)
 
@@ -910,7 +913,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Relation: "bar",
 				},
 			},
@@ -927,7 +930,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_id_and_type_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   ":",
 					Relation: "bar",
 				},
@@ -947,7 +950,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_object_id_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "github:",
 					Relation: "bar",
 				},
@@ -967,7 +970,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "missing_relation_in_request",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object: "bar",
 				},
 			},
@@ -984,7 +987,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 		{
 			name: "1.1_object_type_not_found_in_model",
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "foo:bar",
 					Relation: "baz",
 				},
@@ -1011,7 +1014,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 				},
 			},
 			request: &openfgav1.ExpandRequest{
-				TupleKey: &openfgav1.TupleKey{
+				TupleKey: &openfgav1.ExpandRequestTupleKey{
 					Object:   "repo:bar",
 					Relation: "baz",
 				},
@@ -1028,7 +1031,6 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 
 	require := require.New(t)
 	ctx := context.Background()
-	logger := logger.NewNoopLogger()
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1037,7 +1039,12 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			err := datastore.WriteAuthorizationModel(ctx, store, test.model)
 			require.NoError(err)
 
-			err = datastore.Write(ctx, store, []*openfgav1.TupleKey{}, test.tuples)
+			err = datastore.Write(
+				ctx,
+				store,
+				[]*openfgav1.TupleKeyWithoutCondition{},
+				test.tuples,
+			)
 			require.NoError(err)
 
 			require.NoError(err)
@@ -1045,7 +1052,7 @@ func TestExpandQueryErrors(t *testing.T, datastore storage.OpenFGADatastore) {
 			test.request.AuthorizationModelId = test.model.Id
 
 			// act
-			query := commands.NewExpandQuery(datastore, logger)
+			query := commands.NewExpandQuery(datastore)
 			resp, err := query.Execute(ctx, test.request)
 
 			// assert

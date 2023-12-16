@@ -16,12 +16,31 @@ type ReadAuthorizationModelsQuery struct {
 	encoder encoder.Encoder
 }
 
-func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger, encoder encoder.Encoder) *ReadAuthorizationModelsQuery {
-	return &ReadAuthorizationModelsQuery{
-		backend: backend,
-		logger:  logger,
-		encoder: encoder,
+type ReadAuthModelsQueryOption func(*ReadAuthorizationModelsQuery)
+
+func WithReadAuthModelsQueryLogger(l logger.Logger) ReadAuthModelsQueryOption {
+	return func(rm *ReadAuthorizationModelsQuery) {
+		rm.logger = l
 	}
+}
+
+func WithReadAuthModelsQueryEncoder(e encoder.Encoder) ReadAuthModelsQueryOption {
+	return func(rm *ReadAuthorizationModelsQuery) {
+		rm.encoder = e
+	}
+}
+
+func NewReadAuthorizationModelsQuery(backend storage.AuthorizationModelReadBackend, opts ...ReadAuthModelsQueryOption) *ReadAuthorizationModelsQuery {
+	rm := &ReadAuthorizationModelsQuery{
+		backend: backend,
+		logger:  logger.NewNoopLogger(),
+		encoder: encoder.NewBase64Encoder(),
+	}
+
+	for _, opt := range opts {
+		opt(rm)
+	}
+	return rm
 }
 
 func (q *ReadAuthorizationModelsQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelsRequest) (*openfgav1.ReadAuthorizationModelsResponse, error) {

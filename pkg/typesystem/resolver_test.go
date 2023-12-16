@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/golang/mock/gomock"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	mockstorage "github.com/openfga/openfga/internal/mocks"
 	"github.com/stretchr/testify/require"
 )
@@ -24,12 +24,12 @@ func TestMemoizedTypesystemResolverFunc(t *testing.T) {
 	modelID1 := ulid.Make().String()
 	modelID2 := ulid.Make().String()
 
-	typedefs := parser.MustParse(`
-	type user
-	type document
-	  relations
-	    define viewer: [user] as self
-	`)
+	typedefs := parser.MustTransformDSLToProto(`model
+  schema 1.1
+type user
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions
 
 	gomock.InOrder(
 		mockDatastore.EXPECT().

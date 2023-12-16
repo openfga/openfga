@@ -16,8 +16,24 @@ type ReadAuthorizationModelQuery struct {
 	logger  logger.Logger
 }
 
-func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBackend, logger logger.Logger) *ReadAuthorizationModelQuery {
-	return &ReadAuthorizationModelQuery{backend: backend, logger: logger}
+type ReadAuthModelQueryOption func(*ReadAuthorizationModelQuery)
+
+func WithReadAuthModelQueryLogger(l logger.Logger) ReadAuthModelQueryOption {
+	return func(m *ReadAuthorizationModelQuery) {
+		m.logger = l
+	}
+}
+
+func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBackend, opts ...ReadAuthModelQueryOption) *ReadAuthorizationModelQuery {
+	m := &ReadAuthorizationModelQuery{
+		backend: backend,
+		logger:  logger.NewNoopLogger(),
+	}
+
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
 
 func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
