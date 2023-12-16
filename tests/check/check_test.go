@@ -43,7 +43,7 @@ func TestCheckMySQL(t *testing.T) {
 	testRunAll(t, "mysql")
 }
 
-func TestCheckLogs(t *testing.T) {
+func TestCheckLogsAndHeaders(t *testing.T) {
 	// create mock OTLP server
 	otlpServerPort, otlpServerPortReleaser := run.TCPRandomPort()
 	localOTLPServerURL := fmt.Sprintf("localhost:%d", otlpServerPort)
@@ -64,7 +64,7 @@ func TestCheckLogs(t *testing.T) {
 		},
 	}
 
-	// We're starting a full fledged server because the logs we
+	// We're starting a full fledged server because the logs and headers we
 	// want to observe are emitted on the interceptors/middleware layer.
 	cancel := tests.StartServerWithContext(t, cfg, serverCtx)
 	defer cancel()
@@ -212,6 +212,7 @@ type document
 			// clear observed logs after each run
 			defer logs.TakeAll()
 
+			var httpResponse *http.Response
 			if test.grpcReq != nil {
 				_, err = client.Check(context.Background(), test.grpcReq)
 			} else if test.httpReqBody != nil {
@@ -222,30 +223,21 @@ type document
 				httpReq.Header.Set("User-Agent", "test-user-agent")
 				client := &http.Client{}
 
-				_, err = client.Do(httpReq)
+				httpResponse, err = client.Do(httpReq)
 			}
-			if test.expectedError && test.grpcReq != nil {
-				require.Error(t, err)
+			if test.expectedError {
+				if test.grpcReq != nil {
+					require.Error(t, err)
+				}
 			} else {
 				require.NoError(t, err)
 			}
 
-			filteredLogs := logs.Filter(func(e observer.LoggedEntry) bool {
-				if e.Message == "grpc_req_complete" {
-					for _, ctxField := range e.Context {
-						if ctxField.Equals(zap.String("grpc_method", "Check")) {
-							return true
-						}
-					}
-				}
+			actualLogs := logs.All()
+			require.Len(t, actualLogs, 1)
 
-				return false
-			})
-
-			expectedLogs := filteredLogs.All()
-			require.Len(t, expectedLogs, 1)
-
-			fields := expectedLogs[len(expectedLogs)-1].ContextMap()
+			// assert on log fields
+			fields := actualLogs[0].ContextMap()
 			require.Equal(t, test.expectedContext["grpc_service"], fields["grpc_service"])
 			require.Equal(t, test.expectedContext["grpc_method"], fields["grpc_method"])
 			require.Equal(t, test.expectedContext["grpc_type"], fields["grpc_type"])
@@ -263,6 +255,18 @@ type document
 				require.Len(t, fields, 13)
 			} else {
 				require.Len(t, fields, 12)
+			}
+
+			// assert on headers
+			if test.httpReqBody != nil {
+				if !test.expectedError {
+					require.Len(t, httpResponse.Header["Openfga-Authorization-Model-Id"], 1)
+					require.Equal(t, test.expectedContext["authorization_model_id"], httpResponse.Header["Openfga-Authorization-Model-Id"][0])
+				}
+				require.Len(t, httpResponse.Header["Openfga-Store-Id"], 1)
+				require.Equal(t, test.expectedContext["store_id"], httpResponse.Header["Openfga-Store-Id"][0])
+				require.Len(t, httpResponse.Header["X-Request-Id"], 1)
+				require.Equal(t, fields["request_id"], httpResponse.Header["X-Request-Id"][0])
 			}
 		})
 	}
