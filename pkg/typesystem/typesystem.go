@@ -11,6 +11,7 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
+	"github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 )
@@ -25,7 +26,6 @@ const (
 
 	typesystemCtxKey ctxKey = "typesystem-context-key"
 
-	defaultMaxEvaluationCost       = 100
 	defaultInterruptCheckFrequency = 100
 )
 
@@ -190,7 +190,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 		uncompiledConditions[name] = condition.NewUncompiled(cond).
 			WithTrackEvaluationCost().
 			// care should be taken here - decreasing can cause API compatibility problems
-			WithMaxEvaluationCost(defaultMaxEvaluationCost).
+			WithMaxEvaluationCost(config.DefaultMaxConditionEvaluationCost).
 			WithInterruptCheckFrequency(defaultInterruptCheckFrequency)
 	}
 
