@@ -144,19 +144,10 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithDelegate(delegate CheckResolver) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.delegate = delegate
-	}
-}
-
 func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		cachedCheckResolver := NewCachedCheckResolver(
-			d,
-			opts...,
-		)
-		d.SetDelegate(cachedCheckResolver)
+		cachedCheckResolver := NewCachedCheckResolver(d, opts...)
+		d.delegate = cachedCheckResolver
 	}
 }
 
@@ -168,7 +159,8 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 	}
-	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
@@ -428,10 +420,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 // Close is a noop
 func (c *LocalChecker) Close() {
-}
-
-func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
-	c.delegate = delegate
 }
 
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
