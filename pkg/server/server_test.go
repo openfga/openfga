@@ -95,7 +95,7 @@ func ExampleNewServerWithOpts() {
 	checkResponse, err := openfga.Check(context.Background(), &openfgav1.CheckRequest{
 		StoreId:              store.Id,
 		AuthorizationModelId: authorizationModel.AuthorizationModelId,
-		TupleKey: &openfgav1.TupleKey{
+		TupleKey: &openfgav1.CheckRequestTupleKey{
 			User:     "user:anne",
 			Relation: "reader",
 			Object:   "document:budget",
