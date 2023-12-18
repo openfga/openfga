@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"time"
 
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common"
@@ -219,10 +218,7 @@ func (e *EvaluableCondition) Evaluate(ctx context.Context, contextMaps ...map[st
 		missingParameters = append(missingParameters, key)
 	}
 
-	evalCtx, cancel := context.WithTimeout(ctx, time.Millisecond)
-	defer cancel()
-
-	out, details, err := e.celProgram.ContextEval(evalCtx, activation)
+	out, details, err := e.celProgram.ContextEval(ctx, activation)
 	if err != nil {
 		return emptyEvaluationResult, NewEvaluationError(
 			e.Name,
