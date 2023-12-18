@@ -529,7 +529,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 					},
 				},
 			},
-			checkFrequency: 100, // 3 iterations * 1 comprehension
+			checkFrequency: 100,
 			context: map[string]interface{}{
 				"items": makeItems(3000),
 			},
@@ -551,9 +551,9 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 					},
 				},
 			},
-			checkFrequency: 100, // 100 iterations * 2 comprehension
+			checkFrequency: 100,
 			context: map[string]interface{}{
-				"items": makeItems(1000),
+				"items": makeItems(100),
 			},
 			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
 		},
@@ -573,7 +573,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 					},
 				},
 			},
-			checkFrequency: 201, // 100 iterations * 2 comprehension
+			checkFrequency: 1000,
 			context: map[string]interface{}{
 				"items": makeItems(100),
 			},
