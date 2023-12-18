@@ -98,7 +98,7 @@ type Server struct {
 	experimentals                    []ExperimentalFeatureFlag
 	serviceName                      string
 
-	typesystemResolver typesystem.TypesystemResolverFunc
+	typesystemResolver typesystem.TypesystemResolver
 
 	checkOptions           []graph.LocalCheckerOption
 	checkQueryCacheEnabled bool
@@ -242,6 +242,12 @@ func WithMaxAuthorizationModelSizeInBytes(size int) OpenFGAServiceV1Option {
 	}
 }
 
+func WithTypesystemResolver(resolver typesystem.TypesystemResolver) OpenFGAServiceV1Option {
+	return func(s *Server) {
+		s.typesystemResolver = resolver
+	}
+}
+
 func MustNewServerWithOpts(opts ...OpenFGAServiceV1Option) *Server {
 	s, err := NewServerWithOpts(opts...)
 	if err != nil {
@@ -305,7 +311,13 @@ func NewServerWithOpts(opts ...OpenFGAServiceV1Option) (*Server, error) {
 		return nil, fmt.Errorf("request duration datastore count buckets must not be empty")
 	}
 
-	s.typesystemResolver = typesystem.MemoizedTypesystemResolverFunc(s.datastore)
+	if s.typesystemResolver == nil {
+		s.typesystemResolver = typesystem.NewCachedTypesystemResolver(s.datastore,
+			typesystem.WithTypesystemResolverCache(
+				ccache.New(ccache.Configure[*typesystem.TypeSystem]().MaxSize(serverconfig.DefaultModelCacheMaxSizeBytes)),
+			),
+		)
+	}
 
 	return s, nil
 }
@@ -697,7 +709,10 @@ func (s *Server) ReadAuthorizationModel(ctx context.Context, req *openfgav1.Read
 		Method:  "ReadAuthorizationModels",
 	})
 
-	q := commands.NewReadAuthorizationModelQuery(s.datastore, commands.WithReadAuthModelQueryLogger(s.logger))
+	q := commands.NewReadAuthorizationModelQuery(
+		s.typesystemResolver,
+		commands.WithReadAuthModelQueryLogger(s.logger),
+	)
 	return q.Execute(ctx, req)
 }
 
@@ -957,7 +972,7 @@ func (s *Server) resolveTypesystem(ctx context.Context, storeID, modelID string)
 	ctx, span := tracer.Start(ctx, "resolveTypesystem")
 	defer span.End()
 
-	typesys, err := s.typesystemResolver(ctx, storeID, modelID)
+	typesys, err := s.typesystemResolver.ResolveTypesystem(ctx, storeID, modelID, true)
 	if err != nil {
 		if errors.Is(err, typesystem.ErrModelNotFound) {
 			if modelID == "" {

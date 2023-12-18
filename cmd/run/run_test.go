@@ -920,10 +920,6 @@ func TestDefaultConfig(t *testing.T) {
 	require.True(t, val.Exists())
 	require.Equal(t, val.String(), cfg.Datastore.Engine)
 
-	val = res.Get("properties.datastore.properties.maxCacheSize.default")
-	require.True(t, val.Exists())
-	require.EqualValues(t, val.Int(), cfg.Datastore.MaxCacheSize)
-
 	val = res.Get("properties.datastore.properties.maxIdleConns.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.Datastore.MaxIdleConns)
@@ -1005,6 +1001,10 @@ func TestDefaultConfig(t *testing.T) {
 	val = res.Get("properties.resolveNodeLimit.default")
 	require.True(t, val.Exists())
 	require.EqualValues(t, val.Int(), cfg.ResolveNodeLimit)
+
+	val = res.Get("properties.modelCacheMaxSizeBytes.default")
+	require.True(t, val.Exists())
+	require.EqualValues(t, val.Int(), cfg.ModelCacheMaxSizeBytes)
 
 	val = res.Get("properties.grpc.properties.tls.properties.enabled.default")
 	require.True(t, val.Exists())

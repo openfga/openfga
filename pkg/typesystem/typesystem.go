@@ -138,6 +138,8 @@ func ConditionedRelationReference(rel *openfgav1.RelationReference, condition st
 
 // TypeSystem is a wrapper over an [openfgav1.AuthorizationModel].
 type TypeSystem struct {
+	model *openfgav1.AuthorizationModel
+
 	// [objectType] => typeDefinition
 	typeDefinitions map[string]*openfgav1.TypeDefinition
 	// [objectType] => [relationName] => relation
@@ -146,9 +148,6 @@ type TypeSystem struct {
 	conditions map[string]*condition.EvaluableCondition
 	// [objectType] => [relationName] => TTU relation
 	ttuRelations map[string]map[string][]*openfgav1.TupleToUserset
-
-	modelID       string
-	schemaVersion string
 }
 
 // New creates a *TypeSystem from an *openfgav1.AuthorizationModel.
@@ -191,8 +190,7 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 
 	return &TypeSystem{
-		modelID:         model.GetId(),
-		schemaVersion:   model.GetSchemaVersion(),
+		model:           model,
 		typeDefinitions: tds,
 		relations:       relations,
 		conditions:      uncompiledConditions,
@@ -200,14 +198,20 @@ func New(model *openfgav1.AuthorizationModel) *TypeSystem {
 	}
 }
 
+// GetAuthorizationModel returns the underlying AuthorizationModel which this TypeSystem was
+// constructed from.
+func (t *TypeSystem) GetAuthorizationModel() *openfgav1.AuthorizationModel {
+	return t.model
+}
+
 // GetAuthorizationModelID returns the id for the authorization model this
 // TypeSystem was constructed for.
 func (t *TypeSystem) GetAuthorizationModelID() string {
-	return t.modelID
+	return t.model.GetId()
 }
 
 func (t *TypeSystem) GetSchemaVersion() string {
-	return t.schemaVersion
+	return t.model.GetSchemaVersion()
 }
 
 func (t *TypeSystem) GetConditions() map[string]*condition.EvaluableCondition {

@@ -48,6 +48,12 @@
             "default": 100,
             "x-env-variable": "OPENFGA_RESOLVE_NODE_BREADTH_LIMIT"
         },
+        "modelCacheMaxSizeBytes": {
+            "description": "The model cache maximum size (in bytes)",
+            "type": "integer",
+            "default": 100000,
+            "x-env-variable": "OPENFGA_MODEL_CACHE_MAX_SIZE_BYTES"
+        },
         "listObjectsDeadline": {
             "description": "The timeout deadline for serving ListObjects requests",
             "type": "string",
@@ -145,12 +151,6 @@
                     "description": "The connection password to connect to the datastore (overwrites any password provided in the connection uri).",
                     "type": "string",
                     "x-env-variable": "OPENFGA_DATASTORE_PASSWORD"
-                },
-                "maxCacheSize": {
-                    "description": "The maximum number of cache keys that the storage cache can store before evicting old keys.",
-                    "type": "integer",
-                    "default": 100000,
-                    "x-env-variable": "OPENFGA_DATASTORE_MAX_CACHE_SIZE"
                 },
                 "maxOpenConns": {
                     "description": "The maximum number of open connections to the datastore.",

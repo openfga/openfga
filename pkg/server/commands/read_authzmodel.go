@@ -7,13 +7,13 @@ import (
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/pkg/logger"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
-	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/typesystem"
 )
 
 // ReadAuthorizationModelQuery retrieves a single type definition from a storage backend.
 type ReadAuthorizationModelQuery struct {
-	backend storage.AuthorizationModelReadBackend
-	logger  logger.Logger
+	logger             logger.Logger
+	typesystemResolver typesystem.TypesystemResolver
 }
 
 type ReadAuthModelQueryOption func(*ReadAuthorizationModelQuery)
@@ -24,10 +24,13 @@ func WithReadAuthModelQueryLogger(l logger.Logger) ReadAuthModelQueryOption {
 	}
 }
 
-func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBackend, opts ...ReadAuthModelQueryOption) *ReadAuthorizationModelQuery {
+func NewReadAuthorizationModelQuery(
+	typesystemResolver typesystem.TypesystemResolver,
+	opts ...ReadAuthModelQueryOption,
+) *ReadAuthorizationModelQuery {
 	m := &ReadAuthorizationModelQuery{
-		backend: backend,
-		logger:  logger.NewNoopLogger(),
+		logger:             logger.NewNoopLogger(),
+		typesystemResolver: typesystemResolver,
 	}
 
 	for _, opt := range opts {
@@ -36,16 +39,22 @@ func NewReadAuthorizationModelQuery(backend storage.AuthorizationModelReadBacken
 	return m
 }
 
-func (q *ReadAuthorizationModelQuery) Execute(ctx context.Context, req *openfgav1.ReadAuthorizationModelRequest) (*openfgav1.ReadAuthorizationModelResponse, error) {
+func (q *ReadAuthorizationModelQuery) Execute(
+	ctx context.Context,
+	req *openfgav1.ReadAuthorizationModelRequest,
+) (*openfgav1.ReadAuthorizationModelResponse, error) {
 	modelID := req.GetId()
-	azm, err := q.backend.ReadAuthorizationModel(ctx, req.GetStoreId(), modelID)
+
+	typesys, err := q.typesystemResolver.ResolveTypesystem(ctx, req.GetStoreId(), req.GetId(), false)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, typesystem.ErrModelNotFound) {
 			return nil, serverErrors.AuthorizationModelNotFound(modelID)
 		}
+
 		return nil, serverErrors.HandleError("", err)
 	}
+
 	return &openfgav1.ReadAuthorizationModelResponse{
-		AuthorizationModel: azm,
+		AuthorizationModel: typesys.GetAuthorizationModel(),
 	}, nil
 }

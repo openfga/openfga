@@ -15,6 +15,7 @@ const (
 	DefaultMaxTuplesPerWrite                = 100
 	DefaultMaxTypesPerAuthorizationModel    = 100
 	DefaultMaxAuthorizationModelSizeInBytes = 256 * 1_024
+	DefaultModelCacheMaxSizeBytes           = 100000
 	DefaultChangelogHorizonOffset           = 0
 	DefaultResolveNodeLimit                 = 25
 	DefaultResolveNodeBreadthLimit          = 100
@@ -42,12 +43,6 @@ type DatastoreConfig struct {
 	URI      string
 	Username string
 	Password string
-
-	// MaxCacheSize is the maximum number of cache keys that the storage cache can store before
-	// evicting
-	// old keys. The storage cache is used to cache query results for various static resources
-	// such as type definitions.
-	MaxCacheSize int
 
 	// MaxOpenConns is the maximum number of open connections to the database.
 	MaxOpenConns int
@@ -215,6 +210,9 @@ type Config struct {
 	// concurrently in a query
 	ResolveNodeBreadthLimit uint32
 
+	// ModelCacheMaxSizeBytes is the maximum size (in bytes) of the model cache before.
+	ModelCacheMaxSizeBytes int
+
 	Datastore       DatastoreConfig
 	GRPC            GRPCConfig
 	HTTP            HTTPConfig
@@ -306,9 +304,9 @@ func DefaultConfig() *Config {
 		ListObjectsDeadline:                       DefaultListObjectsDeadline,
 		ListObjectsMaxResults:                     DefaultListObjectsMaxResults,
 		RequestDurationDatastoreQueryCountBuckets: []string{"50", "200"},
+		ModelCacheMaxSizeBytes:                    DefaultModelCacheMaxSizeBytes,
 		Datastore: DatastoreConfig{
 			Engine:       "memory",
-			MaxCacheSize: 100000,
 			MaxIdleConns: 10,
 			MaxOpenConns: 30,
 		},
