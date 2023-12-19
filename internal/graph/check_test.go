@@ -17,25 +17,27 @@ import (
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
-	ds := memory.New()
 
-	storeID := ulid.Make().String()
+	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
+		ds := memory.New()
 
-	err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
-		tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
-		tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
-		tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
-		tuple.NewTupleKey("document:2", "allowed", "user:jon"),
-		tuple.NewTupleKey("document:2", "allowed", "user:x"),
-		tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
-		tuple.NewTupleKey("group:eng", "member", "user:jon"),
-		tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
-	})
-	require.NoError(t, err)
+		storeID := ulid.Make().String()
 
-	checker := NewLocalChecker(ds)
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "viewer", "group:eng#member"),
+			tuple.NewTupleKey("document:1", "editor", "group:other1#member"),
+			tuple.NewTupleKey("document:2", "editor", "group:eng#member"),
+			tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+			tuple.NewTupleKey("document:2", "allowed", "user:x"),
+			tuple.NewTupleKey("group:eng", "member", "group:fga#member"),
+			tuple.NewTupleKey("group:eng", "member", "user:jon"),
+			tuple.NewTupleKey("group:other1", "member", "group:other2#member"),
+		})
+		require.NoError(t, err)
 
-	typedefs := parser.MustTransformDSLToProto(`model
+		checker := NewLocalChecker(ds)
+
+		typedefs := parser.MustTransformDSLToProto(`model
 	schema 1.1
 type user
 
@@ -49,29 +51,90 @@ type document
 	define viewer: [group#member] or editor
 	define editor: [group#member] and allowed`).TypeDefinitions
 
-	ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-		&openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			TypeDefinitions: typedefs,
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-		},
-	))
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+			&openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				TypeDefinitions: typedefs,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			},
+		))
 
-	resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
-	})
-	require.NoError(t, err)
-	require.True(t, resp.Allowed)
+		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		})
+		require.NoError(t, err)
+		require.True(t, resp.Allowed)
 
-	resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
-		StoreID:            storeID,
-		TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
-		ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+			StoreID:            storeID,
+			TupleKey:           tuple.NewTupleKey("document:2", "editor", "user:x"),
+			ResolutionMetadata: &ResolutionMetadata{Depth: 2},
+		})
+		require.ErrorIs(t, err, ErrResolutionDepthExceeded)
+		require.Nil(t, resp)
 	})
-	require.ErrorIs(t, err, ErrResolutionDepthExceeded)
-	require.Nil(t, resp)
+
+	t.Run("exclusion_resolves_deterministically", func(t *testing.T) {
+
+		ds := memory.New()
+
+		storeID := ulid.Make().String()
+
+		err := ds.Write(context.Background(), storeID, nil, []*openfgav1.TupleKey{
+			tuple.NewTupleKey("document:1", "restricted", "user:*"),
+			tuple.NewTupleKeyWithCondition("document:1", "viewer", "user:jon", "condX", nil),
+			tuple.NewTupleKeyWithCondition("document:2", "restricted", "user:*", "condX", nil),
+		})
+		require.NoError(t, err)
+
+		typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define restricted: [user:*, user:* with condX]
+	define viewer: [user, user with condX] but not restricted
+
+condition condX(x: int) {
+	x < 100
+}
+`).TypeDefinitions
+
+		checker := NewLocalChecker(ds)
+
+		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+			&openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				TypeDefinitions: typedefs,
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+			},
+		))
+
+		for i := 0; i < 2000; i++ {
+			// subtract branch resolves to {allowed: true} even though the base branch
+			// results in an error. Outcome should be falsey, not an error.
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:            storeID,
+				TupleKey:           tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			})
+			require.NoError(t, err)
+			require.False(t, resp.Allowed)
+
+			// base should resolve to {allowed: false} even though the subtract branch
+			// results in an error. Outcome should be falsey, not an error.
+			resp, err = checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:            storeID,
+				TupleKey:           tuple.NewTupleKey("document:2", "viewer", "user:jon"),
+				ResolutionMetadata: &ResolutionMetadata{Depth: defaultResolveNodeLimit},
+			})
+			require.NoError(t, err)
+			require.False(t, resp.Allowed)
+		}
+	})
 }
 
 func TestCheckWithOneConcurrentGoroutineCausesNoDeadlock(t *testing.T) {

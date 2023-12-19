@@ -398,9 +398,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		select {
 		case baseResult := <-baseChan:
 			if baseResult.err != nil {
-				return response, baseResult.err
-				// multierror.Append(errs, baseResult.err)
-				// continue
+				errs = multierror.Append(errs, baseResult.err)
+				continue
 			}
 
 			dbReads += baseResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -412,9 +411,8 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 
 		case subResult := <-subChan:
 			if subResult.err != nil {
-				return response, subResult.err
-				// multierror.Append(errs, subResult.err)
-				// continue
+				errs = multierror.Append(errs, subResult.err)
+				continue
 			}
 
 			dbReads += subResult.resp.GetResolutionMetadata().DatastoreQueryCount
@@ -428,7 +426,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 		}
 	}
 
-	_ = errs
 	if errs != nil {
 		return response, errs
 	}
