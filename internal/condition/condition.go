@@ -189,7 +189,7 @@ func (e *EvaluableCondition) EvaluateWithContext(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,
 ) (EvaluationResult, error) {
-	ctx, span := tracer.Start(ctx, "EvaluateWithContext")
+	_, span := tracer.Start(ctx, "EvaluateWithContext")
 	defer span.End()
 
 	if err := e.Compile(); err != nil {
