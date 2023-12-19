@@ -17,6 +17,8 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -229,14 +231,8 @@ type document
 			},
 		},
 	})
-	require.ErrorIs(
-		t,
-		err,
-		serverErrors.NewInternalError(
-			"concurrent write conflict",
-			storage.ErrTransactionalWriteFailed,
-		),
-	)
+
+	require.ErrorIs(t, err, status.Error(codes.Aborted, storage.ErrTransactionalWriteFailed.Error()))
 	require.Nil(t, resp)
 }
 
