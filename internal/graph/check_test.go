@@ -392,31 +392,33 @@ type resource
 	checker := NewLocalChecker(ds)
 
 	for _, test := range tests {
-		typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
+		t.Run(test.name, func(t *testing.T) {
+			typedefs := parser.MustTransformDSLToProto(test.model).TypeDefinitions
 
-		ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
-			&openfgav1.AuthorizationModel{
-				Id:              ulid.Make().String(),
-				TypeDefinitions: typedefs,
-				SchemaVersion:   typesystem.SchemaVersion1_1,
-			},
-		))
+			ctx := typesystem.ContextWithTypesystem(context.Background(), typesystem.New(
+				&openfgav1.AuthorizationModel{
+					Id:              ulid.Make().String(),
+					TypeDefinitions: typedefs,
+					SchemaVersion:   typesystem.SchemaVersion1_1,
+				},
+			))
 
-		resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
-			StoreID:            storeID,
-			TupleKey:           test.tupleKey,
-			ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+			resp, err := checker.ResolveCheck(ctx, &ResolveCheckRequest{
+				StoreID:            storeID,
+				TupleKey:           test.tupleKey,
+				ResolutionMetadata: &ResolutionMetadata{Depth: 25},
+			})
+
+			// if the branch producing the cycle is reached first, then an error is returned, otherwise
+			// a result is returned if some other terminal path of evaluation was reached before the cycle
+			if err != nil {
+				require.ErrorIs(t, err, ErrCycleDetected)
+			} else {
+				require.False(t, resp.GetAllowed())
+				require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly
+				require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
+			}
 		})
-
-		// if the branch producing the cycle is reached first, then an error is returned, otherwise
-		// a result is returned if some other terminal path of evaluation was reached before the cycle
-		if err != nil {
-			require.ErrorIs(t, err, ErrCycleDetected)
-		} else {
-			require.False(t, resp.GetAllowed())
-			require.GreaterOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(1)) // min of 1 (x) if x isn't found and it returns quickly
-			require.LessOrEqual(t, resp.ResolutionMetadata.DatastoreQueryCount, uint32(3))    // max of 3 (x, y, z) before the cycle
-		}
 	}
 }
 

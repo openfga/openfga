@@ -8,17 +8,29 @@ import (
 	"github.com/openfga/openfga/pkg/tuple"
 )
 
-// since these errors are allocated at init time, it is better to leave them as normal errors instead of
-// errors that have stack encoded.
 var (
-	ErrCollision                = errors.New("item already exists")
+	// Creation errors
+
+	ErrCollision = errors.New("item already exists")
+
+	// Read errors
+
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
-	ErrInvalidWriteInput        = errors.New("invalid write input")
-	ErrNotFound                 = errors.New("not found")
-	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
 	ErrMismatchObjectType       = errors.New("mismatched types in request and continuation token")
-	ErrExceededWriteBatchLimit  = errors.New("number of operations exceeded write batch limit")
-	ErrCancelled                = errors.New("request has been cancelled")
+
+	// Write errors
+
+	// ErrInvalidWriteInput if the tuple to be written already existed or the tuple to be deleted didn't exist
+	ErrInvalidWriteInput = errors.New("invalid write input")
+	// ErrTransactionalWriteFailed if two writes attempt to write the same tuple at the same time
+	ErrTransactionalWriteFailed = errors.New("transactional write failed due to conflict")
+	// ErrExceededWriteBatchLimit if MaxTuplesPerWrite is exceeded
+	ErrExceededWriteBatchLimit = errors.New("number of operations exceeded write batch limit")
+
+	// All other errors
+
+	ErrCancelled = errors.New("request has been cancelled")
+	ErrNotFound  = errors.New("not found")
 )
 
 func ExceededMaxTypeDefinitionsLimitError(limit int) error {
