@@ -108,14 +108,12 @@ type RelationshipTupleWriter interface {
 
 	// Write updates data in the tuple backend, performing all delete operations in
 	// `deletes` before adding new values in `writes`, returning the time of the transaction, or an error.
-	// It is expected that
-	// - there is at most MaxTuplesPerWrite, else it must return ErrExceededWriteBatchLimit
-	// - no duplicate item in delete/write list
-	// If two requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed
-	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput
+	// If there are more than MaxTuplesPerWrite, it must return ErrExceededWriteBatchLimit.
+	// If two requests attempt to write the same tuple at the same time, it must return ErrTransactionalWriteFailed.
+	// If the tuple to be written already existed or the tuple to be deleted didn't exist, it must return ErrInvalidWriteInput.
 	Write(ctx context.Context, store string, d Deletes, w Writes) error
 
-	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes) allowed in a single write transaction
+	// MaxTuplesPerWrite returns the maximum number of items (writes and deletes combined) allowed in a single write transaction
 	MaxTuplesPerWrite() int
 }
 
@@ -135,7 +133,7 @@ type ReadUsersetTuplesFilter struct {
 
 // AuthorizationModelReadBackend Provides a Read interface for managing type definitions.
 type AuthorizationModelReadBackend interface {
-	// ReadAuthorizationModel Read the store type definition corresponding to `id`.
+	// ReadAuthorizationModel Read the model corresponding to store and model id
 	// If it's not found, it must return ErrNotFound
 	ReadAuthorizationModel(ctx context.Context, store string, id string) (*openfgav1.AuthorizationModel, error)
 
@@ -149,14 +147,14 @@ type AuthorizationModelReadBackend interface {
 
 // TypeDefinitionWriteBackend Provides a write interface for managing typed definition.
 type TypeDefinitionWriteBackend interface {
-	// MaxTypesPerAuthorizationModel returns the maximum number of items allowed for one type definition
+	// MaxTypesPerAuthorizationModel returns the maximum number of type definition rows/items per model.
 	MaxTypesPerAuthorizationModel() int
 
 	// WriteAuthorizationModel writes an authorization model for the given store.
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
-// AuthorizationModelBackend provides an R/W interface for managing type definitions.
+// AuthorizationModelBackend provides an R/W interface for managing and their type definitions
 type AuthorizationModelBackend interface {
 	AuthorizationModelReadBackend
 	TypeDefinitionWriteBackend
