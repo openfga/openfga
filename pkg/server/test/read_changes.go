@@ -273,7 +273,12 @@ func writeTuples(store string, datastore storage.OpenFGADatastore) (context.Cont
 	ctx := context.Background()
 
 	writes := []*openfgav1.TupleKey{tkMaria, tkCraig, tkYamil, tkMariaOrg}
-	err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, writes)
+	err := datastore.Write(
+		ctx,
+		store,
+		[]*openfgav1.TupleKeyWithoutCondition{},
+		writes,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -290,7 +295,12 @@ func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenF
 	wg.Add(2)
 
 	go func() {
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupOne)
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupOne,
+		)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}
@@ -298,7 +308,12 @@ func writeTuplesConcurrently(t *testing.T, store string, datastore storage.OpenF
 	}()
 
 	go func() {
-		err := datastore.Write(ctx, store, []*openfgav1.TupleKey{}, tupleGroupTwo)
+		err := datastore.Write(
+			ctx,
+			store,
+			[]*openfgav1.TupleKeyWithoutCondition{},
+			tupleGroupTwo,
+		)
 		if err != nil {
 			t.Logf("failed to write tuples: %s", err)
 		}

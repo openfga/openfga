@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	parser "github.com/craigpastro/openfga-dsl-parser/v2"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/cmd"
@@ -785,26 +784,53 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	_, err = client.WriteAuthorizationModel(ctx, &openfgav1.WriteAuthorizationModelRequest{
 		StoreId: storeID,
-		TypeDefinitions: parser.MustParse(`
-		type user
-
-		type document
-		  relations
-		    define allowed: [user] as self
-			define editor: [user] as self
-		    define viewer: [user] as self or (editor and allowed)
-		`),
+		TypeDefinitions: []*openfgav1.TypeDefinition{
+			{
+				Type: "user",
+			},
+			{
+				Type: "document",
+				Relations: map[string]*openfgav1.Userset{
+					"allowed": typesystem.This(),
+					"editor":  typesystem.This(),
+					"viewer": typesystem.Union(
+						typesystem.This(),
+						typesystem.Intersection(
+							typesystem.ComputedUserset("editor"),
+							typesystem.ComputedUserset("allowed"))),
+				},
+				Metadata: &openfgav1.Metadata{
+					Relations: map[string]*openfgav1.RelationMetadata{
+						"allowed": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"editor": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+						"viewer": {
+							DirectlyRelatedUserTypes: []*openfgav1.RelationReference{
+								{Type: "user"},
+							},
+						},
+					},
+				},
+			},
+		},
 		SchemaVersion: typesystem.SchemaVersion1_1,
 	})
 	require.NoError(t, err)
 
 	_, err = client.Write(ctx, &openfgav1.WriteRequest{
 		StoreId: storeID,
-		Writes: &openfgav1.TupleKeys{
+		Writes: &openfgav1.WriteRequestWrites{
 			TupleKeys: []*openfgav1.TupleKey{
-				tuple.NewTupleKey("document:1", "viewer", "user:jon"),
-				tuple.NewTupleKey("document:2", "editor", "user:jon"),
-				tuple.NewTupleKey("document:2", "allowed", "user:jon"),
+				{Object: "document:1", Relation: "viewer", User: "user:jon"},
+				{Object: "document:2", Relation: "editor", User: "user:jon"},
+				{Object: "document:2", Relation: "allowed", User: "user:jon"},
 			},
 		},
 	})
@@ -812,7 +838,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 
 	checkResp, err := client.Check(ctx, &openfgav1.CheckRequest{
 		StoreId:  storeID,
-		TupleKey: tuple.NewTupleKey("document:1", "viewer", "user:jon"),
+		TupleKey: tuple.NewCheckRequestTupleKey("document:1", "viewer", "user:jon"),
 	})
 	require.NoError(t, err)
 	require.True(t, checkResp.GetAllowed())
@@ -844,6 +870,7 @@ func testServerMetricsReporting(t *testing.T, engine string) {
 	require.Contains(t, stringBody, "list_objects_further_eval_required_count")
 	require.Contains(t, stringBody, "list_objects_no_further_eval_required_count")
 	require.Contains(t, stringBody, "go_sql_idle_connections")
+	require.Contains(t, stringBody, "condition_evaluation_cost")
 }
 
 func TestHTTPServerDisabled(t *testing.T) {

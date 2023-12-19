@@ -9,7 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	"github.com/openfga/openfga/internal/build"
+	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/graph"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
@@ -22,19 +25,22 @@ import (
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const streamedBufferSize = 100
 
 var (
 	furtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "list_objects_further_eval_required_count",
-		Help: "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
+		Namespace: build.ProjectName,
+		Name:      "list_objects_further_eval_required_count",
+		Help:      "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
 	})
 
 	noFurtherEvalRequiredCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "list_objects_no_further_eval_required_count",
-		Help: "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
+		Namespace: build.ProjectName,
+		Name:      "list_objects_no_further_eval_required_count",
+		Help:      "Number of objects in a ListObjects call that needed to issue a Check call to determine a final result",
 	})
 )
 
@@ -138,6 +144,7 @@ type listObjectsRequest interface {
 	GetRelation() string
 	GetUser() string
 	GetContextualTuples() *openfgav1.ContextualTupleKeys
+	GetContext() *structpb.Struct
 }
 
 func (q *ListObjectsQuery) evaluate(
@@ -229,6 +236,7 @@ func (q *ListObjectsQuery) evaluate(
 				Relation:         targetRelation,
 				User:             sourceUserRef,
 				ContextualTuples: req.GetContextualTuples().GetTupleKeys(),
+				Context:          req.GetContext(),
 			}, reverseExpandResultsChan, resolutionMetadata)
 		}()
 
@@ -278,6 +286,7 @@ func (q *ListObjectsQuery) evaluate(
 					AuthorizationModelID: req.GetAuthorizationModelId(),
 					TupleKey:             tuple.NewTupleKey(res.Object, req.GetRelation(), req.GetUser()),
 					ContextualTuples:     req.GetContextualTuples().GetTupleKeys(),
+					Context:              req.GetContext(),
 					ResolutionMetadata: &graph.ResolutionMetadata{
 						Depth: q.resolveNodeLimit,
 					},
@@ -346,6 +355,7 @@ func (q *ListObjectsQuery) Execute(
 
 	objects := make([]string, 0)
 
+	var errs *multierror.Error
 	for {
 		select {
 		case <-timeoutCtx.Done():
@@ -363,14 +373,23 @@ func (q *ListObjectsQuery) Execute(
 					return nil, result.Err
 				}
 
-				if !(errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded)) {
-					return nil, serverErrors.HandleError("", result.Err)
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+					errs = multierror.Append(errs, result.Err)
+					continue
 				}
 
-				continue
+				if errors.Is(result.Err, context.Canceled) || errors.Is(result.Err, context.DeadlineExceeded) {
+					continue
+				}
+
+				return nil, serverErrors.HandleError("", result.Err)
 			}
 
 			if !channelOpen {
+				if len(objects) < int(maxResults) && errs.ErrorOrNil() != nil {
+					return nil, errs
+				}
+
 				return &ListObjectsResponse{
 					Objects:            objects,
 					ResolutionMetadata: *resolutionMetadata,
@@ -420,6 +439,10 @@ func (q *ListObjectsQuery) ExecuteStreamed(ctx context.Context, req *openfgav1.S
 			if result.Err != nil {
 				if errors.Is(result.Err, serverErrors.AuthorizationModelResolutionTooComplex) {
 					return nil, result.Err
+				}
+
+				if errors.Is(result.Err, condition.ErrEvaluationFailed) {
+					return nil, serverErrors.ValidationError(result.Err)
 				}
 
 				return nil, serverErrors.HandleError("", result.Err)

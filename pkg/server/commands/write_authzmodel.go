@@ -66,6 +66,7 @@ func (w *WriteAuthorizationModelCommand) Execute(ctx context.Context, req *openf
 		Id:              ulid.Make().String(),
 		SchemaVersion:   req.GetSchemaVersion(),
 		TypeDefinitions: req.GetTypeDefinitions(),
+		Conditions:      req.GetConditions(),
 	}
 
 	// Validate the size in bytes of the wire-format encoding of the authorization model.

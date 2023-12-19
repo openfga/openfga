@@ -11,6 +11,7 @@ import (
 	"github.com/openfga/openfga/pkg/storage/test"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -34,13 +35,15 @@ func TestStaticTupleIteratorNoRace(t *testing.T) {
 				InsertedAt: now.AsTime(),
 			},
 			{
-				Store:      "store",
-				ObjectType: "document",
-				ObjectID:   "1",
-				Relation:   "viewer",
-				User:       "user:jon",
-				Ulid:       ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
-				InsertedAt: now.AsTime(),
+				Store:            "store",
+				ObjectType:       "document",
+				ObjectID:         "1",
+				Relation:         "viewer",
+				User:             "user:jon",
+				ConditionName:    "condition",
+				ConditionContext: &structpb.Struct{},
+				Ulid:             ulid.MustNew(ulid.Timestamp(now.AsTime()), ulid.DefaultEntropy()).String(),
+				InsertedAt:       now.AsTime(),
 			},
 		},
 	}
