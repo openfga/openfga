@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/tdigest"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/internal/condition/types"
@@ -505,6 +504,14 @@ func TestCastContextToTypedParameters(t *testing.T) {
 }
 
 func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
+	makeItems := func(size int) []interface{} {
+		items := make([]interface{}, size)
+		for i := int(0); i < size; i++ {
+			items[i] = i
+		}
+		return items
+	}
+
 	var tests = []struct {
 		name           string
 		condition      *openfgav1.Condition
@@ -610,93 +617,6 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 	}
 }
 
-func BenchmarkEvaluate(b *testing.B) {
-	var (
-		err   error
-		start time.Time
-	)
-
-	condition := condition.NewUncompiled(&openfgav1.Condition{
-		Name:       "condition1",
-		Expression: "param == 'ok'",
-		Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-			"param": {
-				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_STRING,
-			},
-		},
-	})
-
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{
-		"param": "ok",
-	})
-	require.NoError(b, err)
-
-	contextFields := contextStruct.GetFields()
-
-	err = condition.Compile()
-	require.NoError(b, err)
-
-	td := tdigest.New()
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		start = time.Now()
-		_, err = condition.Evaluate(context.Background(), contextFields)
-		td.Add(float64(time.Since(start).Nanoseconds()), 1)
-		require.NoError(b, err)
-	}
-
-	// Compute Quantiles
-	b.ReportMetric(td.Quantile(0.9999), "p99(ns)")
-}
-
-func BenchmarkEvaluateComprehensionIterations(b *testing.B) {
-	var (
-		err   error
-		start time.Time
-	)
-
-	condition := condition.NewUncompiled(&openfgav1.Condition{
-		Name:       "condition1",
-		Expression: "items.map(i, i * 2).size() > 0",
-		Parameters: map[string]*openfgav1.ConditionParamTypeRef{
-			"items": {
-				TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
-				GenericTypes: []*openfgav1.ConditionParamTypeRef{
-					{
-						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
-					},
-				},
-			},
-		},
-	}).WithInterruptCheckFrequency(100)
-
-	contextStruct, err := structpb.NewStruct(map[string]interface{}{
-		"items": makeItems(100),
-	})
-	require.NoError(b, err)
-
-	contextFields := contextStruct.GetFields()
-
-	err = condition.Compile()
-	require.NoError(b, err)
-
-	td := tdigest.New()
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		start = time.Now()
-		_, err = condition.Evaluate(context.Background(), contextFields)
-		td.Add(float64(time.Since(start).Nanoseconds()), 1)
-		require.NoError(b, err)
-	}
-
-	// Compute Quantiles
-	b.ReportMetric(td.Quantile(0.9999), "p99(ns)")
-}
-
 func mustConvertValue(varType types.ParameterType, value any) any {
 	convertedParam, err := varType.ConvertValue(value)
 	if err != nil {
@@ -704,12 +624,4 @@ func mustConvertValue(varType types.ParameterType, value any) any {
 	}
 
 	return convertedParam
-}
-
-func makeItems(size int) []interface{} {
-	items := make([]interface{}, size)
-	for i := int(0); i < size; i++ {
-		items[i] = i
-	}
-	return items
 }
