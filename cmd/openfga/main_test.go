@@ -482,6 +482,7 @@ type document
 	}
 }
 
+// /
 func TestFunctionalGRPC(t *testing.T) {
 	// tester can be shared across tests that aren't impacted
 	// by shared state
@@ -609,7 +610,7 @@ type document
 		output output
 	}{
 		{
-			name: "happy-path",
+			name: "happy_path_writes",
 			input: &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
@@ -624,7 +625,24 @@ type document
 			},
 		},
 		{
-			name: "invalid-store-id",
+			name: "happy_path_deletes",
+			input: &openfgav1.WriteRequest{
+				StoreId:              storeID,
+				AuthorizationModelId: modelID,
+				Deletes: &openfgav1.WriteRequestDeletes{
+					TupleKeys: []*openfgav1.TupleKeyWithoutCondition{
+						{
+							Object: "document:1", Relation: "viewer", User: "user:jon",
+						},
+					},
+				},
+			},
+			output: output{
+				errorCode: codes.OK,
+			},
+		},
+		{
+			name: "invalid_store_id",
 			input: &openfgav1.WriteRequest{
 				StoreId:              "invalid-store-id",
 				AuthorizationModelId: modelID,
@@ -636,7 +654,7 @@ type document
 			},
 		},
 		{
-			name: "invalid-model-id",
+			name: "invalid_model_id",
 			input: &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: "invalid-model-id",
@@ -648,11 +666,12 @@ type document
 			},
 		},
 		{
-			name: "empty-writes",
+			name: "empty_writes_and_deletes",
 			input: &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
 				Writes:               &openfgav1.WriteRequestWrites{},
+				Deletes:              &openfgav1.WriteRequestDeletes{},
 			},
 			output: output{
 				errorCode:    codes.InvalidArgument,
@@ -660,13 +679,12 @@ type document
 			},
 		},
 		{
-			name: "invalid-tuple-wildcard",
+			name: "invalid_tuple_wildcard",
 			input: &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
 				Writes: &openfgav1.WriteRequestWrites{
 					TupleKeys: []*openfgav1.TupleKey{
-						{Object: "document:1", Relation: "viewer", User: "user:jon"},
 						{Object: "document:1", Relation: "viewer", User: "user:*"},
 					},
 				},
