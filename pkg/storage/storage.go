@@ -154,7 +154,7 @@ type TypeDefinitionWriteBackend interface {
 	WriteAuthorizationModel(ctx context.Context, store string, model *openfgav1.AuthorizationModel) error
 }
 
-// AuthorizationModelBackend provides an R/W interface for managing and their type definitions
+// AuthorizationModelBackend provides an R/W interface for managing models and their type definitions
 type AuthorizationModelBackend interface {
 	AuthorizationModelReadBackend
 	TypeDefinitionWriteBackend
