@@ -17,7 +17,6 @@ import (
 )
 
 func TestResolveCheckDeterministic(t *testing.T) {
-
 	t.Run("resolution_depth_resolves_deterministically", func(t *testing.T) {
 		ds := memory.New()
 
@@ -77,7 +76,6 @@ type document
 	})
 
 	t.Run("exclusion_resolves_deterministically", func(t *testing.T) {
-
 		ds := memory.New()
 
 		storeID := ulid.Make().String()
