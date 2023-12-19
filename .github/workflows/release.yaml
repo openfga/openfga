@@ -102,7 +102,7 @@ jobs:
 
       - name: Run Snyk to check Docker image for vulnerabilities
         continue-on-error: true
-        uses: snyk/actions/docker@39091e69b560da335383b404e50d65b408f4f812 # pin@master
+        uses: snyk/actions/docker@3e2680e8df93a24b52d119b1305fb7cedc60ceae # pin@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
@@ -110,7 +110,7 @@ jobs:
           args: --file=Dockerfile
 
       - name: Upload result to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@c0d1daa7f7e14667747d73a7dbbe8c074bc8bfe2 # pin@v2
+        uses: github/codeql-action/upload-sarif@b374143c1149a9115d881581d29b8390bbcbb59c # pin@v2
         with:
           sarif_file: snyk.sarif
 
