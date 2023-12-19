@@ -14,6 +14,7 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"go.opentelemetry.io/otel"
@@ -143,19 +144,10 @@ func WithMaxConcurrentReads(limit uint32) LocalCheckerOption {
 	}
 }
 
-func WithDelegate(delegate CheckResolver) LocalCheckerOption {
-	return func(d *LocalChecker) {
-		d.delegate = delegate
-	}
-}
-
 func WithCachedResolver(opts ...CachedCheckResolverOpt) LocalCheckerOption {
 	return func(d *LocalChecker) {
-		cachedCheckResolver := NewCachedCheckResolver(
-			d,
-			opts...,
-		)
-		d.SetDelegate(cachedCheckResolver)
+		cachedCheckResolver := NewCachedCheckResolver(d, opts...)
+		d.delegate = cachedCheckResolver
 	}
 }
 
@@ -167,7 +159,8 @@ func NewLocalChecker(ds storage.RelationshipTupleReader, opts ...LocalCheckerOpt
 		concurrencyLimit:   serverconfig.DefaultResolveNodeBreadthLimit,
 		maxConcurrentReads: serverconfig.DefaultMaxConcurrentReadsForCheck,
 	}
-	checker.delegate = checker // by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	// by default, a LocalChecker delegates/dispatchs subproblems to itself (e.g. local dispatch) unless otherwise configured.
+	checker.delegate = checker
 
 	for _, opt := range opts {
 		opt(checker)
@@ -324,21 +317,16 @@ func intersection(ctx context.Context, concurrencyLimit uint32, handlers ...Chec
 		}
 	}
 
+	allowed := true
 	if err != nil {
-		return &ResolveCheckResponse{
-			Allowed: false,
-			ResolutionMetadata: &ResolutionMetadata{
-				DatastoreQueryCount: dbReads,
-			},
-		}, err
+		allowed = false
 	}
-
 	return &ResolveCheckResponse{
-		Allowed: true,
+		Allowed: allowed,
 		ResolutionMetadata: &ResolutionMetadata{
 			DatastoreQueryCount: dbReads,
 		},
-	}, nil
+	}, err
 }
 
 // exclusion implements a CheckFuncReducer that requires a 'base' CheckHandlerFunc to resolve to an allowed
@@ -442,10 +430,6 @@ func exclusion(ctx context.Context, concurrencyLimit uint32, handlers ...CheckHa
 func (c *LocalChecker) Close() {
 }
 
-func (c *LocalChecker) SetDelegate(delegate CheckResolver) {
-	c.delegate = delegate
-}
-
 // dispatch dispatches the provided Check request to the CheckResolver this LocalChecker
 // was constructed with.
 func (c *LocalChecker) dispatch(_ context.Context, req *ResolveCheckRequest) CheckHandlerFunc {
@@ -502,6 +486,7 @@ func (c *LocalChecker) ResolveCheck(
 
 	resp, err := union(ctx, c.concurrencyLimit, c.checkRewrite(ctx, req, rel.GetRewrite()))
 	if err != nil {
+		telemetry.TraceError(span, err)
 		return nil, err
 	}
 
@@ -561,14 +546,17 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			if t != nil && err == nil {
 				condEvalResult, err := eval.EvaluateTupleCondition(tupleKey, typesys, req.GetContext())
 				if err != nil {
+					telemetry.TraceError(span, err)
 					return nil, err
 				}
 
 				if len(condEvalResult.MissingParameters) > 0 {
-					return nil, condition.NewEvaluationError(
+					evalErr := condition.NewEvaluationError(
 						tupleKey.GetCondition().GetName(),
 						fmt.Errorf("context is missing parameters '%v'", condEvalResult.MissingParameters),
 					)
+					telemetry.TraceError(span, evalErr)
+					return nil, evalErr
 				}
 
 				if !condEvalResult.ConditionMet {
@@ -688,11 +676,13 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			}
 
 			if len(handlers) == 0 && errs != nil {
+				telemetry.TraceError(span, errs)
 				return nil, errs
 			}
 
 			resp, err := union(ctx, c.concurrencyLimit, handlers...)
 			if err != nil {
+				telemetry.TraceError(span, err)
 				return nil, multierror.Append(errs, err)
 			}
 
@@ -714,7 +704,11 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			checkFuncs = append(checkFuncs, fn2)
 		}
 
-		return union(ctx, c.concurrencyLimit, checkFuncs...)
+		resp, err := union(ctx, c.concurrencyLimit, checkFuncs...)
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		return resp, err
 	}
 }
 
@@ -874,11 +868,13 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		}
 
 		if len(handlers) == 0 && errs != nil {
+			telemetry.TraceError(span, errs)
 			return nil, errs
 		}
 
 		unionResponse, err := union(ctx, c.concurrencyLimit, handlers...)
 		if err != nil {
+			telemetry.TraceError(span, err)
 			return nil, multierror.Append(errs, err)
 		}
 
@@ -923,10 +919,18 @@ func (c *LocalChecker) checkSetOperation(
 	}
 
 	return func(ctx context.Context) (*ResolveCheckResponse, error) {
+		var err error
+		var resp *ResolveCheckResponse
 		ctx, span := tracer.Start(ctx, reducerKey)
-		defer span.End()
+		defer func() {
+			if err != nil {
+				telemetry.TraceError(span, err)
+			}
+			span.End()
+		}()
 
-		return reducer(ctx, c.concurrencyLimit, handlers...)
+		resp, err = reducer(ctx, c.concurrencyLimit, handlers...)
+		return resp, err
 	}
 }
 

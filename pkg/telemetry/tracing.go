@@ -3,6 +3,7 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -100,7 +101,12 @@ func MustNewTracerProvider(opts ...TracerOption) *sdktrace.TracerProvider {
 	return tp
 }
 
+// TraceError marks the span as having an error, except if the error is context.Canceled,
+// in which case it does nothing.
 func TraceError(span trace.Span, err error) {
+	if errors.Is(err, context.Canceled) {
+		return
+	}
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 }
