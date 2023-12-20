@@ -539,9 +539,33 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			},
 			checkFrequency: 100,
 			context: map[string]interface{}{
-				"items": makeItems(3000),
+				"items": makeItems(100),
 			},
 			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
+		},
+		{
+			name: "operation_not_interrupted_one_comprehension",
+			condition: &openfgav1.Condition{
+				Name:       "condition1",
+				Expression: "items.map(i, i * 2).size() > 0",
+				Parameters: map[string]*openfgav1.ConditionParamTypeRef{
+					"items": {
+						TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_LIST,
+						GenericTypes: []*openfgav1.ConditionParamTypeRef{
+							{
+								TypeName: openfgav1.ConditionParamTypeRef_TYPE_NAME_INT,
+							},
+						},
+					},
+				},
+			},
+			checkFrequency: 100,
+			context: map[string]interface{}{
+				"items": makeItems(99),
+			},
+			result: condition.EvaluationResult{
+				ConditionMet: true,
+			},
 		},
 		{
 			name: "operation_interrupted_two_comprehensions",
@@ -566,7 +590,7 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
 		},
 		{
-			name: "operation_not_interrupted",
+			name: "operation_not_interrupted_two_comprehensions",
 			condition: &openfgav1.Condition{
 				Name:       "condition1",
 				Expression: "items.map(i, i * 2).map(i, i * i).size() > 0",
@@ -581,13 +605,11 @@ func TestEvaluateWithInterruptCheckFrequency(t *testing.T) {
 					},
 				},
 			},
-			checkFrequency: 1000,
+			checkFrequency: 100,
 			context: map[string]interface{}{
-				"items": makeItems(100),
+				"items": makeItems(99),
 			},
-			result: condition.EvaluationResult{
-				ConditionMet: true,
-			},
+			err: fmt.Errorf("failed to evaluate relationship condition: 'condition1' - failed to evaluate condition expression: operation interrupted"),
 		},
 	}
 
