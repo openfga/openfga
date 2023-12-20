@@ -18,7 +18,7 @@ type ctxKey string
 const (
 	storeIDCtxKey ctxKey = "store-id-context-key"
 	storeIDKey    string = "store_id"
-	StoreIDHeader string = "openfga-store-id"
+	StoreIDHeader string = "Openfga-Store-Id"
 )
 
 type storeidHandle struct {

@@ -15,7 +15,7 @@ import (
 const (
 	requestIDCtxKey   = "request-id-context-key"
 	requestIDTraceKey = "request_id"
-	RequestIDHeader   = "x-request-id"
+	RequestIDHeader   = "X-Request-Id"
 )
 
 // FromContext extracts the requestid from the context, if it exists.
