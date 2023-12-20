@@ -17,6 +17,7 @@ import (
 	"github.com/openfga/openfga/internal/validation"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/storage/storagewrappers"
+	"github.com/openfga/openfga/pkg/telemetry"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
 	"github.com/sourcegraph/conc/pool"
@@ -318,7 +319,11 @@ func (c *ReverseExpandQuery) execute(
 		})
 	}
 
-	return pool.Wait()
+	err = pool.Wait()
+	if err != nil {
+		telemetry.TraceError(span, err)
+	}
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
@@ -332,9 +337,16 @@ func (c *ReverseExpandQuery) reverseExpandTupleToUserset(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) reverseExpandDirect(
@@ -348,9 +360,16 @@ func (c *ReverseExpandQuery) reverseExpandDirect(
 		attribute.String("edge", req.edge.String()),
 		attribute.String("source.user", req.User.String()),
 	))
-	defer span.End()
+	var err error
+	defer func() {
+		if err != nil {
+			telemetry.TraceError(span, err)
+		}
+		span.End()
+	}()
 
-	return c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	err = c.readTuplesAndExecute(ctx, req, resultChan, intersectionOrExclusionInPreviousEdges, resolutionMetadata)
+	return err
 }
 
 func (c *ReverseExpandQuery) readTuplesAndExecute(
@@ -451,7 +470,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 			return err
 		}
 
-		condEvalResult, err := eval.EvaluateTupleCondition(tk, c.typesystem, req.Context)
+		condEvalResult, err := eval.EvaluateTupleCondition(ctx, tk, c.typesystem, req.Context)
 		if err != nil {
 			errs = multierror.Append(errs, err)
 			continue
@@ -503,6 +522,7 @@ func (c *ReverseExpandQuery) readTuplesAndExecute(
 
 	errs = multierror.Append(errs, pool.Wait())
 	if errs.ErrorOrNil() != nil {
+		telemetry.TraceError(span, errs.ErrorOrNil())
 		return errs
 	}
 
