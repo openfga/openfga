@@ -4,10 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/testing/protocmp"
 
 	"github.com/openfga/openfga/pkg/server/commands"
 	serverErrors "github.com/openfga/openfga/pkg/server/errors"
@@ -81,7 +83,9 @@ type document
 			})
 			require.NoError(t, err)
 			require.Equal(t, test.model.Id, resp.GetAuthorizationModel().GetId())
-			require.Equal(t, test.model.TypeDefinitions, resp.GetAuthorizationModel().GetTypeDefinitions())
+			if diff := cmp.Diff(test.model.TypeDefinitions, resp.GetAuthorizationModel().GetTypeDefinitions(), protocmp.Transform()); diff != "" {
+				t.Errorf("type definitions mismatch (-want +got):\n%s", diff)
+			}
 			require.Equal(t, test.model.SchemaVersion, resp.GetAuthorizationModel().GetSchemaVersion())
 		})
 	}
