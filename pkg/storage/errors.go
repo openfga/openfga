@@ -12,12 +12,14 @@ import (
 var (
 	// Creation errors
 
+	// ErrCollision if an item already exists within the store.
 	ErrCollision = errors.New("item already exists")
 
 	// Read errors
 
 	ErrInvalidContinuationToken = errors.New("invalid continuation token")
-	ErrMismatchObjectType       = errors.New("mismatched types in request and continuation token")
+	// ErrMismatchObjectType if the request for ReadChanges API was for "type x" but the continuation token was for "type y"
+	ErrMismatchObjectType = errors.New("mismatched types in request and continuation token")
 
 	// Write errors
 
@@ -28,7 +30,7 @@ var (
 	// ErrExceededWriteBatchLimit if MaxTuplesPerWrite is exceeded
 	ErrExceededWriteBatchLimit = errors.New("number of operations exceeded write batch limit")
 
-	// All other errors
+	// Shared errors
 
 	ErrCancelled = errors.New("request has been cancelled")
 	ErrNotFound  = errors.New("not found")
