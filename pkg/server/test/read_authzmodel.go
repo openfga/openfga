@@ -56,6 +56,15 @@ type document
 	define reader: [user]`).TypeDefinitions,
 			},
 		},
+		{
+			name:    "success_if_empty_type_definitions",
+			storeID: ulid.Make().String(),
+			model: &openfgav1.AuthorizationModel{
+				Id:              ulid.Make().String(),
+				SchemaVersion:   typesystem.SchemaVersion1_1,
+				TypeDefinitions: []*openfgav1.TypeDefinition{},
+			},
+		},
 	}
 
 	ctx := context.Background()
@@ -71,6 +80,7 @@ type document
 			})
 			require.NoError(t, err)
 			require.Equal(t, test.model.Id, resp.GetAuthorizationModel().GetId())
+			require.Equal(t, test.model.TypeDefinitions, resp.GetAuthorizationModel().GetTypeDefinitions())
 			require.Equal(t, test.model.SchemaVersion, resp.GetAuthorizationModel().GetSchemaVersion())
 		})
 	}
@@ -102,27 +112,4 @@ func TestReadAuthorizationModelQueryErrors(t *testing.T, datastore storage.OpenF
 			require.ErrorIs(t, err, test.expectedError)
 		})
 	}
-}
-
-func ReadAuthorizationModelTest(t *testing.T, datastore storage.OpenFGADatastore) {
-	require := require.New(t)
-	ctx := context.Background()
-	storeID := ulid.Make().String()
-
-	t.Run("writing_without_any_type_definitions_does_not_write_anything", func(t *testing.T) {
-		model := &openfgav1.AuthorizationModel{
-			Id:              ulid.Make().String(),
-			SchemaVersion:   typesystem.SchemaVersion1_1,
-			TypeDefinitions: []*openfgav1.TypeDefinition{},
-		}
-
-		err := datastore.WriteAuthorizationModel(ctx, storeID, model)
-		require.NoError(err)
-
-		_, err = commands.NewReadAuthorizationModelQuery(datastore).Execute(ctx, &openfgav1.ReadAuthorizationModelRequest{
-			StoreId: storeID,
-			Id:      model.Id,
-		})
-		require.ErrorContains(err, serverErrors.AuthorizationModelNotFound(model.Id).Error())
-	})
 }

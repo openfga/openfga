@@ -500,10 +500,6 @@ func ReadAuthorizationModel(
 		return nil, HandleSQLError(err)
 	}
 
-	if len(typeDefs) == 0 {
-		return nil, storage.ErrNotFound
-	}
-
 	return &openfgav1.AuthorizationModel{
 		SchemaVersion:   schemaVersion,
 		Id:              modelID,

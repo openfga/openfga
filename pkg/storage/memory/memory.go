@@ -519,7 +519,7 @@ func (s *MemoryBackend) ReadAuthorizationModel(ctx context.Context, store string
 	}
 
 	if model, ok := findAuthorizationModelByID(id, tm); ok {
-		if model.GetTypeDefinitions() == nil || len(model.GetTypeDefinitions()) == 0 {
+		if model.GetTypeDefinitions() == nil {
 			return nil, storage.ErrNotFound
 		}
 		return model, nil
