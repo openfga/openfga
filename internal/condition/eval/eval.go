@@ -72,7 +72,7 @@ func EvaluateTupleCondition(
 			contextFields = append(contextFields, tupleContext.GetFields())
 		}
 
-		conditionResult, err := evaluableCondition.EvaluateWithContext(ctx, contextFields...)
+		conditionResult, err := evaluableCondition.Evaluate(ctx, contextFields...)
 		if err != nil {
 			telemetry.TraceError(span, err)
 			return nil, err

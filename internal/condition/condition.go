@@ -181,15 +181,15 @@ func (e *EvaluableCondition) CastContextToTypedParameters(contextMap map[string]
 	return converted, nil
 }
 
-// EvaluateWithContext evaluates the provided CEL condition expression with a CEL environment
+// Evaluate evaluates the provided CEL condition expression with a CEL environment
 // constructed from the condition's parameter type definitions and using the context maps provided.
 // If more than one source map of context is provided, and if the keys provided in those map
 // context(s) are overlapping, then the overlapping key for the last most context wins.
-func (e *EvaluableCondition) EvaluateWithContext(
+func (e *EvaluableCondition) Evaluate(
 	ctx context.Context,
 	contextMaps ...map[string]*structpb.Value,
 ) (EvaluationResult, error) {
-	_, span := tracer.Start(ctx, "EvaluateWithContext")
+	_, span := tracer.Start(ctx, "Evaluate")
 	defer span.End()
 
 	if err := e.Compile(); err != nil {
@@ -272,15 +272,6 @@ func (e *EvaluableCondition) EvaluateWithContext(
 		MissingParameters: missingParameters,
 		Cost:              evaluationCost,
 	}, nil
-}
-
-// Evaluate evaluates the provided CEL condition expression with a CEL environment
-// constructed from the condition's parameter type definitions and using the
-// context/struct maps provided. Evaluate is just meant to be a helper method for
-// EvaluateWithContext with an empty background context. See EvaluateWithContext
-// for more info.
-func (e *EvaluableCondition) Evaluate(contextMaps ...map[string]*structpb.Value) (EvaluationResult, error) {
-	return e.EvaluateWithContext(context.Background(), contextMaps...)
 }
 
 // WithTrackEvaluationCost enables CEL evaluation cost on the EvaluableCondition and returns the

@@ -171,7 +171,7 @@ condition str_cond(s: string) {
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
-      
+
 			condEvalResult, err := EvaluateTupleCondition(ctx, test.tupleKey, ts, contextStruct)
 			require.NoError(t, err)
 
