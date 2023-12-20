@@ -292,7 +292,7 @@ func (e *EvaluableCondition) WithMaxEvaluationCost(cost uint64) *EvaluableCondit
 	return e
 }
 
-// WithInterruptCheckFrequency enables CEL evaluation enforcement of the number of iterations
+// WithInterruptCheckFrequency defines the upper limit on the number of iterations within a CEL comprehension to evaluate before CEL will interrupt evaluation and check for cancellation.
 // within a comprehension on the EvaluableCondition and returns the mutated EvaluableCondition.
 // The expectation is that this is called on the Uncompiled condition because it modifies
 // the behavior of the CEL program that is constructed after Compile.
