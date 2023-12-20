@@ -12,12 +12,13 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/telemetry"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/telemetry"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/memory")

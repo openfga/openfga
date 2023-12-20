@@ -6,12 +6,13 @@ import (
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"github.com/openfga/openfga/internal/condition"
 	"github.com/openfga/openfga/pkg/testutils"
 	"github.com/openfga/openfga/pkg/tuple"
 	"github.com/openfga/openfga/pkg/typesystem"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestEvaluateTupleCondition(t *testing.T) {
@@ -170,7 +171,7 @@ condition str_cond(s: string) {
 
 			contextStruct, err := structpb.NewStruct(test.context)
 			require.NoError(t, err)
-
+      
 			condEvalResult, err := EvaluateTupleCondition(ctx, test.tupleKey, ts, contextStruct)
 			require.NoError(t, err)
 

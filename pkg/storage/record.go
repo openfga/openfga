@@ -4,9 +4,10 @@ import (
 	"time"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	tupleutils "github.com/openfga/openfga/pkg/tuple"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	tupleutils "github.com/openfga/openfga/pkg/tuple"
 )
 
 type TupleRecord struct {
