@@ -8,8 +8,9 @@ import (
 
 	"github.com/karlseguin/ccache/v3"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"golang.org/x/sync/singleflight"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 const ttl = time.Hour * 168
