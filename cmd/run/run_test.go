@@ -27,6 +27,9 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
 	parser "github.com/openfga/language/pkg/go/transformer"
+	"github.com/openfga/openfga/pkg/middleware/requestid"
+	"github.com/openfga/openfga/pkg/middleware/storeid"
+	"github.com/openfga/openfga/pkg/server"
 
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
@@ -1257,14 +1260,14 @@ type document
 			require.NoError(t, err)
 
 			// These are set in the server RPCs
-			require.Len(t, httpResponse.Header["Openfga-Authorization-Model-Id"], 1)
-			require.Equal(t, authorizationModelID, httpResponse.Header["Openfga-Authorization-Model-Id"][0])
+			require.Len(t, httpResponse.Header[server.AuthorizationModelIDHeader], 1)
+			require.Equal(t, authorizationModelID, httpResponse.Header[server.AuthorizationModelIDHeader][0])
 
 			// These are set in middlewares
-			require.Len(t, httpResponse.Header["Openfga-Store-Id"], 1)
-			require.Equal(t, storeID, httpResponse.Header["Openfga-Store-Id"][0])
-			require.Len(t, httpResponse.Header["X-Request-Id"], 1)
-			require.NotEmpty(t, httpResponse.Header["X-Request-Id"][0])
+			require.Len(t, httpResponse.Header[storeid.StoreIDHeader], 1)
+			require.Equal(t, storeID, httpResponse.Header[storeid.StoreIDHeader][0])
+			require.Len(t, httpResponse.Header[requestid.RequestIDHeader], 1)
+			require.NotEmpty(t, httpResponse.Header[requestid.RequestIDHeader][0])
 		})
 	}
 }
