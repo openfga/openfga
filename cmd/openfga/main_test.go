@@ -482,7 +482,6 @@ type document
 	}
 }
 
-// /
 func TestFunctionalGRPC(t *testing.T) {
 	// tester can be shared across tests that aren't impacted
 	// by shared state
@@ -666,16 +665,14 @@ type document
 			},
 		},
 		{
-			name: "empty_writes_and_deletes",
+			name: "nil_writes_and_deletes",
 			input: &openfgav1.WriteRequest{
 				StoreId:              storeID,
 				AuthorizationModelId: modelID,
-				Writes:               &openfgav1.WriteRequestWrites{},
-				Deletes:              &openfgav1.WriteRequestDeletes{},
 			},
 			output: output{
-				errorCode:    codes.InvalidArgument,
-				errorMessage: `invalid WriteRequestWrites.TupleKeys: value must contain at least 1 item(s)`,
+				errorCode:    codes.Code(2003),
+				errorMessage: `Invalid input. Make sure you provide at least one write, or at least one delete`,
 			},
 		},
 		{
