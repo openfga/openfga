@@ -3,8 +3,9 @@ package cmd
 import (
 	"log"
 
-	"github.com/openfga/openfga/internal/build"
 	"github.com/spf13/cobra"
+
+	"github.com/openfga/openfga/internal/build"
 )
 
 // NewVersionCommand returns the command to get openfga version
