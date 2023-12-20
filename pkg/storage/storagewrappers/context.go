@@ -4,8 +4,9 @@ import (
 	"context"
 
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/storage"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/openfga/openfga/pkg/storage"
 )
 
 // ContextTracerWrapper is a wrapper around a datastore that passes a new

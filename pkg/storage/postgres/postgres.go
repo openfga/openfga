@@ -15,10 +15,6 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
-	"github.com/openfga/openfga/pkg/logger"
-	"github.com/openfga/openfga/pkg/storage"
-	"github.com/openfga/openfga/pkg/storage/sqlcommon"
-	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"go.opentelemetry.io/otel"
@@ -26,6 +22,11 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/openfga/openfga/pkg/logger"
+	"github.com/openfga/openfga/pkg/storage"
+	"github.com/openfga/openfga/pkg/storage/sqlcommon"
+	tupleUtils "github.com/openfga/openfga/pkg/tuple"
 )
 
 var tracer = otel.Tracer("openfga/pkg/storage/postgres")
