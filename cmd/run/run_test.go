@@ -26,6 +26,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/go-retryablehttp"
 	openfgav1 "github.com/openfga/api/proto/openfga/v1"
+	parser "github.com/openfga/language/pkg/go/transformer"
 	"github.com/openfga/openfga/cmd"
 	"github.com/openfga/openfga/cmd/util"
 	"github.com/openfga/openfga/internal/mocks"
@@ -1165,4 +1166,103 @@ func TestRunCommandConfigIsMerged(t *testing.T) {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.SetArgs([]string{"run"})
 	require.NoError(t, rootCmd.Execute())
+}
+
+func TestHTTPHeaders(t *testing.T) {
+	cfg := MustDefaultConfigWithRandomPorts()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := runServer(ctx, cfg); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	ensureServiceUp(t, cfg.GRPC.Addr, cfg.HTTP.Addr, nil, true)
+
+	conn, err := grpc.Dial(cfg.GRPC.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	client := openfgav1.NewOpenFGAServiceClient(conn)
+
+	createStoreResp, err := client.CreateStore(context.Background(), &openfgav1.CreateStoreRequest{
+		Name: "openfga-demo",
+	})
+	require.NoError(t, err)
+
+	storeID := createStoreResp.GetId()
+
+	typedefs := parser.MustTransformDSLToProto(`model
+	schema 1.1
+type user
+
+type document
+  relations
+	define viewer: [user]`).TypeDefinitions
+
+	writeModelResp, err := client.WriteAuthorizationModel(context.Background(), &openfgav1.WriteAuthorizationModelRequest{
+		StoreId:         storeID,
+		SchemaVersion:   typesystem.SchemaVersion1_1,
+		TypeDefinitions: typedefs,
+	})
+	require.NoError(t, err)
+
+	authorizationModelID := writeModelResp.GetAuthorizationModelId()
+
+	httpClient := retryablehttp.NewClient()
+
+	var testCases = map[string]struct {
+		httpVerb      string
+		httpPath      string
+		httpJsonBody  string
+		expectedError bool
+	}{
+		`check`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/check", cfg.HTTP.Addr, storeID),
+			httpJsonBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`listobjects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/list-objects", cfg.HTTP.Addr, storeID),
+			httpJsonBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`streamed-list-objects`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/streamed-list-objects", cfg.HTTP.Addr, storeID),
+			httpJsonBody: `{"type": "document", "user": "user:anne", "relation": "viewer"}`,
+		},
+		`expand`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/expand", cfg.HTTP.Addr, storeID),
+			httpJsonBody: `{"tuple_key": {"user": "user:anne",  "relation": "viewer", "object": "document:1"}}`,
+		},
+		`write`: {
+			httpVerb:     "POST",
+			httpPath:     fmt.Sprintf("http://%s/stores/%s/write", cfg.HTTP.Addr, storeID),
+			httpJsonBody: `{"writes": { "tuple_keys": [{"user": "user:anne",  "relation": "viewer", "object": "document:1"}]}}`,
+		},
+	}
+
+	for name, test := range testCases {
+		t.Run(name, func(t *testing.T) {
+			req, err := retryablehttp.NewRequest(test.httpVerb, test.httpPath, strings.NewReader(test.httpJsonBody))
+			require.NoError(t, err, "Failed to construct request")
+
+			httpResponse, err := httpClient.Do(req)
+			require.NoError(t, err)
+
+			// These are set in the server RPCs
+			require.Len(t, httpResponse.Header["Openfga-Authorization-Model-Id"], 1)
+			require.Equal(t, authorizationModelID, httpResponse.Header["Openfga-Authorization-Model-Id"][0])
+
+			// These are set in middlewares
+			require.Len(t, httpResponse.Header["Openfga-Store-Id"], 1)
+			require.Equal(t, storeID, httpResponse.Header["Openfga-Store-Id"][0])
+			require.Len(t, httpResponse.Header["X-Request-Id"], 1)
+			require.NotEmpty(t, httpResponse.Header["X-Request-Id"][0])
+		})
+	}
 }
