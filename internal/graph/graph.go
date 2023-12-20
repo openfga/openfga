@@ -1,3 +1,4 @@
+// Package graph contains code related to evaluation of authorization models through graph traversals.
 package graph
 
 import (
